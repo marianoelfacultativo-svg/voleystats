@@ -18,11 +18,11 @@ export default function EquipoPage() {
     }
     setSesion(s);
 
-    if (s.club_id) {
+    if (s.equipo_id) {
       supabase
-        .from("clubes")
+        .from("equipos")
         .select("nombre")
-        .eq("id", s.club_id)
+        .eq("id", s.equipo_id)
         .maybeSingle()
         .then(({ data }) => {
           if (data) setNombreEquipo(data.nombre);

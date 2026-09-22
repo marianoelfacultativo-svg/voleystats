@@ -3,7 +3,7 @@ export type Rol = 'admin' | 'club' | 'jugador';
 export interface Sesion {
   codigo: string;
   tipo: Rol;
-  club_id?: string;
+  equipo_id?: string;
   jugador_id?: string;
 }
 

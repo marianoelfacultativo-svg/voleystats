@@ -43,7 +43,7 @@ export default function Home() {
     guardarSesion({
       codigo: data.codigo,
       tipo: data.tipo as Rol,
-      club_id: data.club_id ?? undefined,
+      equipo_id: data.equipo_id ?? undefined,
       jugador_id: data.jugador_id ?? undefined,
     });
 
