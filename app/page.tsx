@@ -1,17 +1,51 @@
 "use client";
 
 import { useState } from "react";
+import { supabase } from "@/lib/supabase";
+import { guardarSesion, type Rol } from "@/lib/auth";
 
 export default function Home() {
   const [codigo, setCodigo] = useState("");
   const [mensaje, setMensaje] = useState("");
+  const [cargando, setCargando] = useState(false);
 
-  const handleIngresar = () => {
-    if (!codigo.trim()) {
+  const handleIngresar = async () => {
+    const limpio = codigo.trim();
+    if (!limpio) {
       setMensaje("Ingresá un código");
       return;
     }
-    setMensaje(`Probando código: ${codigo}`);
+
+    setCargando(true);
+    setMensaje("Verificando...");
+
+    const { data, error } = await supabase
+      .from("accesos")
+      .select("*")
+      .eq("codigo", limpio)
+      .eq("activo", true)
+      .maybeSingle();
+
+    setCargando(false);
+
+    if (error) {
+      setMensaje("Error de conexión. Probá de nuevo.");
+      return;
+    }
+
+    if (!data) {
+      setMensaje("Código inválido. Verificá y probá de nuevo.");
+      return;
+    }
+
+    guardarSesion({
+      codigo: data.codigo,
+      tipo: data.tipo as Rol,
+      club_id: data.club_id ?? undefined,
+      jugador_id: data.jugador_id ?? undefined,
+    });
+
+    setMensaje(`✅ Bienvenido (${data.tipo}). Sesión guardada.`);
   };
 
   return (
@@ -31,14 +65,16 @@ export default function Home() {
           value={codigo}
           onChange={(e) => setCodigo(e.target.value)}
           placeholder="Tu código"
-          className="w-full px-4 py-3 border border-slate-300 rounded-lg mb-4 focus:outline-none focus:border-blue-500"
+          disabled={cargando}
+          className="w-full px-4 py-3 border border-slate-300 rounded-lg mb-4 focus:outline-none focus:border-blue-500 disabled:bg-slate-100"
         />
 
         <button
           onClick={handleIngresar}
-          className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-3 rounded-lg transition"
+          disabled={cargando}
+          className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-slate-400 text-white font-medium py-3 rounded-lg transition"
         >
-          Ingresar
+          {cargando ? "Verificando..." : "Ingresar"}
         </button>
 
         {mensaje && (
