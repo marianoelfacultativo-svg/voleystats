@@ -49,6 +49,10 @@ export default function Home() {
 
     if (data.tipo === "admin") {
       router.push("/admin");
+    } else if (data.tipo === "club") {
+      router.push("/equipo");
+    } else if (data.tipo === "jugador") {
+      router.push("/jugador");
     } else {
       setMensaje(`✅ Bienvenido (${data.tipo}). Sesión guardada.`);
     }
