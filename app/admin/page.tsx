@@ -18,6 +18,7 @@ interface Jugador {
   nombre: string;
   numero: number | null;
   imagen_url: string | null;
+  rol: string;
 }
 
 interface JugadorEquipo {
@@ -72,12 +73,14 @@ export default function AdminPage() {
   const [numeroNuevoJug, setNumeroNuevoJug] = useState("");
   const [imagenNuevaJug, setImagenNuevaJug] = useState("");
   const [equipoNuevoJug, setEquipoNuevoJug] = useState("");
+  const [rolNuevoJug, setRolNuevoJug] = useState<"normal" | "armador">("normal");
   const [creandoJugador, setCreandoJugador] = useState(false);
   const [editandoJugId, setEditandoJugId] = useState<string | null>(null);
   const [editNombreJug, setEditNombreJug] = useState("");
   const [editNumeroJug, setEditNumeroJug] = useState("");
   const [editImagenJug, setEditImagenJug] = useState("");
   const [editEquipoJug, setEditEquipoJug] = useState("");
+  const [editRolJug, setEditRolJug] = useState<"normal" | "armador">("normal");
 
   // Partidos
   const [partidos, setPartidos] = useState<Partido[]>([]);
@@ -233,6 +236,7 @@ export default function AdminPage() {
         nombre,
         numero: numeroNuevoJug ? parseInt(numeroNuevoJug) : null,
         imagen_url: imagenNuevaJug.trim() || null,
+        rol: rolNuevoJug,
       })
       .select()
       .single();
@@ -251,6 +255,7 @@ export default function AdminPage() {
     setNumeroNuevoJug("");
     setImagenNuevaJug("");
     setEquipoNuevoJug("");
+    setRolNuevoJug("normal");
     cargarJugadores();
   };
 
@@ -263,6 +268,7 @@ export default function AdminPage() {
         nombre,
         numero: editNumeroJug ? parseInt(editNumeroJug) : null,
         imagen_url: editImagenJug.trim() || null,
+        rol: editRolJug,
       })
       .eq("id", id);
     if (error) {
@@ -665,7 +671,7 @@ export default function AdminPage() {
                   <select
                     value={equipoNuevoJug}
                     onChange={(e) => setEquipoNuevoJug(e.target.value)}
-                    className={`col-span-2 ${inputBase}`}
+                    className={inputBase}
                   >
                     <option value="">Sin equipo asignado</option>
                     {equipos.map((eq) => (
@@ -673,6 +679,16 @@ export default function AdminPage() {
                         {eq.nombre}
                       </option>
                     ))}
+                  </select>
+                  <select
+                    value={rolNuevoJug}
+                    onChange={(e) =>
+                      setRolNuevoJug(e.target.value as "normal" | "armador")
+                    }
+                    className={inputBase}
+                  >
+                    <option value="normal">Rol: Jugador normal</option>
+                    <option value="armador">Rol: Armador</option>
                   </select>
                 </div>
                 <button
@@ -732,6 +748,18 @@ export default function AdminPage() {
                                 ))}
                               </select>
                             </div>
+                            <select
+                              value={editRolJug}
+                              onChange={(e) =>
+                                setEditRolJug(
+                                  e.target.value as "normal" | "armador"
+                                )
+                              }
+                              className={`w-full ${inputBase}`}
+                            >
+                              <option value="normal">Rol: Jugador normal</option>
+                              <option value="armador">Rol: Armador</option>
+                            </select>
                             <input
                               type="text"
                               value={editImagenJug}
@@ -772,6 +800,11 @@ export default function AdminPage() {
                                   · {equipoNombre}
                                 </span>
                               )}
+                              {jug.rol === "armador" && (
+                                <span className="ml-2 text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
+                                  Armador
+                                </span>
+                              )}
                             </span>
                             <button
                               onClick={() => {
@@ -782,6 +815,9 @@ export default function AdminPage() {
                                 );
                                 setEditImagenJug(jug.imagen_url ?? "");
                                 setEditEquipoJug(idEquipoDe(jug.id));
+                                setEditRolJug(
+                                  jug.rol === "armador" ? "armador" : "normal"
+                                );
                               }}
                               className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm rounded-lg"
                             >
