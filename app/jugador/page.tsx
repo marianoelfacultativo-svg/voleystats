@@ -72,7 +72,6 @@ export default function JugadorPage() {
         }
         setJugador(jugData);
 
-        // 2. Buscar el equipo al que pertenece
         supabase
           .from("jugador_equipo")
           .select("*")
@@ -86,7 +85,6 @@ export default function JugadorPage() {
             }
             const asig = asigData as JugadorEquipo;
 
-            // 3. Nombre del equipo
             supabase
               .from("equipos")
               .select("nombre")
@@ -96,18 +94,17 @@ export default function JugadorPage() {
                 if (eqData) setNombreEquipo(eqData.nombre);
               });
 
-            // 4. Cargar acciones del equipo + stats del equipo (para el radar)
             const { data: partRes } = await supabase
               .from("partidos")
               .select("id")
               .eq("equipo_id", asig.equipo_id);
 
-            if (!partRes || partRes.data.length === 0) {
+            if (!partRes || partRes.length === 0) {
               setCargando(false);
               return;
             }
 
-            const idsPartidos = partRes.data.map((p) => p.id);
+            const idsPartidos = partRes.map((p) => p.id);
 
             const { data: accData } = await supabase
               .from("acciones")
@@ -116,7 +113,6 @@ export default function JugadorPage() {
               )
               .in("partido_id", idsPartidos);
 
-            // Necesitamos también los jugadores del equipo para calcular los totales del equipo
             const { data: jugRes } = await supabase
               .from("jugador_equipo")
               .select("jugador_id")
@@ -207,7 +203,6 @@ export default function JugadorPage() {
 
         {!cargando && jugador && stats && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-            {/* Encabezado del jugador */}
             <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-200">
               {jugador.imagen_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -254,7 +249,6 @@ export default function JugadorPage() {
               </div>
             </div>
 
-            {/* Radar */}
             <div className="mb-6">
               <h3 className="font-semibold text-slate-800 mb-3">
                 Perfil de rendimiento
@@ -266,7 +260,6 @@ export default function JugadorPage() {
               />
             </div>
 
-            {/* Gráficos específicos por rol */}
             {esArmador && stats.armador && (
               <div className="mb-6 grid grid-cols-2 gap-4">
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
@@ -290,7 +283,6 @@ export default function JugadorPage() {
               </div>
             )}
 
-            {/* Totales */}
             <div className="grid grid-cols-4 gap-3">
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center">
                 <p className="text-xs text-slate-500 uppercase">Acciones</p>
