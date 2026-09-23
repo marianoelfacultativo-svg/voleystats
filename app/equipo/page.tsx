@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { obtenerSesion, cerrarSesion, type Sesion } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import Dashboard from "./Dashboard";
+import MiEquipo from "./MiEquipo";
 
 type Seccion = "dashboard" | "mi-equipo" | "partidos";
 
@@ -84,20 +85,11 @@ export default function EquipoPage() {
         </div>
 
         {seccion === "dashboard" && (
-          <Dashboard
-            equipoId={sesion.equipo_id}
-            nombreEquipo={nombreEquipo}
-          />
+          <Dashboard equipoId={sesion.equipo_id} nombreEquipo={nombreEquipo} />
         )}
 
         {seccion === "mi-equipo" && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
-            <p className="text-4xl mb-3">👥</p>
-            <p className="text-slate-600 font-medium">Mi Equipo</p>
-            <p className="text-slate-500 text-sm mt-1">
-              🚧 En construcción — Sección 2
-            </p>
-          </div>
+          <MiEquipo equipoId={sesion.equipo_id} nombreEquipo={nombreEquipo} />
         )}
 
         {seccion === "partidos" && (
