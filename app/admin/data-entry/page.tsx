@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { obtenerSesion, cerrarSesion, type Sesion } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import ContadorSaque from "./ContadorSaque";
+import ContadorRecepcion from "./ContadorRecepcion";
+import ContadorAtaque from "./ContadorAtaque";
+import ContadorBloqueo from "./ContadorBloqueo";
 
 interface Equipo {
   id: string;
@@ -33,29 +36,27 @@ interface Partido {
 
 type SetActivo = 1 | 2 | 3 | 4 | 5 | "partido";
 
-// Estructura: datos[jugadorId][setNumero][fundamento][valoracion] = cantidad
 type Datos = Record<string, Record<string, Record<string, Record<string, number>>>>;
+
+const FUNDAMENTOS = ["saque", "recepcion", "ataque", "bloqueo"] as const;
+type Fundamento = typeof FUNDAMENTOS[number];
 
 export default function DataEntryPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
 
-  // Datos
   const [equipos, setEquipos] = useState<Equipo[]>([]);
   const [partidos, setPartidos] = useState<Partido[]>([]);
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
   const [asignaciones, setAsignaciones] = useState<JugadorEquipo[]>([]);
 
-  // Selección
   const [equipoId, setEquipoId] = useState("");
   const [partidoId, setPartidoId] = useState("");
   const [jugadorId, setJugadorId] = useState("");
   const [setActivo, setSetActivo] = useState<SetActivo>(1);
+  const [fundamentoActivo, setFundamentoActivo] = useState<Fundamento>("saque");
 
-  // Datos cargados en memoria
   const [datos, setDatos] = useState<Datos>({});
-
-  // UI
   const [cargando, setCargando] = useState(false);
 
   useEffect(() => {
@@ -131,7 +132,6 @@ export default function DataEntryPage() {
     router.push("/admin");
   };
 
-  // Actualizar un valor en los datos
   const setValor = (
     jugId: string,
     set: string,
@@ -151,7 +151,6 @@ export default function DataEntryPage() {
     });
   };
 
-  // Obtener valores de un fundamento
   const getValores = (
     jugId: string,
     set: string,
@@ -160,7 +159,6 @@ export default function DataEntryPage() {
     return datos[jugId]?.[set]?.[fundamento] ?? {};
   };
 
-  // Sumar todos los sets para la vista "Partido"
   const getValoresTotales = (
     jugId: string,
     fundamento: string
@@ -178,11 +176,23 @@ export default function DataEntryPage() {
   if (!sesion) return null;
 
   const setActual = setActivo === "partido" ? "partido" : String(setActivo);
+  const soloLectura = setActivo === "partido";
+
+  const valoresDe = (fundamento: Fundamento) =>
+    setActivo === "partido"
+      ? getValoresTotales(jugadorId, fundamento)
+      : getValores(jugadorId, setActual, fundamento);
+
+  const onCambioDe = (fundamento: Fundamento) => (
+    valoracion: string,
+    cantidad: number
+  ) => {
+    setValor(jugadorId, setActual, fundamento, valoracion, cantidad);
+  };
 
   return (
     <main className="min-h-screen p-8">
       <div className="max-w-6xl mx-auto">
-        {/* Encabezado */}
         <div className="flex justify-between items-center mb-6">
           <div>
             <button
@@ -203,7 +213,6 @@ export default function DataEntryPage() {
           </button>
         </div>
 
-        {/* Selección de partido */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -223,7 +232,6 @@ export default function DataEntryPage() {
                 ))}
               </select>
             </div>
-
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Partido
@@ -247,7 +255,6 @@ export default function DataEntryPage() {
           </div>
         </div>
 
-        {/* Aviso si no hay partido seleccionado */}
         {!partidoId && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
             <p className="text-5xl mb-4">🎯</p>
@@ -260,10 +267,8 @@ export default function DataEntryPage() {
           </div>
         )}
 
-        {/* Consola activa */}
         {partidoId && (
           <>
-            {/* Pestañas de set */}
             <div className="flex gap-2 mb-4 border-b border-slate-200">
               {([1, 2, 3, 4, 5, "partido"] as const).map((s) => (
                 <button
@@ -281,12 +286,10 @@ export default function DataEntryPage() {
             </div>
 
             <div className="grid grid-cols-3 gap-4">
-              {/* Lista de jugadores */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 col-span-1">
                 <h3 className="font-semibold text-slate-800 mb-3">
                   Jugadores
                 </h3>
-
                 {cargando ? (
                   <p className="text-sm text-slate-500">Cargando...</p>
                 ) : jugadoresDelEquipo.length === 0 ? (
@@ -315,7 +318,6 @@ export default function DataEntryPage() {
                 )}
               </div>
 
-              {/* Panel de acciones */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 col-span-2">
                 {!jugadorId ? (
                   <div className="text-center py-16">
@@ -340,30 +342,60 @@ export default function DataEntryPage() {
                       <p className="text-sm text-slate-500 mt-2">
                         Set activo:{" "}
                         <span className="font-medium text-slate-700">
-                          {setActivo === "partido"
-                            ? "Partido (solo lectura)"
-                            : `Set ${setActivo}`}
+                          {soloLectura ? "Partido (solo lectura)" : `Set ${setActivo}`}
                         </span>
                       </p>
                     </div>
 
-                    <ContadorSaque
-                      valores={
-                        setActivo === "partido"
-                          ? getValoresTotales(jugadorId, "saque")
-                          : getValores(jugadorId, setActual, "saque")
-                      }
-                      onCambio={(valoracion, cantidad) =>
-                        setValor(
-                          jugadorId,
-                          setActual,
-                          "saque",
-                          valoracion,
-                          cantidad
-                        )
-                      }
-                      soloLectura={setActivo === "partido"}
-                    />
+                    {/* Selector de fundamento */}
+                    <div className="flex gap-2 mb-6 flex-wrap">
+                      {FUNDAMENTOS.map((f) => (
+                        <button
+                          key={f}
+                          onClick={() => setFundamentoActivo(f)}
+                          className={`px-4 py-2 text-sm font-medium rounded-lg transition border ${
+                            fundamentoActivo === f
+                              ? "bg-slate-800 text-white border-slate-800"
+                              : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                          }`}
+                        >
+                          {f === "saque" && "Saque"}
+                          {f === "recepcion" && "Recepción"}
+                          {f === "ataque" && "Ataque"}
+                          {f === "bloqueo" && "Bloqueo"}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Contador activo */}
+                    {fundamentoActivo === "saque" && (
+                      <ContadorSaque
+                        valores={valoresDe("saque")}
+                        onCambio={onCambioDe("saque")}
+                        soloLectura={soloLectura}
+                      />
+                    )}
+                    {fundamentoActivo === "recepcion" && (
+                      <ContadorRecepcion
+                        valores={valoresDe("recepcion")}
+                        onCambio={onCambioDe("recepcion")}
+                        soloLectura={soloLectura}
+                      />
+                    )}
+                    {fundamentoActivo === "ataque" && (
+                      <ContadorAtaque
+                        valores={valoresDe("ataque")}
+                        onCambio={onCambioDe("ataque")}
+                        soloLectura={soloLectura}
+                      />
+                    )}
+                    {fundamentoActivo === "bloqueo" && (
+                      <ContadorBloqueo
+                        valores={valoresDe("bloqueo")}
+                        onCambio={onCambioDe("bloqueo")}
+                        soloLectura={soloLectura}
+                      />
+                    )}
                   </div>
                 )}
               </div>
