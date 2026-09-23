@@ -4,6 +4,7 @@
 
 export interface AccionDB {
   jugador_id: string;
+  partido_id?: string;
   set_numero: number;
   fundamento: string;
   valoracion: string;
@@ -52,10 +53,6 @@ const ERRORES: Record<string, string[]> = {
   defensa: ["error_def", "errores_graves"],
 };
 
-// ============================================
-// TIPOS DE RESULTADO
-// ============================================
-
 export interface EstadisticasFundamento {
   fundamento: string;
   total: number;
@@ -77,10 +74,6 @@ export interface EstadisticasJugador {
   saldoTotal: number;
   porFundamento: Record<string, EstadisticasFundamento>;
 }
-
-// ============================================
-// FUNCIONES DE CÁLCULO
-// ============================================
 
 function contarPorValoraciones(
   acciones: AccionDB[],
@@ -131,7 +124,6 @@ export function calcularEstadisticasJugador(
     const puntos = contarPorValoraciones(propias, fund, PUNTOS[fund] ?? []);
     const errores = contarPorValoraciones(propias, fund, ERRORES[fund] ?? []);
 
-    // Saldo según regla del usuario
     let saldo: number;
     if (fund === "saque" || fund === "ataque" || fund === "bloqueo") {
       saldo = puntos - errores;
@@ -236,10 +228,6 @@ export function calcularEstadisticasEquipo(
 
   return { porJugador, totales: totalesIniciales };
 }
-
-// ============================================
-// RANKINGS
-// ============================================
 
 export interface RankingItem {
   jugador_id: string;
