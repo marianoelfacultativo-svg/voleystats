@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { obtenerSesion, cerrarSesion, type Sesion } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import ContadorSaque from "./ContadorSaque";
 
 interface Equipo {
   id: string;
@@ -32,6 +33,9 @@ interface Partido {
 
 type SetActivo = 1 | 2 | 3 | 4 | 5 | "partido";
 
+// Estructura: datos[jugadorId][setNumero][fundamento][valoracion] = cantidad
+type Datos = Record<string, Record<string, Record<string, Record<string, number>>>>;
+
 export default function DataEntryPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
@@ -48,6 +52,9 @@ export default function DataEntryPage() {
   const [jugadorId, setJugadorId] = useState("");
   const [setActivo, setSetActivo] = useState<SetActivo>(1);
 
+  // Datos cargados en memoria
+  const [datos, setDatos] = useState<Datos>({});
+
   // UI
   const [cargando, setCargando] = useState(false);
 
@@ -60,7 +67,6 @@ export default function DataEntryPage() {
     setSesion(s);
   }, [router]);
 
-  // Cargar equipos al inicio
   useEffect(() => {
     if (!sesion) return;
     supabase
@@ -72,7 +78,6 @@ export default function DataEntryPage() {
       });
   }, [sesion]);
 
-  // Cargar partidos del equipo
   useEffect(() => {
     if (!equipoId) {
       setPartidos([]);
@@ -91,7 +96,6 @@ export default function DataEntryPage() {
     setJugadorId("");
   }, [equipoId]);
 
-  // Cargar jugadores del equipo
   useEffect(() => {
     if (!equipoId) {
       setJugadores([]);
@@ -127,7 +131,53 @@ export default function DataEntryPage() {
     router.push("/admin");
   };
 
+  // Actualizar un valor en los datos
+  const setValor = (
+    jugId: string,
+    set: string,
+    fundamento: string,
+    valoracion: string,
+    cantidad: number
+  ) => {
+    setDatos((prev) => {
+      const copia = { ...prev };
+      copia[jugId] = { ...(copia[jugId] ?? {}) };
+      copia[jugId][set] = { ...(copia[jugId][set] ?? {}) };
+      copia[jugId][set][fundamento] = {
+        ...(copia[jugId][set][fundamento] ?? {}),
+      };
+      copia[jugId][set][fundamento][valoracion] = cantidad;
+      return copia;
+    });
+  };
+
+  // Obtener valores de un fundamento
+  const getValores = (
+    jugId: string,
+    set: string,
+    fundamento: string
+  ): Record<string, number> => {
+    return datos[jugId]?.[set]?.[fundamento] ?? {};
+  };
+
+  // Sumar todos los sets para la vista "Partido"
+  const getValoresTotales = (
+    jugId: string,
+    fundamento: string
+  ): Record<string, number> => {
+    const totales: Record<string, number> = {};
+    for (let s = 1; s <= 5; s++) {
+      const vals = datos[jugId]?.[String(s)]?.[fundamento] ?? {};
+      for (const [k, v] of Object.entries(vals)) {
+        totales[k] = (totales[k] ?? 0) + v;
+      }
+    }
+    return totales;
+  };
+
   if (!sesion) return null;
+
+  const setActual = setActivo === "partido" ? "partido" : String(setActivo);
 
   return (
     <main className="min-h-screen p-8">
@@ -297,15 +347,23 @@ export default function DataEntryPage() {
                       </p>
                     </div>
 
-                    <div className="text-center py-12">
-                      <p className="text-4xl mb-3">🚧</p>
-                      <p className="text-slate-600 font-medium">
-                        Contadores en construcción
-                      </p>
-                      <p className="text-slate-500 text-sm mt-1">
-                        Los agregamos en la Sección 2 (Saque primero)
-                      </p>
-                    </div>
+                    <ContadorSaque
+                      valores={
+                        setActivo === "partido"
+                          ? getValoresTotales(jugadorId, "saque")
+                          : getValores(jugadorId, setActual, "saque")
+                      }
+                      onCambio={(valoracion, cantidad) =>
+                        setValor(
+                          jugadorId,
+                          setActual,
+                          "saque",
+                          valoracion,
+                          cantidad
+                        )
+                      }
+                      soloLectura={setActivo === "partido"}
+                    />
                   </div>
                 )}
               </div>
