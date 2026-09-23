@@ -2,8 +2,68 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================ */
+/* TEMA VOLEYSTATS: Amarillo cálido + Verde */
+/* ============================================ */
+
 html, body {
-  background-color: #F8FAFC;
-  color: #0F172A;
+  background-color: #FDFBF0;
+  color: #1A3326;
   font-family: 'Inter', system-ui, sans-serif;
+  min-height: 100vh;
 }
+
+/* ====== FONDOS ====== */
+.bg-white { background-color: #FFFEF9 !important; }
+.bg-slate-50 { background-color: #F4F9F2 !important; }
+.bg-slate-100 { background-color: #E8F1E6 !important; }
+.bg-slate-200 { background-color: #D9E6D7 !important; }
+
+/* ====== BORDES ====== */
+.border-slate-100 { border-color: #E8F1E6 !important; }
+.border-slate-200 { border-color: #D6E4D4 !important; }
+.border-slate-300 { border-color: #B8CDB6 !important; }
+
+/* ====== TEXTO ====== */
+.text-slate-900 { color: #14301F !important; }
+.text-slate-800 { color: #1A3326 !important; }
+.text-slate-700 { color: #2F4A3A !important; }
+.text-slate-600 { color: #4A6355 !important; }
+.text-slate-500 { color: #6B8274 !important; }
+.text-slate-400 { color: #8FA398 !important; }
+
+/* ====== ACENTO: Azul → Verde esmeralda ====== */
+.bg-blue-500 { background-color: #10B981 !important; }
+.bg-blue-600 { background-color: #059669 !important; }
+.bg-blue-100 { background-color: #D1FAE5 !important; }
+.bg-blue-50 { background-color: #ECFDF5 !important; }
+
+.text-blue-600 { color: #059669 !important; }
+.text-blue-700 { color: #047857 !important; }
+.text-blue-800 { color: #065F46 !important; }
+.text-blue-500 { color: #10B981 !important; }
+.text-blue-100 { color: #D1FAE5 !important; }
+
+.border-blue-500 { border-color: #10B981 !important; }
+.border-blue-200 { border-color: #A7F3D0 !important; }
+.border-blue-300 { border-color: #6EE7B7 !important; }
+
+/* ====== HOVERS ====== */
+.hover\:bg-blue-600:hover { background-color: #059669 !important; }
+.hover\:bg-blue-200:hover { background-color: #A7F3D0 !important; }
+.hover\:border-blue-400:hover { border-color: #34D399 !important; }
+.hover\:bg-slate-50:hover { background-color: #F4F9F2 !important; }
+.hover\:bg-slate-100:hover { background-color: #E8F1E6 !important; }
+.hover\:bg-slate-200:hover { background-color: #D9E6D7 !important; }
+.hover\:bg-slate-300:hover { background-color: #C2D5BF !important; }
+.hover\:bg-slate-400:hover { background-color: #A3BCA0 !important; }
+.hover\:text-slate-700:hover { color: #2F4A3A !important; }
+.hover\:text-slate-800:hover { color: #1A3326 !important; }
+.hover\:text-blue-800:hover { color: #047857 !important; }
+
+/* ====== FOCUS DE INPUTS ====== */
+.focus\:border-blue-500:focus { border-color: #10B981 !important; }
+
+/* ====== disabled ====== */
+.disabled\:bg-slate-300:disabled { background-color: #B8CDB6 !important; }
+.disabled\:bg-slate-400:disabled { background-color: #A3BCA0 !important; }
