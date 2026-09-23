@@ -173,7 +173,9 @@ export default function DataEntryPage() {
     setCargando(true);
     supabase
       .from("acciones")
-      .select("jugador_id, partido_id, set_numero, fundamento, valoracion, cantidad")
+      .select(
+        "jugador_id, partido_id, set_numero, fundamento, valoracion, cantidad"
+      )
       .eq("partido_id", partidoId)
       .then(({ data, error }) => {
         setCargando(false);
@@ -201,14 +203,17 @@ export default function DataEntryPage() {
   const jugadorActual = jugadoresDelEquipo.find((j) => j.id === jugadorId);
   const esArmador = jugadorActual?.rol === "armador";
 
-  // Cuando cambia el jugador, resetear el fundamento activo al primero disponible
   useEffect(() => {
     if (esArmador) {
-      if (!FUNDAMENTOS_ARMADOR.includes(fundamentoActivo as FundamentoArmador)) {
+      if (
+        !FUNDAMENTOS_ARMADOR.includes(fundamentoActivo as FundamentoArmador)
+      ) {
         setFundamentoActivo("saque");
       }
     } else {
-      if (!FUNDAMENTOS_NORMAL.includes(fundamentoActivo as FundamentoNormal)) {
+      if (
+        !FUNDAMENTOS_NORMAL.includes(fundamentoActivo as FundamentoNormal)
+      ) {
         setFundamentoActivo("saque");
       }
     }
@@ -352,6 +357,13 @@ export default function DataEntryPage() {
   const fundamentosDisponibles = esArmador
     ? FUNDAMENTOS_ARMADOR
     : FUNDAMENTOS_NORMAL;
+
+  // Total de toques = punto + error + neutro
+  const valoresToque = valoresDe("toque" as Fundamento);
+  const toquesTotal =
+    (valoresToque.punto ?? 0) +
+    (valoresToque.error ?? 0) +
+    (valoresToque.neutro ?? 0);
 
   return (
     <main className="min-h-screen p-8">
@@ -590,6 +602,7 @@ export default function DataEntryPage() {
                         valores={valoresDe("tendencia")}
                         onCambio={onCambioDe("tendencia")}
                         soloLectura={soloLectura}
+                        toquesTotal={toquesTotal}
                       />
                     )}
                     {fundamentoActivo === "toque" && (
