@@ -4,11 +4,41 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { obtenerSesion, cerrarSesion, type Sesion } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import {
+  calcularEstadisticasJugador,
+  calcularEstadisticasEquipo,
+  type AccionDB,
+  type EstadisticasJugador,
+} from "@/lib/estadisticas";
+import RadarJugador from "../equipo/RadarJugador";
+import GraficoArmadosPorSet from "../equipo/GraficoArmadosPorSet";
+import GraficoRecepcionPorSet from "../equipo/GraficoRecepcionPorSet";
+import MapaCalorTendencia from "../equipo/MapaCalorTendencia";
+
+interface Jugador {
+  id: string;
+  nombre: string;
+  numero: number | null;
+  imagen_url: string | null;
+  rol: string;
+}
+
+interface JugadorEquipo {
+  id: string;
+  jugador_id: string;
+  equipo_id: string;
+}
 
 export default function JugadorPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
-  const [nombre, setNombre] = useState("");
+  const [jugador, setJugador] = useState<Jugador | null>(null);
+  const [nombreEquipo, setNombreEquipo] = useState("");
+  const [acciones, setAcciones] = useState<AccionDB[]>([]);
+  const [statsEquipo, setStatsEquipo] = useState<EstadisticasJugador | null>(
+    null
+  );
+  const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
     const s = obtenerSesion();
@@ -17,18 +47,107 @@ export default function JugadorPage() {
       return;
     }
     setSesion(s);
-
-    if (s.jugador_id) {
-      supabase
-        .from("jugadores")
-        .select("nombre")
-        .eq("id", s.jugador_id)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (data) setNombre(data.nombre);
-        });
-    }
   }, [router]);
+
+  useEffect(() => {
+    if (!sesion?.jugador_id) return;
+    setCargando(true);
+
+    const jugadorId = sesion.jugador_id;
+
+    // 1. Cargar datos del jugador
+    supabase
+      .from("jugadores")
+      .select("*")
+      .eq("id", jugadorId)
+      .maybeSingle()
+      .then(({ data: jugData }) => {
+        if (!jugData) {
+          setCargando(false);
+          return;
+        }
+        setJugador(jugData);
+
+        // 2. Buscar el equipo al que pertenece
+        supabase
+          .from("jugador_equipo")
+          .select("*")
+          .eq("jugador_id", jugadorId)
+          .eq("activo", true)
+          .maybeSingle()
+          .then(async ({ data: asigData }) => {
+            if (!asigData) {
+              setCargando(false);
+              return;
+            }
+            const asig = asigData as JugadorEquipo;
+
+            // 3. Nombre del equipo
+            supabase
+              .from("equipos")
+              .select("nombre")
+              .eq("id", asig.equipo_id)
+              .maybeSingle()
+              .then(({ data: eqData }) => {
+                if (eqData) setNombreEquipo(eqData.nombre);
+              });
+
+            // 4. Cargar acciones del equipo + stats del equipo (para el radar)
+            const { data: partRes } = await supabase
+              .from("partidos")
+              .select("id")
+              .eq("equipo_id", asig.equipo_id);
+
+            if (!partRes || partRes.data.length === 0) {
+              setCargando(false);
+              return;
+            }
+
+            const idsPartidos = partRes.data.map((p) => p.id);
+
+            const { data: accData } = await supabase
+              .from("acciones")
+              .select(
+                "jugador_id, partido_id, set_numero, fundamento, valoracion, cantidad"
+              )
+              .in("partido_id", idsPartidos);
+
+            // Necesitamos también los jugadores del equipo para calcular los totales del equipo
+            const { data: jugRes } = await supabase
+              .from("jugador_equipo")
+              .select("jugador_id")
+              .eq("equipo_id", asig.equipo_id)
+              .eq("activo", true);
+
+            const idsJugadoresEquipo = (jugRes ?? []).map(
+              (j: { jugador_id: string }) => j.jugador_id
+            );
+
+            const { data: jugDataAll } = await supabase
+              .from("jugadores")
+              .select("id, rol")
+              .in("id", idsJugadoresEquipo);
+
+            const armadores = new Set(
+              ((jugDataAll ?? []) as { id: string; rol: string }[])
+                .filter((j) => j.rol === "armador")
+                .map((j) => j.id)
+            );
+
+            const acc = (accData ?? []) as AccionDB[];
+            setAcciones(acc);
+
+            const { totales } = calcularEstadisticasEquipo(
+              idsJugadoresEquipo,
+              acc,
+              armadores
+            );
+            setStatsEquipo(totales);
+
+            setCargando(false);
+          });
+      });
+  }, [sesion]);
 
   const handleCerrar = () => {
     cerrarSesion();
@@ -37,13 +156,30 @@ export default function JugadorPage() {
 
   if (!sesion) return null;
 
+  const stats: EstadisticasJugador | null = jugador
+    ? calcularEstadisticasJugador(
+        jugador.id,
+        acciones,
+        jugador.rol === "armador"
+      )
+    : null;
+
+  const esArmador = jugador?.rol === "armador";
+
   return (
     <main className="min-h-screen p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-slate-900">
-            🏐 Mi Perfil
-          </h1>
+      <div className="max-w-5xl mx-auto">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">
+              🏐 Mi Perfil
+            </h1>
+            <p className="text-slate-500 text-sm mt-1">
+              {jugador
+                ? `Bienvenido ${jugador.nombre}`
+                : "Cargando perfil..."}
+            </p>
+          </div>
           <button
             onClick={handleCerrar}
             className="px-4 py-2 text-sm bg-slate-200 hover:bg-slate-300 rounded-lg transition"
@@ -52,20 +188,133 @@ export default function JugadorPage() {
           </button>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-          <p className="text-slate-600 text-lg">
-            Bienvenido{" "}
-            <span className="font-semibold">
-              {nombre || "(jugador sin nombre)"}
-            </span>
-          </p>
+        {cargando && (
+          <p className="text-slate-500 text-center py-12">Cargando...</p>
+        )}
 
-          <div className="mt-8 p-6 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-center">
-            <p className="text-slate-500 text-sm">
-              🚧 Perfil en construcción — se llena en la Fase 6
+        {!cargando && !jugador && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+            <p className="text-4xl mb-3">👤</p>
+            <p className="text-slate-600 font-medium">
+              No encontramos tu perfil
             </p>
           </div>
-        </div>
+        )}
+
+        {!cargando && jugador && stats && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+            {/* Encabezado del jugador */}
+            <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-200">
+              {jugador.imagen_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={jugador.imagen_url}
+                  alt={jugador.nombre}
+                  className="w-24 h-24 rounded-full object-cover border-2 border-slate-200"
+                />
+              ) : (
+                <div className="w-24 h-24 rounded-full bg-blue-100 border-2 border-blue-200 flex items-center justify-center text-3xl font-bold text-blue-600">
+                  {jugador.nombre.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="flex-1">
+                <h2 className="text-3xl font-bold text-slate-900">
+                  {jugador.nombre}
+                </h2>
+                {jugador.numero !== null && (
+                  <p className="text-slate-500 text-lg">#{jugador.numero}</p>
+                )}
+                {nombreEquipo && (
+                  <p className="text-sm text-slate-500 mt-1">{nombreEquipo}</p>
+                )}
+                {esArmador && (
+                  <span className="inline-block mt-2 text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
+                    Armador
+                  </span>
+                )}
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-slate-500 uppercase">Saldo total</p>
+                <p
+                  className={`text-4xl font-bold ${
+                    stats.saldoTotal > 0
+                      ? "text-green-700"
+                      : stats.saldoTotal < 0
+                      ? "text-red-700"
+                      : "text-slate-700"
+                  }`}
+                >
+                  {stats.saldoTotal > 0 ? "+" : ""}
+                  {stats.saldoTotal}
+                </p>
+              </div>
+            </div>
+
+            {/* Radar */}
+            <div className="mb-6">
+              <h3 className="font-semibold text-slate-800 mb-3">
+                Perfil de rendimiento
+              </h3>
+              <RadarJugador
+                jugador={stats}
+                equipo={statsEquipo ?? stats}
+                esArmador={esArmador}
+              />
+            </div>
+
+            {/* Gráficos específicos por rol */}
+            {esArmador && stats.armador && (
+              <div className="mb-6 grid grid-cols-2 gap-4">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                  <GraficoArmadosPorSet
+                    promedios={stats.armador.promediosArmados}
+                  />
+                </div>
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                  <MapaCalorTendencia
+                    distribucion={stats.armador.distribucionTendencia}
+                  />
+                </div>
+              </div>
+            )}
+
+            {!esArmador && stats.recepcion && (
+              <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                <GraficoRecepcionPorSet
+                  promedios={stats.recepcion.promediosPorSet}
+                />
+              </div>
+            )}
+
+            {/* Totales */}
+            <div className="grid grid-cols-4 gap-3">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                <p className="text-xs text-slate-500 uppercase">Acciones</p>
+                <p className="text-2xl font-bold text-slate-800">
+                  {stats.totalAcciones}
+                </p>
+              </div>
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
+                <p className="text-xs text-green-700 uppercase">Puntos</p>
+                <p className="text-2xl font-bold text-green-800">
+                  {stats.totalPuntos}
+                </p>
+              </div>
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-center">
+                <p className="text-xs text-red-700 uppercase">Errores</p>
+                <p className="text-2xl font-bold text-red-800">
+                  {stats.totalErrores}
+                </p>
+              </div>
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                <p className="text-xs text-slate-500 uppercase">Positivas</p>
+                <p className="text-2xl font-bold text-slate-800">
+                  {stats.totalPositivos}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
