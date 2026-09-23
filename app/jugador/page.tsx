@@ -29,16 +29,28 @@ interface JugadorEquipo {
   equipo_id: string;
 }
 
+interface Partido {
+  id: string;
+  rival: string;
+  fecha: string;
+}
+
+type Vista = "general" | "por-partido";
+
 export default function JugadorPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [jugador, setJugador] = useState<Jugador | null>(null);
   const [nombreEquipo, setNombreEquipo] = useState("");
+  const [partidos, setPartidos] = useState<Partido[]>([]);
   const [acciones, setAcciones] = useState<AccionDB[]>([]);
   const [statsEquipo, setStatsEquipo] = useState<EstadisticasJugador | null>(
     null
   );
   const [cargando, setCargando] = useState(true);
+
+  const [vista, setVista] = useState<Vista>("general");
+  const [partidoSeleccionado, setPartidoSeleccionado] = useState<string>("");
 
   useEffect(() => {
     const s = obtenerSesion();
@@ -59,7 +71,6 @@ export default function JugadorPage() {
 
     const jugadorId = sesion.jugador_id;
 
-    // 1. Cargar datos del jugador
     supabase
       .from("jugadores")
       .select("*")
@@ -96,14 +107,16 @@ export default function JugadorPage() {
 
             const { data: partRes } = await supabase
               .from("partidos")
-              .select("id")
-              .eq("equipo_id", asig.equipo_id);
+              .select("id, rival, fecha")
+              .eq("equipo_id", asig.equipo_id)
+              .order("fecha", { ascending: false });
 
             if (!partRes || partRes.length === 0) {
               setCargando(false);
               return;
             }
 
+            setPartidos(partRes);
             const idsPartidos = partRes.map((p) => p.id);
 
             const { data: accData } = await supabase
@@ -156,15 +169,26 @@ export default function JugadorPage() {
 
   if (!sesion) return null;
 
+  // Si estamos en "por-partido" y no hay ninguno seleccionado, usar el primero
+  const partidoActivo =
+    vista === "general"
+      ? null
+      : partidoSeleccionado || partidos[0]?.id || null;
+
+  const accionesFiltradas = partidoActivo
+    ? acciones.filter((a) => a.partido_id === partidoActivo)
+    : acciones;
+
   const stats: EstadisticasJugador | null = jugador
     ? calcularEstadisticasJugador(
         jugador.id,
-        acciones,
+        accionesFiltradas,
         jugador.rol === "armador"
       )
     : null;
 
   const esArmador = jugador?.rol === "armador";
+  const partidoActual = partidos.find((p) => p.id === partidoActivo);
 
   return (
     <main className="min-h-screen p-8">
@@ -202,114 +226,192 @@ export default function JugadorPage() {
         )}
 
         {!cargando && jugador && stats && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-            <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-200">
-              {jugador.imagen_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={jugador.imagen_url}
-                  alt={jugador.nombre}
-                  className="w-24 h-24 rounded-full object-cover border-2 border-slate-200"
+          <>
+            {/* Pestañas */}
+            <div className="flex gap-2 mb-4 border-b border-slate-200">
+              <button
+                onClick={() => setVista("general")}
+                className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
+                  vista === "general"
+                    ? "border-blue-500 text-blue-600"
+                    : "border-transparent text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                📊 General
+              </button>
+              <button
+                onClick={() => setVista("por-partido")}
+                className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
+                  vista === "por-partido"
+                    ? "border-blue-500 text-blue-600"
+                    : "border-transparent text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                📅 Por partido
+              </button>
+            </div>
+
+            {/* Selector de partido (solo en vista "por partido") */}
+            {vista === "por-partido" && partidos.length > 0 && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Elegí un partido:
+                </label>
+                <div className="flex gap-2 flex-wrap">
+                  {partidos.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => setPartidoSeleccionado(p.id)}
+                      className={`px-4 py-2 text-sm font-medium rounded-lg transition border ${
+                        partidoActivo === p.id
+                          ? "bg-blue-500 text-white border-blue-500"
+                          : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      vs {p.rival} · {p.fecha}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+              {/* Encabezado del jugador */}
+              <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-200">
+                {jugador.imagen_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={jugador.imagen_url}
+                    alt={jugador.nombre}
+                    className="w-24 h-24 rounded-full object-cover border-2 border-slate-200"
+                  />
+                ) : (
+                  <div className="w-24 h-24 rounded-full bg-blue-100 border-2 border-blue-200 flex items-center justify-center text-3xl font-bold text-blue-600">
+                    {jugador.nombre.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="flex-1">
+                  <h2 className="text-3xl font-bold text-slate-900">
+                    {jugador.nombre}
+                  </h2>
+                  {jugador.numero !== null && (
+                    <p className="text-slate-500 text-lg">
+                      #{jugador.numero}
+                    </p>
+                  )}
+                  {nombreEquipo && (
+                    <p className="text-sm text-slate-500 mt-1">
+                      {nombreEquipo}
+                    </p>
+                  )}
+                  {esArmador && (
+                    <span className="inline-block mt-2 text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
+                      Armador
+                    </span>
+                  )}
+                  {vista === "por-partido" && partidoActual && (
+                    <p className="text-xs text-blue-600 mt-2 font-medium">
+                      📅 {partidoActual.rival} · {partidoActual.fecha}
+                    </p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-slate-500 uppercase">
+                    Saldo {vista === "general" ? "total" : "del partido"}
+                  </p>
+                  <p
+                    className={`text-4xl font-bold ${
+                      stats.saldoTotal > 0
+                        ? "text-green-700"
+                        : stats.saldoTotal < 0
+                        ? "text-red-700"
+                        : "text-slate-700"
+                    }`}
+                  >
+                    {stats.saldoTotal > 0 ? "+" : ""}
+                    {stats.saldoTotal}
+                  </p>
+                </div>
+              </div>
+
+              {/* Radar */}
+              <div className="mb-6">
+                <h3 className="font-semibold text-slate-800 mb-3">
+                  Perfil de rendimiento
+                </h3>
+                <RadarJugador
+                  jugador={stats}
+                  equipo={statsEquipo ?? stats}
+                  esArmador={esArmador}
                 />
-              ) : (
-                <div className="w-24 h-24 rounded-full bg-blue-100 border-2 border-blue-200 flex items-center justify-center text-3xl font-bold text-blue-600">
-                  {jugador.nombre.charAt(0).toUpperCase()}
+              </div>
+
+              {/* Gráficos específicos por rol */}
+              {esArmador && stats.armador && (
+                <div className="mb-6 grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <GraficoArmadosPorSet
+                      promedios={stats.armador.promediosArmados}
+                    />
+                  </div>
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <MapaCalorTendencia
+                      distribucion={stats.armador.distribucionTendencia}
+                    />
+                  </div>
                 </div>
               )}
-              <div className="flex-1">
-                <h2 className="text-3xl font-bold text-slate-900">
-                  {jugador.nombre}
-                </h2>
-                {jugador.numero !== null && (
-                  <p className="text-slate-500 text-lg">#{jugador.numero}</p>
-                )}
-                {nombreEquipo && (
-                  <p className="text-sm text-slate-500 mt-1">{nombreEquipo}</p>
-                )}
-                {esArmador && (
-                  <span className="inline-block mt-2 text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
-                    Armador
-                  </span>
-                )}
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-slate-500 uppercase">Saldo total</p>
-                <p
-                  className={`text-4xl font-bold ${
-                    stats.saldoTotal > 0
-                      ? "text-green-700"
-                      : stats.saldoTotal < 0
-                      ? "text-red-700"
-                      : "text-slate-700"
-                  }`}
-                >
-                  {stats.saldoTotal > 0 ? "+" : ""}
-                  {stats.saldoTotal}
-                </p>
-              </div>
-            </div>
 
-            <div className="mb-6">
-              <h3 className="font-semibold text-slate-800 mb-3">
-                Perfil de rendimiento
-              </h3>
-              <RadarJugador
-                jugador={stats}
-                equipo={statsEquipo ?? stats}
-                esArmador={esArmador}
-              />
-            </div>
-
-            {esArmador && stats.armador && (
-              <div className="mb-6 grid grid-cols-2 gap-4">
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                  <GraficoArmadosPorSet
-                    promedios={stats.armador.promediosArmados}
+              {!esArmador && stats.recepcion && (
+                <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                  <GraficoRecepcionPorSet
+                    promedios={stats.recepcion.promediosPorSet}
                   />
                 </div>
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                  <MapaCalorTendencia
-                    distribucion={stats.armador.distribucionTendencia}
-                  />
+              )}
+
+              {/* Totales */}
+              <div className="grid grid-cols-4 gap-3">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                  <p className="text-xs text-slate-500 uppercase">
+                    Acciones
+                  </p>
+                  <p className="text-2xl font-bold text-slate-800">
+                    {stats.totalAcciones}
+                  </p>
+                </div>
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
+                  <p className="text-xs text-green-700 uppercase">Puntos</p>
+                  <p className="text-2xl font-bold text-green-800">
+                    {stats.totalPuntos}
+                  </p>
+                </div>
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-center">
+                  <p className="text-xs text-red-700 uppercase">Errores</p>
+                  <p className="text-2xl font-bold text-red-800">
+                    {stats.totalErrores}
+                  </p>
+                </div>
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                  <p className="text-xs text-slate-500 uppercase">
+                    Positivas
+                  </p>
+                  <p className="text-2xl font-bold text-slate-800">
+                    {stats.totalPositivos}
+                  </p>
                 </div>
               </div>
-            )}
 
-            {!esArmador && stats.recepcion && (
-              <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                <GraficoRecepcionPorSet
-                  promedios={stats.recepcion.promediosPorSet}
-                />
-              </div>
-            )}
-
-            <div className="grid grid-cols-4 gap-3">
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center">
-                <p className="text-xs text-slate-500 uppercase">Acciones</p>
-                <p className="text-2xl font-bold text-slate-800">
-                  {stats.totalAcciones}
-                </p>
-              </div>
-              <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
-                <p className="text-xs text-green-700 uppercase">Puntos</p>
-                <p className="text-2xl font-bold text-green-800">
-                  {stats.totalPuntos}
-                </p>
-              </div>
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-center">
-                <p className="text-xs text-red-700 uppercase">Errores</p>
-                <p className="text-2xl font-bold text-red-800">
-                  {stats.totalErrores}
-                </p>
-              </div>
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center">
-                <p className="text-xs text-slate-500 uppercase">Positivas</p>
-                <p className="text-2xl font-bold text-slate-800">
-                  {stats.totalPositivos}
-                </p>
-              </div>
+              {/* Aviso si el partido no tiene datos del jugador */}
+              {vista === "por-partido" && stats.totalAcciones === 0 && (
+                <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-center">
+                  <p className="text-sm text-amber-800">
+                    Este jugador no tiene acciones cargadas en ese partido
+                  </p>
+                </div>
+              )}
             </div>
-          </div>
+          </>
         )}
       </div>
     </main>
