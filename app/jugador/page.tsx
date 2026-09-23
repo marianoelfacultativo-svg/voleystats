@@ -50,7 +50,11 @@ export default function JugadorPage() {
   }, [router]);
 
   useEffect(() => {
-    if (!sesion?.jugador_id) return;
+    if (!sesion) return;
+    if (!sesion.jugador_id) {
+      setCargando(false);
+      return;
+    }
     setCargando(true);
 
     const jugadorId = sesion.jugador_id;
