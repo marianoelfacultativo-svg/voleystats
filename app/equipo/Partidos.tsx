@@ -6,7 +6,10 @@ import {
   calcularEstadisticasEquipo,
   top3,
   type AccionDB,
+  type PromedioRecepcionSet,
 } from "@/lib/estadisticas";
+import GraficoRecepcionEquipoPorSet from "./GraficoRecepcionEquipoPorSet";
+import GraficoTortaRival from "./GraficoTortaRival";
 
 interface Partido {
   id: string;
@@ -43,6 +46,15 @@ const NOMBRES: Record<string, string> = {
   defensa: "Defensa",
 };
 
+const VALORES_RECEPCION: Record<string, number> = {
+  "2x_positiva": 5,
+  positiva: 4,
+  negativa: 3,
+  "2x_negativa": 2,
+  "3x_negativa": 1,
+  ace_contra: 0,
+};
+
 export default function Partidos({ equipoId, nombreEquipo }: Props) {
   const [partidos, setPartidos] = useState<Partido[]>([]);
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
@@ -70,7 +82,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         .select("*")
         .eq("equipo_id", equipoId)
         .order("fecha", { ascending: false }),
-      supabase.from("jugadores").select("id, nombre, numero, rol").order("nombre"),
+      supabase
+        .from("jugadores")
+        .select("id, nombre, numero, rol")
+        .order("nombre"),
     ]).then(async ([partRes, jugRes]) => {
       if (!partRes.data || !jugRes.data) {
         setCargando(false);
@@ -163,6 +178,29 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     : null;
 
   const esArmadorId = (id: string) => armadores.has(id);
+
+  const promediosRecepcionEquipo: PromedioRecepcionSet[] = [1, 2, 3, 4, 5].map(
+    (s) => {
+      const delSet = accionesDelPartido.filter(
+        (a) =>
+          a.fundamento === "recepcion" &&
+          a.set_numero === s &&
+          !armadores.has(a.jugador_id)
+      );
+      let suma = 0;
+      let total = 0;
+      for (const a of delSet) {
+        const v = VALORES_RECEPCION[a.valoracion] ?? 0;
+        suma += v * a.cantidad;
+        total += a.cantidad;
+      }
+      return {
+        set: s,
+        promedio: total > 0 ? suma / total : 0,
+        totalRecepciones: total,
+      };
+    }
+  );
 
   return (
     <div className="space-y-6">
@@ -329,23 +367,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                       </p>
                     )}
                   </div>
-                  {(partidoDetalle.errores_rivales !== null ||
-                    partidoDetalle.buenas_rivales !== null) && (
-                    <div className="text-right text-xs text-slate-500">
-                      <p>
-                        Errores rivales:{" "}
-                        <span className="font-semibold text-slate-700">
-                          {partidoDetalle.errores_rivales ?? 0}
-                        </span>
-                      </p>
-                      <p>
-                        Buenas rivales:{" "}
-                        <span className="font-semibold text-slate-700">
-                          {partidoDetalle.buenas_rivales ?? 0}
-                        </span>
-                      </p>
-                    </div>
-                  )}
                 </div>
                 {partidoDetalle.notas && (
                   <p className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-200 italic">
@@ -372,6 +393,20 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                   <p className="text-2xl font-bold text-red-800">
                     {statsPartido.totales.totalErrores}
                   </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                  <GraficoRecepcionEquipoPorSet
+                    promedios={promediosRecepcionEquipo}
+                  />
+                </div>
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                  <GraficoTortaRival
+                    erroresRivales={partidoDetalle.errores_rivales ?? 0}
+                    buenasRivales={partidoDetalle.buenas_rivales ?? 0}
+                  />
                 </div>
               </div>
 
