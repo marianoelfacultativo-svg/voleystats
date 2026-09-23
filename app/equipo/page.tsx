@@ -6,6 +6,7 @@ import { obtenerSesion, cerrarSesion, type Sesion } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import Dashboard from "./Dashboard";
 import MiEquipo from "./MiEquipo";
+import Partidos from "./Partidos";
 
 type Seccion = "dashboard" | "mi-equipo" | "partidos";
 
@@ -93,13 +94,7 @@ export default function EquipoPage() {
         )}
 
         {seccion === "partidos" && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
-            <p className="text-4xl mb-3">📅</p>
-            <p className="text-slate-600 font-medium">Partidos</p>
-            <p className="text-slate-500 text-sm mt-1">
-              🚧 En construcción — Sección 3
-            </p>
-          </div>
+          <Partidos equipoId={sesion.equipo_id} nombreEquipo={nombreEquipo} />
         )}
       </div>
     </main>
