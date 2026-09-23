@@ -9,6 +9,7 @@ import ContadorRecepcion from "./ContadorRecepcion";
 import ContadorAtaque from "./ContadorAtaque";
 import ContadorBloqueo from "./ContadorBloqueo";
 import ContadorDefensa from "./ContadorDefensa";
+import ResumenPartido from "./ResumenPartido";
 
 interface Equipo {
   id: string;
@@ -144,7 +145,6 @@ export default function DataEntryPage() {
     setJugadorId("");
   }, [equipoId]);
 
-  // Cargar datos guardados cuando cambia el partido
   useEffect(() => {
     if (!partidoId) {
       setDatos({});
@@ -235,7 +235,6 @@ export default function DataEntryPage() {
     setGuardando(true);
     setMensajeGuardado("");
 
-    // 1. Borrar acciones anteriores del partido
     const { error: errBorrar } = await supabase
       .from("acciones")
       .delete()
@@ -243,11 +242,12 @@ export default function DataEntryPage() {
 
     if (errBorrar) {
       setGuardando(false);
-      setMensajeGuardado("❌ Error al preparar el guardado: " + errBorrar.message);
+      setMensajeGuardado(
+        "❌ Error al preparar el guardado: " + errBorrar.message
+      );
       return;
     }
 
-    // 2. Armar la lista de acciones a insertar
     const filas: {
       partido_id: string;
       jugador_id: string;
@@ -284,7 +284,6 @@ export default function DataEntryPage() {
       return;
     }
 
-    // 3. Insertar todo
     const { error: errInsert } = await supabase.from("acciones").insert(filas);
 
     setGuardando(false);
@@ -443,7 +442,18 @@ export default function DataEntryPage() {
               </div>
 
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 col-span-2">
-                {!jugadorId ? (
+                {setActivo === "partido" ? (
+                  <ResumenPartido
+                    partidoId={partidoId}
+                    jugadoresIds={jugadoresDelEquipo.map((j) => j.id)}
+                    nombresJugadores={Object.fromEntries(
+                      jugadoresDelEquipo.map((j) => [
+                        j.id,
+                        j.nombre + (j.numero !== null ? ` #${j.numero}` : ""),
+                      ])
+                    )}
+                  />
+                ) : !jugadorId ? (
                   <div className="text-center py-16">
                     <p className="text-4xl mb-3">👈</p>
                     <p className="text-slate-600 font-medium">
@@ -466,9 +476,7 @@ export default function DataEntryPage() {
                       <p className="text-sm text-slate-500 mt-2">
                         Set activo:{" "}
                         <span className="font-medium text-slate-700">
-                          {soloLectura
-                            ? "Partido (solo lectura)"
-                            : `Set ${setActivo}`}
+                          Set {setActivo}
                         </span>
                       </p>
                     </div>
@@ -529,10 +537,10 @@ export default function DataEntryPage() {
               </div>
             </div>
 
-            {/* Barra de guardado */}
             <div className="mt-6 bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex items-center justify-between">
               <p className="text-sm text-slate-600">
-                {mensajeGuardado || "Los datos no se guardan hasta que aprietes el botón"}
+                {mensajeGuardado ||
+                  "Los cambios no se guardan hasta que aprietes el botón"}
               </p>
               <button
                 onClick={guardarTodo}
