@@ -500,6 +500,12 @@ export default function AdminPage() {
               🎯 Consola de Data Entry
             </button>
             <button
+              onClick={() => router.push("/admin/estadisticas")}
+              className="px-4 py-2 text-sm bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg transition"
+            >
+              📊 Estadísticas
+            </button>
+            <button
               onClick={handleCerrar}
               className="px-4 py-2 text-sm bg-slate-200 hover:bg-slate-300 rounded-lg transition"
             >
