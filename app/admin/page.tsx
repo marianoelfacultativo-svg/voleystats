@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { obtenerSesion, cerrarSesion, type Sesion } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import ImagenAmpliable from "../equipo/ImagenAmpliable";
 
 type Seccion = "equipos" | "jugadores" | "partidos" | "codigos";
 
@@ -190,7 +191,6 @@ export default function AdminPage() {
     router.push("/");
   };
 
-  // Subir imagen a Supabase Storage
   const subirImagen = async (file: File): Promise<string | null> => {
     const ext = file.name.split(".").pop() || "jpg";
     const path = `jugadores/${Date.now()}-${Math.random()
@@ -305,7 +305,6 @@ export default function AdminPage() {
 
     let imagenUrl: string | null = editImagenActual || null;
 
-    // Si subió un archivo nuevo, subirlo
     if (editArchivoImagen) {
       const urlSubida = await subirImagen(editArchivoImagen);
       if (!urlSubida) return;
@@ -909,18 +908,12 @@ export default function AdminPage() {
                           </div>
                         ) : (
                           <div className="flex items-center gap-3">
-                            {jug.imagen_url ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={jug.imagen_url}
-                                alt={jug.nombre}
-                                className="w-10 h-10 rounded-full object-cover border border-slate-200"
-                              />
-                            ) : (
-                              <div className="w-10 h-10 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center text-sm font-bold text-blue-600">
-                                {jug.nombre.charAt(0).toUpperCase()}
-                              </div>
-                            )}
+                            <ImagenAmpliable
+                              src={jug.imagen_url}
+                              alt={jug.nombre}
+                              inicial={jug.nombre.charAt(0).toUpperCase()}
+                              tamaño="sm"
+                            />
                             <span className="flex-1 font-medium text-slate-800">
                               👤 {jug.nombre}
                               {jug.numero !== null && (

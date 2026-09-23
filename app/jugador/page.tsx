@@ -14,6 +14,7 @@ import RadarJugador from "../equipo/RadarJugador";
 import GraficoArmadosPorSet from "../equipo/GraficoArmadosPorSet";
 import GraficoRecepcionPorSet from "../equipo/GraficoRecepcionPorSet";
 import MapaCalorTendencia from "../equipo/MapaCalorTendencia";
+import ImagenAmpliable from "../equipo/ImagenAmpliable";
 
 interface Jugador {
   id: string;
@@ -169,7 +170,6 @@ export default function JugadorPage() {
 
   if (!sesion) return null;
 
-  // Si estamos en "por-partido" y no hay ninguno seleccionado, usar el primero
   const partidoActivo =
     vista === "general"
       ? null
@@ -227,7 +227,6 @@ export default function JugadorPage() {
 
         {!cargando && jugador && stats && (
           <>
-            {/* Pestañas */}
             <div className="flex gap-2 mb-4 border-b border-slate-200">
               <button
                 onClick={() => setVista("general")}
@@ -251,7 +250,6 @@ export default function JugadorPage() {
               </button>
             </div>
 
-            {/* Selector de partido (solo en vista "por partido") */}
             {vista === "por-partido" && partidos.length > 0 && (
               <div className="mb-4">
                 <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -276,20 +274,13 @@ export default function JugadorPage() {
             )}
 
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-              {/* Encabezado del jugador */}
               <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-200">
-                {jugador.imagen_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={jugador.imagen_url}
-                    alt={jugador.nombre}
-                    className="w-24 h-24 rounded-full object-cover border-2 border-slate-200"
-                  />
-                ) : (
-                  <div className="w-24 h-24 rounded-full bg-blue-100 border-2 border-blue-200 flex items-center justify-center text-3xl font-bold text-blue-600">
-                    {jugador.nombre.charAt(0).toUpperCase()}
-                  </div>
-                )}
+                <ImagenAmpliable
+                  src={jugador.imagen_url}
+                  alt={jugador.nombre}
+                  inicial={jugador.nombre.charAt(0).toUpperCase()}
+                  tamaño="lg"
+                />
                 <div className="flex-1">
                   <h2 className="text-3xl font-bold text-slate-900">
                     {jugador.nombre}
@@ -334,7 +325,6 @@ export default function JugadorPage() {
                 </div>
               </div>
 
-              {/* Radar */}
               <div className="mb-6">
                 <h3 className="font-semibold text-slate-800 mb-3">
                   Perfil de rendimiento
@@ -346,7 +336,6 @@ export default function JugadorPage() {
                 />
               </div>
 
-              {/* Gráficos específicos por rol */}
               {esArmador && stats.armador && (
                 <div className="mb-6 grid grid-cols-2 gap-4">
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
@@ -370,7 +359,6 @@ export default function JugadorPage() {
                 </div>
               )}
 
-              {/* Totales */}
               <div className="grid grid-cols-4 gap-3">
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center">
                   <p className="text-xs text-slate-500 uppercase">
@@ -402,7 +390,6 @@ export default function JugadorPage() {
                 </div>
               </div>
 
-              {/* Aviso si el partido no tiene datos del jugador */}
               {vista === "por-partido" && stats.totalAcciones === 0 && (
                 <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-center">
                   <p className="text-sm text-amber-800">

@@ -11,6 +11,7 @@ import RadarJugador from "./RadarJugador";
 import GraficoArmadosPorSet from "./GraficoArmadosPorSet";
 import GraficoRecepcionPorSet from "./GraficoRecepcionPorSet";
 import MapaCalorTendencia from "./MapaCalorTendencia";
+import ImagenAmpliable from "./ImagenAmpliable";
 
 interface Jugador {
   id: string;
@@ -111,35 +112,43 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               <button
                 key={j.id}
                 onClick={() => setJugadorSeleccionado(j.id)}
-                className={`w-full text-left px-3 py-2 rounded-lg transition text-sm ${
+                className={`w-full flex items-center gap-3 text-left px-3 py-2 rounded-lg transition text-sm ${
                   jugadorSeleccionado === j.id
                     ? "bg-blue-500 text-white"
                     : "bg-slate-50 hover:bg-slate-100 text-slate-700"
                 }`}
               >
-                <span className="font-medium">
-                  {j.nombre}
-                  {j.numero !== null && ` #${j.numero}`}
-                </span>
-                {j.rol === "armador" && (
+                <ImagenAmpliable
+                  src={j.imagen_url}
+                  alt={j.nombre}
+                  inicial={j.nombre.charAt(0).toUpperCase()}
+                  tamaño="sm"
+                />
+                <span className="flex-1 min-w-0">
+                  <span className="font-medium block truncate">
+                    {j.nombre}
+                    {j.numero !== null && ` #${j.numero}`}
+                  </span>
+                  {j.rol === "armador" && (
+                    <span
+                      className={`block text-xs ${
+                        jugadorSeleccionado === j.id
+                          ? "text-blue-100"
+                          : "text-violet-600"
+                      }`}
+                    >
+                      Armador
+                    </span>
+                  )}
                   <span
                     className={`block text-xs ${
                       jugadorSeleccionado === j.id
                         ? "text-blue-100"
-                        : "text-violet-600"
+                        : "text-slate-400"
                     }`}
                   >
-                    Armador
+                    {acciones} acciones
                   </span>
-                )}
-                <span
-                  className={`block text-xs ${
-                    jugadorSeleccionado === j.id
-                      ? "text-blue-100"
-                      : "text-slate-400"
-                  }`}
-                >
-                  {acciones} acciones
                 </span>
               </button>
             );
@@ -160,18 +169,12 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
         ) : (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
             <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-200">
-              {datosJugador.imagen_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={datosJugador.imagen_url}
-                  alt={datosJugador.nombre}
-                  className="w-20 h-20 rounded-full object-cover border-2 border-slate-200"
-                />
-              ) : (
-                <div className="w-20 h-20 rounded-full bg-blue-100 border-2 border-blue-200 flex items-center justify-center text-2xl font-bold text-blue-600">
-                  {datosJugador.nombre.charAt(0).toUpperCase()}
-                </div>
-              )}
+              <ImagenAmpliable
+                src={datosJugador.imagen_url}
+                alt={datosJugador.nombre}
+                inicial={datosJugador.nombre.charAt(0).toUpperCase()}
+                tamaño="lg"
+              />
               <div className="flex-1">
                 <h3 className="text-2xl font-bold text-slate-900">
                   {datosJugador.nombre}
