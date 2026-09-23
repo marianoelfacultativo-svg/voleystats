@@ -27,6 +27,21 @@ interface JugadorEquipo {
   activo: boolean;
 }
 
+interface Partido {
+  id: string;
+  equipo_id: string;
+  rival: string;
+  fecha: string;
+  set1: string | null;
+  set2: string | null;
+  set3: string | null;
+  set4: string | null;
+  set5: string | null;
+  errores_rivales: number | null;
+  buenas_rivales: number | null;
+  notas: string | null;
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
@@ -54,6 +69,26 @@ export default function AdminPage() {
   const [editNumeroJug, setEditNumeroJug] = useState("");
   const [editImagenJug, setEditImagenJug] = useState("");
   const [editEquipoJug, setEditEquipoJug] = useState("");
+
+  // Partidos
+  const [partidos, setPartidos] = useState<Partido[]>([]);
+  const [cargandoPartidos, setCargandoPartidos] = useState(false);
+  const [nuevoPartido, setNuevoPartido] = useState({
+    equipo_id: "",
+    rival: "",
+    fecha: "",
+    set1: "",
+    set2: "",
+    set3: "",
+    set4: "",
+    set5: "",
+    errores_rivales: "",
+    buenas_rivales: "",
+    notas: "",
+  });
+  const [creandoPartido, setCreandoPartido] = useState(false);
+  const [editandoPartidoId, setEditandoPartidoId] = useState<string | null>(null);
+  const [editPartido, setEditPartido] = useState<Partido | null>(null);
 
   useEffect(() => {
     const s = obtenerSesion();
@@ -85,12 +120,26 @@ export default function AdminPage() {
     if (!asigRes.error && asigRes.data) setAsignaciones(asigRes.data);
   };
 
+  const cargarPartidos = async () => {
+    setCargandoPartidos(true);
+    const { data, error } = await supabase
+      .from("partidos")
+      .select("*")
+      .order("fecha", { ascending: false });
+    setCargandoPartidos(false);
+    if (!error && data) setPartidos(data);
+  };
+
   useEffect(() => {
     if (!sesion) return;
     if (seccion === "equipos") cargarEquipos();
     if (seccion === "jugadores") {
       cargarEquipos();
       cargarJugadores();
+    }
+    if (seccion === "partidos") {
+      cargarEquipos();
+      cargarPartidos();
     }
   }, [sesion, seccion]);
 
@@ -144,9 +193,7 @@ export default function AdminPage() {
   const crearJugador = async () => {
     const nombre = nombreNuevoJug.trim();
     if (!nombre) return;
-
     setCreandoJugador(true);
-
     const { data, error } = await supabase
       .from("jugadores")
       .insert({
@@ -156,22 +203,16 @@ export default function AdminPage() {
       })
       .select()
       .single();
-
     if (error || !data) {
       setCreandoJugador(false);
       alert("Error al crear jugador: " + (error?.message ?? "desconocido"));
       return;
     }
-
     if (equipoNuevoJug) {
-      const { error: errAsig } = await supabase
+      await supabase
         .from("jugador_equipo")
         .insert({ jugador_id: data.id, equipo_id: equipoNuevoJug });
-      if (errAsig) {
-        alert("Jugador creado, pero falló la asignación: " + errAsig.message);
-      }
     }
-
     setCreandoJugador(false);
     setNombreNuevoJug("");
     setNumeroNuevoJug("");
@@ -183,7 +224,6 @@ export default function AdminPage() {
   const guardarEdicionJugador = async (id: string) => {
     const nombre = editNombreJug.trim();
     if (!nombre) return;
-
     const { error } = await supabase
       .from("jugadores")
       .update({
@@ -192,30 +232,22 @@ export default function AdminPage() {
         imagen_url: editImagenJug.trim() || null,
       })
       .eq("id", id);
-
     if (error) {
       alert("Error al editar: " + error.message);
       return;
     }
-
-    // Actualizar asignación: borrar las viejas y crear la nueva
     await supabase.from("jugador_equipo").delete().eq("jugador_id", id);
-
     if (editEquipoJug) {
-      const { error: errAsig } = await supabase
+      await supabase
         .from("jugador_equipo")
         .insert({ jugador_id: id, equipo_id: editEquipoJug });
-      if (errAsig) {
-        alert("Editado, pero falló la asignación: " + errAsig.message);
-      }
     }
-
     setEditandoJugId(null);
     cargarJugadores();
   };
 
   const borrarJugador = async (id: string, nombre: string) => {
-    if (!confirm(`¿Borrar a "${nombre}"? Se borrarán todas sus asignaciones.`)) return;
+    if (!confirm(`¿Borrar a "${nombre}"?`)) return;
     const { error } = await supabase.from("jugadores").delete().eq("id", id);
     if (error) {
       alert("Error al borrar: " + error.message);
@@ -227,13 +259,115 @@ export default function AdminPage() {
   const nombreEquipoDe = (jugadorId: string) => {
     const asig = asignaciones.find((a) => a.jugador_id === jugadorId);
     if (!asig) return null;
-    const eq = equipos.find((e) => e.id === asig.equipo_id);
-    return eq?.nombre ?? null;
+    return equipos.find((e) => e.id === asig.equipo_id)?.nombre ?? null;
   };
 
   const idEquipoDe = (jugadorId: string) => {
-    const asig = asignaciones.find((a) => a.jugador_id === jugadorId);
-    return asig?.equipo_id ?? "";
+    return asignaciones.find((a) => a.jugador_id === jugadorId)?.equipo_id ?? "";
+  };
+
+  // ========== PARTIDOS ==========
+  const crearPartido = async () => {
+    if (!nuevoPartido.equipo_id) {
+      alert("Elegí un equipo");
+      return;
+    }
+    if (!nuevoPartido.rival.trim()) {
+      alert("Ingresá el rival");
+      return;
+    }
+    if (!nuevoPartido.fecha) {
+      alert("Elegí la fecha");
+      return;
+    }
+
+    setCreandoPartido(true);
+    const { error } = await supabase.from("partidos").insert({
+      equipo_id: nuevoPartido.equipo_id,
+      rival: nuevoPartido.rival.trim(),
+      fecha: nuevoPartido.fecha,
+      set1: nuevoPartido.set1.trim() || null,
+      set2: nuevoPartido.set2.trim() || null,
+      set3: nuevoPartido.set3.trim() || null,
+      set4: nuevoPartido.set4.trim() || null,
+      set5: nuevoPartido.set5.trim() || null,
+      errores_rivales: nuevoPartido.errores_rivales
+        ? parseInt(nuevoPartido.errores_rivales)
+        : 0,
+      buenas_rivales: nuevoPartido.buenas_rivales
+        ? parseInt(nuevoPartido.buenas_rivales)
+        : 0,
+      notas: nuevoPartido.notas.trim() || null,
+    });
+    setCreandoPartido(false);
+
+    if (error) {
+      alert("Error al crear partido: " + error.message);
+      return;
+    }
+
+    setNuevoPartido({
+      equipo_id: "",
+      rival: "",
+      fecha: "",
+      set1: "",
+      set2: "",
+      set3: "",
+      set4: "",
+      set5: "",
+      errores_rivales: "",
+      buenas_rivales: "",
+      notas: "",
+    });
+    cargarPartidos();
+  };
+
+  const guardarEdicionPartido = async () => {
+    if (!editPartido) return;
+    if (!editPartido.equipo_id || !editPartido.rival.trim() || !editPartido.fecha) {
+      alert("Completá equipo, rival y fecha");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("partidos")
+      .update({
+        equipo_id: editPartido.equipo_id,
+        rival: editPartido.rival.trim(),
+        fecha: editPartido.fecha,
+        set1: editPartido.set1?.trim() || null,
+        set2: editPartido.set2?.trim() || null,
+        set3: editPartido.set3?.trim() || null,
+        set4: editPartido.set4?.trim() || null,
+        set5: editPartido.set5?.trim() || null,
+        errores_rivales: editPartido.errores_rivales ?? 0,
+        buenas_rivales: editPartido.buenas_rivales ?? 0,
+        notas: editPartido.notas?.trim() || null,
+      })
+      .eq("id", editPartido.id);
+
+    if (error) {
+      alert("Error al editar: " + error.message);
+      return;
+    }
+
+    setEditandoPartidoId(null);
+    setEditPartido(null);
+    cargarPartidos();
+  };
+
+  const borrarPartido = async (id: string, rival: string, fecha: string) => {
+    if (!confirm(`¿Borrar el partido vs "${rival}" del ${fecha}?`)) return;
+    const { error } = await supabase.from("partidos").delete().eq("id", id);
+    if (error) {
+      alert("Error al borrar: " + error.message);
+      return;
+    }
+    cargarPartidos();
+  };
+
+  const nombreEquipoPartido = (equipoId: string) => {
+    return equipos.find((e) => e.id === equipoId)?.nombre ?? "(sin equipo)";
   };
 
   if (!sesion) return null;
@@ -244,6 +378,9 @@ export default function AdminPage() {
     { id: "partidos", nombre: "Partidos", icono: "📅" },
     { id: "codigos", nombre: "Códigos", icono: "🔑" },
   ];
+
+  const inputBase =
+    "px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500";
 
   return (
     <main className="min-h-screen p-8">
@@ -293,13 +430,13 @@ export default function AdminPage() {
                   value={nombreNuevo}
                   onChange={(e) => setNombreNuevo(e.target.value)}
                   placeholder="Nombre del nuevo equipo"
-                  className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+                  className={`flex-1 ${inputBase}`}
                   onKeyDown={(e) => e.key === "Enter" && crearEquipo()}
                 />
                 <button
                   onClick={crearEquipo}
                   disabled={creandoEquipo || !nombreNuevo.trim()}
-                  className="px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white font-medium rounded-lg transition"
+                  className="px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white font-medium rounded-lg"
                 >
                   {creandoEquipo ? "Creando..." : "+ Agregar"}
                 </button>
@@ -326,7 +463,7 @@ export default function AdminPage() {
                             onChange={(e) =>
                               setNombreEditandoEquipo(e.target.value)
                             }
-                            className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+                            className={`flex-1 ${inputBase}`}
                             autoFocus
                             onKeyDown={(e) => {
                               if (e.key === "Enter")
@@ -385,7 +522,7 @@ export default function AdminPage() {
 
               {equipos.length === 0 && (
                 <p className="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  ⚠️ Primero creá al menos un equipo en la pestaña "Equipos".
+                  ⚠️ Primero creá al menos un equipo.
                 </p>
               )}
 
@@ -399,26 +536,26 @@ export default function AdminPage() {
                     value={nombreNuevoJug}
                     onChange={(e) => setNombreNuevoJug(e.target.value)}
                     placeholder="Nombre"
-                    className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+                    className={inputBase}
                   />
                   <input
                     type="number"
                     value={numeroNuevoJug}
                     onChange={(e) => setNumeroNuevoJug(e.target.value)}
                     placeholder="Número (opcional)"
-                    className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+                    className={inputBase}
                   />
                   <input
                     type="text"
                     value={imagenNuevaJug}
                     onChange={(e) => setImagenNuevaJug(e.target.value)}
                     placeholder="URL de imagen (opcional)"
-                    className="col-span-2 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+                    className={`col-span-2 ${inputBase}`}
                   />
                   <select
                     value={equipoNuevoJug}
                     onChange={(e) => setEquipoNuevoJug(e.target.value)}
-                    className="col-span-2 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+                    className={`col-span-2 ${inputBase}`}
                   >
                     <option value="">Sin equipo asignado</option>
                     {equipos.map((eq) => (
@@ -431,7 +568,7 @@ export default function AdminPage() {
                 <button
                   onClick={crearJugador}
                   disabled={creandoJugador || !nombreNuevoJug.trim()}
-                  className="w-full mt-2 px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white font-medium rounded-lg transition"
+                  className="w-full mt-2 px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white font-medium rounded-lg"
                 >
                   {creandoJugador ? "Creando..." : "+ Agregar jugador"}
                 </button>
@@ -441,7 +578,7 @@ export default function AdminPage() {
                 <p className="text-slate-500 text-center py-8">Cargando...</p>
               ) : jugadores.length === 0 ? (
                 <p className="text-slate-500 text-center py-8">
-                  No hay jugadores. Creá el primero arriba. 👤
+                  No hay jugadores. 👤
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -459,7 +596,7 @@ export default function AdminPage() {
                               value={editNombreJug}
                               onChange={(e) => setEditNombreJug(e.target.value)}
                               placeholder="Nombre"
-                              className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                              className={`w-full ${inputBase}`}
                             />
                             <div className="grid grid-cols-2 gap-2">
                               <input
@@ -469,14 +606,14 @@ export default function AdminPage() {
                                   setEditNumeroJug(e.target.value)
                                 }
                                 placeholder="Número"
-                                className="px-3 py-2 border border-slate-300 rounded-lg"
+                                className={inputBase}
                               />
                               <select
                                 value={editEquipoJug}
                                 onChange={(e) =>
                                   setEditEquipoJug(e.target.value)
                                 }
-                                className="px-3 py-2 border border-slate-300 rounded-lg"
+                                className={inputBase}
                               >
                                 <option value="">Sin equipo</option>
                                 {equipos.map((eq) => (
@@ -493,7 +630,7 @@ export default function AdminPage() {
                                 setEditImagenJug(e.target.value)
                               }
                               placeholder="URL de imagen"
-                              className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                              className={`w-full ${inputBase}`}
                             />
                             <div className="flex gap-2 justify-end">
                               <button
@@ -557,15 +694,315 @@ export default function AdminPage() {
             </div>
           )}
 
+          {/* ============ PARTIDOS ============ */}
           {seccion === "partidos" && (
-            <div className="text-center py-12">
-              <p className="text-4xl mb-4">📅</p>
-              <p className="text-slate-600 font-medium mb-2">
-                Gestión de Partidos
-              </p>
-              <p className="text-slate-500 text-sm">
-                🚧 En construcción — Sección 4
-              </p>
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900 mb-6">
+                Partidos
+              </h2>
+
+              {equipos.length === 0 && (
+                <p className="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  ⚠️ Primero creá al menos un equipo.
+                </p>
+              )}
+
+              <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
+                <p className="text-sm font-medium text-slate-700">
+                  Nuevo partido
+                </p>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={nuevoPartido.equipo_id}
+                    onChange={(e) =>
+                      setNuevoPartido({
+                        ...nuevoPartido,
+                        equipo_id: e.target.value,
+                      })
+                    }
+                    className={inputBase}
+                  >
+                    <option value="">Elegí equipo</option>
+                    {equipos.map((eq) => (
+                      <option key={eq.id} value={eq.id}>
+                        {eq.nombre}
+                      </option>
+                    ))}
+                  </select>
+
+                  <input
+                    type="text"
+                    value={nuevoPartido.rival}
+                    onChange={(e) =>
+                      setNuevoPartido({ ...nuevoPartido, rival: e.target.value })
+                    }
+                    placeholder="Rival"
+                    className={inputBase}
+                  />
+
+                  <input
+                    type="date"
+                    value={nuevoPartido.fecha}
+                    onChange={(e) =>
+                      setNuevoPartido({ ...nuevoPartido, fecha: e.target.value })
+                    }
+                    className={`col-span-2 ${inputBase}`}
+                  />
+                </div>
+
+                <p className="text-sm font-medium text-slate-700 pt-2">
+                  Score por set (opcional)
+                </p>
+                <div className="grid grid-cols-5 gap-2">
+                  {(["set1", "set2", "set3", "set4", "set5"] as const).map(
+                    (k, i) => (
+                      <input
+                        key={k}
+                        type="text"
+                        value={nuevoPartido[k]}
+                        onChange={(e) =>
+                          setNuevoPartido({
+                            ...nuevoPartido,
+                            [k]: e.target.value,
+                          })
+                        }
+                        placeholder={`S${i + 1}`}
+                        className={inputBase}
+                      />
+                    )
+                  )}
+                </div>
+
+                <p className="text-sm font-medium text-slate-700 pt-2">
+                  Rival (informativo)
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    value={nuevoPartido.errores_rivales}
+                    onChange={(e) =>
+                      setNuevoPartido({
+                        ...nuevoPartido,
+                        errores_rivales: e.target.value,
+                      })
+                    }
+                    placeholder="Errores rivales"
+                    className={inputBase}
+                  />
+                  <input
+                    type="number"
+                    value={nuevoPartido.buenas_rivales}
+                    onChange={(e) =>
+                      setNuevoPartido({
+                        ...nuevoPartido,
+                        buenas_rivales: e.target.value,
+                      })
+                    }
+                    placeholder="Buenas rivales"
+                    className={inputBase}
+                  />
+                </div>
+
+                <textarea
+                  value={nuevoPartido.notas}
+                  onChange={(e) =>
+                    setNuevoPartido({ ...nuevoPartido, notas: e.target.value })
+                  }
+                  placeholder="Notas (opcional)"
+                  rows={2}
+                  className={`w-full ${inputBase}`}
+                />
+
+                <button
+                  onClick={crearPartido}
+                  disabled={creandoPartido}
+                  className="w-full px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white font-medium rounded-lg"
+                >
+                  {creandoPartido ? "Creando..." : "+ Agregar partido"}
+                </button>
+              </div>
+
+              {cargandoPartidos ? (
+                <p className="text-slate-500 text-center py-8">Cargando...</p>
+              ) : partidos.length === 0 ? (
+                <p className="text-slate-500 text-center py-8">
+                  No hay partidos cargados. 📅
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {partidos.map((p) => (
+                    <div
+                      key={p.id}
+                      className="p-4 bg-slate-50 rounded-lg border border-slate-200"
+                    >
+                      {editandoPartidoId === p.id && editPartido ? (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-2">
+                            <select
+                              value={editPartido.equipo_id}
+                              onChange={(e) =>
+                                setEditPartido({
+                                  ...editPartido,
+                                  equipo_id: e.target.value,
+                                })
+                              }
+                              className={inputBase}
+                            >
+                              {equipos.map((eq) => (
+                                <option key={eq.id} value={eq.id}>
+                                  {eq.nombre}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="text"
+                              value={editPartido.rival}
+                              onChange={(e) =>
+                                setEditPartido({
+                                  ...editPartido,
+                                  rival: e.target.value,
+                                })
+                              }
+                              placeholder="Rival"
+                              className={inputBase}
+                            />
+                            <input
+                              type="date"
+                              value={editPartido.fecha}
+                              onChange={(e) =>
+                                setEditPartido({
+                                  ...editPartido,
+                                  fecha: e.target.value,
+                                })
+                              }
+                              className={`col-span-2 ${inputBase}`}
+                            />
+                          </div>
+                          <div className="grid grid-cols-5 gap-2">
+                            {(
+                              ["set1", "set2", "set3", "set4", "set5"] as const
+                            ).map((k, i) => (
+                              <input
+                                key={k}
+                                type="text"
+                                value={editPartido[k] ?? ""}
+                                onChange={(e) =>
+                                  setEditPartido({
+                                    ...editPartido,
+                                    [k]: e.target.value,
+                                  })
+                                }
+                                placeholder={`S${i + 1}`}
+                                className={inputBase}
+                              />
+                            ))}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <input
+                              type="number"
+                              value={editPartido.errores_rivales ?? 0}
+                              onChange={(e) =>
+                                setEditPartido({
+                                  ...editPartido,
+                                  errores_rivales: parseInt(
+                                    e.target.value || "0"
+                                  ),
+                                })
+                              }
+                              placeholder="Errores rivales"
+                              className={inputBase}
+                            />
+                            <input
+                              type="number"
+                              value={editPartido.buenas_rivales ?? 0}
+                              onChange={(e) =>
+                                setEditPartido({
+                                  ...editPartido,
+                                  buenas_rivales: parseInt(
+                                    e.target.value || "0"
+                                  ),
+                                })
+                              }
+                              placeholder="Buenas rivales"
+                              className={inputBase}
+                            />
+                          </div>
+                          <textarea
+                            value={editPartido.notas ?? ""}
+                            onChange={(e) =>
+                              setEditPartido({
+                                ...editPartido,
+                                notas: e.target.value,
+                              })
+                            }
+                            placeholder="Notas"
+                            rows={2}
+                            className={`w-full ${inputBase}`}
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={guardarEdicionPartido}
+                              className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm rounded-lg"
+                            >
+                              Guardar
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditandoPartidoId(null);
+                                setEditPartido(null);
+                              }}
+                              className="px-3 py-1.5 bg-slate-300 hover:bg-slate-400 text-slate-700 text-sm rounded-lg"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1">
+                            <p className="font-medium text-slate-800">
+                              🏐 {nombreEquipoPartido(p.equipo_id)} vs{" "}
+                              {p.rival}
+                            </p>
+                            <p className="text-sm text-slate-500 mt-1">
+                              📅 {p.fecha}
+                            </p>
+                            {(p.set1 || p.set2 || p.set3 || p.set4 || p.set5) && (
+                              <p className="text-sm text-slate-600 mt-1">
+                                {[
+                                  p.set1,
+                                  p.set2,
+                                  p.set3,
+                                  p.set4,
+                                  p.set5,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => {
+                              setEditandoPartidoId(p.id);
+                              setEditPartido({ ...p });
+                            }}
+                            className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm rounded-lg"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => borrarPartido(p.id, p.rival, p.fecha)}
+                            className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded-lg"
+                          >
+                            Borrar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
