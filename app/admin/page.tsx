@@ -492,12 +492,20 @@ export default function AdminPage() {
             </h1>
             <p className="text-slate-500 text-sm mt-1">Bienvenido admin</p>
           </div>
-          <button
-            onClick={handleCerrar}
-            className="px-4 py-2 text-sm bg-slate-200 hover:bg-slate-300 rounded-lg transition"
-          >
-            Cerrar sesión
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => router.push("/admin/data-entry")}
+              className="px-4 py-2 text-sm bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition"
+            >
+              🎯 Consola de Data Entry
+            </button>
+            <button
+              onClick={handleCerrar}
+              className="px-4 py-2 text-sm bg-slate-200 hover:bg-slate-300 rounded-lg transition"
+            >
+              Cerrar sesión
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-2 mb-6 border-b border-slate-200">
