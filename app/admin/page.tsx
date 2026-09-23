@@ -71,14 +71,20 @@ export default function AdminPage() {
   const [cargandoJugadores, setCargandoJugadores] = useState(false);
   const [nombreNuevoJug, setNombreNuevoJug] = useState("");
   const [numeroNuevoJug, setNumeroNuevoJug] = useState("");
-  const [imagenNuevaJug, setImagenNuevaJug] = useState("");
+  const [archivoImagenNuevo, setArchivoImagenNuevo] = useState<File | null>(
+    null
+  );
+  const [previewNuevo, setPreviewNuevo] = useState("");
   const [equipoNuevoJug, setEquipoNuevoJug] = useState("");
   const [rolNuevoJug, setRolNuevoJug] = useState<"normal" | "armador">("normal");
   const [creandoJugador, setCreandoJugador] = useState(false);
+
   const [editandoJugId, setEditandoJugId] = useState<string | null>(null);
   const [editNombreJug, setEditNombreJug] = useState("");
   const [editNumeroJug, setEditNumeroJug] = useState("");
-  const [editImagenJug, setEditImagenJug] = useState("");
+  const [editArchivoImagen, setEditArchivoImagen] = useState<File | null>(null);
+  const [editPreview, setEditPreview] = useState("");
+  const [editImagenActual, setEditImagenActual] = useState("");
   const [editEquipoJug, setEditEquipoJug] = useState("");
   const [editRolJug, setEditRolJug] = useState<"normal" | "armador">("normal");
 
@@ -184,6 +190,26 @@ export default function AdminPage() {
     router.push("/");
   };
 
+  // Subir imagen a Supabase Storage
+  const subirImagen = async (file: File): Promise<string | null> => {
+    const ext = file.name.split(".").pop() || "jpg";
+    const path = `jugadores/${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2)}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from("imagenes")
+      .upload(path, file);
+
+    if (error) {
+      alert("Error al subir imagen: " + error.message);
+      return null;
+    }
+
+    const { data } = supabase.storage.from("imagenes").getPublicUrl(path);
+    return data.publicUrl;
+  };
+
   // ========== EQUIPOS ==========
   const crearEquipo = async () => {
     const nombre = nombreNuevo.trim();
@@ -230,30 +256,44 @@ export default function AdminPage() {
     const nombre = nombreNuevoJug.trim();
     if (!nombre) return;
     setCreandoJugador(true);
+
+    let imagenUrl: string | null = null;
+    if (archivoImagenNuevo) {
+      imagenUrl = await subirImagen(archivoImagenNuevo);
+      if (!imagenUrl) {
+        setCreandoJugador(false);
+        return;
+      }
+    }
+
     const { data, error } = await supabase
       .from("jugadores")
       .insert({
         nombre,
         numero: numeroNuevoJug ? parseInt(numeroNuevoJug) : null,
-        imagen_url: imagenNuevaJug.trim() || null,
+        imagen_url: imagenUrl,
         rol: rolNuevoJug,
       })
       .select()
       .single();
+
     if (error || !data) {
       setCreandoJugador(false);
       alert("Error al crear jugador: " + (error?.message ?? "desconocido"));
       return;
     }
+
     if (equipoNuevoJug) {
       await supabase
         .from("jugador_equipo")
         .insert({ jugador_id: data.id, equipo_id: equipoNuevoJug });
     }
+
     setCreandoJugador(false);
     setNombreNuevoJug("");
     setNumeroNuevoJug("");
-    setImagenNuevaJug("");
+    setArchivoImagenNuevo(null);
+    setPreviewNuevo("");
     setEquipoNuevoJug("");
     setRolNuevoJug("normal");
     cargarJugadores();
@@ -262,26 +302,41 @@ export default function AdminPage() {
   const guardarEdicionJugador = async (id: string) => {
     const nombre = editNombreJug.trim();
     if (!nombre) return;
+
+    let imagenUrl: string | null = editImagenActual || null;
+
+    // Si subió un archivo nuevo, subirlo
+    if (editArchivoImagen) {
+      const urlSubida = await subirImagen(editArchivoImagen);
+      if (!urlSubida) return;
+      imagenUrl = urlSubida;
+    }
+
     const { error } = await supabase
       .from("jugadores")
       .update({
         nombre,
         numero: editNumeroJug ? parseInt(editNumeroJug) : null,
-        imagen_url: editImagenJug.trim() || null,
+        imagen_url: imagenUrl,
         rol: editRolJug,
       })
       .eq("id", id);
+
     if (error) {
       alert("Error al editar: " + error.message);
       return;
     }
+
     await supabase.from("jugador_equipo").delete().eq("jugador_id", id);
     if (editEquipoJug) {
       await supabase
         .from("jugador_equipo")
         .insert({ jugador_id: id, equipo_id: editEquipoJug });
     }
+
     setEditandoJugId(null);
+    setEditArchivoImagen(null);
+    setEditPreview("");
     cargarJugadores();
   };
 
@@ -302,7 +357,9 @@ export default function AdminPage() {
   };
 
   const idEquipoDe = (jugadorId: string) => {
-    return asignaciones.find((a) => a.jugador_id === jugadorId)?.equipo_id ?? "";
+    return (
+      asignaciones.find((a) => a.jugador_id === jugadorId)?.equipo_id ?? ""
+    );
   };
 
   // ========== PARTIDOS ==========
@@ -360,7 +417,11 @@ export default function AdminPage() {
 
   const guardarEdicionPartido = async () => {
     if (!editPartido) return;
-    if (!editPartido.equipo_id || !editPartido.rival.trim() || !editPartido.fecha) {
+    if (
+      !editPartido.equipo_id ||
+      !editPartido.rival.trim() ||
+      !editPartido.fecha
+    ) {
       alert("Completá equipo, rival y fecha");
       return;
     }
@@ -456,7 +517,9 @@ export default function AdminPage() {
   };
 
   const borrarCodigo = async (id: string, codigo: string) => {
-    if (!confirm(`¿Borrar el código "${codigo}"? El usuario ya no podrá entrar.`))
+    if (
+      !confirm(`¿Borrar el código "${codigo}"? El usuario ya no podrá entrar.`)
+    )
       return;
     const { error } = await supabase.from("accesos").delete().eq("id", id);
     if (error) {
@@ -586,7 +649,8 @@ export default function AdminPage() {
                             onKeyDown={(e) => {
                               if (e.key === "Enter")
                                 guardarEdicionEquipo(eq.id);
-                              if (e.key === "Escape") setEditandoEquipoId(null);
+                              if (e.key === "Escape")
+                                setEditandoEquipoId(null);
                             }}
                           />
                           <button
@@ -642,7 +706,7 @@ export default function AdminPage() {
                   ⚠️ Primero creá al menos un equipo.
                 </p>
               )}
-              <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+              <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
                 <p className="text-sm font-medium text-slate-700 mb-2">
                   Nuevo jugador
                 </p>
@@ -661,13 +725,33 @@ export default function AdminPage() {
                     placeholder="Número (opcional)"
                     className={inputBase}
                   />
-                  <input
-                    type="text"
-                    value={imagenNuevaJug}
-                    onChange={(e) => setImagenNuevaJug(e.target.value)}
-                    placeholder="URL de imagen (opcional)"
-                    className={`col-span-2 ${inputBase}`}
-                  />
+                  <div className="col-span-2">
+                    <label className="block text-xs text-slate-500 mb-1">
+                      Imagen del jugador (opcional)
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setArchivoImagenNuevo(file);
+                            setPreviewNuevo(URL.createObjectURL(file));
+                          }
+                        }}
+                        className="text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 file:cursor-pointer"
+                      />
+                      {previewNuevo && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={previewNuevo}
+                          alt="preview"
+                          className="w-12 h-12 rounded-full object-cover border-2 border-slate-200"
+                        />
+                      )}
+                    </div>
+                  </div>
                   <select
                     value={equipoNuevoJug}
                     onChange={(e) => setEquipoNuevoJug(e.target.value)}
@@ -719,7 +803,9 @@ export default function AdminPage() {
                             <input
                               type="text"
                               value={editNombreJug}
-                              onChange={(e) => setEditNombreJug(e.target.value)}
+                              onChange={(e) =>
+                                setEditNombreJug(e.target.value)
+                              }
                               placeholder="Nombre"
                               className={`w-full ${inputBase}`}
                             />
@@ -757,27 +843,64 @@ export default function AdminPage() {
                               }
                               className={`w-full ${inputBase}`}
                             >
-                              <option value="normal">Rol: Jugador normal</option>
+                              <option value="normal">
+                                Rol: Jugador normal
+                              </option>
                               <option value="armador">Rol: Armador</option>
                             </select>
-                            <input
-                              type="text"
-                              value={editImagenJug}
-                              onChange={(e) =>
-                                setEditImagenJug(e.target.value)
-                              }
-                              placeholder="URL de imagen"
-                              className={`w-full ${inputBase}`}
-                            />
+
+                            <div>
+                              <label className="block text-xs text-slate-500 mb-1">
+                                Imagen (opcional)
+                              </label>
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      setEditArchivoImagen(file);
+                                      setEditPreview(
+                                        URL.createObjectURL(file)
+                                      );
+                                    }
+                                  }}
+                                  className="text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 file:cursor-pointer"
+                                />
+                                {editPreview ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={editPreview}
+                                    alt="preview"
+                                    className="w-12 h-12 rounded-full object-cover border-2 border-blue-300"
+                                  />
+                                ) : editImagenActual ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={editImagenActual}
+                                    alt="actual"
+                                    className="w-12 h-12 rounded-full object-cover border-2 border-slate-200"
+                                  />
+                                ) : null}
+                              </div>
+                            </div>
+
                             <div className="flex gap-2 justify-end">
                               <button
-                                onClick={() => guardarEdicionJugador(jug.id)}
+                                onClick={() =>
+                                  guardarEdicionJugador(jug.id)
+                                }
                                 className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm rounded-lg"
                               >
                                 Guardar
                               </button>
                               <button
-                                onClick={() => setEditandoJugId(null)}
+                                onClick={() => {
+                                  setEditandoJugId(null);
+                                  setEditArchivoImagen(null);
+                                  setEditPreview("");
+                                }}
                                 className="px-3 py-1.5 bg-slate-300 hover:bg-slate-400 text-slate-700 text-sm rounded-lg"
                               >
                                 Cancelar
@@ -786,6 +909,18 @@ export default function AdminPage() {
                           </div>
                         ) : (
                           <div className="flex items-center gap-3">
+                            {jug.imagen_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={jug.imagen_url}
+                                alt={jug.nombre}
+                                className="w-10 h-10 rounded-full object-cover border border-slate-200"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center text-sm font-bold text-blue-600">
+                                {jug.nombre.charAt(0).toUpperCase()}
+                              </div>
+                            )}
                             <span className="flex-1 font-medium text-slate-800">
                               👤 {jug.nombre}
                               {jug.numero !== null && (
@@ -811,12 +946,18 @@ export default function AdminPage() {
                                 setEditandoJugId(jug.id);
                                 setEditNombreJug(jug.nombre);
                                 setEditNumeroJug(
-                                  jug.numero !== null ? String(jug.numero) : ""
+                                  jug.numero !== null
+                                    ? String(jug.numero)
+                                    : ""
                                 );
-                                setEditImagenJug(jug.imagen_url ?? "");
+                                setEditImagenActual(jug.imagen_url ?? "");
+                                setEditArchivoImagen(null);
+                                setEditPreview("");
                                 setEditEquipoJug(idEquipoDe(jug.id));
                                 setEditRolJug(
-                                  jug.rol === "armador" ? "armador" : "normal"
+                                  jug.rol === "armador"
+                                    ? "armador"
+                                    : "normal"
                                 );
                               }}
                               className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm rounded-lg"
@@ -824,7 +965,9 @@ export default function AdminPage() {
                               Editar
                             </button>
                             <button
-                              onClick={() => borrarJugador(jug.id, jug.nombre)}
+                              onClick={() =>
+                                borrarJugador(jug.id, jug.nombre)
+                              }
                               className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded-lg"
                             >
                               Borrar
@@ -876,7 +1019,10 @@ export default function AdminPage() {
                     type="text"
                     value={nuevoPartido.rival}
                     onChange={(e) =>
-                      setNuevoPartido({ ...nuevoPartido, rival: e.target.value })
+                      setNuevoPartido({
+                        ...nuevoPartido,
+                        rival: e.target.value,
+                      })
                     }
                     placeholder="Rival"
                     className={inputBase}
@@ -885,7 +1031,10 @@ export default function AdminPage() {
                     type="date"
                     value={nuevoPartido.fecha}
                     onChange={(e) =>
-                      setNuevoPartido({ ...nuevoPartido, fecha: e.target.value })
+                      setNuevoPartido({
+                        ...nuevoPartido,
+                        fecha: e.target.value,
+                      })
                     }
                     className={`col-span-2 ${inputBase}`}
                   />
@@ -944,7 +1093,10 @@ export default function AdminPage() {
                 <textarea
                   value={nuevoPartido.notas}
                   onChange={(e) =>
-                    setNuevoPartido({ ...nuevoPartido, notas: e.target.value })
+                    setNuevoPartido({
+                      ...nuevoPartido,
+                      notas: e.target.value,
+                    })
                   }
                   placeholder="Notas (opcional)"
                   rows={2}
@@ -1016,7 +1168,13 @@ export default function AdminPage() {
                           </div>
                           <div className="grid grid-cols-5 gap-2">
                             {(
-                              ["set1", "set2", "set3", "set4", "set5"] as const
+                              [
+                                "set1",
+                                "set2",
+                                "set3",
+                                "set4",
+                                "set5",
+                              ] as const
                             ).map((k, i) => (
                               <input
                                 key={k}
@@ -1102,7 +1260,11 @@ export default function AdminPage() {
                             <p className="text-sm text-slate-500 mt-1">
                               📅 {p.fecha}
                             </p>
-                            {(p.set1 || p.set2 || p.set3 || p.set4 || p.set5) && (
+                            {(p.set1 ||
+                              p.set2 ||
+                              p.set3 ||
+                              p.set4 ||
+                              p.set5) && (
                               <p className="text-sm text-slate-600 mt-1">
                                 {[p.set1, p.set2, p.set3, p.set4, p.set5]
                                   .filter(Boolean)
@@ -1120,7 +1282,9 @@ export default function AdminPage() {
                             Editar
                           </button>
                           <button
-                            onClick={() => borrarPartido(p.id, p.rival, p.fecha)}
+                            onClick={() =>
+                              borrarPartido(p.id, p.rival, p.fecha)
+                            }
                             className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded-lg"
                           >
                             Borrar
