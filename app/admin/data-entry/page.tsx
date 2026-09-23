@@ -8,6 +8,7 @@ import ContadorSaque from "./ContadorSaque";
 import ContadorRecepcion from "./ContadorRecepcion";
 import ContadorAtaque from "./ContadorAtaque";
 import ContadorBloqueo from "./ContadorBloqueo";
+import ContadorDefensa from "./ContadorDefensa";
 
 interface Equipo {
   id: string;
@@ -38,8 +39,22 @@ type SetActivo = 1 | 2 | 3 | 4 | 5 | "partido";
 
 type Datos = Record<string, Record<string, Record<string, Record<string, number>>>>;
 
-const FUNDAMENTOS = ["saque", "recepcion", "ataque", "bloqueo"] as const;
+const FUNDAMENTOS = [
+  "saque",
+  "recepcion",
+  "ataque",
+  "bloqueo",
+  "defensa",
+] as const;
 type Fundamento = typeof FUNDAMENTOS[number];
+
+const NOMBRES_FUNDAMENTO: Record<Fundamento, string> = {
+  saque: "Saque",
+  recepcion: "Recepción",
+  ataque: "Ataque",
+  bloqueo: "Bloqueo",
+  defensa: "Defensa",
+};
 
 export default function DataEntryPage() {
   const router = useRouter();
@@ -342,12 +357,13 @@ export default function DataEntryPage() {
                       <p className="text-sm text-slate-500 mt-2">
                         Set activo:{" "}
                         <span className="font-medium text-slate-700">
-                          {soloLectura ? "Partido (solo lectura)" : `Set ${setActivo}`}
+                          {soloLectura
+                            ? "Partido (solo lectura)"
+                            : `Set ${setActivo}`}
                         </span>
                       </p>
                     </div>
 
-                    {/* Selector de fundamento */}
                     <div className="flex gap-2 mb-6 flex-wrap">
                       {FUNDAMENTOS.map((f) => (
                         <button
@@ -359,15 +375,11 @@ export default function DataEntryPage() {
                               : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
                           }`}
                         >
-                          {f === "saque" && "Saque"}
-                          {f === "recepcion" && "Recepción"}
-                          {f === "ataque" && "Ataque"}
-                          {f === "bloqueo" && "Bloqueo"}
+                          {NOMBRES_FUNDAMENTO[f]}
                         </button>
                       ))}
                     </div>
 
-                    {/* Contador activo */}
                     {fundamentoActivo === "saque" && (
                       <ContadorSaque
                         valores={valoresDe("saque")}
@@ -393,6 +405,13 @@ export default function DataEntryPage() {
                       <ContadorBloqueo
                         valores={valoresDe("bloqueo")}
                         onCambio={onCambioDe("bloqueo")}
+                        soloLectura={soloLectura}
+                      />
+                    )}
+                    {fundamentoActivo === "defensa" && (
+                      <ContadorDefensa
+                        valores={valoresDe("defensa")}
+                        onCambio={onCambioDe("defensa")}
                         soloLectura={soloLectura}
                       />
                     )}
