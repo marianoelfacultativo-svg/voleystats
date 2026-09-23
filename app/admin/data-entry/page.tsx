@@ -35,6 +35,14 @@ interface Partido {
   fecha: string;
 }
 
+interface AccionDB {
+  jugador_id: string;
+  set_numero: number;
+  fundamento: string;
+  valoracion: string;
+  cantidad: number;
+}
+
 type SetActivo = 1 | 2 | 3 | 4 | 5 | "partido";
 
 type Datos = Record<string, Record<string, Record<string, Record<string, number>>>>;
@@ -73,6 +81,8 @@ export default function DataEntryPage() {
 
   const [datos, setDatos] = useState<Datos>({});
   const [cargando, setCargando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [mensajeGuardado, setMensajeGuardado] = useState("");
 
   useEffect(() => {
     const s = obtenerSesion();
@@ -134,6 +144,36 @@ export default function DataEntryPage() {
     setJugadorId("");
   }, [equipoId]);
 
+  // Cargar datos guardados cuando cambia el partido
+  useEffect(() => {
+    if (!partidoId) {
+      setDatos({});
+      return;
+    }
+    setCargando(true);
+    supabase
+      .from("acciones")
+      .select("jugador_id, set_numero, fundamento, valoracion, cantidad")
+      .eq("partido_id", partidoId)
+      .then(({ data, error }) => {
+        setCargando(false);
+        if (error || !data) {
+          setDatos({});
+          return;
+        }
+        const nuevo: Datos = {};
+        (data as AccionDB[]).forEach((a) => {
+          const setStr = String(a.set_numero);
+          nuevo[a.jugador_id] = nuevo[a.jugador_id] ?? {};
+          nuevo[a.jugador_id][setStr] = nuevo[a.jugador_id][setStr] ?? {};
+          nuevo[a.jugador_id][setStr][a.fundamento] =
+            nuevo[a.jugador_id][setStr][a.fundamento] ?? {};
+          nuevo[a.jugador_id][setStr][a.fundamento][a.valoracion] = a.cantidad;
+        });
+        setDatos(nuevo);
+      });
+  }, [partidoId]);
+
   const jugadoresDelEquipo = asignaciones
     .map((a) => jugadores.find((j) => j.id === a.jugador_id))
     .filter((j): j is Jugador => j !== undefined);
@@ -186,6 +226,75 @@ export default function DataEntryPage() {
       }
     }
     return totales;
+  };
+
+  const guardarTodo = async () => {
+    if (!partidoId) return;
+    if (!confirm("¿Guardar los datos de este partido en la base?")) return;
+
+    setGuardando(true);
+    setMensajeGuardado("");
+
+    // 1. Borrar acciones anteriores del partido
+    const { error: errBorrar } = await supabase
+      .from("acciones")
+      .delete()
+      .eq("partido_id", partidoId);
+
+    if (errBorrar) {
+      setGuardando(false);
+      setMensajeGuardado("❌ Error al preparar el guardado: " + errBorrar.message);
+      return;
+    }
+
+    // 2. Armar la lista de acciones a insertar
+    const filas: {
+      partido_id: string;
+      jugador_id: string;
+      set_numero: number;
+      fundamento: string;
+      valoracion: string;
+      cantidad: number;
+    }[] = [];
+
+    Object.entries(datos).forEach(([jugId, sets]) => {
+      Object.entries(sets).forEach(([setStr, fundos]) => {
+        const setNum = parseInt(setStr);
+        if (isNaN(setNum) || setNum < 1 || setNum > 5) return;
+        Object.entries(fundos).forEach(([fund, vals]) => {
+          Object.entries(vals).forEach(([valor, cantidad]) => {
+            if (cantidad > 0) {
+              filas.push({
+                partido_id: partidoId,
+                jugador_id: jugId,
+                set_numero: setNum,
+                fundamento: fund,
+                valoracion: valor,
+                cantidad,
+              });
+            }
+          });
+        });
+      });
+    });
+
+    if (filas.length === 0) {
+      setGuardando(false);
+      setMensajeGuardado("✅ Guardado (no había datos para subir)");
+      return;
+    }
+
+    // 3. Insertar todo
+    const { error: errInsert } = await supabase.from("acciones").insert(filas);
+
+    setGuardando(false);
+
+    if (errInsert) {
+      setMensajeGuardado("❌ Error al guardar: " + errInsert.message);
+      return;
+    }
+
+    setMensajeGuardado("✅ Datos guardados correctamente");
   };
 
   if (!sesion) return null;
@@ -418,6 +527,20 @@ export default function DataEntryPage() {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Barra de guardado */}
+            <div className="mt-6 bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex items-center justify-between">
+              <p className="text-sm text-slate-600">
+                {mensajeGuardado || "Los datos no se guardan hasta que aprietes el botón"}
+              </p>
+              <button
+                onClick={guardarTodo}
+                disabled={guardando}
+                className="px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white font-medium rounded-lg transition"
+              >
+                {guardando ? "Guardando..." : "💾 Guardar Datos"}
+              </button>
             </div>
           </>
         )}
