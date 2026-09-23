@@ -13,10 +13,9 @@ import type { EstadisticasJugador } from "@/lib/estadisticas";
 interface Props {
   jugador: EstadisticasJugador;
   equipo: EstadisticasJugador;
-  nombreEquipo: string;
+  esArmador?: boolean;
 }
 
-const FUNDAMENTOS = ["saque", "recepcion", "ataque", "bloqueo", "defensa"];
 const ETIQUETAS: Record<string, string> = {
   saque: "Saque",
   recepcion: "Recepción",
@@ -25,36 +24,27 @@ const ETIQUETAS: Record<string, string> = {
   defensa: "Defensa",
 };
 
-export default function RadarJugador({ jugador, equipo }: Props) {
-  // Para cada fundamento, calculamos el "valor" del jugador
-  // Valor = efectividad × factor_volumen (relativo al equipo)
-  // factor_volumen = √(acciones_jugador / acciones_max_equipo_en_fundamento)
-  // El eje va de 0 al máximo del equipo (así el jugador con más valor toca el borde)
+export default function RadarJugador({ jugador, equipo, esArmador }: Props) {
+  const fundamentos = esArmador
+    ? ["saque", "bloqueo", "defensa"]
+    : ["saque", "recepcion", "ataque", "bloqueo", "defensa"];
 
-  const datos = FUNDAMENTOS.map((f) => {
+  const datos = fundamentos.map((f) => {
     const ej = jugador.porFundamento[f];
     const ee = equipo.porFundamento[f];
-
-    // Factor de volumen: qué tan cerca está su volumen del máximo del equipo en ese fundamento
-    const accionesMax = Math.max(ee.total, 1);
-    const factorVolumen = Math.sqrt(ej.total / accionesMax);
-
-    // Valor combinado
-    // Si tiene efectividad negativa, el valor es negativo (queda cerca del centro)
-    // Escalamos para que quepa de 0 a 100 aprox
-    const valorJugador = ej.efectividad * factorVolumen;
+    const accionesMax = Math.max(ee?.total ?? 0, 1);
+    const factorVolumen = Math.sqrt((ej?.total ?? 0) / accionesMax);
+    const efectividad = ej?.efectividad ?? 0;
+    const valorJugador = efectividad * factorVolumen;
 
     return {
       fundamento: ETIQUETAS[f],
       valor: Math.max(0, valorJugador),
       valorRaw: valorJugador,
-      acciones: ej.total,
-      efectividad: ej.efectividad,
+      acciones: ej?.total ?? 0,
     };
   });
 
-  // El máximo del eje es el máximo del equipo (calculado igual para todos)
-  // Para simplicidad, usamos un máximo de 100 (efectividad perfecta con volumen completo)
   const maxEje = 100;
 
   return (
@@ -83,8 +73,11 @@ export default function RadarJugador({ jugador, equipo }: Props) {
         </ResponsiveContainer>
       </div>
 
-      {/* Detalle por eje */}
-      <div className="grid grid-cols-5 gap-2 mt-4">
+      <div
+        className={`grid gap-2 mt-4 ${
+          esArmador ? "grid-cols-3" : "grid-cols-5"
+        }`}
+      >
         {datos.map((d) => (
           <div
             key={d.fundamento}
@@ -102,7 +95,6 @@ export default function RadarJugador({ jugador, equipo }: Props) {
 
       <p className="text-xs text-slate-400 mt-3 text-center">
         El tamaño del radar refleja <strong>volumen + efectividad</strong>.
-        Pocas acciones = cerca del centro, aunque tengas buena efectividad.
       </p>
     </div>
   );

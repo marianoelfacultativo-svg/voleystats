@@ -30,20 +30,39 @@ export default function ResumenPartido({
   nombresJugadores,
 }: Props) {
   const [acciones, setAcciones] = useState<AccionDB[]>([]);
+  const [armadores, setArmadores] = useState<Set<string>>(new Set());
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
     if (!partidoId) return;
     setCargando(true);
-    supabase
-      .from("acciones")
-      .select("jugador_id, set_numero, fundamento, valoracion, cantidad")
-      .eq("partido_id", partidoId)
-      .then(({ data }) => {
-        setCargando(false);
-        if (data) setAcciones(data as AccionDB[]);
-      });
-  }, [partidoId]);
+    Promise.all([
+      supabase
+        .from("acciones")
+        .select(
+          "jugador_id, partido_id, set_numero, fundamento, valoracion, cantidad"
+        )
+        .eq("partido_id", partidoId),
+      jugadoresIds.length > 0
+        ? supabase
+            .from("jugadores")
+            .select("id, rol")
+            .in("id", jugadoresIds)
+        : Promise.resolve({ data: [] }),
+    ]).then(([accRes, jugRes]) => {
+      setCargando(false);
+      if (accRes.data) setAcciones(accRes.data as AccionDB[]);
+      if (jugRes.data) {
+        setArmadores(
+          new Set(
+            (jugRes.data as { id: string; rol: string }[])
+              .filter((j) => j.rol === "armador")
+              .map((j) => j.id)
+          )
+        );
+      }
+    });
+  }, [partidoId, jugadoresIds]);
 
   if (cargando) {
     return <p className="text-slate-500 text-center py-8">Calculando...</p>;
@@ -65,7 +84,8 @@ export default function ResumenPartido({
 
   const { porJugador, totales } = calcularEstadisticasEquipo(
     jugadoresIds,
-    acciones
+    acciones,
+    armadores
   );
 
   const nombreDe = (id: string) => nombresJugadores[id] ?? "(sin nombre)";
@@ -197,6 +217,7 @@ export default function ResumenPartido({
                 key={id}
                 nombre={nombreDe(id)}
                 est={est}
+                esArmador={armadores.has(id)}
               />
             );
           })}
@@ -245,14 +266,35 @@ function RankingCard({
 function JugadorCard({
   nombre,
   est,
+  esArmador,
 }: {
   nombre: string;
   est: EstadisticasJugador;
+  esArmador: boolean;
 }) {
+  const fundamentos = esArmador
+    ? ["saque", "bloqueo", "defensa"]
+    : ["saque", "recepcion", "ataque", "bloqueo", "defensa"];
+
+  const NOMBRES_F: Record<string, string> = {
+    saque: "Saque",
+    recepcion: "Recepción",
+    ataque: "Ataque",
+    bloqueo: "Bloqueo",
+    defensa: "Defensa",
+  };
+
   return (
     <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
       <div className="flex justify-between items-start mb-3">
-        <p className="font-semibold text-slate-800">👤 {nombre}</p>
+        <p className="font-semibold text-slate-800">
+          👤 {nombre}
+          {esArmador && (
+            <span className="ml-2 text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
+              Armador
+            </span>
+          )}
+        </p>
         <div className="text-right text-sm">
           <p className="text-slate-500">
             Acciones:{" "}
@@ -277,8 +319,13 @@ function JugadorCard({
           </p>
         </div>
       </div>
-      <div className="grid grid-cols-5 gap-2 text-xs">
-        {FUNDAMENTOS.map((f) => {
+
+      <div
+        className={`grid gap-2 text-xs ${
+          esArmador ? "grid-cols-3" : "grid-cols-5"
+        }`}
+      >
+        {fundamentos.map((f) => {
           const e = est.porFundamento[f];
           if (!e || e.total === 0) return null;
           return (
@@ -286,7 +333,7 @@ function JugadorCard({
               key={f}
               className="p-2 bg-white border border-slate-200 rounded"
             >
-              <p className="text-slate-500">{NOMBRES[f]}</p>
+              <p className="text-slate-500">{NOMBRES_F[f]}</p>
               <p className="font-semibold text-slate-800">
                 {e.saldo > 0 ? "+" : ""}
                 {e.saldo}
@@ -296,6 +343,29 @@ function JugadorCard({
           );
         })}
       </div>
+
+      {esArmador && est.armador && (
+        <div className="mt-3 pt-3 border-t border-slate-200 grid grid-cols-3 gap-2 text-xs">
+          <div className="p-2 bg-white border border-slate-200 rounded">
+            <p className="text-slate-500">Prom. armados</p>
+            <p className="font-semibold text-slate-800">
+              {est.armador.promedioArmadosGlobal.toFixed(1)}
+            </p>
+          </div>
+          <div className="p-2 bg-white border border-slate-200 rounded">
+            <p className="text-slate-500">Toques punto</p>
+            <p className="font-semibold text-green-700">
+              {est.armador.toquesPunto}
+            </p>
+          </div>
+          <div className="p-2 bg-white border border-slate-200 rounded">
+            <p className="text-slate-500">Toques error</p>
+            <p className="font-semibold text-red-700">
+              {est.armador.toquesError}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

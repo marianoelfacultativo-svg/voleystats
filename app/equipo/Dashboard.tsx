@@ -23,6 +23,7 @@ interface Jugador {
   id: string;
   nombre: string;
   numero: number | null;
+  rol: string;
 }
 
 interface Props {
@@ -55,7 +56,7 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
         .select("id, rival, fecha, set1, set2, set3, set4, set5")
         .eq("equipo_id", equipoId)
         .order("fecha", { ascending: false }),
-      supabase.from("jugadores").select("*").order("nombre"),
+      supabase.from("jugadores").select("id, nombre, numero, rol").order("nombre"),
     ]).then(async ([partRes, jugRes]) => {
       if (!partRes.data || !jugRes.data) {
         setCargando(false);
@@ -87,27 +88,30 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
     return <p className="text-slate-500 text-center py-12">Cargando...</p>;
   }
 
-  // Último partido
   const ultimoPartido = partidos[0];
 
-  // Estadísticas del último partido
   const jugadoresDelEquipo = jugadores.filter((j) =>
     acciones.some((a) => a.jugador_id === j.id)
+  );
+
+  const armadores = new Set(
+    jugadoresDelEquipo.filter((j) => j.rol === "armador").map((j) => j.id)
   );
 
   const statsUltimo = ultimoPartido
     ? calcularEstadisticasEquipo(
         jugadoresDelEquipo.map((j) => j.id),
-        acciones.filter((a) => a.partido_id === ultimoPartido.id)
+        acciones.filter((a) => a.partido_id === ultimoPartido.id),
+        armadores
       )
     : null;
 
-  // Estadísticas totales
   const { porJugador, totales } =
     jugadoresDelEquipo.length > 0
       ? calcularEstadisticasEquipo(
           jugadoresDelEquipo.map((j) => j.id),
-          acciones
+          acciones,
+          armadores
         )
       : { porJugador: {}, totales: null };
 
@@ -115,6 +119,8 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
     const j = jugadores.find((x) => x.id === id);
     return j ? j.nombre + (j.numero !== null ? ` #${j.numero}` : "") : "?";
   };
+
+  const esArmadorId = (id: string) => armadores.has(id);
 
   const scoreDe = (p: Partido) => {
     const sets = [p.set1, p.set2, p.set3, p.set4, p.set5].filter(Boolean);
@@ -137,7 +143,6 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Último partido */}
       {ultimoPartido && statsUltimo && (
         <div>
           <h2 className="text-xl font-semibold text-slate-900 mb-3">
@@ -182,7 +187,6 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
         </div>
       )}
 
-      {/* Totales acumulados */}
       {totales && (
         <div>
           <h2 className="text-xl font-semibold text-slate-900 mb-3">
@@ -277,7 +281,6 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
         </div>
       )}
 
-      {/* Rankings */}
       <div>
         <h2 className="text-xl font-semibold text-slate-900 mb-3">
           🏆 Rankings del plantel
@@ -287,18 +290,21 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
             titulo="Más puntos"
             items={top3(porJugador, (e) => e.totalPuntos)}
             nombreDe={nombreDe}
+            esArmadorId={esArmadorId}
             color="green"
           />
           <RankingCard
             titulo="Más acciones positivas"
             items={top3(porJugador, (e) => e.totalPositivos)}
             nombreDe={nombreDe}
+            esArmadorId={esArmadorId}
             color="blue"
           />
           <RankingCard
             titulo="Mejor saldo"
             items={top3(porJugador, (e) => e.saldoTotal)}
             nombreDe={nombreDe}
+            esArmadorId={esArmadorId}
             color="violet"
           />
         </div>
@@ -311,11 +317,13 @@ function RankingCard({
   titulo,
   items,
   nombreDe,
+  esArmadorId,
   color,
 }: {
   titulo: string;
   items: { jugador_id: string; valor: number }[];
   nombreDe: (id: string) => string;
+  esArmadorId: (id: string) => boolean;
   color: "green" | "blue" | "violet";
 }) {
   const colores = {
@@ -334,6 +342,11 @@ function RankingCard({
             <li key={it.jugador_id} className="text-sm text-slate-800">
               <span className="font-bold text-slate-500 mr-2">{i + 1}.</span>
               {nombreDe(it.jugador_id)}
+              {esArmadorId(it.jugador_id) && (
+                <span className="ml-1 text-[10px] text-violet-600 font-medium">
+                  (Armador)
+                </span>
+              )}
               <span className="text-slate-500 ml-2">({it.valor})</span>
             </li>
           ))}

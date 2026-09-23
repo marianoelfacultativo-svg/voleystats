@@ -19,6 +19,7 @@ interface Jugador {
   id: string;
   nombre: string;
   numero: number | null;
+  rol: string;
 }
 
 interface Partido {
@@ -49,7 +50,6 @@ export default function EstadisticasPage() {
   const [equipoId, setEquipoId] = useState("");
   const [cargando, setCargando] = useState(false);
 
-  // Filtros
   const [filtroRival, setFiltroRival] = useState("");
   const [filtroFechaDesde, setFiltroFechaDesde] = useState("");
   const [filtroFechaHasta, setFiltroFechaHasta] = useState("");
@@ -89,20 +89,14 @@ export default function EstadisticasPage() {
       setJugadores([]);
       setPartidos([]);
       setAcciones([]);
-      setFiltroRival("");
-      setFiltroFechaDesde("");
-      setFiltroFechaHasta("");
-      setFiltroSet("todos");
+      limpiarFiltros();
       return;
     }
     setCargando(true);
-    setFiltroRival("");
-    setFiltroFechaDesde("");
-    setFiltroFechaHasta("");
-    setFiltroSet("todos");
+    limpiarFiltros();
 
     Promise.all([
-      supabase.from("jugadores").select("*").order("nombre"),
+      supabase.from("jugadores").select("id, nombre, numero, rol").order("nombre"),
       supabase
         .from("partidos")
         .select("id, equipo_id, rival, fecha")
@@ -142,10 +136,8 @@ export default function EstadisticasPage() {
 
   if (!sesion) return null;
 
-  // Rivales únicos para el dropdown
   const rivalesUnicos = Array.from(new Set(partidos.map((p) => p.rival))).sort();
 
-  // Filtrar partidos según rival y fecha
   const partidosFiltrados = partidos.filter((p) => {
     if (filtroRival && p.rival !== filtroRival) return false;
     if (filtroFechaDesde && p.fecha < filtroFechaDesde) return false;
@@ -155,7 +147,6 @@ export default function EstadisticasPage() {
 
   const idsPartidosFiltrados = new Set(partidosFiltrados.map((p) => p.id));
 
-  // Filtrar acciones: por partido (rival/fecha) y por set
   const accionesFiltradas = acciones.filter((a) => {
     if (a.partido_id && !idsPartidosFiltrados.has(a.partido_id)) return false;
     if (filtroSet !== "todos" && String(a.set_numero) !== filtroSet)
@@ -163,16 +154,20 @@ export default function EstadisticasPage() {
     return true;
   });
 
-  // Calcular estadísticas con las acciones filtradas
   const jugadoresDelEquipo = jugadores.filter((j) =>
     accionesFiltradas.some((a) => a.jugador_id === j.id)
+  );
+
+  const armadores = new Set(
+    jugadoresDelEquipo.filter((j) => j.rol === "armador").map((j) => j.id)
   );
 
   const { porJugador, totales } =
     jugadoresDelEquipo.length > 0
       ? calcularEstadisticasEquipo(
           jugadoresDelEquipo.map((j) => j.id),
-          accionesFiltradas
+          accionesFiltradas,
+          armadores
         )
       : { porJugador: {}, totales: null };
 
@@ -180,6 +175,8 @@ export default function EstadisticasPage() {
     const j = jugadores.find((x) => x.id === id);
     return j ? j.nombre + (j.numero !== null ? ` #${j.numero}` : "") : "?";
   };
+
+  const esArmadorId = (id: string) => armadores.has(id);
 
   const hayFiltrosActivos =
     filtroRival !== "" ||
@@ -213,7 +210,6 @@ export default function EstadisticasPage() {
           </button>
         </div>
 
-        {/* Selector de equipo + filtros */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
@@ -344,9 +340,6 @@ export default function EstadisticasPage() {
             <p className="text-slate-600 font-medium">
               Este equipo todavía no tiene datos cargados
             </p>
-            <p className="text-slate-500 text-sm mt-1">
-              Andá a la Consola de Data Entry y guardá algún partido
-            </p>
           </div>
         )}
 
@@ -469,18 +462,21 @@ export default function EstadisticasPage() {
                     titulo="Más puntos"
                     items={top3(porJugador, (e) => e.totalPuntos)}
                     nombreDe={nombreDe}
+                    esArmadorId={esArmadorId}
                     color="green"
                   />
                   <RankingCard
                     titulo="Más acciones positivas"
                     items={top3(porJugador, (e) => e.totalPositivos)}
                     nombreDe={nombreDe}
+                    esArmadorId={esArmadorId}
                     color="blue"
                   />
                   <RankingCard
                     titulo="Mejor saldo"
                     items={top3(porJugador, (e) => e.saldoTotal)}
                     nombreDe={nombreDe}
+                    esArmadorId={esArmadorId}
                     color="violet"
                   />
                 </div>
@@ -514,6 +510,11 @@ export default function EstadisticasPage() {
                           >
                             <td className="py-2 px-3 font-medium text-slate-700">
                               {nombreDe(e.jugador_id)}
+                              {esArmadorId(e.jugador_id) && (
+                                <span className="ml-2 text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
+                                  Armador
+                                </span>
+                              )}
                             </td>
                             <td className="py-2 px-3 text-right text-slate-600">
                               {e.totalAcciones}
@@ -559,11 +560,13 @@ function RankingCard({
   titulo,
   items,
   nombreDe,
+  esArmadorId,
   color,
 }: {
   titulo: string;
   items: { jugador_id: string; valor: number }[];
   nombreDe: (id: string) => string;
+  esArmadorId: (id: string) => boolean;
   color: "green" | "blue" | "violet";
 }) {
   const colores = {
@@ -582,6 +585,11 @@ function RankingCard({
             <li key={it.jugador_id} className="text-sm text-slate-800">
               <span className="font-bold text-slate-500 mr-2">{i + 1}.</span>
               {nombreDe(it.jugador_id)}
+              {esArmadorId(it.jugador_id) && (
+                <span className="ml-1 text-[10px] text-violet-600 font-medium">
+                  (Armador)
+                </span>
+              )}
               <span className="text-slate-500 ml-2">({it.valor})</span>
             </li>
           ))}

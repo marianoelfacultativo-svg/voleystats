@@ -8,12 +8,16 @@ import {
   type EstadisticasJugador,
 } from "@/lib/estadisticas";
 import RadarJugador from "./RadarJugador";
+import GraficoArmadosPorSet from "./GraficoArmadosPorSet";
+import GraficoRecepcionPorSet from "./GraficoRecepcionPorSet";
+import MapaCalorTendencia from "./MapaCalorTendencia";
 
 interface Jugador {
   id: string;
   nombre: string;
   numero: number | null;
   imagen_url: string | null;
+  rol: string;
 }
 
 interface Props {
@@ -68,15 +72,21 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
   }
 
   const idsJugadores = jugadores.map((j) => j.id);
+  const armadores = new Set(
+    jugadores.filter((j) => j.rol === "armador").map((j) => j.id)
+  );
+
   const { porJugador, totales } = calcularEstadisticasEquipo(
     idsJugadores,
-    acciones
+    acciones,
+    armadores
   );
 
   const jugadorActual: EstadisticasJugador | null = jugadorSeleccionado
     ? porJugador[jugadorSeleccionado] ?? null
     : null;
   const datosJugador = jugadores.find((j) => j.id === jugadorSeleccionado);
+  const esArmador = datosJugador?.rol === "armador";
 
   if (jugadores.length === 0) {
     return (
@@ -91,7 +101,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
 
   return (
     <div className="grid grid-cols-3 gap-4">
-      {/* Lista de jugadores */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 col-span-1">
         <h3 className="font-semibold text-slate-800 mb-3">Plantel</h3>
         <div className="space-y-1">
@@ -112,6 +121,17 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   {j.nombre}
                   {j.numero !== null && ` #${j.numero}`}
                 </span>
+                {j.rol === "armador" && (
+                  <span
+                    className={`block text-xs ${
+                      jugadorSeleccionado === j.id
+                        ? "text-blue-100"
+                        : "text-violet-600"
+                    }`}
+                  >
+                    Armador
+                  </span>
+                )}
                 <span
                   className={`block text-xs ${
                     jugadorSeleccionado === j.id
@@ -127,7 +147,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
         </div>
       </div>
 
-      {/* Perfil */}
       <div className="col-span-2">
         {!jugadorSeleccionado || !jugadorActual || !datosJugador ? (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center h-full flex items-center justify-center">
@@ -140,7 +159,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
           </div>
         ) : (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-            {/* Encabezado del jugador */}
             <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-200">
               {datosJugador.imagen_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -162,6 +180,11 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   <p className="text-slate-500">#{datosJugador.numero}</p>
                 )}
                 <p className="text-sm text-slate-500 mt-1">{nombreEquipo}</p>
+                {esArmador && (
+                  <span className="inline-block mt-1 text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
+                    Armador
+                  </span>
+                )}
               </div>
               <div className="text-right">
                 <p className="text-xs text-slate-500 uppercase">Saldo total</p>
@@ -180,7 +203,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               </div>
             </div>
 
-            {/* Radar */}
             <div className="mb-6">
               <h4 className="font-semibold text-slate-800 mb-3">
                 Perfil de rendimiento
@@ -188,11 +210,33 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               <RadarJugador
                 jugador={jugadorActual}
                 equipo={totales}
-                nombreEquipo={nombreEquipo}
+                esArmador={esArmador}
               />
             </div>
 
-            {/* Totales del jugador */}
+            {esArmador && jugadorActual.armador && (
+              <div className="mb-6 grid grid-cols-2 gap-4">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                  <GraficoArmadosPorSet
+                    promedios={jugadorActual.armador.promediosArmados}
+                  />
+                </div>
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                  <MapaCalorTendencia
+                    distribucion={jugadorActual.armador.distribucionTendencia}
+                  />
+                </div>
+              </div>
+            )}
+
+            {!esArmador && jugadorActual.recepcion && (
+              <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                <GraficoRecepcionPorSet
+                  promedios={jugadorActual.recepcion.promediosPorSet}
+                />
+              </div>
+            )}
+
             <div className="grid grid-cols-4 gap-3">
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
                 <p className="text-xs text-slate-500 uppercase">Acciones</p>
