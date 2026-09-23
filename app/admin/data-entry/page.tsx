@@ -9,6 +9,9 @@ import ContadorRecepcion from "./ContadorRecepcion";
 import ContadorAtaque from "./ContadorAtaque";
 import ContadorBloqueo from "./ContadorBloqueo";
 import ContadorDefensa from "./ContadorDefensa";
+import ContadorTendencia from "./ContadorTendencia";
+import ContadorToque from "./ContadorToque";
+import ContadorArmados from "./ContadorArmados";
 import ResumenPartido from "./ResumenPartido";
 
 interface Equipo {
@@ -20,6 +23,7 @@ interface Jugador {
   id: string;
   nombre: string;
   numero: number | null;
+  rol: string;
 }
 
 interface JugadorEquipo {
@@ -38,6 +42,7 @@ interface Partido {
 
 interface AccionDB {
   jugador_id: string;
+  partido_id?: string;
   set_numero: number;
   fundamento: string;
   valoracion: string;
@@ -48,21 +53,35 @@ type SetActivo = 1 | 2 | 3 | 4 | 5 | "partido";
 
 type Datos = Record<string, Record<string, Record<string, Record<string, number>>>>;
 
-const FUNDAMENTOS = [
+const FUNDAMENTOS_NORMAL = [
   "saque",
   "recepcion",
   "ataque",
   "bloqueo",
   "defensa",
 ] as const;
-type Fundamento = typeof FUNDAMENTOS[number];
+const FUNDAMENTOS_ARMADOR = [
+  "saque",
+  "bloqueo",
+  "defensa",
+  "tendencia",
+  "toque",
+  "armados",
+] as const;
 
-const NOMBRES_FUNDAMENTO: Record<Fundamento, string> = {
+type FundamentoNormal = typeof FUNDAMENTOS_NORMAL[number];
+type FundamentoArmador = typeof FUNDAMENTOS_ARMADOR[number];
+type Fundamento = FundamentoNormal | FundamentoArmador;
+
+const NOMBRES_FUNDAMENTO: Record<string, string> = {
   saque: "Saque",
   recepcion: "Recepción",
   ataque: "Ataque",
   bloqueo: "Bloqueo",
   defensa: "Defensa",
+  tendencia: "Tendencia",
+  toque: "Toque",
+  armados: "Armados",
 };
 
 export default function DataEntryPage() {
@@ -78,7 +97,8 @@ export default function DataEntryPage() {
   const [partidoId, setPartidoId] = useState("");
   const [jugadorId, setJugadorId] = useState("");
   const [setActivo, setSetActivo] = useState<SetActivo>(1);
-  const [fundamentoActivo, setFundamentoActivo] = useState<Fundamento>("saque");
+  const [fundamentoActivo, setFundamentoActivo] =
+    useState<Fundamento>("saque");
 
   const [datos, setDatos] = useState<Datos>({});
   const [cargando, setCargando] = useState(false);
@@ -153,7 +173,7 @@ export default function DataEntryPage() {
     setCargando(true);
     supabase
       .from("acciones")
-      .select("jugador_id, set_numero, fundamento, valoracion, cantidad")
+      .select("jugador_id, partido_id, set_numero, fundamento, valoracion, cantidad")
       .eq("partido_id", partidoId)
       .then(({ data, error }) => {
         setCargando(false);
@@ -177,6 +197,22 @@ export default function DataEntryPage() {
   const jugadoresDelEquipo = asignaciones
     .map((a) => jugadores.find((j) => j.id === a.jugador_id))
     .filter((j): j is Jugador => j !== undefined);
+
+  const jugadorActual = jugadoresDelEquipo.find((j) => j.id === jugadorId);
+  const esArmador = jugadorActual?.rol === "armador";
+
+  // Cuando cambia el jugador, resetear el fundamento activo al primero disponible
+  useEffect(() => {
+    if (esArmador) {
+      if (!FUNDAMENTOS_ARMADOR.includes(fundamentoActivo as FundamentoArmador)) {
+        setFundamentoActivo("saque");
+      }
+    } else {
+      if (!FUNDAMENTOS_NORMAL.includes(fundamentoActivo as FundamentoNormal)) {
+        setFundamentoActivo("saque");
+      }
+    }
+  }, [jugadorId, esArmador, fundamentoActivo]);
 
   const handleCerrar = () => {
     cerrarSesion();
@@ -313,6 +349,10 @@ export default function DataEntryPage() {
     setValor(jugadorId, setActual, fundamento, valoracion, cantidad);
   };
 
+  const fundamentosDisponibles = esArmador
+    ? FUNDAMENTOS_ARMADOR
+    : FUNDAMENTOS_NORMAL;
+
   return (
     <main className="min-h-screen p-8">
       <div className="max-w-6xl mx-auto">
@@ -435,6 +475,17 @@ export default function DataEntryPage() {
                           {j.nombre}
                           {j.numero !== null && ` #${j.numero}`}
                         </span>
+                        {j.rol === "armador" && (
+                          <span
+                            className={`block text-xs ${
+                              jugadorId === j.id
+                                ? "text-blue-100"
+                                : "text-violet-600"
+                            }`}
+                          >
+                            Armador
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -468,10 +519,12 @@ export default function DataEntryPage() {
                     <div className="mb-4 pb-4 border-b border-slate-200">
                       <p className="text-sm text-slate-500">Jugador</p>
                       <p className="font-semibold text-slate-800">
-                        {
-                          jugadoresDelEquipo.find((j) => j.id === jugadorId)
-                            ?.nombre
-                        }
+                        {jugadorActual?.nombre}
+                        {jugadorActual?.rol === "armador" && (
+                          <span className="ml-2 text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
+                            Armador
+                          </span>
+                        )}
                       </p>
                       <p className="text-sm text-slate-500 mt-2">
                         Set activo:{" "}
@@ -482,7 +535,7 @@ export default function DataEntryPage() {
                     </div>
 
                     <div className="flex gap-2 mb-6 flex-wrap">
-                      {FUNDAMENTOS.map((f) => (
+                      {fundamentosDisponibles.map((f) => (
                         <button
                           key={f}
                           onClick={() => setFundamentoActivo(f)}
@@ -529,6 +582,27 @@ export default function DataEntryPage() {
                       <ContadorDefensa
                         valores={valoresDe("defensa")}
                         onCambio={onCambioDe("defensa")}
+                        soloLectura={soloLectura}
+                      />
+                    )}
+                    {fundamentoActivo === "tendencia" && (
+                      <ContadorTendencia
+                        valores={valoresDe("tendencia")}
+                        onCambio={onCambioDe("tendencia")}
+                        soloLectura={soloLectura}
+                      />
+                    )}
+                    {fundamentoActivo === "toque" && (
+                      <ContadorToque
+                        valores={valoresDe("toque")}
+                        onCambio={onCambioDe("toque")}
+                        soloLectura={soloLectura}
+                      />
+                    )}
+                    {fundamentoActivo === "armados" && (
+                      <ContadorArmados
+                        valores={valoresDe("armados")}
+                        onCambio={onCambioDe("armados")}
                         soloLectura={soloLectura}
                       />
                     )}
