@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   calcularEstadisticasEquipo,
-  calcularPromediosEquipoPorSet,
-  calcularPromediosEquipoArmadosPorSet,
+  calcularEstadisticasJugador,
+  calcularMaxAccionesPorFundamento,
   calcularPromedioPonderadoPorSet,
   calcularPromedioArmadosPonderadoPorSet,
   VALORES_SAQUE,
@@ -61,7 +61,10 @@ const NOMBRES: Record<string, string> = {
 
 const COLORES_COMPARACION = ["#EF4444", "#8B5CF6", "#3B82F6"];
 
-type ModoPrincipal = "partido" | "comparar-partidos";
+type ModoPrincipal =
+  | "partido"
+  | "comparar-partidos"
+  | "jugador-por-partidos";
 type ModoDetalle = "analisis" | "comparar-jugadores";
 
 export default function Partidos({ equipoId, nombreEquipo }: Props) {
@@ -83,6 +86,12 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     null
   );
   const [partidosComparados, setPartidosComparados] = useState<string[]>([]);
+
+  // Modo "jugador por partidos"
+  const [jugadorSeleccionadoJxP, setJugadorSeleccionadoJxP] = useState<
+    string | null
+  >(null);
+  const [partidosJxP, setPartidosJxP] = useState<string[]>([]);
 
   const [modoDetalle, setModoDetalle] = useState<ModoDetalle>("analisis");
   const [jugadoresComparados, setJugadoresComparados] = useState<string[]>([]);
@@ -144,8 +153,15 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     setModoPrincipal(nuevo);
     if (nuevo === "comparar-partidos") {
       setPartidoSeleccionado(null);
+      setJugadorSeleccionadoJxP(null);
+      setPartidosJxP([]);
+    } else if (nuevo === "jugador-por-partidos") {
+      setPartidoSeleccionado(null);
+      setPartidosComparados([]);
     } else {
       setPartidosComparados([]);
+      setJugadorSeleccionadoJxP(null);
+      setPartidosJxP([]);
     }
   };
 
@@ -158,6 +174,15 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     setPartidosComparados([...partidosComparados, id]);
   };
 
+  const handleTogglePartidoJxP = (id: string) => {
+    if (partidosJxP.includes(id)) {
+      setPartidosJxP(partidosJxP.filter((x) => x !== id));
+      return;
+    }
+    if (partidosJxP.length >= 3) return;
+    setPartidosJxP([...partidosJxP, id]);
+  };
+
   const handleToggleJugadorComparado = (id: string) => {
     if (jugadoresComparados.includes(id)) {
       setJugadoresComparados(jugadoresComparados.filter((x) => x !== id));
@@ -165,13 +190,12 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     }
     if (jugadoresComparados.length >= 3) return;
 
-    // Regla: armadores con armadores, normales con normales
     if (jugadoresComparados.length > 0) {
-      const armadores = new Set(
+      const armadoresSet = new Set(
         jugadores.filter((j) => j.rol === "armador").map((j) => j.id)
       );
-      const primerEsArm = armadores.has(jugadoresComparados[0]);
-      const esteEsArm = armadores.has(id);
+      const primerEsArm = armadoresSet.has(jugadoresComparados[0]);
+      const esteEsArm = armadoresSet.has(id);
       if (primerEsArm !== esteEsArm) return;
     }
 
@@ -230,8 +254,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     ? calcularEstadisticasEquipo(idsJugadores, accionesDelPartido, armadores)
     : null;
 
-  const esArmadorId = (id: string) => armadores.has(id);
-
   const promediosRecepcionEquipo: PromedioRecepcionSet[] = [1, 2, 3, 4, 5].map(
     (s) => {
       const delSet = accionesDelPartido.filter(
@@ -260,9 +282,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     .map((id, idx) => {
       const partido = partidos.find((p) => p.id === id);
       if (!partido) return null;
-      const accPartido = acciones.filter(
-        (a) => a.partido_id === id
-      );
+      const accPartido = acciones.filter((a) => a.partido_id === id);
       const stats = calcularEstadisticasEquipo(
         idsJugadores,
         accPartido,
@@ -315,14 +335,122 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     };
   });
 
+  // ==== JUGADOR POR PARTIDOS ====
+  const jugadorJxP = jugadorSeleccionadoJxP
+    ? jugadores.find((j) => j.id === jugadorSeleccionadoJxP)
+    : null;
+  const esArmadorJxP = jugadorJxP?.rol === "armador";
+
+  const partidosJxPData = jugadorSeleccionadoJxP
+    ? partidosJxP
+        .map((pid, idx) => {
+          const partido = partidos.find((p) => p.id === pid);
+          if (!partido) return null;
+          const accPartido = acciones.filter((a) => a.partido_id === pid);
+
+          const maxPorFundP = calcularMaxAccionesPorFundamento(
+            accPartido,
+            idsJugadores
+          );
+          let maxAccP = 1;
+          for (const jid of idsJugadores) {
+            const total = accPartido
+              .filter((a) => a.jugador_id === jid)
+              .reduce((s, a) => s + a.cantidad, 0);
+            if (total > maxAccP) maxAccP = total;
+          }
+
+          const est = calcularEstadisticasJugador(
+            jugadorSeleccionadoJxP,
+            accPartido,
+            esArmadorJxP ?? false,
+            maxPorFundP,
+            maxAccP
+          );
+
+          return {
+            id: pid,
+            nombre: `vs ${partido.rival} (${partido.fecha})`,
+            color: COLORES_COMPARACION[idx],
+            partido,
+            accPartido,
+            est,
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null)
+    : [];
+
+  const seriesRadarJxP = partidosJxPData.map((s) => ({
+    id: s.id,
+    nombre: s.nombre,
+    color: s.color,
+    jugador: s.est,
+  }));
+
+  const seriesSaqueJxP = jugadorSeleccionadoJxP
+    ? partidosJxPData.map((s) => ({
+        id: s.id,
+        nombre: s.nombre,
+        color: s.color,
+        promedios: calcularPromedioPonderadoPorSet(
+          jugadorSeleccionadoJxP,
+          s.accPartido,
+          idsJugadores,
+          "saque",
+          VALORES_SAQUE
+        ),
+      }))
+    : [];
+
+  const seriesRecepcionJxP = jugadorSeleccionadoJxP
+    ? partidosJxPData.map((s) => ({
+        id: s.id,
+        nombre: s.nombre,
+        color: s.color,
+        promedios: calcularPromedioPonderadoPorSet(
+          jugadorSeleccionadoJxP,
+          s.accPartido,
+          idsJugadores,
+          "recepcion",
+          VALORES_RECEPCION
+        ),
+      }))
+    : [];
+
+  const seriesBloqueoJxP = jugadorSeleccionadoJxP
+    ? partidosJxPData.map((s) => ({
+        id: s.id,
+        nombre: s.nombre,
+        color: s.color,
+        promedios: calcularPromedioPonderadoPorSet(
+          jugadorSeleccionadoJxP,
+          s.accPartido,
+          idsJugadores,
+          "bloqueo",
+          VALORES_BLOQUEO
+        ),
+      }))
+    : [];
+
+  const seriesArmadosJxP = jugadorSeleccionadoJxP
+    ? partidosJxPData.map((s) => ({
+        id: s.id,
+        nombre: s.nombre,
+        color: s.color,
+        promedios: calcularPromedioArmadosPonderadoPorSet(
+          jugadorSeleccionadoJxP,
+          s.accPartido,
+          idsJugadores
+        ),
+      }))
+    : [];
+
   // ==== COMPARAR JUGADORES DENTRO DE UN PARTIDO ====
-  const jugadoresComparadosData = jugadoresComparados
-    .map((id, idx) => ({
-      id,
-      nombre: nombreDe(id),
-      color: COLORES_COMPARACION[idx],
-    }))
-    .filter((x) => x !== null);
+  const jugadoresComparadosData = jugadoresComparados.map((id, idx) => ({
+    id,
+    nombre: nombreDe(id),
+    color: COLORES_COMPARACION[idx],
+  }));
 
   const esComparacionArmador =
     jugadoresComparadosData.length > 0 &&
@@ -406,8 +534,8 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Toggle principal */}
-      <div className="flex justify-end gap-2">
+      {/* Toggle principal con 3 modos */}
+      <div className="flex justify-end gap-2 flex-wrap">
         <button
           onClick={() => handleToggleModoPrincipal("partido")}
           className={`px-4 py-2 text-sm font-medium rounded-lg transition border ${
@@ -428,182 +556,508 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         >
           ⚖️ Comparar partidos ({partidosComparados.length}/3)
         </button>
+        <button
+          onClick={() => handleToggleModoPrincipal("jugador-por-partidos")}
+          className={`px-4 py-2 text-sm font-medium rounded-lg transition border ${
+            modoPrincipal === "jugador-por-partidos"
+              ? "bg-emerald-500 text-white border-emerald-500"
+              : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+          }`}
+        >
+          👤 Jugador por partidos
+        </button>
       </div>
 
-      {/* Filtros */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
-        <div className="grid grid-cols-4 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">
-              Rival
-            </label>
-            <select
-              value={filtroRival}
-              onChange={(e) => setFiltroRival(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
-            >
-              <option value="">Todos</option>
-              {rivalesUnicos.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
+      {/* Filtros (solo en modo "partido" y "comparar-partidos") */}
+      {modoPrincipal !== "jugador-por-partidos" && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+          <div className="grid grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">
+                Rival
+              </label>
+              <select
+                value={filtroRival}
+                onChange={(e) => setFiltroRival(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
+              >
+                <option value="">Todos</option>
+                {rivalesUnicos.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">
+                Desde
+              </label>
+              <input
+                type="date"
+                value={filtroFechaDesde}
+                onChange={(e) => setFiltroFechaDesde(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">
+                Hasta
+              </label>
+              <input
+                type="date"
+                value={filtroFechaHasta}
+                onChange={(e) => setFiltroFechaHasta(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">
+                Set (en detalle)
+              </label>
+              <select
+                value={filtroSet}
+                onChange={(e) =>
+                  setFiltroSet(
+                    e.target.value as "todos" | "1" | "2" | "3" | "4" | "5"
+                  )
+                }
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
+              >
+                <option value="todos">Todos</option>
+                <option value="1">Set 1</option>
+                <option value="2">Set 2</option>
+                <option value="3">Set 3</option>
+                <option value="4">Set 4</option>
+                <option value="5">Set 5</option>
+              </select>
+            </div>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">
-              Desde
-            </label>
-            <input
-              type="date"
-              value={filtroFechaDesde}
-              onChange={(e) => setFiltroFechaDesde(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">
-              Hasta
-            </label>
-            <input
-              type="date"
-              value={filtroFechaHasta}
-              onChange={(e) => setFiltroFechaHasta(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">
-              Set (en detalle)
-            </label>
-            <select
-              value={filtroSet}
-              onChange={(e) =>
-                setFiltroSet(
-                  e.target.value as "todos" | "1" | "2" | "3" | "4" | "5"
-                )
-              }
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
-            >
-              <option value="todos">Todos</option>
-              <option value="1">Set 1</option>
-              <option value="2">Set 2</option>
-              <option value="3">Set 3</option>
-              <option value="4">Set 4</option>
-              <option value="5">Set 5</option>
-            </select>
-          </div>
+          {hayFiltrosActivos && (
+            <div className="mt-2 text-right">
+              <button
+                onClick={limpiarFiltros}
+                className="text-xs text-emerald-600 hover:text-emerald-800 font-medium"
+              >
+                Limpiar filtros
+              </button>
+            </div>
+          )}
         </div>
-        {hayFiltrosActivos && (
-          <div className="mt-2 text-right">
-            <button
-              onClick={limpiarFiltros}
-              className="text-xs text-emerald-600 hover:text-emerald-800 font-medium"
-            >
-              Limpiar filtros
-            </button>
-          </div>
-        )}
-      </div>
+      )}
 
       <div className="grid grid-cols-3 gap-4">
-        {/* Panel izquierdo: lista de partidos */}
+        {/* Panel izquierdo */}
         <div className="col-span-1">
-          <h3 className="font-semibold text-slate-800 mb-3">
-            {partidosFiltrados.length} partido
-            {partidosFiltrados.length !== 1 ? "s" : ""}
-            {modoPrincipal === "comparar-partidos" && " — elegí hasta 3"}
-          </h3>
-
-          {partidosFiltrados.length === 0 ? (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 text-center">
-              <p className="text-sm text-slate-500">
-                Ningún partido cumple los filtros
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {partidosFiltrados.map((p) => {
-                const idxComparado = partidosComparados.indexOf(p.id);
-                const seleccionadoIndividual =
-                  modoPrincipal === "partido" &&
-                  partidoSeleccionado === p.id;
-                const colorComp =
-                  idxComparado !== -1
-                    ? COLORES_COMPARACION[idxComparado]
-                    : null;
-
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() =>
-                      modoPrincipal === "partido"
-                        ? setPartidoSeleccionado(p.id)
-                        : handleTogglePartidoComparado(p.id)
-                    }
-                    className={`w-full text-left p-3 rounded-lg border transition relative ${
-                      seleccionadoIndividual
-                        ? "bg-emerald-500 border-emerald-500 text-white"
-                        : colorComp
-                        ? "border-2 text-white"
-                        : "bg-white border-slate-200 hover:bg-slate-50"
-                    }`}
-                    style={
-                      colorComp
-                        ? {
-                            backgroundColor: colorComp + "20",
-                            borderColor: colorComp,
-                          }
-                        : undefined
-                    }
-                  >
-                    {idxComparado !== -1 && (
-                      <span
-                        className="absolute top-2 right-2 w-6 h-6 rounded-full text-white text-xs font-bold flex items-center justify-center border-2 border-white shadow"
-                        style={{ backgroundColor: colorComp! }}
+          {modoPrincipal === "jugador-por-partidos" ? (
+            <>
+              <h3 className="font-semibold text-slate-800 mb-3">
+                Elegí un jugador
+              </h3>
+              <div className="space-y-2">
+                {jugadores
+                  .filter((j) =>
+                    acciones.some((a) => a.jugador_id === j.id)
+                  )
+                  .map((j) => {
+                    const sel = jugadorSeleccionadoJxP === j.id;
+                    return (
+                      <button
+                        key={j.id}
+                        onClick={() => setJugadorSeleccionadoJxP(j.id)}
+                        className={`w-full text-left p-3 rounded-lg border transition ${
+                          sel
+                            ? "bg-emerald-500 border-emerald-500 text-white"
+                            : "bg-white border-slate-200 hover:bg-slate-50 text-slate-800"
+                        }`}
                       >
-                        {idxComparado + 1}
-                      </span>
-                    )}
-                    <p
-                      className={`font-medium text-sm ${
-                        seleccionadoIndividual
-                          ? "text-white"
-                          : colorComp
-                          ? "text-slate-900"
-                          : "text-slate-800"
-                      }`}
-                    >
-                      vs {p.rival}
-                    </p>
-                    <p
-                      className={`text-xs mt-1 ${
-                        seleccionadoIndividual
-                          ? "text-emerald-100"
-                          : "text-slate-500"
-                      }`}
-                    >
-                      📅 {p.fecha}
-                    </p>
-                    <p
-                      className={`text-xs mt-1 ${
-                        seleccionadoIndividual
-                          ? "text-emerald-100"
-                          : "text-slate-500"
-                      }`}
-                    >
-                      {scoreDe(p)}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
+                        <p
+                          className={`font-medium text-sm ${
+                            sel ? "text-white" : "text-slate-800"
+                          }`}
+                        >
+                          {j.nombre}
+                          {j.numero !== null && ` #${j.numero}`}
+                          {j.rol === "armador" && (
+                            <span
+                              className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full ${
+                                sel
+                                  ? "bg-white/20 text-white"
+                                  : "bg-violet-100 text-violet-700"
+                              }`}
+                            >
+                              Arm
+                            </span>
+                          )}
+                        </p>
+                      </button>
+                    );
+                  })}
+              </div>
+            </>
+          ) : (
+            <>
+              <h3 className="font-semibold text-slate-800 mb-3">
+                {partidosFiltrados.length} partido
+                {partidosFiltrados.length !== 1 ? "s" : ""}
+                {modoPrincipal === "comparar-partidos" &&
+                  " — elegí hasta 3"}
+              </h3>
+
+              {partidosFiltrados.length === 0 ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 text-center">
+                  <p className="text-sm text-slate-500">
+                    Ningún partido cumple los filtros
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {partidosFiltrados.map((p) => {
+                    const idxComparado = partidosComparados.indexOf(p.id);
+                    const seleccionadoIndividual =
+                      modoPrincipal === "partido" &&
+                      partidoSeleccionado === p.id;
+                    const colorComp =
+                      idxComparado !== -1
+                        ? COLORES_COMPARACION[idxComparado]
+                        : null;
+
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() =>
+                          modoPrincipal === "partido"
+                            ? setPartidoSeleccionado(p.id)
+                            : handleTogglePartidoComparado(p.id)
+                        }
+                        className={`w-full text-left p-3 rounded-lg border transition relative ${
+                          seleccionadoIndividual
+                            ? "bg-emerald-500 border-emerald-500 text-white"
+                            : colorComp
+                            ? "border-2 text-white"
+                            : "bg-white border-slate-200 hover:bg-slate-50"
+                        }`}
+                        style={
+                          colorComp
+                            ? {
+                                backgroundColor: colorComp + "20",
+                                borderColor: colorComp,
+                              }
+                            : undefined
+                        }
+                      >
+                        {idxComparado !== -1 && (
+                          <span
+                            className="absolute top-2 right-2 w-6 h-6 rounded-full text-white text-xs font-bold flex items-center justify-center border-2 border-white shadow"
+                            style={{ backgroundColor: colorComp! }}
+                          >
+                            {idxComparado + 1}
+                          </span>
+                        )}
+                        <p
+                          className={`font-medium text-sm ${
+                            seleccionadoIndividual
+                              ? "text-white"
+                              : "text-slate-800"
+                          }`}
+                        >
+                          vs {p.rival}
+                        </p>
+                        <p
+                          className={`text-xs mt-1 ${
+                            seleccionadoIndividual
+                              ? "text-emerald-100"
+                              : "text-slate-500"
+                          }`}
+                        >
+                          📅 {p.fecha}
+                        </p>
+                        <p
+                          className={`text-xs mt-1 ${
+                            seleccionadoIndividual
+                              ? "text-emerald-100"
+                              : "text-slate-500"
+                          }`}
+                        >
+                          {scoreDe(p)}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
 
         {/* Panel derecho */}
         <div className="col-span-2">
-          {modoPrincipal === "comparar-partidos" ? (
+          {modoPrincipal === "jugador-por-partidos" ? (
+            // ===== JUGADOR POR PARTIDOS =====
+            <div className="space-y-4">
+              {!jugadorSeleccionadoJxP ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+                  <p className="text-4xl mb-3">👈</p>
+                  <p className="text-slate-600 font-medium">
+                    Elegí un jugador a la izquierda para empezar
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Selector de partidos */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                    <h4 className="font-semibold text-slate-800 mb-3">
+                      Elegí hasta 3 partidos para comparar a{" "}
+                      {nombreDe(jugadorSeleccionadoJxP)}
+                    </h4>
+                    <div className="flex gap-2 flex-wrap">
+                      {partidos.map((p) => {
+                        const idx = partidosJxP.indexOf(p.id);
+                        const color =
+                          idx !== -1 ? COLORES_COMPARACION[idx] : null;
+                        const tieneAcciones = acciones.some(
+                          (a) =>
+                            a.partido_id === p.id &&
+                            a.jugador_id === jugadorSeleccionadoJxP
+                        );
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={() => handleTogglePartidoJxP(p.id)}
+                            disabled={!tieneAcciones && idx === -1}
+                            className={`px-3 py-2 text-xs font-medium rounded-lg transition border flex items-center gap-2 ${
+                              color
+                                ? "border-2 text-slate-900"
+                                : !tieneAcciones
+                                ? "bg-slate-50 text-slate-300 cursor-not-allowed border-slate-200 opacity-50"
+                                : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                            }`}
+                            style={
+                              color
+                                ? {
+                                    backgroundColor: color + "20",
+                                    borderColor: color,
+                                  }
+                                : undefined
+                            }
+                          >
+                            {color && (
+                              <span
+                                className="w-4 h-4 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
+                                style={{ backgroundColor: color }}
+                              >
+                                {idx + 1}
+                              </span>
+                            )}
+                            vs {p.rival} · {p.fecha}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Resultados */}
+                  {partidosJxPData.length === 0 ? (
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+                      <p className="text-4xl mb-3">⚖️</p>
+                      <p className="text-slate-600 font-medium">
+                        Elegí partidos arriba para ver la evolución
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                      <div className="mb-6 pb-4 border-b border-slate-200">
+                        <h3 className="text-xl font-bold text-slate-900 mb-3">
+                          {nombreDe(jugadorSeleccionadoJxP)} en{" "}
+                          {partidosJxPData.length} partido
+                          {partidosJxPData.length !== 1 ? "s" : ""}
+                        </h3>
+                        <div className="flex flex-wrap gap-3">
+                          {partidosJxPData.map((s) => (
+                            <div
+                              key={s.id}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50"
+                            >
+                              <span
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: s.color }}
+                              />
+                              <span className="text-sm font-medium text-slate-700">
+                                {s.nombre}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mb-6">
+                        <h4 className="font-semibold text-slate-800 mb-3">
+                          Radar comparado
+                        </h4>
+                        <RadarJugador
+                          series={seriesRadarJxP}
+                          esArmador={esArmadorJxP}
+                        />
+                      </div>
+
+                      <div className="mb-6">
+                        <h4 className="font-semibold text-slate-800 mb-3">
+                          Valoración ponderada por partido
+                        </h4>
+                        <div className="overflow-x-auto rounded-lg border border-slate-200">
+                          <table className="w-full text-sm">
+                            <thead className="bg-slate-100">
+                              <tr className="text-left text-slate-500">
+                                <th className="py-2 px-3">Fundamento</th>
+                                {partidosJxPData.map((s) => (
+                                  <th
+                                    key={s.id}
+                                    className="py-2 px-3 text-right"
+                                    style={{ color: s.color }}
+                                  >
+                                    {s.nombre}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {Object.keys(
+                                partidosJxPData[0].est
+                                  .valoracionPonderadaPorFundamento
+                              ).map((f) => (
+                                <tr
+                                  key={f}
+                                  className="border-b border-slate-100"
+                                >
+                                  <td className="py-2 px-3 font-medium text-slate-700">
+                                    {NOMBRES[f] ?? f}
+                                  </td>
+                                  {partidosJxPData.map((s) => {
+                                    const val =
+                                      s.est.valoracionPonderadaPorFundamento[
+                                        f
+                                      ] ?? 0;
+                                    return (
+                                      <td
+                                        key={s.id}
+                                        className="py-2 px-3 text-right font-semibold"
+                                        style={{ color: s.color }}
+                                      >
+                                        {val > 0 ? "+" : ""}
+                                        {val.toFixed(2)}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                          <GraficoSaquePorSet series={seriesSaqueJxP} />
+                        </div>
+
+                        {!esArmadorJxP && (
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                            <GraficoRecepcionPorSet
+                              series={seriesRecepcionJxP}
+                            />
+                          </div>
+                        )}
+
+                        {esArmadorJxP && (
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                            <GraficoArmadosPorSet series={seriesArmadosJxP} />
+                          </div>
+                        )}
+
+                        <div
+                          className={`p-4 bg-slate-50 border border-slate-200 rounded-lg ${
+                            esArmadorJxP ? "" : "col-span-2"
+                          }`}
+                        >
+                          <GraficoBloqueoPorSet series={seriesBloqueoJxP} />
+                        </div>
+                      </div>
+
+                      <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-100">
+                            <tr className="text-left text-slate-500">
+                              <th className="py-2 px-3">Partido</th>
+                              <th className="py-2 px-3 text-right">Acciones</th>
+                              <th className="py-2 px-3 text-right">Puntos</th>
+                              <th className="py-2 px-3 text-right">Errores</th>
+                              <th className="py-2 px-3 text-right">Saldo</th>
+                              <th className="py-2 px-3 text-right">
+                                Val. Media
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {partidosJxPData.map((s) => (
+                              <tr
+                                key={s.id}
+                                className="border-b border-slate-100"
+                              >
+                                <td className="py-2 px-3 font-medium">
+                                  <span
+                                    className="inline-block w-3 h-3 rounded-full mr-2 align-middle"
+                                    style={{ backgroundColor: s.color }}
+                                  />
+                                  <span className="text-slate-800">
+                                    {s.nombre}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 text-right text-slate-600">
+                                  {s.est.totalAcciones}
+                                </td>
+                                <td className="py-2 px-3 text-right text-green-700">
+                                  {s.est.totalPuntos}
+                                </td>
+                                <td className="py-2 px-3 text-right text-red-700">
+                                  {s.est.totalErrores}
+                                </td>
+                                <td
+                                  className={`py-2 px-3 text-right font-semibold ${
+                                    s.est.saldoTotal > 0
+                                      ? "text-green-700"
+                                      : s.est.saldoTotal < 0
+                                      ? "text-red-700"
+                                      : "text-slate-600"
+                                  }`}
+                                >
+                                  {s.est.saldoTotal > 0 ? "+" : ""}
+                                  {s.est.saldoTotal}
+                                </td>
+                                <td
+                                  className={`py-2 px-3 text-right font-semibold ${
+                                    s.est.valoracionMediaNormalizada > 0
+                                      ? "text-green-700"
+                                      : s.est.valoracionMediaNormalizada < 0
+                                      ? "text-red-700"
+                                      : "text-slate-600"
+                                  }`}
+                                >
+                                  {s.est.valoracionMediaNormalizada > 0
+                                    ? "+"
+                                    : ""}
+                                  {s.est.valoracionMediaNormalizada.toFixed(2)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ) : modoPrincipal === "comparar-partidos" ? (
             // ===== COMPARAR PARTIDOS =====
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
               {partidosComparadosData.length === 0 ? (
@@ -672,7 +1126,9 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                                 className="inline-block w-3 h-3 rounded-full mr-2 align-middle"
                                 style={{ backgroundColor: s.color }}
                               />
-                              <span className="text-slate-800">{s.nombre}</span>
+                              <span className="text-slate-800">
+                                {s.nombre}
+                              </span>
                             </td>
                             <td className="py-2 px-3 text-right text-slate-600">
                               {s.stats.totalAcciones}
@@ -704,7 +1160,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               )}
             </div>
           ) : !partidoDetalle || !statsPartido ? (
-            // Sin partido seleccionado
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center h-full flex items-center justify-center">
               <div>
                 <p className="text-4xl mb-3">👈</p>
@@ -714,9 +1169,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               </div>
             </div>
           ) : (
-            // ===== VER PARTIDO =====
             <div className="space-y-4">
-              {/* Sub-toggle análisis / comparar jugadores */}
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => {
@@ -743,7 +1196,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 </button>
               </div>
 
-              {/* Header del partido */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
                 <div className="flex justify-between items-start">
                   <div>
@@ -770,10 +1222,8 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 )}
               </div>
 
-              {/* MODO COMPARAR JUGADORES */}
               {modoDetalle === "comparar-jugadores" && (
                 <>
-                  {/* Selector de jugadores */}
                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
                     <h4 className="font-semibold text-slate-800 mb-3">
                       Elegí hasta 3 jugadores (mismo rol)
@@ -809,7 +1259,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                               disabled={bloqueado || puedeAgregarMas}
                               className={`text-left px-3 py-2 rounded-lg border transition text-sm ${
                                 colorComp
-                                  ? "border-2 text-white"
+                                  ? "border-2"
                                   : bloqueado || puedeAgregarMas
                                   ? "bg-slate-50 text-slate-300 cursor-not-allowed opacity-50 border-slate-200"
                                   : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
@@ -843,7 +1293,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     </div>
                   </div>
 
-                  {/* Gráficos comparativos de los jugadores */}
                   {statsJugadoresComparados.length > 0 ? (
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                       <div className="mb-6">
@@ -951,7 +1400,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 </>
               )}
 
-              {/* MODO ANÁLISIS (el de siempre) */}
               {modoDetalle === "analisis" && (
                 <>
                   <div className="grid grid-cols-3 gap-3">
