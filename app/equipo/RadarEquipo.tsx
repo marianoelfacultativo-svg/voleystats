@@ -12,7 +12,6 @@ import type { EstadisticasJugador } from "@/lib/estadisticas";
 
 interface Props {
   equipo: EstadisticasJugador;
-  maximosHistoricos: Record<string, number>;
 }
 
 const ETIQUETAS: Record<string, string> = {
@@ -23,7 +22,7 @@ const ETIQUETAS: Record<string, string> = {
   defensa: "Defensa",
 };
 
-export default function RadarEquipo({ equipo, maximosHistoricos }: Props) {
+export default function RadarEquipo({ equipo }: Props) {
   const fundamentos = [
     "saque",
     "defensa",
@@ -33,21 +32,20 @@ export default function RadarEquipo({ equipo, maximosHistoricos }: Props) {
   ];
 
   const datos = fundamentos.map((f) => {
-    const real = equipo.valoracionTotalPorFundamento[f] ?? 0;
-    const max = maximosHistoricos[f] ?? 0;
-    const normalizado = max > 0 ? (real / max) * 100 : 0;
+    const norm = equipo.valoracionPromedioNormalizado[f] ?? 0;
+    const real = equipo.valoracionPorFundamento[f] ?? 0;
     const acciones = equipo.porFundamento[f]?.total ?? 0;
 
     return {
       fundamento: ETIQUETAS[f],
-      valor: normalizado,
+      valor: norm,
+      valorNorm: norm,
       valorReal: real,
-      max,
       acciones,
     };
   });
 
-  const minEje = -25;
+  const minEje = -110;
   const maxEje = 110;
 
   return (
@@ -86,25 +84,24 @@ export default function RadarEquipo({ equipo, maximosHistoricos }: Props) {
             <p className="text-xs text-amber-700">{d.fundamento}</p>
             <p
               className={`font-semibold text-sm ${
-                d.valorReal > 0
+                d.valorNorm > 0
                   ? "text-green-700"
-                  : d.valorReal < 0
+                  : d.valorNorm < 0
                   ? "text-red-700"
                   : "text-amber-900"
               }`}
             >
-              {d.valorReal > 0 ? "+" : ""}
-              {d.valorReal.toFixed(0)}
+              {d.valorNorm > 0 ? "+" : ""}
+              {d.valorNorm.toFixed(0)}
             </p>
             <p className="text-[10px] text-amber-600">
-              {d.valor.toFixed(0)}% de {d.max.toFixed(0)} · {d.acciones} acc.
+              {d.acciones} acc.
             </p>
           </div>
         ))}
       </div>
       <p className="text-xs text-slate-400 mt-3 text-center">
-        Cada eje: valor del partido / máximo histórico del equipo en ese
-        fundamento.
+        Valoración normalizada por fundamento (-100 a +100).
       </p>
     </div>
   );

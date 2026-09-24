@@ -84,7 +84,7 @@ const SALDO_DEF_NEGATIVOS = [
 ];
 
 // ============================================
-// VALORES
+// VALORES CRUDOS
 // ============================================
 
 export const VALORES_SAQUE: Record<string, number> = {
@@ -156,6 +156,26 @@ export const VALORES_POR_FUNDAMENTO: Record<
   armados: VALORES_ARMADOS,
   toque: VALORES_TOQUE,
 };
+
+// Rangos min/max por fundamento (para normalizar)
+const RANGOS: Record<string, { min: number; max: number }> = {
+  saque: { min: -2, max: 5 },
+  recepcion: { min: 0, max: 5 },
+  ataque: { min: -4, max: 4 },
+  bloqueo: { min: -2, max: 4 },
+  defensa: { min: -8, max: 4 },
+  armados: { min: -1, max: 5 },
+  toque: { min: -4, max: 4 },
+};
+
+// Normalizar un valor crudo a -1..+1
+function normalizarValor(fundamento: string, valorCrudo: number): number {
+  const r = RANGOS[fundamento];
+  if (!r) return valorCrudo;
+  const rango = r.max - r.min;
+  if (rango === 0) return 0;
+  return ((valorCrudo - r.min) / rango) * 2 - 1;
+}
 
 export const ETIQUETAS_VALORACION: Record<string, string> = {
   ace: "Ace",
@@ -255,9 +275,13 @@ export interface EstadisticasJugador {
   totalErrores: number;
   saldoTotal: number;
   saldoDefensivo: number;
+  // CRUDO (para gráficos por set)
   valoracionMedia: number;
   valoracionPorFundamento: Record<string, number>;
   valoracionTotalPorFundamento: Record<string, number>;
+  // NORMALIZADO -100..+100
+  valoracionMediaNormalizada: number;
+  valoracionPromedioNormalizado: Record<string, number>;
   porFundamento: Record<string, EstadisticasFundamento>;
   armador?: EstadisticasArmador;
   recepcion?: {
@@ -345,39 +369,66 @@ function calcularFundamentoNormal(
 }
 
 // ============================================
-// VALORACIONES (TOTAL y PROMEDIO)
+// VALORACIONES (normalizadas)
 // ============================================
 
 function calcularValoraciones(
   acciones: AccionDB[],
   fundamentos: string[]
 ): {
+  promedioNormalizado: Record<string, number>;
+  mediaNormalizada: number;
+  valoracionMediaCruda: number;
   totalPorFundamento: Record<string, number>;
   promedioPorFundamento: Record<string, number>;
 } {
+  const promedioNormalizado: Record<string, number> = {};
   const totalPorFundamento: Record<string, number> = {};
   const promedioPorFundamento: Record<string, number> = {};
+
+  let sumaNormTotal = 0;
+  let countNormTotal = 0;
+  let sumaCrudaTotal = 0;
+  let countCrudaTotal = 0;
 
   for (const fund of fundamentos) {
     const valores = VALORES_POR_FUNDAMENTO[fund];
     if (!valores) continue;
 
     const propias = acciones.filter((a) => a.fundamento === fund);
-    let suma = 0;
+    let sumaCruda = 0;
+    let sumaNorm = 0;
     let count = 0;
+
     for (const a of propias) {
       const v = valores[a.valoracion];
       if (v === undefined) continue;
-      suma += v * a.cantidad;
+      sumaCruda += v * a.cantidad;
+      sumaNorm += normalizarValor(fund, v) * a.cantidad;
       count += a.cantidad;
     }
+
     if (count > 0) {
-      totalPorFundamento[fund] = suma;
-      promedioPorFundamento[fund] = suma / count;
+      totalPorFundamento[fund] = sumaCruda;
+      promedioPorFundamento[fund] = sumaCruda / count;
+      // Promedio normalizado × 100 (para mostrar -100 a +100)
+      promedioNormalizado[fund] = (sumaNorm / count) * 100;
+      sumaNormTotal += sumaNorm;
+      countNormTotal += count;
+      sumaCrudaTotal += sumaCruda;
+      countCrudaTotal += count;
     }
   }
 
-  return { totalPorFundamento, promedioPorFundamento };
+  return {
+    promedioNormalizado,
+    mediaNormalizada:
+      countNormTotal > 0 ? (sumaNormTotal / countNormTotal) * 100 : 0,
+    valoracionMediaCruda:
+      countCrudaTotal > 0 ? sumaCrudaTotal / countCrudaTotal : 0,
+    totalPorFundamento,
+    promedioPorFundamento,
+  };
 }
 
 // ============================================
@@ -580,17 +631,7 @@ export function calcularEstadisticasJugador(
   );
   const saldoDefensivo = saldoDefPos - saldoDefNeg;
 
-  const { totalPorFundamento, promedioPorFundamento } = calcularValoraciones(
-    propias,
-    fundamentosValoracion
-  );
-
-  const sumaTotal = Object.values(totalPorFundamento).reduce(
-    (a, b) => a + b,
-    0
-  );
-  const valoracionMedia =
-    totalAcciones > 0 ? sumaTotal / totalAcciones : 0;
+  const vals = calcularValoraciones(propias, fundamentosValoracion);
 
   let recepcion: EstadisticasJugador["recepcion"] | undefined;
   if (!esArmador) {
@@ -606,9 +647,11 @@ export function calcularEstadisticasJugador(
     totalErrores,
     saldoTotal,
     saldoDefensivo,
-    valoracionMedia,
-    valoracionPorFundamento: promedioPorFundamento,
-    valoracionTotalPorFundamento: totalPorFundamento,
+    valoracionMedia: vals.valoracionMediaCruda,
+    valoracionPorFundamento: vals.promedioPorFundamento,
+    valoracionTotalPorFundamento: vals.totalPorFundamento,
+    valoracionMediaNormalizada: vals.mediaNormalizada,
+    valoracionPromedioNormalizado: vals.promedioNormalizado,
     porFundamento,
     armador,
     recepcion,
@@ -616,7 +659,7 @@ export function calcularEstadisticasJugador(
 }
 
 // ============================================
-// ESTADÍSTICAS DEL EQUIPO
+// EQUIPO
 // ============================================
 
 export function calcularEstadisticasEquipo(
@@ -648,6 +691,8 @@ export function calcularEstadisticasEquipo(
     valoracionMedia: 0,
     valoracionPorFundamento: {},
     valoracionTotalPorFundamento: {},
+    valoracionMediaNormalizada: 0,
+    valoracionPromedioNormalizado: {},
     porFundamento: {},
   };
 
@@ -664,8 +709,8 @@ export function calcularEstadisticasEquipo(
     };
   }
 
-  let sumaTotalVal = 0;
-  let countTotalVal = 0;
+  let sumaNormTotal = 0;
+  let countNormTotal = 0;
 
   for (const id of jugadoresIds) {
     const est = calcularEstadisticasJugador(
@@ -683,15 +728,17 @@ export function calcularEstadisticasEquipo(
     totalesIniciales.saldoTotal += est.saldoTotal;
     totalesIniciales.saldoDefensivo += est.saldoDefensivo;
 
-    // Sumar totales de valoración
-    for (const [fund, total] of Object.entries(
-      est.valoracionTotalPorFundamento
+    for (const [fund, val] of Object.entries(
+      est.valoracionPromedioNormalizado
     )) {
-      if (!totalesIniciales.valoracionTotalPorFundamento[fund]) {
-        totalesIniciales.valoracionTotalPorFundamento[fund] = 0;
+      const totalFund = est.porFundamento[fund]?.total ?? 0;
+      if (!totalesIniciales.valoracionPromedioNormalizado[fund]) {
+        totalesIniciales.valoracionPromedioNormalizado[fund] = 0;
       }
-      totalesIniciales.valoracionTotalPorFundamento[fund] += total;
-      sumaTotalVal += total;
+      totalesIniciales.valoracionPromedioNormalizado[fund] +=
+        val * totalFund;
+      sumaNormTotal += val * totalFund;
+      countNormTotal += totalFund;
     }
 
     for (const fund of fundamentos) {
@@ -710,22 +757,19 @@ export function calcularEstadisticasEquipo(
   for (const fund of fundamentos) {
     const tf = totalesIniciales.porFundamento[fund];
     tf.efectividad = tf.total > 0 ? (tf.saldo / tf.total) * 100 : 0;
-  }
-
-  // Promedio por fundamento del equipo
-  for (const [fund, total] of Object.entries(
-    totalesIniciales.valoracionTotalPorFundamento
-  )) {
-    const totalAccionesFund = totalesIniciales.porFundamento[fund]?.total ?? 0;
-    if (totalAccionesFund > 0) {
-      totalesIniciales.valoracionPorFundamento[fund] =
-        total / totalAccionesFund;
+    // Dividir la suma acumulada por la cantidad de acciones para obtener promedio
+    if (
+      totalesIniciales.valoracionPromedioNormalizado[fund] !== undefined
+    ) {
+      totalesIniciales.valoracionPromedioNormalizado[fund] =
+        tf.total > 0
+          ? totalesIniciales.valoracionPromedioNormalizado[fund] / tf.total
+          : 0;
     }
-    countTotalVal += totalAccionesFund;
   }
 
-  totalesIniciales.valoracionMedia =
-    countTotalVal > 0 ? sumaTotalVal / countTotalVal : 0;
+  totalesIniciales.valoracionMediaNormalizada =
+    countNormTotal > 0 ? sumaNormTotal / countNormTotal : 0;
 
   return { porJugador, totales: totalesIniciales };
 }

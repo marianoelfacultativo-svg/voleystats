@@ -217,15 +217,15 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               />
             </div>
 
-            {Object.keys(jugadorActual.valoracionTotalPorFundamento).length >
+            {Object.keys(jugadorActual.valoracionPromedioNormalizado).length >
               0 && (
               <div className="mb-6">
                 <h4 className="font-semibold text-slate-800 mb-3">
-                  Valoración total por fundamento
+                  Valoración normalizada por fundamento
                 </h4>
                 <div className="grid grid-cols-5 gap-2">
                   {Object.entries(
-                    jugadorActual.valoracionTotalPorFundamento
+                    jugadorActual.valoracionPromedioNormalizado
                   ).map(([fund, val]) => (
                     <div
                       key={fund}
@@ -244,7 +244,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         }`}
                       >
                         {val > 0 ? "+" : ""}
-                        {val}
+                        {val.toFixed(1)}
                       </p>
                     </div>
                   ))}
@@ -356,15 +356,15 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                 </p>
                 <p
                   className={`text-2xl font-bold ${
-                    jugadorActual.valoracionMedia > 0
+                    jugadorActual.valoracionMediaNormalizada > 0
                       ? "text-green-700"
-                      : jugadorActual.valoracionMedia < 0
+                      : jugadorActual.valoracionMediaNormalizada < 0
                       ? "text-red-700"
                       : "text-slate-700"
                   }`}
                 >
-                  {jugadorActual.valoracionMedia > 0 ? "+" : ""}
-                  {jugadorActual.valoracionMedia.toFixed(1)}
+                  {jugadorActual.valoracionMediaNormalizada > 0 ? "+" : ""}
+                  {jugadorActual.valoracionMediaNormalizada.toFixed(1)}
                 </p>
               </div>
 

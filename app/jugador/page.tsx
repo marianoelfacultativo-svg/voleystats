@@ -334,13 +334,13 @@ export default function JugadorPage() {
                 />
               </div>
 
-              {Object.keys(stats.valoracionTotalPorFundamento).length > 0 && (
+              {Object.keys(stats.valoracionPromedioNormalizado).length > 0 && (
                 <div className="mb-6">
                   <h3 className="font-semibold text-slate-800 mb-3">
-                    Valoración total por fundamento
+                    Valoración normalizada por fundamento
                   </h3>
                   <div className="grid grid-cols-5 gap-2">
-                    {Object.entries(stats.valoracionTotalPorFundamento).map(
+                    {Object.entries(stats.valoracionPromedioNormalizado).map(
                       ([fund, val]) => (
                         <div
                           key={fund}
@@ -359,7 +359,7 @@ export default function JugadorPage() {
                             }`}
                           >
                             {val > 0 ? "+" : ""}
-                            {val}
+                            {val.toFixed(1)}
                           </p>
                         </div>
                       )
@@ -472,15 +472,15 @@ export default function JugadorPage() {
                   </p>
                   <p
                     className={`text-2xl font-bold ${
-                      stats.valoracionMedia > 0
+                      stats.valoracionMediaNormalizada > 0
                         ? "text-green-700"
-                        : stats.valoracionMedia < 0
+                        : stats.valoracionMediaNormalizada < 0
                         ? "text-red-700"
                         : "text-slate-700"
                     }`}
                   >
-                    {stats.valoracionMedia > 0 ? "+" : ""}
-                    {stats.valoracionMedia.toFixed(1)}
+                    {stats.valoracionMediaNormalizada > 0 ? "+" : ""}
+                    {stats.valoracionMediaNormalizada.toFixed(1)}
                   </p>
                 </div>
 

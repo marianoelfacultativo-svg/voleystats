@@ -24,11 +24,7 @@ const ETIQUETAS: Record<string, string> = {
   defensa: "Defensa",
 };
 
-export default function RadarJugador({
-  jugador,
-  todosJugadores,
-  esArmador,
-}: Props) {
+export default function RadarJugador({ jugador, esArmador }: Props) {
   const fundamentosNormal = [
     "saque",
     "defensa",
@@ -40,35 +36,21 @@ export default function RadarJugador({
 
   const fundamentos = esArmador ? fundamentosArmador : fundamentosNormal;
 
-  const grupo =
-    todosJugadores && todosJugadores.length > 0 ? todosJugadores : [jugador];
-
-  // Máximo del equipo por fundamento
-  const maxPorFundamento: Record<string, number> = {};
-  for (const f of fundamentos) {
-    let max = 0;
-    for (const est of grupo) {
-      const v = est.valoracionTotalPorFundamento[f] ?? 0;
-      if (v > max) max = v;
-    }
-    maxPorFundamento[f] = max;
-  }
-
-  // Normalizar a escala 0-100 (relativo al máximo del equipo)
   const datos = fundamentos.map((f) => {
-    const real = jugador.valoracionTotalPorFundamento[f] ?? 0;
-    const max = maxPorFundamento[f];
-    let normalizado = max > 0 ? (real / max) * 100 : 0;
+    const norm = jugador.valoracionPromedioNormalizado[f] ?? 0;
+    const real = jugador.valoracionPorFundamento[f] ?? 0;
+    const acciones = jugador.porFundamento[f]?.total ?? 0;
 
     return {
       fundamento: ETIQUETAS[f],
-      valor: normalizado,
+      valor: norm,
+      valorNorm: norm,
       valorReal: real,
-      acciones: jugador.porFundamento[f]?.total ?? 0,
+      acciones,
     };
   });
 
-  const minEje = -25;
+  const minEje = -110;
   const maxEje = 110;
 
   return (
@@ -111,26 +93,25 @@ export default function RadarJugador({
             <p className="text-xs text-slate-500">{d.fundamento}</p>
             <p
               className={`font-semibold text-sm ${
-                d.valorReal > 0
+                d.valorNorm > 0
                   ? "text-green-700"
-                  : d.valorReal < 0
+                  : d.valorNorm < 0
                   ? "text-red-700"
                   : "text-slate-800"
               }`}
             >
-              {d.valorReal > 0 ? "+" : ""}
-              {d.valorReal.toFixed(0)}
+              {d.valorNorm > 0 ? "+" : ""}
+              {d.valorNorm.toFixed(0)}
             </p>
             <p className="text-[10px] text-slate-400">
-              {d.valor.toFixed(0)}% · {d.acciones} acc.
+              {d.acciones} acc.
             </p>
           </div>
         ))}
       </div>
 
       <p className="text-xs text-slate-400 mt-3 text-center">
-        Escala -25 a 110. Cada eje es el valor del jugador relativo al{" "}
-        <strong>máximo del equipo</strong>.
+        Valoración normalizada por fundamento (-100 a +100).
       </p>
     </div>
   );

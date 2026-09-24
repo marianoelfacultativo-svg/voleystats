@@ -138,15 +138,15 @@ export default function TablaJugadoresPorSet({
                     </td>
                     <td
                       className={`py-2 px-3 text-right font-semibold ${
-                        est.valoracionMedia > 0
+                        est.valoracionMediaNormalizada > 0
                           ? "text-green-700"
-                          : est.valoracionMedia < 0
+                          : est.valoracionMediaNormalizada < 0
                           ? "text-red-700"
                           : "text-slate-600"
                       }`}
                     >
-                      {est.valoracionMedia > 0 ? "+" : ""}
-                      {est.valoracionMedia.toFixed(1)}
+                      {est.valoracionMediaNormalizada > 0 ? "+" : ""}
+                      {est.valoracionMediaNormalizada.toFixed(1)}
                     </td>
                     <td className="py-2 px-3 text-right">
                       <button
@@ -301,15 +301,15 @@ function DetalleJugador({
           <p className="text-xs text-slate-500 uppercase">Valoración Media</p>
           <p
             className={`text-xl font-bold ${
-              est.valoracionMedia > 0
+              est.valoracionMediaNormalizada > 0
                 ? "text-green-700"
-                : est.valoracionMedia < 0
+                : est.valoracionMediaNormalizada < 0
                 ? "text-red-700"
                 : "text-slate-700"
             }`}
           >
-            {est.valoracionMedia > 0 ? "+" : ""}
-            {est.valoracionMedia.toFixed(1)}
+            {est.valoracionMediaNormalizada > 0 ? "+" : ""}
+            {est.valoracionMediaNormalizada.toFixed(1)}
           </p>
         </div>
 
@@ -344,7 +344,7 @@ function DetalleJugador({
               <th className="py-2 px-3 text-right">Puntos</th>
               <th className="py-2 px-3 text-right">Errores</th>
               <th className="py-2 px-3 text-right">Saldo</th>
-              <th className="py-2 px-3 text-right">Val.Tot</th>
+              <th className="py-2 px-3 text-right">Val.Norm</th>
               <th className="py-2 px-3 text-right"></th>
             </tr>
           </thead>
@@ -355,7 +355,7 @@ function DetalleJugador({
               if (!e || e.total === 0) return null;
               const abierto = valoresAbiertos.has(f);
               const detalle = valoracionesDe(f);
-              const valTot = est.valoracionTotalPorFundamento[f] ?? 0;
+              const valNorm = est.valoracionPromedioNormalizado[f] ?? 0;
 
               return (
                 <>
@@ -392,15 +392,15 @@ function DetalleJugador({
                     </td>
                     <td
                       className={`py-2 px-3 text-right font-semibold ${
-                        valTot > 0
+                        valNorm > 0
                           ? "text-green-700"
-                          : valTot < 0
+                          : valNorm < 0
                           ? "text-red-700"
                           : "text-slate-600"
                       }`}
                     >
-                      {valTot > 0 ? "+" : ""}
-                      {valTot}
+                      {valNorm > 0 ? "+" : ""}
+                      {valNorm.toFixed(1)}
                     </td>
                     <td className="py-2 px-3 text-right">
                       <button
