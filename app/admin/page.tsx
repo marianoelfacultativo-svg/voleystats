@@ -39,6 +39,12 @@ interface Partido {
   set3: string | null;
   set4: string | null;
   set5: string | null;
+  set1_ganado: boolean | null;
+  set2_ganado: boolean | null;
+  set3_ganado: boolean | null;
+  set4_ganado: boolean | null;
+  set5_ganado: boolean | null;
+  resultado_partido: string | null;
   errores_rivales: number | null;
   buenas_rivales: number | null;
   notas: string | null;
@@ -62,9 +68,15 @@ export default function AdminPage() {
   const [equipos, setEquipos] = useState<Equipo[]>([]);
   const [cargandoEquipos, setCargandoEquipos] = useState(false);
   const [nombreNuevo, setNombreNuevo] = useState("");
+  const [archivoLogoNuevo, setArchivoLogoNuevo] = useState<File | null>(null);
+  const [previewLogoNuevo, setPreviewLogoNuevo] = useState("");
   const [creandoEquipo, setCreandoEquipo] = useState(false);
+
   const [editandoEquipoId, setEditandoEquipoId] = useState<string | null>(null);
   const [nombreEditandoEquipo, setNombreEditandoEquipo] = useState("");
+  const [archivoLogoEdit, setArchivoLogoEdit] = useState<File | null>(null);
+  const [previewLogoEdit, setPreviewLogoEdit] = useState("");
+  const [logoEditActual, setLogoEditActual] = useState("");
 
   // Jugadores
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
@@ -101,6 +113,12 @@ export default function AdminPage() {
     set3: "",
     set4: "",
     set5: "",
+    set1_ganado: null as boolean | null,
+    set2_ganado: null as boolean | null,
+    set3_ganado: null as boolean | null,
+    set4_ganado: null as boolean | null,
+    set5_ganado: null as boolean | null,
+    resultado_partido: "" as "" | "ganado" | "perdido",
     errores_rivales: "",
     buenas_rivales: "",
     notas: "",
@@ -191,9 +209,12 @@ export default function AdminPage() {
     router.push("/");
   };
 
-  const subirImagen = async (file: File): Promise<string | null> => {
+  const subirImagen = async (
+    file: File,
+    carpeta: string = "jugadores"
+  ): Promise<string | null> => {
     const ext = file.name.split(".").pop() || "jpg";
-    const path = `jugadores/${Date.now()}-${Math.random()
+    const path = `${carpeta}/${Date.now()}-${Math.random()
       .toString(36)
       .slice(2)}.${ext}`;
 
@@ -215,29 +236,55 @@ export default function AdminPage() {
     const nombre = nombreNuevo.trim();
     if (!nombre) return;
     setCreandoEquipo(true);
-    const { error } = await supabase.from("equipos").insert({ nombre });
+
+    let logoUrl: string | null = null;
+    if (archivoLogoNuevo) {
+      logoUrl = await subirImagen(archivoLogoNuevo, "equipos");
+      if (!logoUrl && archivoLogoNuevo) {
+        setCreandoEquipo(false);
+        return;
+      }
+    }
+
+    const { error } = await supabase
+      .from("equipos")
+      .insert({ nombre, logo_url: logoUrl });
+
     setCreandoEquipo(false);
     if (error) {
       alert("Error al crear: " + error.message);
       return;
     }
     setNombreNuevo("");
+    setArchivoLogoNuevo(null);
+    setPreviewLogoNuevo("");
     cargarEquipos();
   };
 
   const guardarEdicionEquipo = async (id: string) => {
     const nombre = nombreEditandoEquipo.trim();
     if (!nombre) return;
+
+    let logoUrl: string | null = logoEditActual || null;
+    if (archivoLogoEdit) {
+      const urlSubida = await subirImagen(archivoLogoEdit, "equipos");
+      if (!urlSubida) return;
+      logoUrl = urlSubida;
+    }
+
     const { error } = await supabase
       .from("equipos")
-      .update({ nombre })
+      .update({ nombre, logo_url: logoUrl })
       .eq("id", id);
+
     if (error) {
       alert("Error al editar: " + error.message);
       return;
     }
     setEditandoEquipoId(null);
     setNombreEditandoEquipo("");
+    setArchivoLogoEdit(null);
+    setPreviewLogoEdit("");
     cargarEquipos();
   };
 
@@ -259,7 +306,7 @@ export default function AdminPage() {
 
     let imagenUrl: string | null = null;
     if (archivoImagenNuevo) {
-      imagenUrl = await subirImagen(archivoImagenNuevo);
+      imagenUrl = await subirImagen(archivoImagenNuevo, "jugadores");
       if (!imagenUrl) {
         setCreandoJugador(false);
         return;
@@ -304,9 +351,8 @@ export default function AdminPage() {
     if (!nombre) return;
 
     let imagenUrl: string | null = editImagenActual || null;
-
     if (editArchivoImagen) {
-      const urlSubida = await subirImagen(editArchivoImagen);
+      const urlSubida = await subirImagen(editArchivoImagen, "jugadores");
       if (!urlSubida) return;
       imagenUrl = urlSubida;
     }
@@ -385,6 +431,12 @@ export default function AdminPage() {
       set3: nuevoPartido.set3.trim() || null,
       set4: nuevoPartido.set4.trim() || null,
       set5: nuevoPartido.set5.trim() || null,
+      set1_ganado: nuevoPartido.set1_ganado,
+      set2_ganado: nuevoPartido.set2_ganado,
+      set3_ganado: nuevoPartido.set3_ganado,
+      set4_ganado: nuevoPartido.set4_ganado,
+      set5_ganado: nuevoPartido.set5_ganado,
+      resultado_partido: nuevoPartido.resultado_partido || null,
       errores_rivales: nuevoPartido.errores_rivales
         ? parseInt(nuevoPartido.errores_rivales)
         : 0,
@@ -407,6 +459,12 @@ export default function AdminPage() {
       set3: "",
       set4: "",
       set5: "",
+      set1_ganado: null,
+      set2_ganado: null,
+      set3_ganado: null,
+      set4_ganado: null,
+      set5_ganado: null,
+      resultado_partido: "",
       errores_rivales: "",
       buenas_rivales: "",
       notas: "",
@@ -435,6 +493,12 @@ export default function AdminPage() {
         set3: editPartido.set3?.trim() || null,
         set4: editPartido.set4?.trim() || null,
         set5: editPartido.set5?.trim() || null,
+        set1_ganado: editPartido.set1_ganado,
+        set2_ganado: editPartido.set2_ganado,
+        set3_ganado: editPartido.set3_ganado,
+        set4_ganado: editPartido.set4_ganado,
+        set5_ganado: editPartido.set5_ganado,
+        resultado_partido: editPartido.resultado_partido || null,
         errores_rivales: editPartido.errores_rivales ?? 0,
         buenas_rivales: editPartido.buenas_rivales ?? 0,
         notas: editPartido.notas?.trim() || null,
@@ -548,7 +612,55 @@ export default function AdminPage() {
   ];
 
   const inputBase =
-    "px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500";
+    "px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500";
+
+  // Componente: selector G/P/— para cada set
+  const SelectorSetGanado = ({
+    valor,
+    onChange,
+  }: {
+    valor: boolean | null;
+    onChange: (v: boolean | null) => void;
+  }) => (
+    <div className="flex gap-1">
+      <button
+        type="button"
+        onClick={() => onChange(true)}
+        className={`px-2 py-1 text-xs font-semibold rounded transition ${
+          valor === true
+            ? "bg-green-500 text-white"
+            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+        }`}
+        title="Ganado"
+      >
+        G
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange(false)}
+        className={`px-2 py-1 text-xs font-semibold rounded transition ${
+          valor === false
+            ? "bg-red-500 text-white"
+            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+        }`}
+        title="Perdido"
+      >
+        P
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange(null)}
+        className={`px-2 py-1 text-xs font-semibold rounded transition ${
+          valor === null
+            ? "bg-slate-600 text-white"
+            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+        }`}
+        title="Sin marcar"
+      >
+        —
+      </button>
+    </div>
+  );
 
   return (
     <main className="min-h-screen p-8">
@@ -589,7 +701,7 @@ export default function AdminPage() {
               onClick={() => setSeccion(s.id)}
               className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
                 seccion === s.id
-                  ? "border-blue-500 text-blue-600"
+                  ? "border-emerald-500 text-emerald-600"
                   : "border-transparent text-slate-500 hover:text-slate-700"
               }`}
             >
@@ -605,23 +717,51 @@ export default function AdminPage() {
               <h2 className="text-xl font-semibold text-slate-900 mb-6">
                 Equipos
               </h2>
-              <div className="flex gap-2 mb-6">
-                <input
-                  type="text"
-                  value={nombreNuevo}
-                  onChange={(e) => setNombreNuevo(e.target.value)}
-                  placeholder="Nombre del nuevo equipo"
-                  className={`flex-1 ${inputBase}`}
-                  onKeyDown={(e) => e.key === "Enter" && crearEquipo()}
-                />
-                <button
-                  onClick={crearEquipo}
-                  disabled={creandoEquipo || !nombreNuevo.trim()}
-                  className="px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white font-medium rounded-lg"
-                >
-                  {creandoEquipo ? "Creando..." : "+ Agregar"}
-                </button>
+              <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
+                <p className="text-sm font-medium text-slate-700">
+                  Nuevo equipo
+                </p>
+                <div className="flex gap-3 items-start">
+                  <input
+                    type="text"
+                    value={nombreNuevo}
+                    onChange={(e) => setNombreNuevo(e.target.value)}
+                    placeholder="Nombre del equipo"
+                    className={`flex-1 ${inputBase}`}
+                    onKeyDown={(e) => e.key === "Enter" && crearEquipo()}
+                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setArchivoLogoNuevo(file);
+                          setPreviewLogoNuevo(URL.createObjectURL(file));
+                        }
+                      }}
+                      className="text-xs text-slate-600 file:mr-2 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-100 file:text-emerald-700 hover:file:bg-emerald-200 file:cursor-pointer"
+                    />
+                    {previewLogoNuevo && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={previewLogoNuevo}
+                        alt="preview"
+                        className="w-10 h-10 rounded-full object-cover border-2 border-slate-200"
+                      />
+                    )}
+                  </div>
+                  <button
+                    onClick={crearEquipo}
+                    disabled={creandoEquipo || !nombreNuevo.trim()}
+                    className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 text-white font-medium rounded-lg"
+                  >
+                    {creandoEquipo ? "Creando..." : "+ Agregar"}
+                  </button>
+                </div>
               </div>
+
               {cargandoEquipos ? (
                 <p className="text-slate-500 text-center py-8">Cargando...</p>
               ) : equipos.length === 0 ? (
@@ -633,40 +773,82 @@ export default function AdminPage() {
                   {equipos.map((eq) => (
                     <div
                       key={eq.id}
-                      className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200"
+                      className="p-3 bg-slate-50 rounded-lg border border-slate-200"
                     >
                       {editandoEquipoId === eq.id ? (
-                        <>
+                        <div className="space-y-2">
                           <input
                             type="text"
                             value={nombreEditandoEquipo}
                             onChange={(e) =>
                               setNombreEditandoEquipo(e.target.value)
                             }
-                            className={`flex-1 ${inputBase}`}
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter")
-                                guardarEdicionEquipo(eq.id);
-                              if (e.key === "Escape")
-                                setEditandoEquipoId(null);
-                            }}
+                            className={`w-full ${inputBase}`}
                           />
-                          <button
-                            onClick={() => guardarEdicionEquipo(eq.id)}
-                            className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm rounded-lg"
-                          >
-                            Guardar
-                          </button>
-                          <button
-                            onClick={() => setEditandoEquipoId(null)}
-                            className="px-3 py-1.5 bg-slate-300 hover:bg-slate-400 text-slate-700 text-sm rounded-lg"
-                          >
-                            Cancelar
-                          </button>
-                        </>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  setArchivoLogoEdit(file);
+                                  setPreviewLogoEdit(
+                                    URL.createObjectURL(file)
+                                  );
+                                }
+                              }}
+                              className="text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-100 file:text-emerald-700 hover:file:bg-emerald-200 file:cursor-pointer"
+                            />
+                            {previewLogoEdit ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={previewLogoEdit}
+                                alt="preview"
+                                className="w-10 h-10 rounded-full object-cover border-2 border-emerald-300"
+                              />
+                            ) : logoEditActual ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={logoEditActual}
+                                alt="logo"
+                                className="w-10 h-10 rounded-full object-cover border-2 border-slate-200"
+                              />
+                            ) : null}
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={() => guardarEdicionEquipo(eq.id)}
+                              className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm rounded-lg"
+                            >
+                              Guardar
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditandoEquipoId(null);
+                                setArchivoLogoEdit(null);
+                                setPreviewLogoEdit("");
+                              }}
+                              className="px-3 py-1.5 bg-slate-300 hover:bg-slate-400 text-slate-700 text-sm rounded-lg"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
                       ) : (
-                        <>
+                        <div className="flex items-center gap-3">
+                          {eq.logo_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={eq.logo_url}
+                              alt={eq.nombre}
+                              className="w-10 h-10 rounded-full object-cover border-2 border-slate-200"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-emerald-100 border-2 border-emerald-200 flex items-center justify-center text-sm font-bold text-emerald-600">
+                              {eq.nombre.charAt(0).toUpperCase()}
+                            </div>
+                          )}
                           <span className="flex-1 font-medium text-slate-800">
                             🏐 {eq.nombre}
                           </span>
@@ -674,6 +856,9 @@ export default function AdminPage() {
                             onClick={() => {
                               setEditandoEquipoId(eq.id);
                               setNombreEditandoEquipo(eq.nombre);
+                              setLogoEditActual(eq.logo_url ?? "");
+                              setArchivoLogoEdit(null);
+                              setPreviewLogoEdit("");
                             }}
                             className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm rounded-lg"
                           >
@@ -685,7 +870,7 @@ export default function AdminPage() {
                           >
                             Borrar
                           </button>
-                        </>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -739,7 +924,7 @@ export default function AdminPage() {
                             setPreviewNuevo(URL.createObjectURL(file));
                           }
                         }}
-                        className="text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 file:cursor-pointer"
+                        className="text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-100 file:text-emerald-700 hover:file:bg-emerald-200 file:cursor-pointer"
                       />
                       {previewNuevo && (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -777,11 +962,12 @@ export default function AdminPage() {
                 <button
                   onClick={crearJugador}
                   disabled={creandoJugador || !nombreNuevoJug.trim()}
-                  className="w-full mt-2 px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white font-medium rounded-lg"
+                  className="w-full mt-2 px-6 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 text-white font-medium rounded-lg"
                 >
                   {creandoJugador ? "Creando..." : "+ Agregar jugador"}
                 </button>
               </div>
+
               {cargandoJugadores ? (
                 <p className="text-slate-500 text-center py-8">Cargando...</p>
               ) : jugadores.length === 0 ? (
@@ -847,7 +1033,6 @@ export default function AdminPage() {
                               </option>
                               <option value="armador">Rol: Armador</option>
                             </select>
-
                             <div>
                               <label className="block text-xs text-slate-500 mb-1">
                                 Imagen (opcional)
@@ -865,14 +1050,14 @@ export default function AdminPage() {
                                       );
                                     }
                                   }}
-                                  className="text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 file:cursor-pointer"
+                                  className="text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-100 file:text-emerald-700 hover:file:bg-emerald-200 file:cursor-pointer"
                                 />
                                 {editPreview ? (
                                   // eslint-disable-next-line @next/next/no-img-element
                                   <img
                                     src={editPreview}
                                     alt="preview"
-                                    className="w-12 h-12 rounded-full object-cover border-2 border-blue-300"
+                                    className="w-12 h-12 rounded-full object-cover border-2 border-emerald-300"
                                   />
                                 ) : editImagenActual ? (
                                   // eslint-disable-next-line @next/next/no-img-element
@@ -884,7 +1069,6 @@ export default function AdminPage() {
                                 ) : null}
                               </div>
                             </div>
-
                             <div className="flex gap-2 justify-end">
                               <button
                                 onClick={() =>
@@ -1038,22 +1222,89 @@ export default function AdminPage() {
                 <div className="grid grid-cols-5 gap-2">
                   {(["set1", "set2", "set3", "set4", "set5"] as const).map(
                     (k, i) => (
-                      <input
-                        key={k}
-                        type="text"
-                        value={nuevoPartido[k]}
-                        onChange={(e) =>
-                          setNuevoPartido({
-                            ...nuevoPartido,
-                            [k]: e.target.value,
-                          })
-                        }
-                        placeholder={`S${i + 1}`}
-                        className={inputBase}
-                      />
+                      <div key={k}>
+                        <input
+                          type="text"
+                          value={nuevoPartido[k]}
+                          onChange={(e) =>
+                            setNuevoPartido({
+                              ...nuevoPartido,
+                              [k]: e.target.value,
+                            })
+                          }
+                          placeholder={`S${i + 1}`}
+                          className={`w-full ${inputBase}`}
+                        />
+                        <div className="mt-1 flex justify-center">
+                          <SelectorSetGanado
+                            valor={nuevoPartido[`${k}_ganado`]}
+                            onChange={(v) =>
+                              setNuevoPartido({
+                                ...nuevoPartido,
+                                [`${k}_ganado`]: v,
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
                     )
                   )}
                 </div>
+
+                <p className="text-sm font-medium text-slate-700 pt-2">
+                  Resultado del partido
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNuevoPartido({
+                        ...nuevoPartido,
+                        resultado_partido: "ganado",
+                      })
+                    }
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      nuevoPartido.resultado_partido === "ganado"
+                        ? "bg-green-500 text-white"
+                        : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+                    }`}
+                  >
+                    Ganado
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNuevoPartido({
+                        ...nuevoPartido,
+                        resultado_partido: "perdido",
+                      })
+                    }
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      nuevoPartido.resultado_partido === "perdido"
+                        ? "bg-red-500 text-white"
+                        : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+                    }`}
+                  >
+                    Perdido
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNuevoPartido({
+                        ...nuevoPartido,
+                        resultado_partido: "",
+                      })
+                    }
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      nuevoPartido.resultado_partido === ""
+                        ? "bg-slate-600 text-white"
+                        : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+                    }`}
+                  >
+                    Sin marcar
+                  </button>
+                </div>
+
                 <p className="text-sm font-medium text-slate-700 pt-2">
                   Rival (informativo)
                 </p>
@@ -1098,11 +1349,12 @@ export default function AdminPage() {
                 <button
                   onClick={crearPartido}
                   disabled={creandoPartido}
-                  className="w-full px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white font-medium rounded-lg"
+                  className="w-full px-6 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 text-white font-medium rounded-lg"
                 >
                   {creandoPartido ? "Creando..." : "+ Agregar partido"}
                 </button>
               </div>
+
               {cargandoPartidos ? (
                 <p className="text-slate-500 text-center py-8">Cargando...</p>
               ) : partidos.length === 0 ? (
@@ -1159,6 +1411,10 @@ export default function AdminPage() {
                               className={`col-span-2 ${inputBase}`}
                             />
                           </div>
+
+                          <p className="text-sm font-medium text-slate-700">
+                            Score y resultado por set
+                          </p>
                           <div className="grid grid-cols-5 gap-2">
                             {(
                               [
@@ -1169,21 +1425,88 @@ export default function AdminPage() {
                                 "set5",
                               ] as const
                             ).map((k, i) => (
-                              <input
-                                key={k}
-                                type="text"
-                                value={editPartido[k] ?? ""}
-                                onChange={(e) =>
-                                  setEditPartido({
-                                    ...editPartido,
-                                    [k]: e.target.value,
-                                  })
-                                }
-                                placeholder={`S${i + 1}`}
-                                className={inputBase}
-                              />
+                              <div key={k}>
+                                <input
+                                  type="text"
+                                  value={editPartido[k] ?? ""}
+                                  onChange={(e) =>
+                                    setEditPartido({
+                                      ...editPartido,
+                                      [k]: e.target.value,
+                                    })
+                                  }
+                                  placeholder={`S${i + 1}`}
+                                  className={`w-full ${inputBase}`}
+                                />
+                                <div className="mt-1 flex justify-center">
+                                  <SelectorSetGanado
+                                    valor={editPartido[`${k}_ganado`]}
+                                    onChange={(v) =>
+                                      setEditPartido({
+                                        ...editPartido,
+                                        [`${k}_ganado`]: v,
+                                      })
+                                    }
+                                  />
+                                </div>
+                              </div>
                             ))}
                           </div>
+
+                          <p className="text-sm font-medium text-slate-700">
+                            Resultado del partido
+                          </p>
+                          <div className="grid grid-cols-3 gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditPartido({
+                                  ...editPartido,
+                                  resultado_partido: "ganado",
+                                })
+                              }
+                              className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                                editPartido.resultado_partido === "ganado"
+                                  ? "bg-green-500 text-white"
+                                  : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+                              }`}
+                            >
+                              Ganado
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditPartido({
+                                  ...editPartido,
+                                  resultado_partido: "perdido",
+                                })
+                              }
+                              className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                                editPartido.resultado_partido === "perdido"
+                                  ? "bg-red-500 text-white"
+                                  : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+                              }`}
+                            >
+                              Perdido
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditPartido({
+                                  ...editPartido,
+                                  resultado_partido: null,
+                                })
+                              }
+                              className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                                !editPartido.resultado_partido
+                                  ? "bg-slate-600 text-white"
+                                  : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+                              }`}
+                            >
+                              Sin marcar
+                            </button>
+                          </div>
+
                           <div className="grid grid-cols-2 gap-2">
                             <input
                               type="number"
@@ -1247,9 +1570,22 @@ export default function AdminPage() {
                       ) : (
                         <div className="flex items-start gap-3">
                           <div className="flex-1">
-                            <p className="font-medium text-slate-800">
-                              🏐 {nombreEquipoPartido(p.equipo_id)} vs {p.rival}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-slate-800">
+                                🏐 {nombreEquipoPartido(p.equipo_id)} vs{" "}
+                                {p.rival}
+                              </p>
+                              {p.resultado_partido === "ganado" && (
+                                <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full font-semibold">
+                                  Ganado
+                                </span>
+                              )}
+                              {p.resultado_partido === "perdido" && (
+                                <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-semibold">
+                                  Perdido
+                                </span>
+                              )}
+                            </div>
                             <p className="text-sm text-slate-500 mt-1">
                               📅 {p.fecha}
                             </p>
@@ -1258,11 +1594,30 @@ export default function AdminPage() {
                               p.set3 ||
                               p.set4 ||
                               p.set5) && (
-                              <p className="text-sm text-slate-600 mt-1">
-                                {[p.set1, p.set2, p.set3, p.set4, p.set5]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </p>
+                              <div className="flex gap-2 mt-2 flex-wrap">
+                                {[
+                                  { s: p.set1, g: p.set1_ganado, n: 1 },
+                                  { s: p.set2, g: p.set2_ganado, n: 2 },
+                                  { s: p.set3, g: p.set3_ganado, n: 3 },
+                                  { s: p.set4, g: p.set4_ganado, n: 4 },
+                                  { s: p.set5, g: p.set5_ganado, n: 5 },
+                                ]
+                                  .filter((x) => x.s)
+                                  .map((x, i) => (
+                                    <span
+                                      key={i}
+                                      className={`text-xs px-2 py-1 rounded font-medium ${
+                                        x.g === true
+                                          ? "bg-green-100 text-green-800 border border-green-300"
+                                          : x.g === false
+                                          ? "bg-red-100 text-red-800 border border-red-300"
+                                          : "bg-slate-100 text-slate-600 border border-slate-300"
+                                      }`}
+                                    >
+                                      S{x.n}: {x.s}
+                                    </span>
+                                  ))}
+                              </div>
                             )}
                           </div>
                           <button
@@ -1354,7 +1709,7 @@ export default function AdminPage() {
                 <button
                   onClick={crearCodigo}
                   disabled={creandoCodigo || !nuevoCodigo.trim()}
-                  className="w-full px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white font-medium rounded-lg"
+                  className="w-full px-6 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 text-white font-medium rounded-lg"
                 >
                   {creandoCodigo ? "Creando..." : "+ Agregar código"}
                 </button>

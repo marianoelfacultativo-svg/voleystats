@@ -21,56 +21,62 @@ const CELDAS: Celda[] = [
 ];
 
 function calcularColor(pct: number) {
-  // pct: 0 a 100
-  // Azul (bajo) → Amarillo (medio) → Rojo (alto)
-  if (pct <= 0) return { r: 219, g: 234, b: 254 }; // slate-200 base
-  if (pct < 25) {
-    // azul a celeste
-    const t = pct / 25;
+  if (pct <= 0) return { r: 219, g: 234, b: 254 }; // azul muy claro
+  if (pct < 20) {
+    // azul → celeste
+    const t = pct / 20;
     return {
       r: Math.round(96 + t * (147 - 96)),
       g: Math.round(165 + t * (197 - 165)),
       b: Math.round(250 + t * (253 - 250)),
     };
   }
-  if (pct < 50) {
-    // celeste a amarillo
-    const t = (pct - 25) / 25;
+  if (pct < 35) {
+    // celeste → amarillo
+    const t = (pct - 20) / 15;
     return {
       r: Math.round(147 + t * (250 - 147)),
       g: Math.round(197 + t * (204 - 197)),
       b: Math.round(253 + t * (21 - 253)),
     };
   }
-  if (pct < 75) {
-    // amarillo a naranja
-    const t = (pct - 50) / 25;
+  if (pct < 50) {
+    // amarillo → rojo
+    const t = (pct - 35) / 15;
     return {
-      r: Math.round(250 + t * (249 - 250)),
-      g: Math.round(204 + t * (115 - 204)),
-      b: Math.round(21 + t * (22 - 21)),
+      r: Math.round(250 + t * (239 - 250)),
+      g: Math.round(204 + t * (68 - 204)),
+      b: Math.round(21 + t * (68 - 21)),
     };
   }
-  // naranja a rojo
+  if (pct < 75) {
+    // rojo → rojo oscuro
+    const t = (pct - 50) / 25;
+    return {
+      r: Math.round(239 - t * 60),
+      g: Math.round(68 - t * 40),
+      b: Math.round(68 - t * 40),
+    };
+  }
+  // muy rojo → rojo más oscuro
   const t = (pct - 75) / 25;
   return {
-    r: Math.round(249 + t * (239 - 249)),
-    g: Math.round(115 + t * (68 - 115)),
-    b: Math.round(22 + t * (68 - 22)),
+    r: Math.round(179 - t * 60),
+    g: Math.round(28 - t * 15),
+    b: Math.round(28 - t * 15),
   };
 }
 
 export default function MapaCalorTendencia({ distribucion }: Props) {
   const total = distribucion.total;
 
-  // Encontrar el máximo % para escalar los tamaños de círculo
   const pcts = CELDAS.map((c) => {
     const valor = distribucion[c.key] as number;
     return total > 0 ? (valor / total) * 100 : 0;
   });
   const maxPct = Math.max(...pcts, 1);
 
-  const tamañoMax = 70; // píxeles de diámetro máx
+  const tamañoMax = 70;
   const tamañoMin = 12;
 
   return (
