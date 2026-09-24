@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabase";
 import {
   calcularEstadisticasJugador,
   calcularEstadisticasEquipo,
+  calcularPodios,
+  rankingDeJugador,
   calcularPromedioPonderadoPorSet,
   calcularPromedioArmadosPonderadoPorSet,
   calcularMaxAccionesPorFundamento,
@@ -56,6 +58,25 @@ const NOMBRES_FUNDAMENTO: Record<string, string> = {
   toque: "Toque",
 };
 
+const ORDEN_RANKINGS: {
+  id: string;
+  titulo: string;
+  icono: string;
+}[] = [
+  { id: "recepcion", titulo: "Recepción", icono: "🙌" },
+  { id: "ataque", titulo: "Ataque", icono: "⚡" },
+  { id: "bloqueo", titulo: "Bloqueo", icono: "🧱" },
+  { id: "saque", titulo: "Saque", icono: "🎯" },
+  { id: "defensa", titulo: "Defensa", icono: "🛡️" },
+  { id: "consistencia", titulo: "Consistencia", icono: "📈" },
+];
+
+function colorPodio(puesto: number): string {
+  if (puesto === 1) return "bg-yellow-400 text-yellow-900";
+  if (puesto === 2) return "bg-slate-300 text-slate-800";
+  return "bg-amber-700 text-amber-100";
+}
+
 export default function JugadorPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
@@ -64,9 +85,9 @@ export default function JugadorPage() {
   const [partidos, setPartidos] = useState<Partido[]>([]);
   const [acciones, setAcciones] = useState<AccionDB[]>([]);
   const [idsJugadoresEquipo, setIdsJugadoresEquipo] = useState<string[]>([]);
-  const [statsEquipo, setStatsEquipo] = useState<EstadisticasJugador | null>(
-    null
-  );
+  const [porJugadorEquipo, setPorJugadorEquipo] = useState<
+    Record<string, EstadisticasJugador>
+  >({});
   const [cargando, setCargando] = useState(true);
 
   const [vista, setVista] = useState<Vista>("general");
@@ -171,12 +192,12 @@ export default function JugadorPage() {
             const acc = (accData ?? []) as AccionDB[];
             setAcciones(acc);
 
-            const { totales } = calcularEstadisticasEquipo(
+            const { porJugador } = calcularEstadisticasEquipo(
               idsEq,
               acc,
               armadores
             );
-            setStatsEquipo(totales);
+            setPorJugadorEquipo(porJugador);
 
             setCargando(false);
           });
@@ -224,6 +245,14 @@ export default function JugadorPage() {
         maxAccionesEquipo
       )
     : null;
+
+  const podios = jugador
+    ? calcularPodios(porJugadorEquipo, accionesFiltradas)
+    : {};
+
+  const textosRanking = jugador
+    ? rankingDeJugador(jugador.id, porJugadorEquipo, accionesFiltradas)
+    : {};
 
   const esArmador = jugador?.rol === "armador";
   const partidoActual = partidos.find((p) => p.id === partidoActivo);
@@ -366,28 +395,89 @@ export default function JugadorPage() {
                   <div className="grid grid-cols-5 gap-2">
                     {Object.entries(
                       stats.valoracionPonderadaPorFundamento
-                    ).map(([fund, val]) => (
-                      <div
-                        key={fund}
-                        className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center"
-                      >
-                        <p className="text-xs text-slate-500">
-                          {NOMBRES_FUNDAMENTO[fund] ?? fund}
-                        </p>
-                        <p
-                          className={`text-lg font-bold ${
-                            val > 0
-                              ? "text-green-700"
-                              : val < 0
-                              ? "text-red-700"
-                              : "text-slate-700"
-                          }`}
+                    ).map(([fund, val]) => {
+                      const puesto = jugador
+                        ? podios[jugador.id]?.[fund]
+                        : undefined;
+                      return (
+                        <div
+                          key={fund}
+                          className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center relative"
                         >
-                          {val > 0 ? "+" : ""}
-                          {val.toFixed(2)}
-                        </p>
-                      </div>
-                    ))}
+                          {puesto !== undefined && (
+                            <span
+                              className={`absolute -top-2 -right-2 inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold shadow-sm border-2 border-white ${colorPodio(
+                                puesto
+                              )}`}
+                              title={`${puesto}° puesto del plantel`}
+                            >
+                              ⭐{puesto}
+                            </span>
+                          )}
+                          <p className="text-xs text-slate-500">
+                            {NOMBRES_FUNDAMENTO[fund] ?? fund}
+                          </p>
+                          <p
+                            className={`text-lg font-bold ${
+                              val > 0
+                                ? "text-green-700"
+                                : val < 0
+                                ? "text-red-700"
+                                : "text-slate-700"
+                            }`}
+                          >
+                            {val > 0 ? "+" : ""}
+                            {val.toFixed(2)}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {Object.keys(textosRanking).length > 0 && (
+                <div className="mb-6">
+                  <h3 className="font-semibold text-slate-800 mb-3">
+                    Tus números en el plantel
+                  </h3>
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg divide-y divide-slate-200">
+                    {ORDEN_RANKINGS.map((r) => {
+                      const texto = textosRanking[r.id];
+                      const puesto = jugador
+                        ? podios[jugador.id]?.[r.id]
+                        : undefined;
+                      return (
+                        <div
+                          key={r.id}
+                          className="flex items-start gap-3 px-4 py-3"
+                        >
+                          <span className="text-xl leading-none mt-0.5">
+                            {r.icono}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <p className="text-sm font-semibold text-slate-700">
+                                {r.titulo}
+                              </p>
+                              {puesto !== undefined && (
+                                <span
+                                  className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${colorPodio(
+                                    puesto
+                                  )}`}
+                                  title={`${puesto}° puesto`}
+                                >
+                                  {puesto}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-500">
+                              {texto ?? "Sin datos en este fundamento"}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

@@ -4,8 +4,14 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   calcularEstadisticasEquipo,
-  top3,
+  rankingRecepcion,
+  rankingAtaque,
+  rankingBloqueo,
+  rankingSaque,
+  rankingDefensa,
+  rankingConsistencia,
   type AccionDB,
+  type RankingCompletoItem,
 } from "@/lib/estadisticas";
 
 interface Partido {
@@ -40,11 +46,31 @@ const NOMBRES: Record<string, string> = {
   defensa: "Defensa",
 };
 
+type RankingTipo =
+  | "recepcion"
+  | "ataque"
+  | "bloqueo"
+  | "saque"
+  | "defensa"
+  | "consistencia";
+
+const RANKINGS: { id: RankingTipo; titulo: string; icono: string }[] = [
+  { id: "recepcion", titulo: "Recepción", icono: "🙌" },
+  { id: "ataque", titulo: "Ataque", icono: "⚡" },
+  { id: "bloqueo", titulo: "Bloqueo", icono: "🧱" },
+  { id: "saque", titulo: "Saque", icono: "🎯" },
+  { id: "defensa", titulo: "Defensa", icono: "🛡️" },
+  { id: "consistencia", titulo: "Consistencia", icono: "📈" },
+];
+
 export default function Dashboard({ equipoId, nombreEquipo }: Props) {
   const [partidos, setPartidos] = useState<Partido[]>([]);
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
   const [acciones, setAcciones] = useState<AccionDB[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [rankingAbierto, setRankingAbierto] = useState<RankingTipo | null>(
+    null
+  );
 
   useEffect(() => {
     if (!equipoId) return;
@@ -56,7 +82,10 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
         .select("id, rival, fecha, set1, set2, set3, set4, set5")
         .eq("equipo_id", equipoId)
         .order("fecha", { ascending: false }),
-      supabase.from("jugadores").select("id, nombre, numero, rol").order("nombre"),
+      supabase
+        .from("jugadores")
+        .select("id, nombre, numero, rol")
+        .order("nombre"),
     ]).then(async ([partRes, jugRes]) => {
       if (!partRes.data || !jugRes.data) {
         setCargando(false);
@@ -117,7 +146,9 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
 
   const nombreDe = (id: string) => {
     const j = jugadores.find((x) => x.id === id);
-    return j ? j.nombre + (j.numero !== null ? ` #${j.numero}` : "") : "?";
+    return j
+      ? j.nombre + (j.numero !== null ? ` #${j.numero}` : "")
+      : "?";
   };
 
   const esArmadorId = (id: string) => armadores.has(id);
@@ -125,6 +156,15 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
   const scoreDe = (p: Partido) => {
     const sets = [p.set1, p.set2, p.set3, p.set4, p.set5].filter(Boolean);
     return sets.length > 0 ? sets.join(" · ") : "Sin score cargado";
+  };
+
+  const rankings: Record<RankingTipo, RankingCompletoItem[]> = {
+    recepcion: rankingRecepcion(porJugador, acciones),
+    ataque: rankingAtaque(porJugador, acciones),
+    bloqueo: rankingBloqueo(porJugador, acciones),
+    saque: rankingSaque(porJugador, acciones),
+    defensa: rankingDefensa(porJugador, acciones),
+    consistencia: rankingConsistencia(porJugador, acciones),
   };
 
   if (partidos.length === 0) {
@@ -285,73 +325,111 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
         <h2 className="text-xl font-semibold text-slate-900 mb-3">
           🏆 Rankings del plantel
         </h2>
-        <div className="grid grid-cols-3 gap-3">
-          <RankingCard
-            titulo="Más puntos"
-            items={top3(porJugador, (e) => e.totalPuntos)}
-            nombreDe={nombreDe}
-            esArmadorId={esArmadorId}
-            color="green"
-          />
-          <RankingCard
-            titulo="Más acciones positivas"
-            items={top3(porJugador, (e) => e.totalPositivos)}
-            nombreDe={nombreDe}
-            esArmadorId={esArmadorId}
-            color="blue"
-          />
-          <RankingCard
-            titulo="Mejor saldo"
-            items={top3(porJugador, (e) => e.saldoTotal)}
-            nombreDe={nombreDe}
-            esArmadorId={esArmadorId}
-            color="violet"
-          />
+        <p className="text-xs text-slate-500 mb-4">
+          Clic en cualquier ranking para ver la tabla completa
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          {RANKINGS.map((r) => {
+            const items = rankings[r.id];
+            const abierto = rankingAbierto === r.id;
+            const top1 = items[0];
+
+            return (
+              <div
+                key={r.id}
+                className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"
+              >
+                <button
+                  onClick={() => setRankingAbierto(abierto ? null : r.id)}
+                  className="w-full text-left p-4 hover:bg-slate-50 transition"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">{r.icono}</span>
+                      <p className="font-semibold text-slate-800">
+                        {r.titulo}
+                      </p>
+                    </div>
+                    <span
+                      className={`text-slate-400 transition-transform ${
+                        abierto ? "rotate-180" : ""
+                      }`}
+                    >
+                      ▼
+                    </span>
+                  </div>
+                  {top1 ? (
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">
+                        {nombreDe(top1.jugador_id)}
+                        {esArmadorId(top1.jugador_id) && (
+                          <span className="ml-1 text-[10px] text-violet-600 font-medium">
+                            (Armador)
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {top1.texto}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400">Sin datos</p>
+                  )}
+                </button>
+
+                {abierto && items.length > 0 && (
+                  <div className="border-t border-slate-200 bg-slate-50 p-3">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-slate-500 text-xs">
+                          <th className="py-1.5 px-2 w-8">#</th>
+                          <th className="py-1.5 px-2">Jugador</th>
+                          <th className="py-1.5 px-2 text-right">Detalle</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((it, i) => (
+                          <tr
+                            key={it.jugador_id}
+                            className="border-t border-slate-200"
+                          >
+                            <td className="py-1.5 px-2">
+                              <span
+                                className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
+                                  i === 0
+                                    ? "bg-yellow-400 text-yellow-900"
+                                    : i === 1
+                                    ? "bg-slate-300 text-slate-800"
+                                    : i === 2
+                                    ? "bg-amber-700 text-amber-100"
+                                    : "bg-slate-100 text-slate-500"
+                                }`}
+                              >
+                                {i + 1}
+                              </span>
+                            </td>
+                            <td className="py-1.5 px-2 font-medium text-slate-700">
+                              {nombreDe(it.jugador_id)}
+                              {esArmadorId(it.jugador_id) && (
+                                <span className="ml-1 text-[10px] text-violet-600 font-medium">
+                                  (Armador)
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-1.5 px-2 text-right text-xs text-slate-600">
+                              {it.texto}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
-    </div>
-  );
-}
-
-function RankingCard({
-  titulo,
-  items,
-  nombreDe,
-  esArmadorId,
-  color,
-}: {
-  titulo: string;
-  items: { jugador_id: string; valor: number }[];
-  nombreDe: (id: string) => string;
-  esArmadorId: (id: string) => boolean;
-  color: "green" | "blue" | "violet";
-}) {
-  const colores = {
-    green: "bg-green-50 border-green-200",
-    blue: "bg-blue-50 border-blue-200",
-    violet: "bg-violet-50 border-violet-200",
-  };
-  return (
-    <div className={`p-4 rounded-lg border ${colores[color]}`}>
-      <p className="text-sm font-medium text-slate-700 mb-2">{titulo}</p>
-      {items.length === 0 ? (
-        <p className="text-xs text-slate-500">Sin datos</p>
-      ) : (
-        <ol className="space-y-1">
-          {items.map((it, i) => (
-            <li key={it.jugador_id} className="text-sm text-slate-800">
-              <span className="font-bold text-slate-500 mr-2">{i + 1}.</span>
-              {nombreDe(it.jugador_id)}
-              {esArmadorId(it.jugador_id) && (
-                <span className="ml-1 text-[10px] text-violet-600 font-medium">
-                  (Armador)
-                </span>
-              )}
-              <span className="text-slate-500 ml-2">({it.valor})</span>
-            </li>
-          ))}
-        </ol>
-      )}
     </div>
   );
 }

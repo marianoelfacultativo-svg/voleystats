@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   calcularEstadisticasEquipo,
+  calcularPodios,
+  rankingDeJugador,
   calcularPromedioPonderadoPorSet,
   calcularPromedioArmadosPonderadoPorSet,
   VALORES_SAQUE,
@@ -41,6 +43,25 @@ const NOMBRES_FUNDAMENTO: Record<string, string> = {
   armados: "Armados",
   toque: "Toque",
 };
+
+const ORDEN_RANKINGS: {
+  id: string;
+  titulo: string;
+  icono: string;
+}[] = [
+  { id: "recepcion", titulo: "Recepción", icono: "🙌" },
+  { id: "ataque", titulo: "Ataque", icono: "⚡" },
+  { id: "bloqueo", titulo: "Bloqueo", icono: "🧱" },
+  { id: "saque", titulo: "Saque", icono: "🎯" },
+  { id: "defensa", titulo: "Defensa", icono: "🛡️" },
+  { id: "consistencia", titulo: "Consistencia", icono: "📈" },
+];
+
+function colorPodio(puesto: number): string {
+  if (puesto === 1) return "bg-yellow-400 text-yellow-900";
+  if (puesto === 2) return "bg-slate-300 text-slate-800";
+  return "bg-amber-700 text-amber-100";
+}
 
 export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
@@ -99,11 +120,17 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     armadores
   );
 
+  const podios = calcularPodios(porJugador, acciones);
+
   const jugadorActual: EstadisticasJugador | null = jugadorSeleccionado
     ? porJugador[jugadorSeleccionado] ?? null
     : null;
   const datosJugador = jugadores.find((j) => j.id === jugadorSeleccionado);
   const esArmador = datosJugador?.rol === "armador";
+
+  const textosRanking = jugadorSeleccionado
+    ? rankingDeJugador(jugadorSeleccionado, porJugador, acciones)
+    : {};
 
   if (jugadores.length === 0) {
     return (
@@ -227,28 +254,86 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                 <div className="grid grid-cols-5 gap-2">
                   {Object.entries(
                     jugadorActual.valoracionPonderadaPorFundamento
-                  ).map(([fund, val]) => (
-                    <div
-                      key={fund}
-                      className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center"
-                    >
-                      <p className="text-xs text-slate-500">
-                        {NOMBRES_FUNDAMENTO[fund] ?? fund}
-                      </p>
-                      <p
-                        className={`text-lg font-bold ${
-                          val > 0
-                            ? "text-green-700"
-                            : val < 0
-                            ? "text-red-700"
-                            : "text-slate-700"
-                        }`}
+                  ).map(([fund, val]) => {
+                    const puesto =
+                      podios[jugadorActual.jugador_id]?.[fund];
+                    return (
+                      <div
+                        key={fund}
+                        className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center relative"
                       >
-                        {val > 0 ? "+" : ""}
-                        {val.toFixed(2)}
-                      </p>
-                    </div>
-                  ))}
+                        {puesto !== undefined && (
+                          <span
+                            className={`absolute -top-2 -right-2 inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold shadow-sm border-2 border-white ${colorPodio(
+                              puesto
+                            )}`}
+                            title={`${puesto}° puesto del plantel`}
+                          >
+                            ⭐{puesto}
+                          </span>
+                        )}
+                        <p className="text-xs text-slate-500">
+                          {NOMBRES_FUNDAMENTO[fund] ?? fund}
+                        </p>
+                        <p
+                          className={`text-lg font-bold ${
+                            val > 0
+                              ? "text-green-700"
+                              : val < 0
+                              ? "text-red-700"
+                              : "text-slate-700"
+                          }`}
+                        >
+                          {val > 0 ? "+" : ""}
+                          {val.toFixed(2)}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {Object.keys(textosRanking).length > 0 && (
+              <div className="mb-6">
+                <h4 className="font-semibold text-slate-800 mb-3">
+                  Sus números en el plantel
+                </h4>
+                <div className="bg-slate-50 border border-slate-200 rounded-lg divide-y divide-slate-200">
+                  {ORDEN_RANKINGS.map((r) => {
+                    const texto = textosRanking[r.id];
+                    const puesto = podios[jugadorActual.jugador_id]?.[r.id];
+                    return (
+                      <div
+                        key={r.id}
+                        className="flex items-start gap-3 px-4 py-3"
+                      >
+                        <span className="text-xl leading-none mt-0.5">
+                          {r.icono}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <p className="text-sm font-semibold text-slate-700">
+                              {r.titulo}
+                            </p>
+                            {puesto !== undefined && (
+                              <span
+                                className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${colorPodio(
+                                  puesto
+                                )}`}
+                                title={`${puesto}° puesto`}
+                              >
+                                {puesto}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500">
+                            {texto ?? "Sin datos en este fundamento"}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

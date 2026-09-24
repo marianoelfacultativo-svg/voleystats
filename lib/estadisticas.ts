@@ -907,6 +907,220 @@ export function calcularEstadisticasEquipo(
   return { porJugador, totales: totalesIniciales };
 }
 
+// ============================================
+// RANKINGS COMPLETOS POR FUNDAMENTO
+// ============================================
+
+export interface RankingCompletoItem {
+  jugador_id: string;
+  valor: number;
+  texto: string;
+}
+
+function contarSetsJugados(acciones: AccionDB[], jugadorId: string): number {
+  const sets = new Set<number>();
+  for (const a of acciones) {
+    if (a.jugador_id === jugadorId) sets.add(a.set_numero);
+  }
+  return Math.max(sets.size, 1);
+}
+
+export function rankingRecepcion(
+  porJugador: Record<string, EstadisticasJugador>,
+  acciones: AccionDB[]
+): RankingCompletoItem[] {
+  return Object.values(porJugador)
+    .map((est) => {
+      const propias = acciones.filter((a) => a.jugador_id === est.jugador_id);
+      const positivos = contarPorValoraciones(propias, "recepcion", [
+        "2x_positiva",
+        "positiva",
+      ]);
+      const total = contarTotal(propias, "recepcion");
+      const efectividad = total > 0 ? (positivos / total) * 100 : 0;
+      return {
+        jugador_id: est.jugador_id,
+        valor: positivos,
+        texto: `${positivos} pases positivos / ${efectividad.toFixed(1)}% de efectividad en ${total} intentos`,
+      };
+    })
+    .filter((r) => r.valor > 0)
+    .sort((a, b) => b.valor - a.valor);
+}
+
+export function rankingAtaque(
+  porJugador: Record<string, EstadisticasJugador>,
+  acciones: AccionDB[]
+): RankingCompletoItem[] {
+  return Object.values(porJugador)
+    .map((est) => {
+      const propias = acciones.filter((a) => a.jugador_id === est.jugador_id);
+      const puntos = contarPorValoraciones(propias, "ataque", ["punto"]);
+      const errores = contarPorValoraciones(propias, "ataque", ["error"]);
+      const total = contarTotal(propias, "ataque");
+      const efectividad = total > 0 ? ((puntos - errores) / total) * 100 : 0;
+      return {
+        jugador_id: est.jugador_id,
+        valor: efectividad,
+        texto: `${efectividad.toFixed(1)}% de efectividad neta / ${puntos} puntos y ${errores} errores`,
+      };
+    })
+    .filter((r) => r.valor !== 0)
+    .sort((a, b) => b.valor - a.valor);
+}
+
+export function rankingBloqueo(
+  porJugador: Record<string, EstadisticasJugador>,
+  acciones: AccionDB[]
+): RankingCompletoItem[] {
+  return Object.values(porJugador)
+    .map((est) => {
+      const propias = acciones.filter((a) => a.jugador_id === est.jugador_id);
+      const puntos = contarPorValoraciones(propias, "bloqueo", ["punto"]);
+      const positivos = contarPorValoraciones(propias, "bloqueo", [
+        "positivo_mas",
+        "positivo",
+      ]);
+      return {
+        jugador_id: est.jugador_id,
+        valor: puntos,
+        texto: `${puntos} puntos de bloqueo y ${positivos} toques positivos`,
+      };
+    })
+    .filter((r) => r.valor > 0)
+    .sort((a, b) => b.valor - a.valor);
+}
+
+export function rankingSaque(
+  porJugador: Record<string, EstadisticasJugador>,
+  acciones: AccionDB[]
+): RankingCompletoItem[] {
+  return Object.values(porJugador)
+    .map((est) => {
+      const propias = acciones.filter((a) => a.jugador_id === est.jugador_id);
+      const aces = contarPorValoraciones(propias, "saque", ["ace"]);
+      const errores = contarPorValoraciones(propias, "saque", ["negativo"]);
+      const balance = aces - errores;
+      return {
+        jugador_id: est.jugador_id,
+        valor: balance,
+        texto: `${aces} Aces y ${errores} errores / Balance: ${balance > 0 ? "+" : ""}${balance}`,
+      };
+    })
+    .filter((r) => r.valor !== 0)
+    .sort((a, b) => b.valor - a.valor);
+}
+
+export function rankingDefensa(
+  porJugador: Record<string, EstadisticasJugador>,
+  acciones: AccionDB[]
+): RankingCompletoItem[] {
+  return Object.values(porJugador)
+    .map((est) => {
+      const propias = acciones.filter((a) => a.jugador_id === est.jugador_id);
+      const total = contarTotal(propias, "defensa");
+      const sets = contarSetsJugados(acciones, est.jugador_id);
+      const porSet = sets > 0 ? total / sets : 0;
+      return {
+        jugador_id: est.jugador_id,
+        valor: total,
+        texto: `${total} intervenciones defensivas totales (${porSet.toFixed(2)} por set)`,
+      };
+    })
+    .filter((r) => r.valor > 0)
+    .sort((a, b) => b.valor - a.valor);
+}
+
+export function rankingConsistencia(
+  porJugador: Record<string, EstadisticasJugador>,
+  acciones: AccionDB[]
+): RankingCompletoItem[] {
+  const valoresPositivos = [
+    "ace",
+    "positivo_mas",
+    "positivo",
+    "2x_positiva",
+    "positiva",
+    "punto",
+    "toque_positiva",
+    "gran_def",
+    "cobertura_positiva",
+  ];
+  const erroresNoForzados = [
+    "negativo",
+    "ace_contra",
+    "error",
+    "red",
+    "error_def",
+    "errores_graves",
+    "mala_libre",
+  ];
+  return Object.values(porJugador)
+    .map((est) => {
+      const propias = acciones.filter((a) => a.jugador_id === est.jugador_id);
+      const positivas = propias
+        .filter((a) => valoresPositivos.includes(a.valoracion))
+        .reduce((s, a) => s + a.cantidad, 0);
+      const errores = propias
+        .filter((a) => erroresNoForzados.includes(a.valoracion))
+        .reduce((s, a) => s + a.cantidad, 0);
+      const ratio = errores > 0 ? positivas / errores : positivas;
+      return {
+        jugador_id: est.jugador_id,
+        valor: ratio,
+        texto: `Ratio de ${ratio.toFixed(2)} acciones positivas por cada error no forzado`,
+      };
+    })
+    .filter((r) => r.valor > 0)
+    .sort((a, b) => b.valor - a.valor);
+}
+
+// Devuelve, para cada jugador, en qué fundamentos está en el podio (1, 2, 3)
+export function calcularPodios(
+  porJugador: Record<string, EstadisticasJugador>,
+  acciones: AccionDB[]
+): Record<string, Record<string, number>> {
+  const resultado: Record<string, Record<string, number>> = {};
+
+  const agregar = (fundamento: string, items: RankingCompletoItem[]) => {
+    items.slice(0, 3).forEach((item, idx) => {
+      if (!resultado[item.jugador_id]) resultado[item.jugador_id] = {};
+      resultado[item.jugador_id][fundamento] = idx + 1;
+    });
+  };
+
+  agregar("saque", rankingSaque(porJugador, acciones));
+  agregar("recepcion", rankingRecepcion(porJugador, acciones));
+  agregar("ataque", rankingAtaque(porJugador, acciones));
+  agregar("bloqueo", rankingBloqueo(porJugador, acciones));
+  agregar("defensa", rankingDefensa(porJugador, acciones));
+
+  return resultado;
+}
+
+// Devuelve los textos de ranking de UN jugador en todos los fundamentos
+export function rankingDeJugador(
+  jugadorId: string,
+  porJugador: Record<string, EstadisticasJugador>,
+  acciones: AccionDB[]
+): Record<string, string> {
+  const resultado: Record<string, string> = {};
+
+  const buscar = (fundamento: string, items: RankingCompletoItem[]) => {
+    const item = items.find((i) => i.jugador_id === jugadorId);
+    if (item) resultado[fundamento] = item.texto;
+  };
+
+  buscar("recepcion", rankingRecepcion(porJugador, acciones));
+  buscar("ataque", rankingAtaque(porJugador, acciones));
+  buscar("bloqueo", rankingBloqueo(porJugador, acciones));
+  buscar("saque", rankingSaque(porJugador, acciones));
+  buscar("defensa", rankingDefensa(porJugador, acciones));
+  buscar("consistencia", rankingConsistencia(porJugador, acciones));
+
+  return resultado;
+}
+
 export interface RankingItem {
   jugador_id: string;
   valor: number;
