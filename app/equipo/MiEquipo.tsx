@@ -99,6 +99,27 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     armadores
   );
 
+  // 🔍 DEBUG TEMPORAL
+  if (typeof window !== "undefined") {
+    console.log("=== DEBUG ===");
+    console.log("Total acciones:", acciones.length);
+    const bloqueosPorJugador: Record<string, number> = {};
+    for (const a of acciones) {
+      if (a.fundamento === "bloqueo") {
+        bloqueosPorJugador[a.jugador_id] =
+          (bloqueosPorJugador[a.jugador_id] ?? 0) + a.cantidad;
+      }
+    }
+    console.log("Bloqueos por jugador:", bloqueosPorJugador);
+    for (const [jid, est] of Object.entries(porJugador)) {
+      const nombre = jugadores.find((j) => j.id === jid)?.nombre ?? jid;
+      console.log(
+        `${nombre}: bloqueo ponderado =`,
+        est.valoracionPonderadaPorFundamento.bloqueo
+      );
+    }
+  }
+
   const jugadorActual: EstadisticasJugador | null = jugadorSeleccionado
     ? porJugador[jugadorSeleccionado] ?? null
     : null;
