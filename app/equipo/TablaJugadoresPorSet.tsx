@@ -146,7 +146,7 @@ export default function TablaJugadoresPorSet({
                       }`}
                     >
                       {est.valoracionMediaNormalizada > 0 ? "+" : ""}
-                      {est.valoracionMediaNormalizada.toFixed(1)}
+                      {est.valoracionMediaNormalizada.toFixed(0)}
                     </td>
                     <td className="py-2 px-3 text-right">
                       <button
@@ -309,7 +309,7 @@ function DetalleJugador({
             }`}
           >
             {est.valoracionMediaNormalizada > 0 ? "+" : ""}
-            {est.valoracionMediaNormalizada.toFixed(1)}
+            {est.valoracionMediaNormalizada.toFixed(0)}
           </p>
         </div>
 
@@ -400,7 +400,7 @@ function DetalleJugador({
                       }`}
                     >
                       {valNorm > 0 ? "+" : ""}
-                      {valNorm.toFixed(1)}
+                      {valNorm.toFixed(0)}
                     </td>
                     <td className="py-2 px-3 text-right">
                       <button

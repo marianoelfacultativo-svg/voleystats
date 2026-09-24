@@ -359,7 +359,7 @@ export default function JugadorPage() {
                             }`}
                           >
                             {val > 0 ? "+" : ""}
-                            {val.toFixed(1)}
+                            {val.toFixed(0)}
                           </p>
                         </div>
                       )
@@ -480,7 +480,7 @@ export default function JugadorPage() {
                     }`}
                   >
                     {stats.valoracionMediaNormalizada > 0 ? "+" : ""}
-                    {stats.valoracionMediaNormalizada.toFixed(1)}
+                    {stats.valoracionMediaNormalizada.toFixed(0)}
                   </p>
                 </div>
 
