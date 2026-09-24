@@ -12,6 +12,7 @@ import type { EstadisticasJugador } from "@/lib/estadisticas";
 
 interface Props {
   equipo: EstadisticasJugador;
+  maximosHistoricos: Record<string, number>;
 }
 
 const ETIQUETAS: Record<string, string> = {
@@ -22,7 +23,7 @@ const ETIQUETAS: Record<string, string> = {
   defensa: "Defensa",
 };
 
-export default function RadarEquipo({ equipo }: Props) {
+export default function RadarEquipo({ equipo, maximosHistoricos }: Props) {
   const fundamentos = [
     "saque",
     "defensa",
@@ -32,21 +33,22 @@ export default function RadarEquipo({ equipo }: Props) {
   ];
 
   const datos = fundamentos.map((f) => {
-    const total = equipo.valoracionTotalPorFundamento[f] ?? 0;
+    const real = equipo.valoracionTotalPorFundamento[f] ?? 0;
+    const max = maximosHistoricos[f] ?? 0;
+    const normalizado = max > 0 ? (real / max) * 100 : 0;
     const acciones = equipo.porFundamento[f]?.total ?? 0;
 
     return {
       fundamento: ETIQUETAS[f],
-      valor: total,
-      valorRaw: total,
+      valor: normalizado,
+      valorReal: real,
+      max,
       acciones,
     };
   });
 
-  // Escala dinámica según los valores del equipo
-  const valores = datos.map((d) => d.valorRaw);
-  const maxPos = Math.max(1, Math.ceil(Math.max(0, ...valores)));
-  const maxNeg = Math.min(-1, Math.floor(Math.min(0, ...valores)));
+  const minEje = -25;
+  const maxEje = 110;
 
   return (
     <div>
@@ -61,7 +63,7 @@ export default function RadarEquipo({ equipo }: Props) {
             />
             <PolarRadiusAxis
               angle={90}
-              domain={[maxNeg, maxPos]}
+              domain={[minEje, maxEje]}
               tick={{ fill: "#8FA398", fontSize: 10 }}
             />
             <Radar
@@ -84,22 +86,25 @@ export default function RadarEquipo({ equipo }: Props) {
             <p className="text-xs text-amber-700">{d.fundamento}</p>
             <p
               className={`font-semibold text-sm ${
-                d.valorRaw > 0
+                d.valorReal > 0
                   ? "text-green-700"
-                  : d.valorRaw < 0
+                  : d.valorReal < 0
                   ? "text-red-700"
                   : "text-amber-900"
               }`}
             >
-              {d.valorRaw > 0 ? "+" : ""}
-              {d.valorRaw.toFixed(0)}
+              {d.valorReal > 0 ? "+" : ""}
+              {d.valorReal.toFixed(0)}
             </p>
-            <p className="text-[10px] text-amber-600">{d.acciones} acc.</p>
+            <p className="text-[10px] text-amber-600">
+              {d.valor.toFixed(0)}% de {d.max.toFixed(0)} · {d.acciones} acc.
+            </p>
           </div>
         ))}
       </div>
       <p className="text-xs text-slate-400 mt-3 text-center">
-        Suma total de valores del equipo.
+        Cada eje: valor del partido / máximo histórico del equipo en ese
+        fundamento.
       </p>
     </div>
   );

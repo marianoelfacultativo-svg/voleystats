@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   calcularEstadisticasEquipo,
   top3,
+  VALORES_POR_FUNDAMENTO,
   type AccionDB,
   type PromedioRecepcionSet,
 } from "@/lib/estadisticas";
@@ -115,6 +116,29 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     });
   }, [equipoId]);
 
+  // Máximo histórico por fundamento (entre todos los partidos)
+  const maximosHistoricos = useMemo(() => {
+    const maximos: Record<string, number> = {};
+    for (const p of partidos) {
+      const porFund: Record<string, number> = {};
+      for (const a of acciones) {
+        if (a.partido_id !== p.id) continue;
+        const valores = VALORES_POR_FUNDAMENTO[a.fundamento];
+        if (!valores) continue;
+        const v = valores[a.valoracion];
+        if (v === undefined) continue;
+        porFund[a.fundamento] =
+          (porFund[a.fundamento] ?? 0) + v * a.cantidad;
+      }
+      for (const [f, v] of Object.entries(porFund)) {
+        if (maximos[f] === undefined || v > maximos[f]) {
+          maximos[f] = v;
+        }
+      }
+    }
+    return maximos;
+  }, [partidos, acciones]);
+
   const limpiarFiltros = () => {
     setFiltroRival("");
     setFiltroFechaDesde("");
@@ -215,7 +239,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
             <select
               value={filtroRival}
               onChange={(e) => setFiltroRival(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
             >
               <option value="">Todos</option>
               {rivalesUnicos.map((r) => (
@@ -233,7 +257,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               type="date"
               value={filtroFechaDesde}
               onChange={(e) => setFiltroFechaDesde(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
             />
           </div>
           <div>
@@ -244,7 +268,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               type="date"
               value={filtroFechaHasta}
               onChange={(e) => setFiltroFechaHasta(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
             />
           </div>
           <div>
@@ -258,7 +282,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                   e.target.value as "todos" | "1" | "2" | "3" | "4" | "5"
                 )
               }
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
             >
               <option value="todos">Todos</option>
               <option value="1">Set 1</option>
@@ -273,7 +297,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
           <div className="mt-2 text-right">
             <button
               onClick={limpiarFiltros}
-              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+              className="text-xs text-emerald-600 hover:text-emerald-800 font-medium"
             >
               Limpiar filtros
             </button>
@@ -399,7 +423,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               </div>
 
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-                <RadarEquipo equipo={statsPartido.totales} />
+                <RadarEquipo
+                  equipo={statsPartido.totales}
+                  maximosHistoricos={maximosHistoricos}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
