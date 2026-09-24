@@ -25,6 +25,7 @@ import GraficoSaquePorSet from "../equipo/GraficoSaquePorSet";
 import GraficoBloqueoPorSet from "../equipo/GraficoBloqueoPorSet";
 import MapaCalorTendencia from "../equipo/MapaCalorTendencia";
 import ImagenAmpliable from "../equipo/ImagenAmpliable";
+import TablaEstadisticasCrudas from "../equipo/TablaEstadisticasCrudas";
 
 interface Jugador {
   id: string;
@@ -96,9 +97,10 @@ export default function JugadorPage() {
   const [vista, setVista] = useState<Vista>("general");
   const [partidoSeleccionado, setPartidoSeleccionado] = useState<string>("");
 
-  // Modo comparar partidos
   const [modoPartido, setModoPartido] = useState<ModoPartido>("individual");
   const [partidosComparados, setPartidosComparados] = useState<string[]>([]);
+
+  const [verCrudas, setVerCrudas] = useState(false);
 
   useEffect(() => {
     const s = obtenerSesion();
@@ -227,6 +229,7 @@ export default function JugadorPage() {
 
   const handleCambiarModoPartido = (nuevo: ModoPartido) => {
     setModoPartido(nuevo);
+    setVerCrudas(false);
     if (nuevo === "individual") {
       setPartidosComparados([]);
     } else {
@@ -245,7 +248,6 @@ export default function JugadorPage() {
     ? acciones.filter((a) => a.partido_id === partidoActivo)
     : acciones;
 
-  // Calcular máximos del equipo con el contexto correcto
   let maxPorFund: Record<string, number> = {};
   let maxAccionesEquipo = 1;
   if (jugador && idsJugadoresEquipo.length > 0) {
@@ -434,7 +436,10 @@ export default function JugadorPage() {
           <>
             <div className="flex gap-2 mb-4 border-b border-slate-200">
               <button
-                onClick={() => setVista("general")}
+                onClick={() => {
+                  setVista("general");
+                  setVerCrudas(false);
+                }}
                 className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
                   vista === "general"
                     ? "border-emerald-500 text-emerald-600"
@@ -444,7 +449,10 @@ export default function JugadorPage() {
                 📊 General
               </button>
               <button
-                onClick={() => setVista("por-partido")}
+                onClick={() => {
+                  setVista("por-partido");
+                  setVerCrudas(false);
+                }}
                 className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
                   vista === "por-partido"
                     ? "border-emerald-500 text-emerald-600"
@@ -457,7 +465,6 @@ export default function JugadorPage() {
 
             {vista === "por-partido" && partidos.length > 0 && (
               <div className="mb-4 space-y-3">
-                {/* Sub-toggle: individual / comparar */}
                 <div className="flex justify-end gap-2">
                   <button
                     onClick={() => handleCambiarModoPartido("individual")}
@@ -481,9 +488,20 @@ export default function JugadorPage() {
                   </button>
                 </div>
 
-                {/* Selector de partidos */}
                 {modoPartido === "individual" && (
                   <div>
+                    <div className="flex justify-end mb-2">
+                      <button
+                        onClick={() => setVerCrudas(!verCrudas)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
+                          verCrudas
+                            ? "bg-emerald-500 text-white border-emerald-500"
+                            : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                        }`}
+                      >
+                        📋 Estadísticas crudas
+                      </button>
+                    </div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
                       Elegí un partido:
                     </label>
@@ -513,7 +531,8 @@ export default function JugadorPage() {
                     <div className="flex gap-2 flex-wrap">
                       {partidos.map((p) => {
                         const idx = partidosComparados.indexOf(p.id);
-                        const color = idx !== -1 ? COLORES_COMPARACION[idx] : null;
+                        const color =
+                          idx !== -1 ? COLORES_COMPARACION[idx] : null;
                         return (
                           <button
                             key={p.id}
@@ -585,7 +604,6 @@ export default function JugadorPage() {
                 </div>
               </div>
 
-              {/* COMPARAR PARTIDOS */}
               {vista === "por-partido" && modoPartido === "comparar" ? (
                 <>
                   {partidosComparadosData.length === 0 ? (
@@ -655,7 +673,10 @@ export default function JugadorPage() {
                                 partidosComparadosData[0].est
                                   .valoracionPonderadaPorFundamento
                               ).map((f) => (
-                                <tr key={f} className="border-b border-slate-100">
+                                <tr
+                                  key={f}
+                                  className="border-b border-slate-100"
+                                >
                                   <td className="py-2 px-3 font-medium text-slate-700">
                                     {NOMBRES_FUNDAMENTO[f] ?? f}
                                   </td>
@@ -708,7 +729,9 @@ export default function JugadorPage() {
                             esArmador ? "" : "col-span-2"
                           }`}
                         >
-                          <GraficoBloqueoPorSet series={seriesBloqueoPartidos} />
+                          <GraficoBloqueoPorSet
+                            series={seriesBloqueoPartidos}
+                          />
                         </div>
                       </div>
 
@@ -721,12 +744,17 @@ export default function JugadorPage() {
                               <th className="py-2 px-3 text-right">Puntos</th>
                               <th className="py-2 px-3 text-right">Errores</th>
                               <th className="py-2 px-3 text-right">Saldo</th>
-                              <th className="py-2 px-3 text-right">Val. Media</th>
+                              <th className="py-2 px-3 text-right">
+                                Val. Media
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
                             {partidosComparadosData.map((s) => (
-                              <tr key={s.id} className="border-b border-slate-100">
+                              <tr
+                                key={s.id}
+                                className="border-b border-slate-100"
+                              >
                                 <td className="py-2 px-3 font-medium">
                                   <span
                                     className="inline-block w-3 h-3 rounded-full mr-2 align-middle"
@@ -779,9 +807,15 @@ export default function JugadorPage() {
                     </>
                   )}
                 </>
+              ) : verCrudas ? (
+                <TablaEstadisticasCrudas
+                  acciones={accionesFiltradas}
+                  jugadoresIds={[jugador.id]}
+                  nombresJugadores={{ [jugador.id]: jugador.nombre }}
+                  soloJugadorId={jugador.id}
+                />
               ) : (
                 <>
-                  {/* VISTA INDIVIDUAL (ya existente) */}
                   <div className="mb-6">
                     <h3 className="font-semibold text-slate-800 mb-3">
                       Perfil de rendimiento

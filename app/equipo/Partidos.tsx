@@ -23,6 +23,7 @@ import GraficoRecepcionPorSet from "./GraficoRecepcionPorSet";
 import GraficoBloqueoPorSet from "./GraficoBloqueoPorSet";
 import GraficoArmadosPorSet from "./GraficoArmadosPorSet";
 import TablaJugadoresPorSet from "./TablaJugadoresPorSet";
+import TablaEstadisticasCrudas from "./TablaEstadisticasCrudas";
 
 interface Partido {
   id: string;
@@ -65,7 +66,7 @@ type ModoPrincipal =
   | "partido"
   | "comparar-partidos"
   | "jugador-por-partidos";
-type ModoDetalle = "analisis" | "comparar-jugadores";
+type ModoDetalle = "analisis" | "comparar-jugadores" | "crudas";
 
 export default function Partidos({ equipoId, nombreEquipo }: Props) {
   const [partidos, setPartidos] = useState<Partido[]>([]);
@@ -87,7 +88,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   );
   const [partidosComparados, setPartidosComparados] = useState<string[]>([]);
 
-  // Modo "jugador por partidos"
   const [jugadorSeleccionadoJxP, setJugadorSeleccionadoJxP] = useState<
     string | null
   >(null);
@@ -277,7 +277,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     }
   );
 
-  // ==== COMPARAR PARTIDOS ====
   const partidosComparadosData = partidosComparados
     .map((id, idx) => {
       const partido = partidos.find((p) => p.id === id);
@@ -335,7 +334,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     };
   });
 
-  // ==== JUGADOR POR PARTIDOS ====
   const jugadorJxP = jugadorSeleccionadoJxP
     ? jugadores.find((j) => j.id === jugadorSeleccionadoJxP)
     : null;
@@ -445,7 +443,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       }))
     : [];
 
-  // ==== COMPARAR JUGADORES DENTRO DE UN PARTIDO ====
   const jugadoresComparadosData = jugadoresComparados.map((id, idx) => ({
     id,
     nombre: nombreDe(id),
@@ -534,7 +531,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Toggle principal con 3 modos */}
       <div className="flex justify-end gap-2 flex-wrap">
         <button
           onClick={() => handleToggleModoPrincipal("partido")}
@@ -568,7 +564,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         </button>
       </div>
 
-      {/* Filtros (solo en modo "partido" y "comparar-partidos") */}
       {modoPrincipal !== "jugador-por-partidos" && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
           <div className="grid grid-cols-4 gap-3">
@@ -647,7 +642,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       )}
 
       <div className="grid grid-cols-3 gap-4">
-        {/* Panel izquierdo */}
         <div className="col-span-1">
           {modoPrincipal === "jugador-por-partidos" ? (
             <>
@@ -790,10 +784,8 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
           )}
         </div>
 
-        {/* Panel derecho */}
         <div className="col-span-2">
           {modoPrincipal === "jugador-por-partidos" ? (
-            // ===== JUGADOR POR PARTIDOS =====
             <div className="space-y-4">
               {!jugadorSeleccionadoJxP ? (
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
@@ -804,7 +796,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 </div>
               ) : (
                 <>
-                  {/* Selector de partidos */}
                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
                     <h4 className="font-semibold text-slate-800 mb-3">
                       Elegí hasta 3 partidos para comparar a{" "}
@@ -856,7 +847,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     </div>
                   </div>
 
-                  {/* Resultados */}
                   {partidosJxPData.length === 0 ? (
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
                       <p className="text-4xl mb-3">⚖️</p>
@@ -1058,7 +1048,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               )}
             </div>
           ) : modoPrincipal === "comparar-partidos" ? (
-            // ===== COMPARAR PARTIDOS =====
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
               {partidosComparadosData.length === 0 ? (
                 <div className="p-12 text-center">
@@ -1170,7 +1159,8 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex justify-end gap-2">
+              {/* Toggle con 3 modos */}
+              <div className="flex justify-end gap-2 flex-wrap">
                 <button
                   onClick={() => {
                     setModoDetalle("analisis");
@@ -1193,6 +1183,16 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                   }`}
                 >
                   ⚖️ Comparar jugadores ({jugadoresComparados.length}/3)
+                </button>
+                <button
+                  onClick={() => setModoDetalle("crudas")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
+                    modoDetalle === "crudas"
+                      ? "bg-emerald-500 text-white border-emerald-500"
+                      : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                  }`}
+                >
+                  📋 Estadísticas crudas
                 </button>
               </div>
 
@@ -1398,6 +1398,19 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     </div>
                   )}
                 </>
+              )}
+
+              {modoDetalle === "crudas" && (
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                  <TablaEstadisticasCrudas
+                    acciones={accionesDelPartido}
+                    jugadoresIds={idsJugadores}
+                    nombresJugadores={Object.fromEntries(
+                      jugadores.map((j) => [j.id, nombreDe(j.id)])
+                    )}
+                    armadores={armadores}
+                  />
+                </div>
               )}
 
               {modoDetalle === "analisis" && (
