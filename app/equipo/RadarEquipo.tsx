@@ -45,7 +45,7 @@ export default function RadarEquipo({ equipo }: Props) {
     };
   });
 
-  const minEje = -110;
+  const minEje = -50;
   const maxEje = 110;
 
   return (
@@ -94,14 +94,12 @@ export default function RadarEquipo({ equipo }: Props) {
               {d.valorNorm > 0 ? "+" : ""}
               {d.valorNorm.toFixed(0)}
             </p>
-            <p className="text-[10px] text-amber-600">
-              {d.acciones} acc.
-            </p>
+            <p className="text-[10px] text-amber-600">{d.acciones} acc.</p>
           </div>
         ))}
       </div>
       <p className="text-xs text-slate-400 mt-3 text-center">
-        Valoración normalizada por fundamento (-100 a +100).
+        Valoración normalizada por fundamento.
       </p>
     </div>
   );

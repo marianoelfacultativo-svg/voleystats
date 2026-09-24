@@ -50,7 +50,8 @@ export default function RadarJugador({ jugador, esArmador }: Props) {
     };
   });
 
-  const minEje = -110;
+  // Menos espacio para negativos
+  const minEje = -50;
   const maxEje = 110;
 
   return (
@@ -103,15 +104,13 @@ export default function RadarJugador({ jugador, esArmador }: Props) {
               {d.valorNorm > 0 ? "+" : ""}
               {d.valorNorm.toFixed(0)}
             </p>
-            <p className="text-[10px] text-slate-400">
-              {d.acciones} acc.
-            </p>
+            <p className="text-[10px] text-slate-400">{d.acciones} acc.</p>
           </div>
         ))}
       </div>
 
       <p className="text-xs text-slate-400 mt-3 text-center">
-        Valoración normalizada por fundamento (-100 a +100).
+        Valoración normalizada por fundamento.
       </p>
     </div>
   );
