@@ -9,6 +9,7 @@ import {
   calcularEstadisticasEquipo,
   calcularPromedioPonderadoPorSet,
   calcularPromedioArmadosPonderadoPorSet,
+  calcularMaxAccionesPorFundamento,
   VALORES_SAQUE,
   VALORES_RECEPCION,
   VALORES_BLOQUEO,
@@ -198,11 +199,29 @@ export default function JugadorPage() {
     ? acciones.filter((a) => a.partido_id === partidoActivo)
     : acciones;
 
+  // Calcular máximos del equipo con el contexto correcto
+  let maxPorFund: Record<string, number> = {};
+  let maxAccionesEquipo = 1;
+  if (jugador && idsJugadoresEquipo.length > 0) {
+    maxPorFund = calcularMaxAccionesPorFundamento(
+      accionesFiltradas,
+      idsJugadoresEquipo
+    );
+    for (const jid of idsJugadoresEquipo) {
+      const total = accionesFiltradas
+        .filter((a) => a.jugador_id === jid)
+        .reduce((s, a) => s + a.cantidad, 0);
+      if (total > maxAccionesEquipo) maxAccionesEquipo = total;
+    }
+  }
+
   const stats: EstadisticasJugador | null = jugador
     ? calcularEstadisticasJugador(
         jugador.id,
         accionesFiltradas,
-        jugador.rol === "armador"
+        jugador.rol === "armador",
+        maxPorFund,
+        maxAccionesEquipo
       )
     : null;
 
