@@ -59,15 +59,6 @@ const NOMBRES: Record<string, string> = {
   defensa: "Defensa",
 };
 
-const VALORES_RECEPCION: Record<string, number> = {
-  "2x_positiva": 5,
-  positiva: 4,
-  negativa: 3,
-  "2x_negativa": 2,
-  "3x_negativa": 1,
-  ace_contra: 0,
-};
-
 const COLORES_COMPARACION = ["#EF4444", "#8B5CF6", "#3B82F6"];
 
 type ModoPrincipal = "partido" | "comparar-partidos";
