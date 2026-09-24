@@ -45,12 +45,6 @@ const NOMBRES_F: Record<string, string> = {
   defensa: "Defensa",
 };
 
-const VALORES_POR_FUNDAMENTO: Record<string, Record<string, number>> = {
-  saque: VALORES_SAQUE,
-  recepcion: VALORES_RECEPCION,
-  bloqueo: VALORES_BLOQUEO,
-};
-
 export default function TablaJugadoresPorSet({
   jugadoresIds,
   nombresJugadores,
@@ -78,10 +72,12 @@ export default function TablaJugadoresPorSet({
           <thead className="bg-slate-50">
             <tr className="text-left text-slate-500">
               <th className="py-2 px-3">Jugador</th>
-              <th className="py-2 px-3 text-right">Acciones</th>
-              <th className="py-2 px-3 text-right">Puntos</th>
-              <th className="py-2 px-3 text-right">Errores</th>
+              <th className="py-2 px-3 text-right">Acc</th>
+              <th className="py-2 px-3 text-right">Pts</th>
+              <th className="py-2 px-3 text-right">Err</th>
               <th className="py-2 px-3 text-right">Saldo</th>
+              <th className="py-2 px-3 text-right">S.Def</th>
+              <th className="py-2 px-3 text-right">Val.Med</th>
               <th className="py-2 px-3 text-right"></th>
             </tr>
           </thead>
@@ -128,6 +124,30 @@ export default function TablaJugadoresPorSet({
                       {est.saldoTotal > 0 ? "+" : ""}
                       {est.saldoTotal}
                     </td>
+                    <td
+                      className={`py-2 px-3 text-right font-semibold ${
+                        est.saldoDefensivo > 0
+                          ? "text-green-700"
+                          : est.saldoDefensivo < 0
+                          ? "text-red-700"
+                          : "text-slate-600"
+                      }`}
+                    >
+                      {est.saldoDefensivo > 0 ? "+" : ""}
+                      {est.saldoDefensivo}
+                    </td>
+                    <td
+                      className={`py-2 px-3 text-right font-semibold ${
+                        est.valoracionMedia > 0
+                          ? "text-green-700"
+                          : est.valoracionMedia < 0
+                          ? "text-red-700"
+                          : "text-slate-600"
+                      }`}
+                    >
+                      {est.valoracionMedia > 0 ? "+" : ""}
+                      {est.valoracionMedia.toFixed(1)}
+                    </td>
                     <td className="py-2 px-3 text-right">
                       <button
                         onClick={() => setExpandido(abierto ? null : id)}
@@ -140,7 +160,7 @@ export default function TablaJugadoresPorSet({
 
                   {abierto && (
                     <tr key={`${id}-detalle`} className="bg-slate-50">
-                      <td colSpan={6} className="p-4">
+                      <td colSpan={8} className="p-4">
                         <DetalleJugador
                           jugadorId={id}
                           nombre={nombreDe(id)}
@@ -160,10 +180,6 @@ export default function TablaJugadoresPorSet({
     </div>
   );
 }
-
-// ============================================
-// SUBCOMPONENTE: detalle de un jugador
-// ============================================
 
 function DetalleJugador({
   jugadorId,
@@ -192,20 +208,12 @@ function DetalleJugador({
     });
   };
 
-  // Filtrar acciones por set
-  const accionesFiltradas =
-    setFiltro === "todos"
-      ? acciones
-      : acciones.filter(
-          (a) => a.jugador_id === jugadorId && a.set_numero === setFiltro
-        );
-
-  // Si hay filtro de set, uso solo las del jugador en ese set
-  // Si no, uso todas las del jugador
   const accionesJugador =
     setFiltro === "todos"
       ? acciones.filter((a) => a.jugador_id === jugadorId)
-      : accionesFiltradas;
+      : acciones.filter(
+          (a) => a.jugador_id === jugadorId && a.set_numero === setFiltro
+        );
 
   const est = calcularEstadisticasJugador(
     jugadorId,
@@ -228,8 +236,9 @@ function DetalleJugador({
     VALORES_BLOQUEO
   );
 
-  // Valores detallados por fundamento
-  const valoracionesDe = (fund: string): { key: string; cantidad: number }[] => {
+  const valoracionesDe = (
+    fund: string
+  ): { key: string; cantidad: number }[] => {
     const valores = accionesJugador.filter((a) => a.fundamento === fund);
     const mapa: Record<string, number> = {};
     for (const a of valores) {
@@ -242,9 +251,7 @@ function DetalleJugador({
     <div className="space-y-4">
       {/* Selector de set */}
       <div className="flex gap-2 flex-wrap">
-        <span className="text-sm text-slate-600 self-center mr-2">
-          Ver:
-        </span>
+        <span className="text-sm text-slate-600 self-center mr-2">Ver:</span>
         {(["todos", 1, 2, 3, 4, 5] as const).map((s) => (
           <button
             key={String(s)}
@@ -260,6 +267,74 @@ function DetalleJugador({
         ))}
       </div>
 
+      {/* Tarjetas: 2 filas × 3 columnas */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
+          <p className="text-xs text-slate-500 uppercase">Saldo</p>
+          <p
+            className={`text-xl font-bold ${
+              est.saldoTotal > 0
+                ? "text-green-700"
+                : est.saldoTotal < 0
+                ? "text-red-700"
+                : "text-slate-700"
+            }`}
+          >
+            {est.saldoTotal > 0 ? "+" : ""}
+            {est.saldoTotal}
+          </p>
+        </div>
+        <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
+          <p className="text-xs text-slate-500 uppercase">Saldo Defensivo</p>
+          <p
+            className={`text-xl font-bold ${
+              est.saldoDefensivo > 0
+                ? "text-green-700"
+                : est.saldoDefensivo < 0
+                ? "text-red-700"
+                : "text-slate-700"
+            }`}
+          >
+            {est.saldoDefensivo > 0 ? "+" : ""}
+            {est.saldoDefensivo}
+          </p>
+        </div>
+        <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
+          <p className="text-xs text-slate-500 uppercase">Valoración Media</p>
+          <p
+            className={`text-xl font-bold ${
+              est.valoracionMedia > 0
+                ? "text-green-700"
+                : est.valoracionMedia < 0
+                ? "text-red-700"
+                : "text-slate-700"
+            }`}
+          >
+            {est.valoracionMedia > 0 ? "+" : ""}
+            {est.valoracionMedia.toFixed(1)}
+          </p>
+        </div>
+
+        <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
+          <p className="text-xs text-slate-500 uppercase">Acciones</p>
+          <p className="text-xl font-bold text-slate-800">
+            {est.totalAcciones}
+          </p>
+        </div>
+        <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
+          <p className="text-xs text-green-700 uppercase">Puntos</p>
+          <p className="text-xl font-bold text-green-800">
+            {est.totalPuntos}
+          </p>
+        </div>
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
+          <p className="text-xs text-red-700 uppercase">Errores</p>
+          <p className="text-xl font-bold text-red-800">
+            {est.totalErrores}
+          </p>
+        </div>
+      </div>
+
       {/* Tabla por fundamento */}
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full text-sm">
@@ -272,6 +347,7 @@ function DetalleJugador({
               <th className="py-2 px-3 text-right">Puntos</th>
               <th className="py-2 px-3 text-right">Errores</th>
               <th className="py-2 px-3 text-right">Saldo</th>
+              <th className="py-2 px-3 text-right">Val.Med</th>
               <th className="py-2 px-3 text-right"></th>
             </tr>
           </thead>
@@ -282,6 +358,7 @@ function DetalleJugador({
               if (!e || e.total === 0) return null;
               const abierto = valoresAbiertos.has(f);
               const detalle = valoracionesDe(f);
+              const valMed = est.valoracionPorFundamento[f] ?? 0;
 
               return (
                 <>
@@ -316,18 +393,30 @@ function DetalleJugador({
                       {e.saldo > 0 ? "+" : ""}
                       {e.saldo}
                     </td>
+                    <td
+                      className={`py-2 px-3 text-right font-semibold ${
+                        valMed > 0
+                          ? "text-green-700"
+                          : valMed < 0
+                          ? "text-red-700"
+                          : "text-slate-600"
+                      }`}
+                    >
+                      {valMed > 0 ? "+" : ""}
+                      {valMed.toFixed(1)}
+                    </td>
                     <td className="py-2 px-3 text-right">
                       <button
                         onClick={() => toggleValoraciones(f)}
                         className="px-2 py-1 text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 rounded transition"
                       >
-                        {abierto ? "Ocultar" : "Ver valoraciones"}
+                        {abierto ? "Ocultar" : "Valoraciones"}
                       </button>
                     </td>
                   </tr>
                   {abierto && (
                     <tr key={`${f}-valoraciones`} className="bg-slate-100">
-                      <td colSpan={8} className="p-3">
+                      <td colSpan={9} className="p-3">
                         <div className="flex gap-2 flex-wrap">
                           {detalle.length === 0 ? (
                             <p className="text-xs text-slate-500">
@@ -397,9 +486,7 @@ function DetalleJugador({
             <GraficoBloqueoPorSet promedios={promediosBloqueo} />
           </div>
           <div className="p-3 bg-white border border-slate-200 rounded-lg">
-            <GraficoArmadosPorSet
-              promedios={est.armador.promediosArmados}
-            />
+            <GraficoArmadosPorSet promedios={est.armador.promediosArmados} />
           </div>
           <div className="col-span-3 p-3 bg-white border border-slate-200 rounded-lg">
             <MapaCalorTendencia

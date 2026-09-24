@@ -31,6 +31,16 @@ interface Props {
   nombreEquipo: string;
 }
 
+const NOMBRES_FUNDAMENTO: Record<string, string> = {
+  saque: "Saque",
+  recepcion: "Recepción",
+  ataque: "Ataque",
+  bloqueo: "Bloqueo",
+  defensa: "Defensa",
+  armados: "Armados",
+  toque: "Toque",
+};
+
 export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
   const [acciones, setAcciones] = useState<AccionDB[]>([]);
@@ -194,23 +204,9 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   </span>
                 )}
               </div>
-              <div className="text-right">
-                <p className="text-xs text-slate-500 uppercase">Saldo total</p>
-                <p
-                  className={`text-3xl font-bold ${
-                    jugadorActual.saldoTotal > 0
-                      ? "text-green-700"
-                      : jugadorActual.saldoTotal < 0
-                      ? "text-red-700"
-                      : "text-slate-700"
-                  }`}
-                >
-                  {jugadorActual.saldoTotal > 0 ? "+" : ""}
-                  {jugadorActual.saldoTotal}
-                </p>
-              </div>
             </div>
 
+            {/* Radar */}
             <div className="mb-6">
               <h4 className="font-semibold text-slate-800 mb-3">
                 Perfil de rendimiento
@@ -222,6 +218,42 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               />
             </div>
 
+            {/* Tabla valoración media por fundamento */}
+            {Object.keys(jugadorActual.valoracionPorFundamento).length > 0 && (
+              <div className="mb-6">
+                <h4 className="font-semibold text-slate-800 mb-3">
+                  Valoración media por fundamento
+                </h4>
+                <div className="grid grid-cols-5 gap-2">
+                  {Object.entries(jugadorActual.valoracionPorFundamento).map(
+                    ([fund, val]) => (
+                      <div
+                        key={fund}
+                        className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center"
+                      >
+                        <p className="text-xs text-slate-500">
+                          {NOMBRES_FUNDAMENTO[fund] ?? fund}
+                        </p>
+                        <p
+                          className={`text-lg font-bold ${
+                            val > 0
+                              ? "text-green-700"
+                              : val < 0
+                              ? "text-red-700"
+                              : "text-slate-700"
+                          }`}
+                        >
+                          {val > 0 ? "+" : ""}
+                          {val.toFixed(1)}
+                        </p>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Gráficos */}
             {esArmador && jugadorActual.armador && (
               <div className="mb-6 grid grid-cols-2 gap-4">
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
@@ -257,7 +289,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               </div>
             )}
 
-            {!esArmador && jugadorActual.recepcion && (
+            {!esArmador && (
               <div className="mb-6 grid grid-cols-2 gap-4">
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                   <GraficoSaquePorSet
@@ -271,7 +303,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                 </div>
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                   <GraficoRecepcionPorSet
-                    promedios={jugadorActual.recepcion.promediosPorSet}
+                    promedios={jugadorActual.recepcion?.promediosPorSet ?? []}
                   />
                 </div>
                 <div className="col-span-2 p-4 bg-slate-50 border border-slate-200 rounded-lg">
@@ -287,29 +319,74 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               </div>
             )}
 
-            <div className="grid grid-cols-4 gap-3">
+            {/* Tarjetas: 2 filas × 3 columnas */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                <p className="text-xs text-slate-500 uppercase">Saldo</p>
+                <p
+                  className={`text-2xl font-bold ${
+                    jugadorActual.saldoTotal > 0
+                      ? "text-green-700"
+                      : jugadorActual.saldoTotal < 0
+                      ? "text-red-700"
+                      : "text-slate-700"
+                  }`}
+                >
+                  {jugadorActual.saldoTotal > 0 ? "+" : ""}
+                  {jugadorActual.saldoTotal}
+                </p>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                <p className="text-xs text-slate-500 uppercase">
+                  Saldo Defensivo
+                </p>
+                <p
+                  className={`text-2xl font-bold ${
+                    jugadorActual.saldoDefensivo > 0
+                      ? "text-green-700"
+                      : jugadorActual.saldoDefensivo < 0
+                      ? "text-red-700"
+                      : "text-slate-700"
+                  }`}
+                >
+                  {jugadorActual.saldoDefensivo > 0 ? "+" : ""}
+                  {jugadorActual.saldoDefensivo}
+                </p>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                <p className="text-xs text-slate-500 uppercase">
+                  Valoración Media
+                </p>
+                <p
+                  className={`text-2xl font-bold ${
+                    jugadorActual.valoracionMedia > 0
+                      ? "text-green-700"
+                      : jugadorActual.valoracionMedia < 0
+                      ? "text-red-700"
+                      : "text-slate-700"
+                  }`}
+                >
+                  {jugadorActual.valoracionMedia > 0 ? "+" : ""}
+                  {jugadorActual.valoracionMedia.toFixed(1)}
+                </p>
+              </div>
+
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
                 <p className="text-xs text-slate-500 uppercase">Acciones</p>
-                <p className="text-xl font-bold text-slate-800">
+                <p className="text-2xl font-bold text-slate-800">
                   {jugadorActual.totalAcciones}
                 </p>
               </div>
               <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
                 <p className="text-xs text-green-700 uppercase">Puntos</p>
-                <p className="text-xl font-bold text-green-800">
+                <p className="text-2xl font-bold text-green-800">
                   {jugadorActual.totalPuntos}
                 </p>
               </div>
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
                 <p className="text-xs text-red-700 uppercase">Errores</p>
-                <p className="text-xl font-bold text-red-800">
+                <p className="text-2xl font-bold text-red-800">
                   {jugadorActual.totalErrores}
-                </p>
-              </div>
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
-                <p className="text-xs text-slate-500 uppercase">Positivas</p>
-                <p className="text-xl font-bold text-slate-800">
-                  {jugadorActual.totalPositivos}
                 </p>
               </div>
             </div>

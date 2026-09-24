@@ -43,6 +43,16 @@ interface Partido {
 
 type Vista = "general" | "por-partido";
 
+const NOMBRES_FUNDAMENTO: Record<string, string> = {
+  saque: "Saque",
+  recepcion: "Recepción",
+  ataque: "Ataque",
+  bloqueo: "Bloqueo",
+  defensa: "Defensa",
+  armados: "Armados",
+  toque: "Toque",
+};
+
 export default function JugadorPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
@@ -311,23 +321,6 @@ export default function JugadorPage() {
                     </p>
                   )}
                 </div>
-                <div className="text-right">
-                  <p className="text-xs text-slate-500 uppercase">
-                    Saldo {vista === "general" ? "total" : "del partido"}
-                  </p>
-                  <p
-                    className={`text-4xl font-bold ${
-                      stats.saldoTotal > 0
-                        ? "text-green-700"
-                        : stats.saldoTotal < 0
-                        ? "text-red-700"
-                        : "text-slate-700"
-                    }`}
-                  >
-                    {stats.saldoTotal > 0 ? "+" : ""}
-                    {stats.saldoTotal}
-                  </p>
-                </div>
               </div>
 
               <div className="mb-6">
@@ -340,6 +333,40 @@ export default function JugadorPage() {
                   esArmador={esArmador}
                 />
               </div>
+
+              {Object.keys(stats.valoracionPorFundamento).length > 0 && (
+                <div className="mb-6">
+                  <h3 className="font-semibold text-slate-800 mb-3">
+                    Valoración media por fundamento
+                  </h3>
+                  <div className="grid grid-cols-5 gap-2">
+                    {Object.entries(stats.valoracionPorFundamento).map(
+                      ([fund, val]) => (
+                        <div
+                          key={fund}
+                          className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center"
+                        >
+                          <p className="text-xs text-slate-500">
+                            {NOMBRES_FUNDAMENTO[fund] ?? fund}
+                          </p>
+                          <p
+                            className={`text-lg font-bold ${
+                              val > 0
+                                ? "text-green-700"
+                                : val < 0
+                                ? "text-red-700"
+                                : "text-slate-700"
+                            }`}
+                          >
+                            {val > 0 ? "+" : ""}
+                            {val.toFixed(1)}
+                          </p>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
 
               {esArmador && stats.armador && (
                 <div className="mb-6 grid grid-cols-2 gap-4">
@@ -406,33 +433,74 @@ export default function JugadorPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-4 gap-3">
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center">
-                  <p className="text-xs text-slate-500 uppercase">
-                    Acciones
+              {/* Tarjetas: 2 filas × 3 columnas */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                  <p className="text-xs text-slate-500 uppercase">Saldo</p>
+                  <p
+                    className={`text-2xl font-bold ${
+                      stats.saldoTotal > 0
+                        ? "text-green-700"
+                        : stats.saldoTotal < 0
+                        ? "text-red-700"
+                        : "text-slate-700"
+                    }`}
+                  >
+                    {stats.saldoTotal > 0 ? "+" : ""}
+                    {stats.saldoTotal}
                   </p>
+                </div>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                  <p className="text-xs text-slate-500 uppercase">
+                    Saldo Defensivo
+                  </p>
+                  <p
+                    className={`text-2xl font-bold ${
+                      stats.saldoDefensivo > 0
+                        ? "text-green-700"
+                        : stats.saldoDefensivo < 0
+                        ? "text-red-700"
+                        : "text-slate-700"
+                    }`}
+                  >
+                    {stats.saldoDefensivo > 0 ? "+" : ""}
+                    {stats.saldoDefensivo}
+                  </p>
+                </div>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                  <p className="text-xs text-slate-500 uppercase">
+                    Valoración Media
+                  </p>
+                  <p
+                    className={`text-2xl font-bold ${
+                      stats.valoracionMedia > 0
+                        ? "text-green-700"
+                        : stats.valoracionMedia < 0
+                        ? "text-red-700"
+                        : "text-slate-700"
+                    }`}
+                  >
+                    {stats.valoracionMedia > 0 ? "+" : ""}
+                    {stats.valoracionMedia.toFixed(1)}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                  <p className="text-xs text-slate-500 uppercase">Acciones</p>
                   <p className="text-2xl font-bold text-slate-800">
                     {stats.totalAcciones}
                   </p>
                 </div>
-                <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
                   <p className="text-xs text-green-700 uppercase">Puntos</p>
                   <p className="text-2xl font-bold text-green-800">
                     {stats.totalPuntos}
                   </p>
                 </div>
-                <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-center">
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
                   <p className="text-xs text-red-700 uppercase">Errores</p>
                   <p className="text-2xl font-bold text-red-800">
                     {stats.totalErrores}
-                  </p>
-                </div>
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center">
-                  <p className="text-xs text-slate-500 uppercase">
-                    Positivas
-                  </p>
-                  <p className="text-2xl font-bold text-slate-800">
-                    {stats.totalPositivos}
                   </p>
                 </div>
               </div>

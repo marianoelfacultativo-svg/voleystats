@@ -12,7 +12,7 @@ export interface AccionDB {
 }
 
 // ============================================
-// DEFINICIONES PARA JUGADOR NORMAL
+// CONTEO DE POSITIVAS/NEGATIVAS (para display)
 // ============================================
 
 const ACCIONES_POSITIVAS: Record<string, string[]> = {
@@ -37,24 +37,70 @@ const ACCIONES_NEGATIVAS: Record<string, string[]> = {
   ],
 };
 
-const PUNTOS: Record<string, string[]> = {
+// ============================================
+// PUNTOS Y ERRORES (para columnas display)
+// ============================================
+
+const DISPLAY_PUNTOS: Record<string, string[]> = {
   saque: ["ace"],
   recepcion: [],
   ataque: ["punto"],
   bloqueo: ["punto"],
   defensa: [],
+  toque: ["punto"],
 };
 
-const ERRORES: Record<string, string[]> = {
+const DISPLAY_ERRORES: Record<string, string[]> = {
   saque: ["negativo"],
   recepcion: ["ace_contra"],
   ataque: ["error"],
-  bloqueo: ["use_rival"],
+  bloqueo: ["use_rival", "red"],
   defensa: ["error_def", "errores_graves"],
+  toque: ["error"],
 };
 
 // ============================================
-// VALORES PARA LOS GRÁFICOS DE PROMEDIO
+// SALDO (puntos netos)
+// ============================================
+
+const SALDO_POSITIVOS: Record<string, string[]> = {
+  saque: ["ace"],
+  recepcion: [],
+  ataque: ["punto"],
+  bloqueo: ["punto"],
+  defensa: [],
+  toque: ["punto"],
+};
+
+const SALDO_NEGATIVOS: Record<string, string[]> = {
+  saque: ["negativo"],
+  recepcion: ["ace_contra"],
+  ataque: ["error"],
+  bloqueo: ["red"],
+  defensa: [],
+  toque: ["error"],
+};
+
+// ============================================
+// SALDO DEFENSIVO (aparte)
+// ============================================
+
+const SALDO_DEF_POSITIVOS = [
+  "toque_positiva",
+  "gran_def",
+  "cobertura_positiva",
+];
+
+const SALDO_DEF_NEGATIVOS = [
+  "toque_negativa",
+  "mala_libre",
+  "error_def",
+  "cobertura_negativa",
+  "errores_graves",
+];
+
+// ============================================
+// VALORES PARA GRÁFICOS Y VALORACIÓN MEDIA
 // ============================================
 
 export const VALORES_SAQUE: Record<string, number> = {
@@ -74,6 +120,12 @@ export const VALORES_RECEPCION: Record<string, number> = {
   ace_contra: 0,
 };
 
+export const VALORES_ATAQUE: Record<string, number> = {
+  punto: 4,
+  neutro: 0,
+  error: -4,
+};
+
 export const VALORES_BLOQUEO: Record<string, number> = {
   punto: 4,
   positivo_mas: 2,
@@ -83,12 +135,43 @@ export const VALORES_BLOQUEO: Record<string, number> = {
   filtrada: -1,
 };
 
+export const VALORES_DEFENSA: Record<string, number> = {
+  toque_positiva: 4,
+  toque_negativa: -4,
+  mala_libre: -8,
+  error_def: -4,
+  gran_def: 4,
+  cobertura_positiva: 4,
+  cobertura_negativa: -4,
+  errores_graves: -4,
+};
+
 export const VALORES_ARMADOS: Record<string, number> = {
-  horrible: 1,
+  horrible: -1,
   malo: 2,
   flojo: 3,
   correcto: 4,
   perfecto: 5,
+};
+
+export const VALORES_TOQUE: Record<string, number> = {
+  punto: 4,
+  neutro: 0,
+  error: -4,
+};
+
+export const VALORES_POR_FUNDAMENTO: Record<
+  string,
+  Record<string, number>
+> = {
+  saque: VALORES_SAQUE,
+  recepcion: VALORES_RECEPCION,
+  ataque: VALORES_ATAQUE,
+  bloqueo: VALORES_BLOQUEO,
+  defensa: VALORES_DEFENSA,
+  armados: VALORES_ARMADOS,
+  toque: VALORES_TOQUE,
+  // tendencia no tiene valores
 };
 
 export const ETIQUETAS_VALORACION: Record<string, string> = {
@@ -121,6 +204,11 @@ export const ETIQUETAS_VALORACION: Record<string, string> = {
   flojo: "Flojo",
   correcto: "Correcto",
   perfecto: "Perfecto",
+  zona_4: "Zona 4",
+  zona_3: "Zona 3",
+  zona_2: "Zona 2",
+  zona_6: "Zona 6",
+  zona_1: "Zona 1",
 };
 
 // ============================================
@@ -183,6 +271,9 @@ export interface EstadisticasJugador {
   totalPuntos: number;
   totalErrores: number;
   saldoTotal: number;
+  saldoDefensivo: number;
+  valoracionMedia: number;
+  valoracionPorFundamento: Record<string, number>;
   porFundamento: Record<string, EstadisticasFundamento>;
   armador?: EstadisticasArmador;
   recepcion?: {
@@ -192,7 +283,7 @@ export interface EstadisticasJugador {
 }
 
 // ============================================
-// FUNCIONES DE CÁLCULO
+// HELPERS
 // ============================================
 
 function contarPorValoraciones(
@@ -213,6 +304,10 @@ function contarTotal(acciones: AccionDB[], fundamento: string): number {
     .reduce((suma, a) => suma + a.cantidad, 0);
 }
 
+// ============================================
+// CÁLCULO DE UN FUNDAMENTO
+// ============================================
+
 function calcularFundamentoNormal(
   propias: AccionDB[],
   fund: string
@@ -228,15 +323,28 @@ function calcularFundamentoNormal(
     fund,
     ACCIONES_NEGATIVAS[fund] ?? []
   );
-  const puntos = contarPorValoraciones(propias, fund, PUNTOS[fund] ?? []);
-  const errores = contarPorValoraciones(propias, fund, ERRORES[fund] ?? []);
+  const puntos = contarPorValoraciones(
+    propias,
+    fund,
+    DISPLAY_PUNTOS[fund] ?? []
+  );
+  const errores = contarPorValoraciones(
+    propias,
+    fund,
+    DISPLAY_ERRORES[fund] ?? []
+  );
 
-  let saldo: number;
-  if (fund === "saque" || fund === "ataque" || fund === "bloqueo") {
-    saldo = puntos - errores;
-  } else {
-    saldo = positivos - negativos;
-  }
+  const saldoPos = contarPorValoraciones(
+    propias,
+    fund,
+    SALDO_POSITIVOS[fund] ?? []
+  );
+  const saldoNeg = contarPorValoraciones(
+    propias,
+    fund,
+    SALDO_NEGATIVOS[fund] ?? []
+  );
+  const saldo = saldoPos - saldoNeg;
 
   const efectividad = total > 0 ? (saldo / total) * 100 : 0;
 
@@ -251,6 +359,48 @@ function calcularFundamentoNormal(
     efectividad,
   };
 }
+
+// ============================================
+// VALORACIÓN MEDIA
+// ============================================
+
+function calcularValoracionMedia(
+  acciones: AccionDB[],
+  fundamentos: string[]
+): { media: number; porFundamento: Record<string, number> } {
+  const porFundamento: Record<string, number> = {};
+  let sumaTotal = 0;
+  let countTotal = 0;
+
+  for (const fund of fundamentos) {
+    const valores = VALORES_POR_FUNDAMENTO[fund];
+    if (!valores) continue;
+
+    const propias = acciones.filter((a) => a.fundamento === fund);
+    let suma = 0;
+    let count = 0;
+    for (const a of propias) {
+      const v = valores[a.valoracion];
+      if (v === undefined) continue;
+      suma += v * a.cantidad;
+      count += a.cantidad;
+    }
+    if (count > 0) {
+      porFundamento[fund] = suma / count;
+      sumaTotal += suma;
+      countTotal += count;
+    }
+  }
+
+  return {
+    media: countTotal > 0 ? sumaTotal / countTotal : 0,
+    porFundamento,
+  };
+}
+
+// ============================================
+// ARMADOR (tendencia, armados, toque)
+// ============================================
 
 function calcularEstadisticasArmador(
   propias: AccionDB[]
@@ -313,6 +463,10 @@ function calcularEstadisticasArmador(
   };
 }
 
+// ============================================
+// RECEPCIÓN (promedios por set)
+// ============================================
+
 function calcularEstadisticasRecepcion(propias: AccionDB[]): {
   promediosPorSet: PromedioRecepcionSet[];
   promedioGlobal: number;
@@ -348,7 +502,10 @@ function calcularEstadisticasRecepcion(propias: AccionDB[]): {
   return { promediosPorSet, promedioGlobal };
 }
 
-// Función genérica de promedio por set
+// ============================================
+// PROMEDIO POR SET (genérico, para gráficos)
+// ============================================
+
 export function calcularPromedioPorSet(
   jugadorId: string,
   acciones: AccionDB[],
@@ -377,6 +534,10 @@ export function calcularPromedioPorSet(
   return result;
 }
 
+// ============================================
+// ESTADÍSTICAS DE UN JUGADOR
+// ============================================
+
 export function calcularEstadisticasJugador(
   jugadorId: string,
   acciones: AccionDB[],
@@ -384,8 +545,12 @@ export function calcularEstadisticasJugador(
 ): EstadisticasJugador {
   const propias = acciones.filter((a) => a.jugador_id === jugadorId);
 
-  const fundamentos = esArmador
+  const fundamentosDisplay = esArmador
     ? ["saque", "bloqueo", "defensa"]
+    : ["saque", "recepcion", "ataque", "bloqueo", "defensa"];
+
+  const fundamentosValoracion = esArmador
+    ? ["saque", "bloqueo", "defensa", "armados", "toque"]
     : ["saque", "recepcion", "ataque", "bloqueo", "defensa"];
 
   const porFundamento: Record<string, EstadisticasFundamento> = {};
@@ -397,7 +562,7 @@ export function calcularEstadisticasJugador(
   let totalErrores = 0;
   let saldoTotal = 0;
 
-  for (const fund of fundamentos) {
+  for (const fund of fundamentosDisplay) {
     const est = calcularFundamentoNormal(propias, fund);
     porFundamento[fund] = est;
 
@@ -412,12 +577,35 @@ export function calcularEstadisticasJugador(
   let armador: EstadisticasArmador | undefined;
   if (esArmador) {
     armador = calcularEstadisticasArmador(propias);
+    // Sumar puntos y errores de toque al total
     totalPuntos += armador.toquesPunto;
     totalErrores += armador.toquesError;
     saldoTotal += armador.toquesPunto - armador.toquesError;
+    // Sumar acciones de tendencia, armados y toque al total
     totalAcciones +=
-      armador.distribucionTendencia.total + contarTotal(propias, "armados");
+      armador.distribucionTendencia.total +
+      contarTotal(propias, "armados") +
+      contarTotal(propias, "toque");
   }
+
+  // Saldo defensivo (independiente)
+  const saldoDefPos = contarPorValoraciones(
+    propias,
+    "defensa",
+    SALDO_DEF_POSITIVOS
+  );
+  const saldoDefNeg = contarPorValoraciones(
+    propias,
+    "defensa",
+    SALDO_DEF_NEGATIVOS
+  );
+  const saldoDefensivo = saldoDefPos - saldoDefNeg;
+
+  // Valoración media
+  const { media, porFundamento: valorPorFund } = calcularValoracionMedia(
+    propias,
+    fundamentosValoracion
+  );
 
   let recepcion: EstadisticasJugador["recepcion"] | undefined;
   if (!esArmador) {
@@ -432,11 +620,18 @@ export function calcularEstadisticasJugador(
     totalPuntos,
     totalErrores,
     saldoTotal,
+    saldoDefensivo,
+    valoracionMedia: media,
+    valoracionPorFundamento: valorPorFund,
     porFundamento,
     armador,
     recepcion,
   };
 }
+
+// ============================================
+// ESTADÍSTICAS DEL EQUIPO
+// ============================================
 
 export function calcularEstadisticasEquipo(
   jugadoresIds: string[],
@@ -463,6 +658,9 @@ export function calcularEstadisticasEquipo(
     totalPuntos: 0,
     totalErrores: 0,
     saldoTotal: 0,
+    saldoDefensivo: 0,
+    valoracionMedia: 0,
+    valoracionPorFundamento: {},
     porFundamento: {},
   };
 
@@ -479,6 +677,11 @@ export function calcularEstadisticasEquipo(
     };
   }
 
+  let sumaValoracionTotal = 0;
+  let countValoracionTotal = 0;
+  const valoracionesAcumuladas: Record<string, { suma: number; count: number }> =
+    {};
+
   for (const id of jugadoresIds) {
     const est = calcularEstadisticasJugador(
       id,
@@ -493,6 +696,21 @@ export function calcularEstadisticasEquipo(
     totalesIniciales.totalPuntos += est.totalPuntos;
     totalesIniciales.totalErrores += est.totalErrores;
     totalesIniciales.saldoTotal += est.saldoTotal;
+    totalesIniciales.saldoDefensivo += est.saldoDefensivo;
+
+    // Acumular valoración
+    for (const [fund, val] of Object.entries(est.valoracionPorFundamento)) {
+      if (!valoracionesAcumuladas[fund]) {
+        valoracionesAcumuladas[fund] = { suma: 0, count: 0 };
+      }
+      // Necesitamos la cantidad de acciones con valor para promediar bien
+      // Usamos el total del fundamento como referencia
+      const totalFund = est.porFundamento[fund]?.total ?? 0;
+      valoracionesAcumuladas[fund].suma += val * totalFund;
+      valoracionesAcumuladas[fund].count += totalFund;
+      sumaValoracionTotal += val * totalFund;
+      countValoracionTotal += totalFund;
+    }
 
     for (const fund of fundamentos) {
       const ef = est.porFundamento[fund];
@@ -512,8 +730,21 @@ export function calcularEstadisticasEquipo(
     tf.efectividad = tf.total > 0 ? (tf.saldo / tf.total) * 100 : 0;
   }
 
+  // Valoración media del equipo
+  for (const [fund, data] of Object.entries(valoracionesAcumuladas)) {
+    if (data.count > 0) {
+      totalesIniciales.valoracionPorFundamento[fund] = data.suma / data.count;
+    }
+  }
+  totalesIniciales.valoracionMedia =
+    countValoracionTotal > 0 ? sumaValoracionTotal / countValoracionTotal : 0;
+
   return { porJugador, totales: totalesIniciales };
 }
+
+// ============================================
+// RANKINGS
+// ============================================
 
 export interface RankingItem {
   jugador_id: string;
