@@ -25,15 +25,25 @@ const ETIQUETAS: Record<string, string> = {
 };
 
 export default function RadarJugador({ jugador, equipo, esArmador }: Props) {
-  const fundamentos = esArmador
-    ? ["saque", "bloqueo", "defensa"]
-    : ["saque", "recepcion", "ataque", "bloqueo", "defensa"];
+  // ORDEN: sentido horario desde arriba (Saque → Defensa → Recepción → Bloqueo → Ataque)
+  const fundamentosNormal = [
+    "saque",
+    "defensa",
+    "recepcion",
+    "bloqueo",
+    "ataque",
+  ];
+  const fundamentosArmador = ["saque", "defensa", "bloqueo"];
+
+  const fundamentos = esArmador ? fundamentosArmador : fundamentosNormal;
 
   const datos = fundamentos.map((f) => {
     const ej = jugador.porFundamento[f];
     const ee = equipo.porFundamento[f];
     const accionesMax = Math.max(ee?.total ?? 0, 1);
-    const factorVolumen = Math.sqrt((ej?.total ?? 0) / accionesMax);
+
+    // Exponente < 1 => menos acciones llenan más el radar
+    const factorVolumen = Math.pow((ej?.total ?? 0) / accionesMax, 0.35);
     const efectividad = ej?.efectividad ?? 0;
     const valorJugador = efectividad * factorVolumen;
 
@@ -49,25 +59,26 @@ export default function RadarJugador({ jugador, equipo, esArmador }: Props) {
 
   return (
     <div>
-      <div className="w-full h-80">
+      <div className="w-full h-96">
         <ResponsiveContainer width="100%" height="100%">
-          <RadarChart data={datos}>
-            <PolarGrid stroke="#e2e8f0" />
+          <RadarChart data={datos} outerRadius="75%">
+            <PolarGrid stroke="#C9DBC6" />
             <PolarAngleAxis
               dataKey="fundamento"
-              tick={{ fill: "#475569", fontSize: 12 }}
+              tick={{ fill: "#2F4A3A", fontSize: 13, fontWeight: 500 }}
             />
             <PolarRadiusAxis
               angle={90}
               domain={[0, maxEje]}
-              tick={{ fill: "#94a3b8", fontSize: 10 }}
+              tick={{ fill: "#8FA398", fontSize: 10 }}
             />
             <Radar
               name={jugador.jugador_id}
               dataKey="valor"
-              stroke="#3b82f6"
-              fill="#3b82f6"
-              fillOpacity={0.4}
+              stroke="#10B981"
+              fill="#10B981"
+              fillOpacity={0.45}
+              strokeWidth={2}
             />
           </RadarChart>
         </ResponsiveContainer>
@@ -94,7 +105,7 @@ export default function RadarJugador({ jugador, equipo, esArmador }: Props) {
       </div>
 
       <p className="text-xs text-slate-400 mt-3 text-center">
-        El tamaño del radar refleja <strong>volumen + efectividad</strong>.
+        El tamaño refleja <strong>volumen + efectividad</strong>.
       </p>
     </div>
   );

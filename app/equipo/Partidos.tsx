@@ -4,12 +4,17 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   calcularEstadisticasEquipo,
+  calcularEstadisticasJugador,
   top3,
   type AccionDB,
   type PromedioRecepcionSet,
 } from "@/lib/estadisticas";
 import GraficoRecepcionEquipoPorSet from "./GraficoRecepcionEquipoPorSet";
 import GraficoTortaRival from "./GraficoTortaRival";
+import RadarEquipo from "./RadarEquipo";
+import TablaJugadoresPorSet from "./TablaJugadoresPorSet";
+import GraficoArmadosPorSet from "./GraficoArmadosPorSet";
+import MapaCalorTendencia from "./MapaCalorTendencia";
 
 interface Partido {
   id: string;
@@ -202,6 +207,11 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     }
   );
 
+  // Armadores que participaron en este partido
+  const armadoresEnPartido = jugadores.filter(
+    (j) => j.rol === "armador" && accionesDelPartido.some((a) => a.jugador_id === j.id)
+  );
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
@@ -247,7 +257,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">
-              Set (solo en detalle)
+              Set (en detalle)
             </label>
             <select
               value={filtroSet}
@@ -300,7 +310,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                   onClick={() => setPartidoSeleccionado(p.id)}
                   className={`w-full text-left p-3 rounded-lg border transition ${
                     partidoSeleccionado === p.id
-                      ? "bg-blue-500 border-blue-500 text-white"
+                      ? "bg-emerald-500 border-emerald-500 text-white"
                       : "bg-white border-slate-200 hover:bg-slate-50"
                   }`}
                 >
@@ -316,7 +326,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                   <p
                     className={`text-xs mt-1 ${
                       partidoSeleccionado === p.id
-                        ? "text-blue-100"
+                        ? "text-emerald-100"
                         : "text-slate-500"
                     }`}
                   >
@@ -325,7 +335,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                   <p
                     className={`text-xs mt-1 ${
                       partidoSeleccionado === p.id
-                        ? "text-blue-100"
+                        ? "text-emerald-100"
                         : "text-slate-500"
                     }`}
                   >
@@ -349,6 +359,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
             </div>
           ) : (
             <div className="space-y-4">
+              {/* Encabezado */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
                 <div className="flex justify-between items-start">
                   <div>
@@ -375,6 +386,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 )}
               </div>
 
+              {/* 3 métricas */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center">
                   <p className="text-xs text-slate-500 uppercase">Acciones</p>
@@ -396,6 +408,12 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 </div>
               </div>
 
+              {/* Radar del equipo */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                <RadarEquipo equipo={statsPartido.totales} />
+              </div>
+
+              {/* Gráficos: recepción + torta */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
                   <GraficoRecepcionEquipoPorSet
@@ -410,9 +428,61 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 </div>
               </div>
 
+              {/* Tabla con "ver por set" */}
+              <TablaJugadoresPorSet
+                jugadoresIds={jugadores.map((j) => j.id)}
+                nombresJugadores={Object.fromEntries(
+                  jugadores.map((j) => [j.id, nombreDe(j.id)])
+                )}
+                acciones={accionesDelPartido}
+                armadores={armadores}
+              />
+
+              {/* Gráficos de armadores */}
+              {armadoresEnPartido.length > 0 && (
+                <div className="space-y-4">
+                  {armadoresEnPartido.map((arm) => {
+                    const est = calcularEstadisticasJugador(
+                      arm.id,
+                      accionesDelPartido,
+                      true
+                    );
+                    if (!est.armador) return null;
+                    return (
+                      <div
+                        key={arm.id}
+                        className="bg-white rounded-2xl shadow-sm border border-violet-200 p-5"
+                      >
+                        <div className="flex items-center gap-2 mb-4">
+                          <span className="text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
+                            Armador
+                          </span>
+                          <h4 className="font-semibold text-slate-800">
+                            {nombreDe(arm.id)}
+                          </h4>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                            <GraficoArmadosPorSet
+                              promedios={est.armador.promediosArmados}
+                            />
+                          </div>
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                            <MapaCalorTendencia
+                              distribucion={est.armador.distribucionTendencia}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Tabla por fundamento */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 overflow-x-auto">
                 <h4 className="font-semibold text-slate-800 mb-3">
-                  Por fundamento
+                  Por fundamento (equipo)
                 </h4>
                 <table className="w-full text-sm">
                   <thead>
@@ -469,6 +539,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 </table>
               </div>
 
+              {/* Rankings */}
               <div className="grid grid-cols-3 gap-3">
                 <RankingCard
                   titulo="Más puntos"
