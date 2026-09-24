@@ -1121,6 +1121,60 @@ export function rankingDeJugador(
   return resultado;
 }
 
+// ============================================
+// PROMEDIOS POR SET DEL EQUIPO COMPLETO
+// ============================================
+
+export function calcularPromediosEquipoPorSet(
+  acciones: AccionDB[],
+  fundamento: string,
+  valores: Record<string, number>
+): PromedioPorSet[] {
+  const result: PromedioPorSet[] = [];
+  for (let s = 1; s <= 5; s++) {
+    const delSet = acciones.filter(
+      (a) => a.fundamento === fundamento && a.set_numero === s
+    );
+    let suma = 0;
+    let total = 0;
+    for (const a of delSet) {
+      const v = valores[a.valoracion] ?? 0;
+      suma += v * a.cantidad;
+      total += a.cantidad;
+    }
+    result.push({
+      set: s,
+      promedio: total > 0 ? suma / total : 0,
+      total,
+    });
+  }
+  return result;
+}
+
+export function calcularPromediosEquipoArmadosPorSet(
+  acciones: AccionDB[]
+): PromedioArmadosSet[] {
+  const result: PromedioArmadosSet[] = [];
+  for (let s = 1; s <= 5; s++) {
+    const delSet = acciones.filter(
+      (a) => a.fundamento === "armados" && a.set_numero === s
+    );
+    let suma = 0;
+    let total = 0;
+    for (const a of delSet) {
+      const v = VALORES_ARMADOS[a.valoracion] ?? 0;
+      suma += v * a.cantidad;
+      total += a.cantidad;
+    }
+    result.push({
+      set: s,
+      promedio: total > 0 ? suma / total : 0,
+      totalArmados: total,
+    });
+  }
+  return result;
+}
+
 export interface RankingItem {
   jugador_id: string;
   valor: number;

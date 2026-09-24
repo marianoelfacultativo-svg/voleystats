@@ -8,21 +8,46 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Legend,
 } from "recharts";
 import type { PromedioRecepcionSet } from "@/lib/estadisticas";
 
-interface Props {
+export interface SerieRecepcionEquipo {
+  id: string;
+  nombre: string;
+  color: string;
   promedios: PromedioRecepcionSet[];
 }
 
-export default function GraficoRecepcionEquipoPorSet({ promedios }: Props) {
-  const datos = promedios.map((p) => ({
-    set: `Set ${p.set}`,
-    promedio: Number(p.promedio.toFixed(1)),
-    totalRecepciones: p.totalRecepciones,
-  }));
+interface Props {
+  promedios?: PromedioRecepcionSet[];
+  series?: SerieRecepcionEquipo[];
+}
 
-  const hayDatos = promedios.some((p) => p.totalRecepciones > 0);
+export default function GraficoRecepcionEquipoPorSet({
+  promedios,
+  series,
+}: Props) {
+  const seriesFinales: SerieRecepcionEquipo[] = series
+    ? series
+    : promedios
+    ? [{ id: "main", nombre: "Equipo", color: "#10b981", promedios }]
+    : [];
+
+  const esMultiple = seriesFinales.length > 1;
+
+  const datos = [1, 2, 3, 4, 5].map((s) => {
+    const fila: Record<string, string | number> = { set: `Set ${s}` };
+    for (const serie of seriesFinales) {
+      const p = serie.promedios.find((x) => x.set === s);
+      fila[serie.id] = p ? Number(p.promedio.toFixed(1)) : 0;
+    }
+    return fila;
+  });
+
+  const hayDatos = seriesFinales.some((s) =>
+    s.promedios.some((p) => p.totalRecepciones > 0)
+  );
 
   return (
     <div>
@@ -31,13 +56,13 @@ export default function GraficoRecepcionEquipoPorSet({ promedios }: Props) {
       </h4>
       {!hayDatos ? (
         <p className="text-sm text-slate-500 text-center py-8">
-          No hay recepciones en este partido
+          No hay recepciones
         </p>
       ) : (
         <>
           <div
             className="bg-white border border-slate-200 rounded-lg p-2"
-            style={{ height: "200px", width: "100%" }}
+            style={{ height: esMultiple ? "220px" : "200px", width: "100%" }}
           >
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
@@ -58,19 +83,25 @@ export default function GraficoRecepcionEquipoPorSet({ promedios }: Props) {
                   labelStyle={{ fontSize: 12 }}
                   contentStyle={{ fontSize: 12 }}
                 />
-                <Line
-                  type="monotone"
-                  dataKey="promedio"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  dot={{ fill: "#10b981", r: 4 }}
-                />
+                {seriesFinales.map((s) => (
+                  <Line
+                    key={s.id}
+                    type="monotone"
+                    dataKey={s.id}
+                    name={s.nombre}
+                    stroke={s.color}
+                    strokeWidth={2}
+                    dot={{ fill: s.color, r: 4 }}
+                  />
+                ))}
+                {esMultiple && (
+                  <Legend wrapperStyle={{ fontSize: 11 }} iconType="line" />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </div>
           <p className="text-xs text-slate-400 mt-2">
-            Escala: 0 (Ace en contra) a 5 (2x Positiva). Promedio del equipo
-            (sin armadores).
+            Escala: 0 (Ace en contra) a 5 (2x Positiva).
           </p>
         </>
       )}
