@@ -29,7 +29,6 @@ export default function RadarJugador({
   todosJugadores,
   esArmador,
 }: Props) {
-  // JUGADOR NORMAL: 5 ejes
   const fundamentosNormal = [
     "saque",
     "defensa",
@@ -37,38 +36,40 @@ export default function RadarJugador({
     "bloqueo",
     "ataque",
   ];
-  // ARMADOR: 3 ejes
   const fundamentosArmador = ["saque", "defensa", "bloqueo"];
 
   const fundamentos = esArmador ? fundamentosArmador : fundamentosNormal;
 
-  // Calcular el máximo positivo entre todos los jugadores (o solo el jugador)
   const grupo =
     todosJugadores && todosJugadores.length > 0 ? todosJugadores : [jugador];
 
-  let maxPos = 0;
-  for (const est of grupo) {
-    for (const f of fundamentos) {
+  // Máximo del equipo por fundamento
+  const maxPorFundamento: Record<string, number> = {};
+  for (const f of fundamentos) {
+    let max = 0;
+    for (const est of grupo) {
       const v = est.valoracionTotalPorFundamento[f] ?? 0;
-      if (v > maxPos) maxPos = v;
+      if (v > max) max = v;
     }
+    maxPorFundamento[f] = max;
   }
-  maxPos = Math.max(5, Math.ceil(maxPos));
 
-  // DOMINIO: siempre empieza en -25
-  const minEje = -25;
-
+  // Normalizar a escala 0-100 (relativo al máximo del equipo)
   const datos = fundamentos.map((f) => {
-    const total = jugador.valoracionTotalPorFundamento[f] ?? 0;
-    const acciones = jugador.porFundamento[f]?.total ?? 0;
+    const real = jugador.valoracionTotalPorFundamento[f] ?? 0;
+    const max = maxPorFundamento[f];
+    let normalizado = max > 0 ? (real / max) * 100 : 0;
 
     return {
       fundamento: ETIQUETAS[f],
-      valor: total,
-      valorRaw: total,
-      acciones,
+      valor: normalizado,
+      valorReal: real,
+      acciones: jugador.porFundamento[f]?.total ?? 0,
     };
   });
+
+  const minEje = -25;
+  const maxEje = 110;
 
   return (
     <div>
@@ -82,7 +83,7 @@ export default function RadarJugador({
             />
             <PolarRadiusAxis
               angle={90}
-              domain={[minEje, maxPos]}
+              domain={[minEje, maxEje]}
               tick={{ fill: "#8FA398", fontSize: 10 }}
             />
             <Radar
@@ -110,23 +111,26 @@ export default function RadarJugador({
             <p className="text-xs text-slate-500">{d.fundamento}</p>
             <p
               className={`font-semibold text-sm ${
-                d.valorRaw > 0
+                d.valorReal > 0
                   ? "text-green-700"
-                  : d.valorRaw < 0
+                  : d.valorReal < 0
                   ? "text-red-700"
                   : "text-slate-800"
               }`}
             >
-              {d.valorRaw > 0 ? "+" : ""}
-              {d.valorRaw.toFixed(0)}
+              {d.valorReal > 0 ? "+" : ""}
+              {d.valorReal.toFixed(0)}
             </p>
-            <p className="text-[10px] text-slate-400">{d.acciones} acc.</p>
+            <p className="text-[10px] text-slate-400">
+              {d.valor.toFixed(0)}% · {d.acciones} acc.
+            </p>
           </div>
         ))}
       </div>
 
       <p className="text-xs text-slate-400 mt-3 text-center">
-        Suma total de valores por fundamento. Escala desde -25.
+        Escala -25 a 110. Cada eje es el valor del jugador relativo al{" "}
+        <strong>máximo del equipo</strong>.
       </p>
     </div>
   );
