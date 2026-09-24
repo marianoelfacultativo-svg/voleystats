@@ -36,7 +36,7 @@ export default function RadarEquipo({ equipo }: Props) {
     const efectividad = e?.efectividad ?? 0;
     return {
       fundamento: ETIQUETAS[f],
-      valor: Math.max(0, efectividad),
+      valor: efectividad,
       valorRaw: efectividad,
       acciones: e?.total ?? 0,
     };
@@ -46,9 +46,7 @@ export default function RadarEquipo({ equipo }: Props) {
 
   return (
     <div>
-      <h4 className="font-semibold text-slate-800 mb-3">
-        Perfil del equipo
-      </h4>
+      <h4 className="font-semibold text-slate-800 mb-3">Perfil del equipo</h4>
       <div className="w-full h-80">
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart data={datos} outerRadius="75%">
@@ -59,7 +57,7 @@ export default function RadarEquipo({ equipo }: Props) {
             />
             <PolarRadiusAxis
               angle={90}
-              domain={[0, maxEje]}
+              domain={[-25, maxEje]}
               tick={{ fill: "#8FA398", fontSize: 10 }}
             />
             <Radar
@@ -81,6 +79,7 @@ export default function RadarEquipo({ equipo }: Props) {
           >
             <p className="text-xs text-amber-700">{d.fundamento}</p>
             <p className="font-semibold text-amber-900 text-sm">
+              {d.valorRaw > 0 ? "+" : ""}
               {d.valorRaw.toFixed(0)}%
             </p>
             <p className="text-[10px] text-amber-600">{d.acciones} acc.</p>

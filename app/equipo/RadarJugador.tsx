@@ -25,7 +25,6 @@ const ETIQUETAS: Record<string, string> = {
 };
 
 export default function RadarJugador({ jugador, equipo, esArmador }: Props) {
-  // ORDEN: sentido horario desde arriba (Saque → Defensa → Recepción → Bloqueo → Ataque)
   const fundamentosNormal = [
     "saque",
     "defensa",
@@ -42,14 +41,13 @@ export default function RadarJugador({ jugador, equipo, esArmador }: Props) {
     const ee = equipo.porFundamento[f];
     const accionesMax = Math.max(ee?.total ?? 0, 1);
 
-    // Exponente < 1 => menos acciones llenan más el radar
     const factorVolumen = Math.pow((ej?.total ?? 0) / accionesMax, 0.35);
     const efectividad = ej?.efectividad ?? 0;
     const valorJugador = efectividad * factorVolumen;
 
     return {
       fundamento: ETIQUETAS[f],
-      valor: Math.max(0, valorJugador),
+      valor: valorJugador,
       valorRaw: valorJugador,
       acciones: ej?.total ?? 0,
     };
@@ -69,7 +67,7 @@ export default function RadarJugador({ jugador, equipo, esArmador }: Props) {
             />
             <PolarRadiusAxis
               angle={90}
-              domain={[0, maxEje]}
+              domain={[-25, maxEje]}
               tick={{ fill: "#8FA398", fontSize: 10 }}
             />
             <Radar
