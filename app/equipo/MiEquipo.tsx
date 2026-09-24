@@ -244,7 +244,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         }`}
                       >
                         {val > 0 ? "+" : ""}
-                        {val.toFixed(0)}
+                        {val.toFixed(2)}
                       </p>
                     </div>
                   ))}
@@ -364,7 +364,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   }`}
                 >
                   {jugadorActual.valoracionMediaNormalizada > 0 ? "+" : ""}
-                  {jugadorActual.valoracionMediaNormalizada.toFixed(0)}
+                  {jugadorActual.valoracionMediaNormalizada.toFixed(2)}
                 </p>
               </div>
 

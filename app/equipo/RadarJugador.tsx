@@ -50,24 +50,23 @@ export default function RadarJugador({ jugador, esArmador }: Props) {
     };
   });
 
-  // Menos espacio para negativos
-  const minEje = -50;
-  const maxEje = 110;
+  const minEje = -3;
+  const maxEje = 11;
 
   return (
     <div>
-      <div className="w-full h-96">
+      <div className="w-full h-[500px]">
         <ResponsiveContainer width="100%" height="100%">
-          <RadarChart data={datos} outerRadius="75%">
+          <RadarChart data={datos} outerRadius="85%">
             <PolarGrid stroke="#C9DBC6" />
             <PolarAngleAxis
               dataKey="fundamento"
-              tick={{ fill: "#2F4A3A", fontSize: 13, fontWeight: 500 }}
+              tick={{ fill: "#2F4A3A", fontSize: 14, fontWeight: 600 }}
             />
             <PolarRadiusAxis
               angle={90}
               domain={[minEje, maxEje]}
-              tick={{ fill: "#8FA398", fontSize: 10 }}
+              tick={{ fill: "#8FA398", fontSize: 11 }}
             />
             <Radar
               name={jugador.jugador_id}
@@ -102,7 +101,7 @@ export default function RadarJugador({ jugador, esArmador }: Props) {
               }`}
             >
               {d.valorNorm > 0 ? "+" : ""}
-              {d.valorNorm.toFixed(0)}
+              {d.valorNorm.toFixed(2)}
             </p>
             <p className="text-[10px] text-slate-400">{d.acciones} acc.</p>
           </div>

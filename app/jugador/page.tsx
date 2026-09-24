@@ -194,6 +194,14 @@ export default function JugadorPage() {
     ? acciones.filter((a) => a.partido_id === partidoActivo)
     : acciones;
 
+  // Necesitamos el máximo de acciones para el factor volumen cuando es por partido
+  const idsJugadoresEquipo = Object.keys(
+    acciones.reduce((acc, a) => {
+      acc[a.jugador_id] = true;
+      return acc;
+    }, {} as Record<string, boolean>)
+  );
+
   const stats: EstadisticasJugador | null = jugador
     ? calcularEstadisticasJugador(
         jugador.id,
@@ -359,7 +367,7 @@ export default function JugadorPage() {
                             }`}
                           >
                             {val > 0 ? "+" : ""}
-                            {val.toFixed(0)}
+                            {val.toFixed(2)}
                           </p>
                         </div>
                       )
@@ -480,7 +488,7 @@ export default function JugadorPage() {
                     }`}
                   >
                     {stats.valoracionMediaNormalizada > 0 ? "+" : ""}
-                    {stats.valoracionMediaNormalizada.toFixed(0)}
+                    {stats.valoracionMediaNormalizada.toFixed(2)}
                   </p>
                 </div>
 

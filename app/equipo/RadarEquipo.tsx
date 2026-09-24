@@ -45,24 +45,24 @@ export default function RadarEquipo({ equipo }: Props) {
     };
   });
 
-  const minEje = -50;
-  const maxEje = 110;
+  const minEje = -3;
+  const maxEje = 11;
 
   return (
     <div>
       <h4 className="font-semibold text-slate-800 mb-3">Perfil del equipo</h4>
-      <div className="w-full h-80">
+      <div className="w-full h-[500px]">
         <ResponsiveContainer width="100%" height="100%">
-          <RadarChart data={datos} outerRadius="75%">
+          <RadarChart data={datos} outerRadius="85%">
             <PolarGrid stroke="#C9DBC6" />
             <PolarAngleAxis
               dataKey="fundamento"
-              tick={{ fill: "#2F4A3A", fontSize: 12, fontWeight: 500 }}
+              tick={{ fill: "#2F4A3A", fontSize: 14, fontWeight: 600 }}
             />
             <PolarRadiusAxis
               angle={90}
               domain={[minEje, maxEje]}
-              tick={{ fill: "#8FA398", fontSize: 10 }}
+              tick={{ fill: "#8FA398", fontSize: 11 }}
             />
             <Radar
               name="Equipo"
@@ -92,7 +92,7 @@ export default function RadarEquipo({ equipo }: Props) {
               }`}
             >
               {d.valorNorm > 0 ? "+" : ""}
-              {d.valorNorm.toFixed(0)}
+              {d.valorNorm.toFixed(2)}
             </p>
             <p className="text-[10px] text-amber-600">{d.acciones} acc.</p>
           </div>
