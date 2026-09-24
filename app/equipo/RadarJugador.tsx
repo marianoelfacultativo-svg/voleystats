@@ -37,7 +37,7 @@ export default function RadarJugador({ jugador, esArmador }: Props) {
   const fundamentos = esArmador ? fundamentosArmador : fundamentosNormal;
 
   const datos = fundamentos.map((f) => {
-    const norm = jugador.valoracionPromedioNormalizado[f] ?? 0;
+    const norm = jugador.valoracionPonderadaPorFundamento[f] ?? 0;
     const real = jugador.valoracionPorFundamento[f] ?? 0;
     const acciones = jugador.porFundamento[f]?.total ?? 0;
 
@@ -109,7 +109,7 @@ export default function RadarJugador({ jugador, esArmador }: Props) {
       </div>
 
       <p className="text-xs text-slate-400 mt-3 text-center">
-        Valoración normalizada por fundamento.
+        Valoración ponderada por volumen (por fundamento).
       </p>
     </div>
   );

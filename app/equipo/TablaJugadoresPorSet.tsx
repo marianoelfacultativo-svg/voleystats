@@ -3,7 +3,9 @@
 import { useState } from "react";
 import {
   calcularEstadisticasJugador,
-  calcularPromedioPorSet,
+  calcularPromedioPonderadoPorSet,
+  calcularPromedioArmadosPonderadoPorSet,
+  calcularMaxAccionesPorFundamento,
   VALORES_SAQUE,
   VALORES_RECEPCION,
   VALORES_BLOQUEO,
@@ -166,6 +168,7 @@ export default function TablaJugadoresPorSet({
                           nombre={nombreDe(id)}
                           esArmador={esArm}
                           acciones={acciones}
+                          jugadoresIds={jugadoresIds}
                           statsEquipoTotales={statsEquipoTotales}
                         />
                       </td>
@@ -186,12 +189,14 @@ function DetalleJugador({
   nombre,
   esArmador,
   acciones,
+  jugadoresIds,
   statsEquipoTotales,
 }: {
   jugadorId: string;
   nombre: string;
   esArmador: boolean;
   acciones: AccionDB[];
+  jugadoresIds: string[];
   statsEquipoTotales: ReturnType<typeof calcularEstadisticasJugador>;
 }) {
   const [setFiltro, setSetFiltro] = useState<SetFiltro>("todos");
@@ -208,38 +213,77 @@ function DetalleJugador({
     });
   };
 
-  const accionesJugador =
+  // Acciones del equipo filtradas por set (si aplica) → para calcular máximos correctos
+  const accionesEquipoFiltradas =
+    setFiltro === "todos"
+      ? acciones
+      : acciones.filter((a) => a.set_numero === setFiltro);
+
+  // Calcular máximos de referencia
+  const maxPorFund = calcularMaxAccionesPorFundamento(
+    accionesEquipoFiltradas,
+    jugadoresIds
+  );
+  let maxAccionesEquipo = 1;
+  for (const jid of jugadoresIds) {
+    const total = accionesEquipoFiltradas
+      .filter((a) => a.jugador_id === jid)
+      .reduce((s, a) => s + a.cantidad, 0);
+    if (total > maxAccionesEquipo) maxAccionesEquipo = total;
+  }
+
+  // Stats del jugador con contexto de volumen
+  const est = calcularEstadisticasJugador(
+    jugadorId,
+    accionesEquipoFiltradas,
+    esArmador,
+    maxPorFund,
+    maxAccionesEquipo
+  );
+
+  const fundamentos = esArmador ? FUNDAMENTOS_ARMADOR : FUNDAMENTOS_NORMAL;
+
+  // Gráficos por set (siempre muestran todos los sets)
+  const promediosSaque = calcularPromedioPonderadoPorSet(
+    jugadorId,
+    acciones,
+    jugadoresIds,
+    "saque",
+    VALORES_SAQUE
+  );
+  const promediosRecepcion = calcularPromedioPonderadoPorSet(
+    jugadorId,
+    acciones,
+    jugadoresIds,
+    "recepcion",
+    VALORES_RECEPCION
+  );
+  const promediosBloqueo = calcularPromedioPonderadoPorSet(
+    jugadorId,
+    acciones,
+    jugadoresIds,
+    "bloqueo",
+    VALORES_BLOQUEO
+  );
+  const promediosArmados = calcularPromedioArmadosPonderadoPorSet(
+    jugadorId,
+    acciones,
+    jugadoresIds
+  );
+
+  const accionesJugadorFiltradas =
     setFiltro === "todos"
       ? acciones.filter((a) => a.jugador_id === jugadorId)
       : acciones.filter(
           (a) => a.jugador_id === jugadorId && a.set_numero === setFiltro
         );
 
-  const est = calcularEstadisticasJugador(
-    jugadorId,
-    accionesJugador,
-    esArmador
-  );
-
-  const fundamentos = esArmador ? FUNDAMENTOS_ARMADOR : FUNDAMENTOS_NORMAL;
-
-  const promediosSaque = calcularPromedioPorSet(
-    jugadorId,
-    accionesJugador,
-    "saque",
-    VALORES_SAQUE
-  );
-  const promediosBloqueo = calcularPromedioPorSet(
-    jugadorId,
-    accionesJugador,
-    "bloqueo",
-    VALORES_BLOQUEO
-  );
-
   const valoracionesDe = (
     fund: string
   ): { key: string; cantidad: number }[] => {
-    const valores = accionesJugador.filter((a) => a.fundamento === fund);
+    const valores = accionesJugadorFiltradas.filter(
+      (a) => a.fundamento === fund
+    );
     const mapa: Record<string, number> = {};
     for (const a of valores) {
       mapa[a.valoracion] = (mapa[a.valoracion] ?? 0) + a.cantidad;
@@ -344,7 +388,7 @@ function DetalleJugador({
               <th className="py-2 px-3 text-right">Puntos</th>
               <th className="py-2 px-3 text-right">Errores</th>
               <th className="py-2 px-3 text-right">Saldo</th>
-              <th className="py-2 px-3 text-right">Val.Norm</th>
+              <th className="py-2 px-3 text-right">Val.Pond</th>
               <th className="py-2 px-3 text-right"></th>
             </tr>
           </thead>
@@ -355,7 +399,7 @@ function DetalleJugador({
               if (!e || e.total === 0) return null;
               const abierto = valoresAbiertos.has(f);
               const detalle = valoracionesDe(f);
-              const valNorm = est.valoracionPromedioNormalizado[f] ?? 0;
+              const valPond = est.valoracionPonderadaPorFundamento[f] ?? 0;
 
               return (
                 <>
@@ -392,15 +436,15 @@ function DetalleJugador({
                     </td>
                     <td
                       className={`py-2 px-3 text-right font-semibold ${
-                        valNorm > 0
+                        valPond > 0
                           ? "text-green-700"
-                          : valNorm < 0
+                          : valPond < 0
                           ? "text-red-700"
                           : "text-slate-600"
                       }`}
                     >
-                      {valNorm > 0 ? "+" : ""}
-                      {valNorm.toFixed(2)}
+                      {valPond > 0 ? "+" : ""}
+                      {valPond.toFixed(2)}
                     </td>
                     <td className="py-2 px-3 text-right">
                       <button
@@ -462,9 +506,7 @@ function DetalleJugador({
             <GraficoSaquePorSet promedios={promediosSaque} />
           </div>
           <div className="p-3 bg-white border border-slate-200 rounded-lg">
-            <GraficoRecepcionPorSet
-              promedios={est.recepcion?.promediosPorSet ?? []}
-            />
+            <GraficoRecepcionPorSet promedios={promediosRecepcion} />
           </div>
           <div className="p-3 bg-white border border-slate-200 rounded-lg">
             <GraficoBloqueoPorSet promedios={promediosBloqueo} />
@@ -472,7 +514,7 @@ function DetalleJugador({
         </div>
       )}
 
-      {esArmador && est.armador && (
+      {esArmador && (
         <div className="grid grid-cols-3 gap-3">
           <div className="p-3 bg-white border border-slate-200 rounded-lg">
             <GraficoSaquePorSet promedios={promediosSaque} />
@@ -481,13 +523,15 @@ function DetalleJugador({
             <GraficoBloqueoPorSet promedios={promediosBloqueo} />
           </div>
           <div className="p-3 bg-white border border-slate-200 rounded-lg">
-            <GraficoArmadosPorSet promedios={est.armador.promediosArmados} />
+            <GraficoArmadosPorSet promedios={promediosArmados} />
           </div>
-          <div className="col-span-3 p-3 bg-white border border-slate-200 rounded-lg">
-            <MapaCalorTendencia
-              distribucion={est.armador.distribucionTendencia}
-            />
-          </div>
+          {est.armador && (
+            <div className="col-span-3 p-3 bg-white border border-slate-200 rounded-lg">
+              <MapaCalorTendencia
+                distribucion={est.armador.distribucionTendencia}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

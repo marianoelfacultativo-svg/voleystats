@@ -7,8 +7,10 @@ import { supabase } from "@/lib/supabase";
 import {
   calcularEstadisticasJugador,
   calcularEstadisticasEquipo,
-  calcularPromedioPorSet,
+  calcularPromedioPonderadoPorSet,
+  calcularPromedioArmadosPonderadoPorSet,
   VALORES_SAQUE,
+  VALORES_RECEPCION,
   VALORES_BLOQUEO,
   type AccionDB,
   type EstadisticasJugador,
@@ -60,6 +62,7 @@ export default function JugadorPage() {
   const [nombreEquipo, setNombreEquipo] = useState("");
   const [partidos, setPartidos] = useState<Partido[]>([]);
   const [acciones, setAcciones] = useState<AccionDB[]>([]);
+  const [idsJugadoresEquipo, setIdsJugadoresEquipo] = useState<string[]>([]);
   const [statsEquipo, setStatsEquipo] = useState<EstadisticasJugador | null>(
     null
   );
@@ -148,14 +151,15 @@ export default function JugadorPage() {
               .eq("equipo_id", asig.equipo_id)
               .eq("activo", true);
 
-            const idsJugadoresEquipo = (jugRes ?? []).map(
+            const idsEq = (jugRes ?? []).map(
               (j: { jugador_id: string }) => j.jugador_id
             );
+            setIdsJugadoresEquipo(idsEq);
 
             const { data: jugDataAll } = await supabase
               .from("jugadores")
               .select("id, rol")
-              .in("id", idsJugadoresEquipo);
+              .in("id", idsEq);
 
             const armadores = new Set(
               ((jugDataAll ?? []) as { id: string; rol: string }[])
@@ -167,7 +171,7 @@ export default function JugadorPage() {
             setAcciones(acc);
 
             const { totales } = calcularEstadisticasEquipo(
-              idsJugadoresEquipo,
+              idsEq,
               acc,
               armadores
             );
@@ -193,14 +197,6 @@ export default function JugadorPage() {
   const accionesFiltradas = partidoActivo
     ? acciones.filter((a) => a.partido_id === partidoActivo)
     : acciones;
-
-  // Necesitamos el máximo de acciones para el factor volumen cuando es por partido
-  const idsJugadoresEquipo = Object.keys(
-    acciones.reduce((acc, a) => {
-      acc[a.jugador_id] = true;
-      return acc;
-    }, {} as Record<string, boolean>)
-  );
 
   const stats: EstadisticasJugador | null = jugador
     ? calcularEstadisticasJugador(
@@ -342,36 +338,37 @@ export default function JugadorPage() {
                 />
               </div>
 
-              {Object.keys(stats.valoracionPromedioNormalizado).length > 0 && (
+              {Object.keys(stats.valoracionPonderadaPorFundamento).length >
+                0 && (
                 <div className="mb-6">
                   <h3 className="font-semibold text-slate-800 mb-3">
-                    Valoración normalizada por fundamento
+                    Valoración ponderada por fundamento
                   </h3>
                   <div className="grid grid-cols-5 gap-2">
-                    {Object.entries(stats.valoracionPromedioNormalizado).map(
-                      ([fund, val]) => (
-                        <div
-                          key={fund}
-                          className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center"
+                    {Object.entries(
+                      stats.valoracionPonderadaPorFundamento
+                    ).map(([fund, val]) => (
+                      <div
+                        key={fund}
+                        className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center"
+                      >
+                        <p className="text-xs text-slate-500">
+                          {NOMBRES_FUNDAMENTO[fund] ?? fund}
+                        </p>
+                        <p
+                          className={`text-lg font-bold ${
+                            val > 0
+                              ? "text-green-700"
+                              : val < 0
+                              ? "text-red-700"
+                              : "text-slate-700"
+                          }`}
                         >
-                          <p className="text-xs text-slate-500">
-                            {NOMBRES_FUNDAMENTO[fund] ?? fund}
-                          </p>
-                          <p
-                            className={`text-lg font-bold ${
-                              val > 0
-                                ? "text-green-700"
-                                : val < 0
-                                ? "text-red-700"
-                                : "text-slate-700"
-                            }`}
-                          >
-                            {val > 0 ? "+" : ""}
-                            {val.toFixed(2)}
-                          </p>
-                        </div>
-                      )
-                    )}
+                          {val > 0 ? "+" : ""}
+                          {val.toFixed(2)}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -380,9 +377,10 @@ export default function JugadorPage() {
                 <div className="mb-6 grid grid-cols-2 gap-4">
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                     <GraficoSaquePorSet
-                      promedios={calcularPromedioPorSet(
+                      promedios={calcularPromedioPonderadoPorSet(
                         jugador.id,
                         accionesFiltradas,
+                        idsJugadoresEquipo,
                         "saque",
                         VALORES_SAQUE
                       )}
@@ -390,9 +388,10 @@ export default function JugadorPage() {
                   </div>
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                     <GraficoBloqueoPorSet
-                      promedios={calcularPromedioPorSet(
+                      promedios={calcularPromedioPonderadoPorSet(
                         jugador.id,
                         accionesFiltradas,
+                        idsJugadoresEquipo,
                         "bloqueo",
                         VALORES_BLOQUEO
                       )}
@@ -400,7 +399,11 @@ export default function JugadorPage() {
                   </div>
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                     <GraficoArmadosPorSet
-                      promedios={stats.armador.promediosArmados}
+                      promedios={calcularPromedioArmadosPonderadoPorSet(
+                        jugador.id,
+                        accionesFiltradas,
+                        idsJugadoresEquipo
+                      )}
                     />
                   </div>
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
@@ -415,9 +418,10 @@ export default function JugadorPage() {
                 <div className="mb-6 grid grid-cols-2 gap-4">
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                     <GraficoSaquePorSet
-                      promedios={calcularPromedioPorSet(
+                      promedios={calcularPromedioPonderadoPorSet(
                         jugador.id,
                         accionesFiltradas,
+                        idsJugadoresEquipo,
                         "saque",
                         VALORES_SAQUE
                       )}
@@ -425,14 +429,21 @@ export default function JugadorPage() {
                   </div>
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                     <GraficoRecepcionPorSet
-                      promedios={stats.recepcion?.promediosPorSet ?? []}
+                      promedios={calcularPromedioPonderadoPorSet(
+                        jugador.id,
+                        accionesFiltradas,
+                        idsJugadoresEquipo,
+                        "recepcion",
+                        VALORES_RECEPCION
+                      )}
                     />
                   </div>
                   <div className="col-span-2 p-4 bg-slate-50 border border-slate-200 rounded-lg">
                     <GraficoBloqueoPorSet
-                      promedios={calcularPromedioPorSet(
+                      promedios={calcularPromedioPonderadoPorSet(
                         jugador.id,
                         accionesFiltradas,
+                        idsJugadoresEquipo,
                         "bloqueo",
                         VALORES_BLOQUEO
                       )}

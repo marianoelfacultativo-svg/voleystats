@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   calcularEstadisticasEquipo,
-  calcularPromedioPorSet,
+  calcularPromedioPonderadoPorSet,
+  calcularPromedioArmadosPonderadoPorSet,
   VALORES_SAQUE,
   VALORES_BLOQUEO,
   type AccionDB,
@@ -217,15 +218,15 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               />
             </div>
 
-            {Object.keys(jugadorActual.valoracionPromedioNormalizado).length >
+            {Object.keys(jugadorActual.valoracionPonderadaPorFundamento).length >
               0 && (
               <div className="mb-6">
                 <h4 className="font-semibold text-slate-800 mb-3">
-                  Valoración normalizada por fundamento
+                  Valoración ponderada por fundamento
                 </h4>
                 <div className="grid grid-cols-5 gap-2">
                   {Object.entries(
-                    jugadorActual.valoracionPromedioNormalizado
+                    jugadorActual.valoracionPonderadaPorFundamento
                   ).map(([fund, val]) => (
                     <div
                       key={fund}
@@ -256,9 +257,10 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               <div className="mb-6 grid grid-cols-2 gap-4">
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                   <GraficoSaquePorSet
-                    promedios={calcularPromedioPorSet(
+                    promedios={calcularPromedioPonderadoPorSet(
                       jugadorActual.jugador_id,
                       acciones,
+                      idsJugadores,
                       "saque",
                       VALORES_SAQUE
                     )}
@@ -266,9 +268,10 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                 </div>
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                   <GraficoBloqueoPorSet
-                    promedios={calcularPromedioPorSet(
+                    promedios={calcularPromedioPonderadoPorSet(
                       jugadorActual.jugador_id,
                       acciones,
+                      idsJugadores,
                       "bloqueo",
                       VALORES_BLOQUEO
                     )}
@@ -276,7 +279,11 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                 </div>
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                   <GraficoArmadosPorSet
-                    promedios={jugadorActual.armador.promediosArmados}
+                    promedios={calcularPromedioArmadosPonderadoPorSet(
+                      jugadorActual.jugador_id,
+                      acciones,
+                      idsJugadores
+                    )}
                   />
                 </div>
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
@@ -291,9 +298,10 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               <div className="mb-6 grid grid-cols-2 gap-4">
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                   <GraficoSaquePorSet
-                    promedios={calcularPromedioPorSet(
+                    promedios={calcularPromedioPonderadoPorSet(
                       jugadorActual.jugador_id,
                       acciones,
+                      idsJugadores,
                       "saque",
                       VALORES_SAQUE
                     )}
@@ -301,14 +309,28 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                 </div>
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                   <GraficoRecepcionPorSet
-                    promedios={jugadorActual.recepcion?.promediosPorSet ?? []}
+                    promedios={calcularPromedioPonderadoPorSet(
+                      jugadorActual.jugador_id,
+                      acciones,
+                      idsJugadores,
+                      "recepcion",
+                      {
+                        "2x_positiva": 5,
+                        positiva: 4,
+                        negativa: 3,
+                        "2x_negativa": 2,
+                        "3x_negativa": 1,
+                        ace_contra: 0,
+                      }
+                    )}
                   />
                 </div>
                 <div className="col-span-2 p-4 bg-slate-50 border border-slate-200 rounded-lg">
                   <GraficoBloqueoPorSet
-                    promedios={calcularPromedioPorSet(
+                    promedios={calcularPromedioPonderadoPorSet(
                       jugadorActual.jugador_id,
                       acciones,
+                      idsJugadores,
                       "bloqueo",
                       VALORES_BLOQUEO
                     )}
