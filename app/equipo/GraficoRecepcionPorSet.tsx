@@ -9,20 +9,20 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import type { PromedioRecepcionSet } from "@/lib/estadisticas";
+import type { PromedioPorSet } from "@/lib/estadisticas";
 
 interface Props {
-  promedios: PromedioRecepcionSet[];
+  promedios: PromedioPorSet[];
 }
 
 export default function GraficoRecepcionPorSet({ promedios }: Props) {
   const datos = promedios.map((p) => ({
     set: `Set ${p.set}`,
     promedio: Number(p.promedio.toFixed(1)),
-    totalRecepciones: p.totalRecepciones,
+    totalRecepciones: p.total,
   }));
 
-  const hayDatos = promedios.some((p) => p.totalRecepciones > 0);
+  const hayDatos = promedios.some((p) => p.total > 0);
 
   return (
     <div>
@@ -69,7 +69,7 @@ export default function GraficoRecepcionPorSet({ promedios }: Props) {
             </ResponsiveContainer>
           </div>
           <p className="text-xs text-slate-400 mt-2">
-            Escala: 0 (Ace en contra) a 5 (2x Positiva). Promedio de cada set.
+            Escala: 0 (Ace en contra) a 5 (2x Positiva). Ponderado por volumen.
           </p>
         </>
       )}
