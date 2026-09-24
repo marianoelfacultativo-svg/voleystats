@@ -206,54 +206,52 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               </div>
             </div>
 
-            {/* Radar */}
             <div className="mb-6">
               <h4 className="font-semibold text-slate-800 mb-3">
                 Perfil de rendimiento
               </h4>
               <RadarJugador
                 jugador={jugadorActual}
-                equipo={totales}
+                todosJugadores={Object.values(porJugador)}
                 esArmador={esArmador}
               />
             </div>
 
-            {/* Tabla valoración media por fundamento */}
-            {Object.keys(jugadorActual.valoracionPorFundamento).length > 0 && (
+            {Object.keys(jugadorActual.valoracionTotalPorFundamento).length >
+              0 && (
               <div className="mb-6">
                 <h4 className="font-semibold text-slate-800 mb-3">
-                  Valoración media por fundamento
+                  Valoración total por fundamento
                 </h4>
                 <div className="grid grid-cols-5 gap-2">
-                  {Object.entries(jugadorActual.valoracionPorFundamento).map(
-                    ([fund, val]) => (
-                      <div
-                        key={fund}
-                        className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center"
+                  {Object.entries(
+                    jugadorActual.valoracionTotalPorFundamento
+                  ).map(([fund, val]) => (
+                    <div
+                      key={fund}
+                      className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center"
+                    >
+                      <p className="text-xs text-slate-500">
+                        {NOMBRES_FUNDAMENTO[fund] ?? fund}
+                      </p>
+                      <p
+                        className={`text-lg font-bold ${
+                          val > 0
+                            ? "text-green-700"
+                            : val < 0
+                            ? "text-red-700"
+                            : "text-slate-700"
+                        }`}
                       >
-                        <p className="text-xs text-slate-500">
-                          {NOMBRES_FUNDAMENTO[fund] ?? fund}
-                        </p>
-                        <p
-                          className={`text-lg font-bold ${
-                            val > 0
-                              ? "text-green-700"
-                              : val < 0
-                              ? "text-red-700"
-                              : "text-slate-700"
-                          }`}
-                        >
-                          {val > 0 ? "+" : ""}
-                          {val.toFixed(1)}
-                        </p>
-                      </div>
-                    )
-                  )}
+                        {val > 0 ? "+" : ""}
+                        {val}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
 
-            {/* Gráficos */}
             {esArmador && jugadorActual.armador && (
               <div className="mb-6 grid grid-cols-2 gap-4">
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
@@ -319,7 +317,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               </div>
             )}
 
-            {/* Tarjetas: 2 filas × 3 columnas */}
             <div className="grid grid-cols-3 gap-3">
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
                 <p className="text-xs text-slate-500 uppercase">Saldo</p>

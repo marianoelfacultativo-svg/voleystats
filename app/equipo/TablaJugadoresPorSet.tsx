@@ -249,7 +249,6 @@ function DetalleJugador({
 
   return (
     <div className="space-y-4">
-      {/* Selector de set */}
       <div className="flex gap-2 flex-wrap">
         <span className="text-sm text-slate-600 self-center mr-2">Ver:</span>
         {(["todos", 1, 2, 3, 4, 5] as const).map((s) => (
@@ -267,7 +266,6 @@ function DetalleJugador({
         ))}
       </div>
 
-      {/* Tarjetas: 2 filas × 3 columnas */}
       <div className="grid grid-cols-3 gap-3">
         <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
           <p className="text-xs text-slate-500 uppercase">Saldo</p>
@@ -335,7 +333,6 @@ function DetalleJugador({
         </div>
       </div>
 
-      {/* Tabla por fundamento */}
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-100">
@@ -347,7 +344,7 @@ function DetalleJugador({
               <th className="py-2 px-3 text-right">Puntos</th>
               <th className="py-2 px-3 text-right">Errores</th>
               <th className="py-2 px-3 text-right">Saldo</th>
-              <th className="py-2 px-3 text-right">Val.Med</th>
+              <th className="py-2 px-3 text-right">Val.Tot</th>
               <th className="py-2 px-3 text-right"></th>
             </tr>
           </thead>
@@ -358,7 +355,7 @@ function DetalleJugador({
               if (!e || e.total === 0) return null;
               const abierto = valoresAbiertos.has(f);
               const detalle = valoracionesDe(f);
-              const valMed = est.valoracionPorFundamento[f] ?? 0;
+              const valTot = est.valoracionTotalPorFundamento[f] ?? 0;
 
               return (
                 <>
@@ -395,15 +392,15 @@ function DetalleJugador({
                     </td>
                     <td
                       className={`py-2 px-3 text-right font-semibold ${
-                        valMed > 0
+                        valTot > 0
                           ? "text-green-700"
-                          : valMed < 0
+                          : valTot < 0
                           ? "text-red-700"
                           : "text-slate-600"
                       }`}
                     >
-                      {valMed > 0 ? "+" : ""}
-                      {valMed.toFixed(1)}
+                      {valTot > 0 ? "+" : ""}
+                      {valTot}
                     </td>
                     <td className="py-2 px-3 text-right">
                       <button
@@ -448,19 +445,17 @@ function DetalleJugador({
         </table>
       </div>
 
-      {/* Radar */}
       <div className="bg-white border border-slate-200 rounded-lg p-4">
         <h5 className="font-semibold text-slate-800 mb-3 text-sm">
           Radar en este partido
         </h5>
         <RadarJugador
           jugador={est}
-          equipo={statsEquipoTotales}
+          todosJugadores={[est]}
           esArmador={esArmador}
         />
       </div>
 
-      {/* Gráficos */}
       {!esArmador && (
         <div className="grid grid-cols-3 gap-3">
           <div className="p-3 bg-white border border-slate-200 rounded-lg">

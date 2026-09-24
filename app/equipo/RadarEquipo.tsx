@@ -32,19 +32,21 @@ export default function RadarEquipo({ equipo }: Props) {
   ];
 
   const datos = fundamentos.map((f) => {
-    const valEq = equipo.valoracionPorFundamento[f] ?? 0;
+    const total = equipo.valoracionTotalPorFundamento[f] ?? 0;
     const acciones = equipo.porFundamento[f]?.total ?? 0;
 
     return {
       fundamento: ETIQUETAS[f],
-      valor: valEq,
-      valorRaw: valEq,
+      valor: total,
+      valorRaw: total,
       acciones,
     };
   });
 
-  const minEje = -8;
-  const maxEje = 5;
+  // Escala dinámica según los valores del equipo
+  const valores = datos.map((d) => d.valorRaw);
+  const maxPos = Math.max(1, Math.ceil(Math.max(0, ...valores)));
+  const maxNeg = Math.min(-1, Math.floor(Math.min(0, ...valores)));
 
   return (
     <div>
@@ -59,7 +61,7 @@ export default function RadarEquipo({ equipo }: Props) {
             />
             <PolarRadiusAxis
               angle={90}
-              domain={[minEje, maxEje]}
+              domain={[maxNeg, maxPos]}
               tick={{ fill: "#8FA398", fontSize: 10 }}
             />
             <Radar
@@ -90,14 +92,14 @@ export default function RadarEquipo({ equipo }: Props) {
               }`}
             >
               {d.valorRaw > 0 ? "+" : ""}
-              {d.valorRaw.toFixed(1)}
+              {d.valorRaw.toFixed(0)}
             </p>
             <p className="text-[10px] text-amber-600">{d.acciones} acc.</p>
           </div>
         ))}
       </div>
       <p className="text-xs text-slate-400 mt-3 text-center">
-        Valoración media de cada fundamento. Escala: -8 a +5.
+        Suma total de valores del equipo.
       </p>
     </div>
   );

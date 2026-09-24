@@ -329,18 +329,18 @@ export default function JugadorPage() {
                 </h3>
                 <RadarJugador
                   jugador={stats}
-                  equipo={statsEquipo ?? stats}
+                  todosJugadores={[stats]}
                   esArmador={esArmador}
                 />
               </div>
 
-              {Object.keys(stats.valoracionPorFundamento).length > 0 && (
+              {Object.keys(stats.valoracionTotalPorFundamento).length > 0 && (
                 <div className="mb-6">
                   <h3 className="font-semibold text-slate-800 mb-3">
-                    Valoración media por fundamento
+                    Valoración total por fundamento
                   </h3>
                   <div className="grid grid-cols-5 gap-2">
-                    {Object.entries(stats.valoracionPorFundamento).map(
+                    {Object.entries(stats.valoracionTotalPorFundamento).map(
                       ([fund, val]) => (
                         <div
                           key={fund}
@@ -359,7 +359,7 @@ export default function JugadorPage() {
                             }`}
                           >
                             {val > 0 ? "+" : ""}
-                            {val.toFixed(1)}
+                            {val}
                           </p>
                         </div>
                       )
@@ -433,7 +433,6 @@ export default function JugadorPage() {
                 </div>
               )}
 
-              {/* Tarjetas: 2 filas × 3 columnas */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
                   <p className="text-xs text-slate-500 uppercase">Saldo</p>
