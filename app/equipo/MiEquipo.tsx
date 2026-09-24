@@ -4,12 +4,17 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   calcularEstadisticasEquipo,
+  calcularPromedioPorSet,
+  VALORES_SAQUE,
+  VALORES_BLOQUEO,
   type AccionDB,
   type EstadisticasJugador,
 } from "@/lib/estadisticas";
 import RadarJugador from "./RadarJugador";
 import GraficoArmadosPorSet from "./GraficoArmadosPorSet";
 import GraficoRecepcionPorSet from "./GraficoRecepcionPorSet";
+import GraficoSaquePorSet from "./GraficoSaquePorSet";
+import GraficoBloqueoPorSet from "./GraficoBloqueoPorSet";
 import MapaCalorTendencia from "./MapaCalorTendencia";
 import ImagenAmpliable from "./ImagenAmpliable";
 
@@ -107,14 +112,14 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
         <div className="space-y-1">
           {jugadores.map((j) => {
             const est = porJugador[j.id];
-            const acciones = est?.totalAcciones ?? 0;
+            const accionesJ = est?.totalAcciones ?? 0;
             return (
               <button
                 key={j.id}
                 onClick={() => setJugadorSeleccionado(j.id)}
                 className={`w-full flex items-center gap-3 text-left px-3 py-2 rounded-lg transition text-sm ${
                   jugadorSeleccionado === j.id
-                    ? "bg-blue-500 text-white"
+                    ? "bg-emerald-500 text-white"
                     : "bg-slate-50 hover:bg-slate-100 text-slate-700"
                 }`}
               >
@@ -133,7 +138,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     <span
                       className={`block text-xs ${
                         jugadorSeleccionado === j.id
-                          ? "text-blue-100"
+                          ? "text-emerald-100"
                           : "text-violet-600"
                       }`}
                     >
@@ -143,11 +148,11 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   <span
                     className={`block text-xs ${
                       jugadorSeleccionado === j.id
-                        ? "text-blue-100"
+                        ? "text-emerald-100"
                         : "text-slate-400"
                     }`}
                   >
-                    {acciones} acciones
+                    {accionesJ} acciones
                   </span>
                 </span>
               </button>
@@ -220,6 +225,26 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
             {esArmador && jugadorActual.armador && (
               <div className="mb-6 grid grid-cols-2 gap-4">
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                  <GraficoSaquePorSet
+                    promedios={calcularPromedioPorSet(
+                      jugadorActual.jugador_id,
+                      acciones,
+                      "saque",
+                      VALORES_SAQUE
+                    )}
+                  />
+                </div>
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                  <GraficoBloqueoPorSet
+                    promedios={calcularPromedioPorSet(
+                      jugadorActual.jugador_id,
+                      acciones,
+                      "bloqueo",
+                      VALORES_BLOQUEO
+                    )}
+                  />
+                </div>
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                   <GraficoArmadosPorSet
                     promedios={jugadorActual.armador.promediosArmados}
                   />
@@ -233,10 +258,32 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
             )}
 
             {!esArmador && jugadorActual.recepcion && (
-              <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                <GraficoRecepcionPorSet
-                  promedios={jugadorActual.recepcion.promediosPorSet}
-                />
+              <div className="mb-6 grid grid-cols-2 gap-4">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                  <GraficoSaquePorSet
+                    promedios={calcularPromedioPorSet(
+                      jugadorActual.jugador_id,
+                      acciones,
+                      "saque",
+                      VALORES_SAQUE
+                    )}
+                  />
+                </div>
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                  <GraficoRecepcionPorSet
+                    promedios={jugadorActual.recepcion.promediosPorSet}
+                  />
+                </div>
+                <div className="col-span-2 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                  <GraficoBloqueoPorSet
+                    promedios={calcularPromedioPorSet(
+                      jugadorActual.jugador_id,
+                      acciones,
+                      "bloqueo",
+                      VALORES_BLOQUEO
+                    )}
+                  />
+                </div>
               </div>
             )}
 

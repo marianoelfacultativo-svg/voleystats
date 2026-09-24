@@ -54,7 +54,77 @@ const ERRORES: Record<string, string[]> = {
 };
 
 // ============================================
-// TIPOS DE RESULTADO
+// VALORES PARA LOS GRÁFICOS DE PROMEDIO
+// ============================================
+
+export const VALORES_SAQUE: Record<string, number> = {
+  ace: 5,
+  positivo_mas: 4,
+  positivo: 3,
+  neutro: 1,
+  negativo: -2,
+};
+
+export const VALORES_RECEPCION: Record<string, number> = {
+  "2x_positiva": 5,
+  positiva: 4,
+  negativa: 3,
+  "2x_negativa": 2,
+  "3x_negativa": 1,
+  ace_contra: 0,
+};
+
+export const VALORES_BLOQUEO: Record<string, number> = {
+  punto: 4,
+  positivo_mas: 2,
+  positivo: 1,
+  use_rival: -1,
+  red: -2,
+  filtrada: -1,
+};
+
+export const VALORES_ARMADOS: Record<string, number> = {
+  horrible: 1,
+  malo: 2,
+  flojo: 3,
+  correcto: 4,
+  perfecto: 5,
+};
+
+export const ETIQUETAS_VALORACION: Record<string, string> = {
+  ace: "Ace",
+  positivo_mas: "Positivo +",
+  positivo: "Positivo",
+  neutro: "Neutro",
+  negativo: "Negativo",
+  "2x_positiva": "2x Positiva",
+  positiva: "Positiva",
+  negativa: "Negativa",
+  "2x_negativa": "2x Negativa",
+  "3x_negativa": "3x Negativa",
+  ace_contra: "Ace en contra",
+  punto: "Punto",
+  error: "Error",
+  use_rival: "Use Rival",
+  red: "Red",
+  filtrada: "Filtrada",
+  toque_positiva: "Toque +",
+  toque_negativa: "Toque -",
+  mala_libre: "Mala Libre",
+  error_def: "Error Def",
+  gran_def: "Gran Def",
+  cobertura_positiva: "Cobertura +",
+  cobertura_negativa: "Cobertura -",
+  errores_graves: "Err. Graves",
+  horrible: "Horrible",
+  malo: "Malo",
+  flojo: "Flojo",
+  correcto: "Correcto",
+  perfecto: "Perfecto",
+};
+
+// ============================================
+// TIPOS
 // ============================================
 
 export interface EstadisticasFundamento {
@@ -75,6 +145,12 @@ export interface DistribucionTendencia {
   zona_6: number;
   zona_1: number;
   toque: number;
+  total: number;
+}
+
+export interface PromedioPorSet {
+  set: number;
+  promedio: number;
   total: number;
 }
 
@@ -203,14 +279,6 @@ function calcularEstadisticasArmador(
   const toquesError = contarPorValoraciones(propias, "toque", ["error"]);
   const toquesNeutro = contarPorValoraciones(propias, "toque", ["neutro"]);
 
-  const VALORES: Record<string, number> = {
-    horrible: 1,
-    malo: 2,
-    flojo: 3,
-    correcto: 4,
-    perfecto: 5,
-  };
-
   const promediosArmados: PromedioArmadosSet[] = [];
   let sumaTotal = 0;
   let totalArmados = 0;
@@ -222,7 +290,7 @@ function calcularEstadisticasArmador(
     let sumaSet = 0;
     let countSet = 0;
     for (const a of delSet) {
-      const v = VALORES[a.valoracion] ?? 0;
+      const v = VALORES_ARMADOS[a.valoracion] ?? 0;
       sumaSet += v * a.cantidad;
       countSet += a.cantidad;
     }
@@ -249,15 +317,6 @@ function calcularEstadisticasRecepcion(propias: AccionDB[]): {
   promediosPorSet: PromedioRecepcionSet[];
   promedioGlobal: number;
 } {
-  const VALORES: Record<string, number> = {
-    "2x_positiva": 5,
-    positiva: 4,
-    negativa: 3,
-    "2x_negativa": 2,
-    "3x_negativa": 1,
-    ace_contra: 0,
-  };
-
   const promediosPorSet: PromedioRecepcionSet[] = [];
   let sumaTotal = 0;
   let totalRecepciones = 0;
@@ -269,7 +328,7 @@ function calcularEstadisticasRecepcion(propias: AccionDB[]): {
     let sumaSet = 0;
     let countSet = 0;
     for (const a of delSet) {
-      const v = VALORES[a.valoracion] ?? 0;
+      const v = VALORES_RECEPCION[a.valoracion] ?? 0;
       sumaSet += v * a.cantidad;
       countSet += a.cantidad;
     }
@@ -287,6 +346,35 @@ function calcularEstadisticasRecepcion(propias: AccionDB[]): {
     totalRecepciones > 0 ? sumaTotal / totalRecepciones : 0;
 
   return { promediosPorSet, promedioGlobal };
+}
+
+// Función genérica de promedio por set
+export function calcularPromedioPorSet(
+  jugadorId: string,
+  acciones: AccionDB[],
+  fundamento: string,
+  valores: Record<string, number>
+): PromedioPorSet[] {
+  const propias = acciones.filter(
+    (a) => a.jugador_id === jugadorId && a.fundamento === fundamento
+  );
+  const result: PromedioPorSet[] = [];
+  for (let s = 1; s <= 5; s++) {
+    const delSet = propias.filter((a) => a.set_numero === s);
+    let suma = 0;
+    let total = 0;
+    for (const a of delSet) {
+      const v = valores[a.valoracion] ?? 0;
+      suma += v * a.cantidad;
+      total += a.cantidad;
+    }
+    result.push({
+      set: s,
+      promedio: total > 0 ? suma / total : 0,
+      total,
+    });
+  }
+  return result;
 }
 
 export function calcularEstadisticasJugador(

@@ -76,7 +76,7 @@ export default function EquipoPage() {
               onClick={() => setSeccion(s.id)}
               className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
                 seccion === s.id
-                  ? "border-blue-500 text-blue-600"
+                  ? "border-emerald-500 text-emerald-600"
                   : "border-transparent text-slate-500 hover:text-slate-700"
               }`}
             >

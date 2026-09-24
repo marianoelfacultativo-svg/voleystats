@@ -7,12 +7,17 @@ import { supabase } from "@/lib/supabase";
 import {
   calcularEstadisticasJugador,
   calcularEstadisticasEquipo,
+  calcularPromedioPorSet,
+  VALORES_SAQUE,
+  VALORES_BLOQUEO,
   type AccionDB,
   type EstadisticasJugador,
 } from "@/lib/estadisticas";
 import RadarJugador from "../equipo/RadarJugador";
 import GraficoArmadosPorSet from "../equipo/GraficoArmadosPorSet";
 import GraficoRecepcionPorSet from "../equipo/GraficoRecepcionPorSet";
+import GraficoSaquePorSet from "../equipo/GraficoSaquePorSet";
+import GraficoBloqueoPorSet from "../equipo/GraficoBloqueoPorSet";
 import MapaCalorTendencia from "../equipo/MapaCalorTendencia";
 import ImagenAmpliable from "../equipo/ImagenAmpliable";
 
@@ -232,7 +237,7 @@ export default function JugadorPage() {
                 onClick={() => setVista("general")}
                 className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
                   vista === "general"
-                    ? "border-blue-500 text-blue-600"
+                    ? "border-emerald-500 text-emerald-600"
                     : "border-transparent text-slate-500 hover:text-slate-700"
                 }`}
               >
@@ -242,7 +247,7 @@ export default function JugadorPage() {
                 onClick={() => setVista("por-partido")}
                 className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
                   vista === "por-partido"
-                    ? "border-blue-500 text-blue-600"
+                    ? "border-emerald-500 text-emerald-600"
                     : "border-transparent text-slate-500 hover:text-slate-700"
                 }`}
               >
@@ -262,7 +267,7 @@ export default function JugadorPage() {
                       onClick={() => setPartidoSeleccionado(p.id)}
                       className={`px-4 py-2 text-sm font-medium rounded-lg transition border ${
                         partidoActivo === p.id
-                          ? "bg-blue-500 text-white border-blue-500"
+                          ? "bg-emerald-500 text-white border-emerald-500"
                           : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
                       }`}
                     >
@@ -301,7 +306,7 @@ export default function JugadorPage() {
                     </span>
                   )}
                   {vista === "por-partido" && partidoActual && (
-                    <p className="text-xs text-blue-600 mt-2 font-medium">
+                    <p className="text-xs text-emerald-600 mt-2 font-medium">
                       📅 {partidoActual.rival} · {partidoActual.fecha}
                     </p>
                   )}
@@ -339,6 +344,26 @@ export default function JugadorPage() {
               {esArmador && stats.armador && (
                 <div className="mb-6 grid grid-cols-2 gap-4">
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <GraficoSaquePorSet
+                      promedios={calcularPromedioPorSet(
+                        jugador.id,
+                        accionesFiltradas,
+                        "saque",
+                        VALORES_SAQUE
+                      )}
+                    />
+                  </div>
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <GraficoBloqueoPorSet
+                      promedios={calcularPromedioPorSet(
+                        jugador.id,
+                        accionesFiltradas,
+                        "bloqueo",
+                        VALORES_BLOQUEO
+                      )}
+                    />
+                  </div>
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                     <GraficoArmadosPorSet
                       promedios={stats.armador.promediosArmados}
                     />
@@ -351,11 +376,33 @@ export default function JugadorPage() {
                 </div>
               )}
 
-              {!esArmador && stats.recepcion && (
-                <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                  <GraficoRecepcionPorSet
-                    promedios={stats.recepcion.promediosPorSet}
-                  />
+              {!esArmador && (
+                <div className="mb-6 grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <GraficoSaquePorSet
+                      promedios={calcularPromedioPorSet(
+                        jugador.id,
+                        accionesFiltradas,
+                        "saque",
+                        VALORES_SAQUE
+                      )}
+                    />
+                  </div>
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <GraficoRecepcionPorSet
+                      promedios={stats.recepcion?.promediosPorSet ?? []}
+                    />
+                  </div>
+                  <div className="col-span-2 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <GraficoBloqueoPorSet
+                      promedios={calcularPromedioPorSet(
+                        jugador.id,
+                        accionesFiltradas,
+                        "bloqueo",
+                        VALORES_BLOQUEO
+                      )}
+                    />
+                  </div>
                 </div>
               )}
 

@@ -3,21 +3,60 @@
 import { useState } from "react";
 import {
   calcularEstadisticasJugador,
+  calcularPromedioPorSet,
+  VALORES_SAQUE,
+  VALORES_RECEPCION,
+  VALORES_BLOQUEO,
+  ETIQUETAS_VALORACION,
   type AccionDB,
+  type EstadisticasFundamento,
 } from "@/lib/estadisticas";
+import RadarJugador from "./RadarJugador";
+import GraficoRecepcionPorSet from "./GraficoRecepcionPorSet";
+import GraficoSaquePorSet from "./GraficoSaquePorSet";
+import GraficoBloqueoPorSet from "./GraficoBloqueoPorSet";
+import GraficoArmadosPorSet from "./GraficoArmadosPorSet";
+import MapaCalorTendencia from "./MapaCalorTendencia";
 
 interface Props {
   jugadoresIds: string[];
   nombresJugadores: Record<string, string>;
   acciones: AccionDB[];
   armadores: Set<string>;
+  statsEquipoTotales: ReturnType<typeof calcularEstadisticasJugador>;
 }
+
+type SetFiltro = "todos" | 1 | 2 | 3 | 4 | 5;
+
+const FUNDAMENTOS_NORMAL = [
+  "saque",
+  "recepcion",
+  "ataque",
+  "bloqueo",
+  "defensa",
+];
+const FUNDAMENTOS_ARMADOR = ["saque", "bloqueo", "defensa"];
+
+const NOMBRES_F: Record<string, string> = {
+  saque: "Saque",
+  recepcion: "Recepción",
+  ataque: "Ataque",
+  bloqueo: "Bloqueo",
+  defensa: "Defensa",
+};
+
+const VALORES_POR_FUNDAMENTO: Record<string, Record<string, number>> = {
+  saque: VALORES_SAQUE,
+  recepcion: VALORES_RECEPCION,
+  bloqueo: VALORES_BLOQUEO,
+};
 
 export default function TablaJugadoresPorSet({
   jugadoresIds,
   nombresJugadores,
   acciones,
   armadores,
+  statsEquipoTotales,
 }: Props) {
   const [expandido, setExpandido] = useState<string | null>(null);
 
@@ -30,7 +69,8 @@ export default function TablaJugadoresPorSet({
           Estadísticas por jugador
         </h4>
         <p className="text-xs text-slate-500 mt-1">
-          Click en "Ver por set" para ver el detalle de cada set
+          Click en "Ver detalle" para ver el análisis completo del jugador en
+          este partido
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -93,65 +133,221 @@ export default function TablaJugadoresPorSet({
                         onClick={() => setExpandido(abierto ? null : id)}
                         className="px-3 py-1 text-xs bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg transition"
                       >
-                        {abierto ? "Ocultar" : "Ver por set"}
+                        {abierto ? "Ocultar" : "Ver detalle"}
                       </button>
                     </td>
                   </tr>
 
                   {abierto && (
                     <tr key={`${id}-detalle`} className="bg-slate-50">
-                      <td colSpan={6} className="p-3">
-                        <div className="grid grid-cols-5 gap-2">
-                          {[1, 2, 3, 4, 5].map((s) => {
-                            const delSet = acciones.filter(
-                              (a) =>
-                                a.jugador_id === id && a.set_numero === s
-                            );
-                            const estSet = calcularEstadisticasJugador(
-                              id,
-                              delSet,
-                              esArm
-                            );
-                            return (
+                      <td colSpan={6} className="p-4">
+                        <DetalleJugador
+                          jugadorId={id}
+                          nombre={nombreDe(id)}
+                          esArmador={esArm}
+                          acciones={acciones}
+                          statsEquipoTotales={statsEquipoTotales}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// SUBCOMPONENTE: detalle de un jugador
+// ============================================
+
+function DetalleJugador({
+  jugadorId,
+  nombre,
+  esArmador,
+  acciones,
+  statsEquipoTotales,
+}: {
+  jugadorId: string;
+  nombre: string;
+  esArmador: boolean;
+  acciones: AccionDB[];
+  statsEquipoTotales: ReturnType<typeof calcularEstadisticasJugador>;
+}) {
+  const [setFiltro, setSetFiltro] = useState<SetFiltro>("todos");
+  const [valoresAbiertos, setValoresAbiertos] = useState<Set<string>>(
+    new Set()
+  );
+
+  const toggleValoraciones = (fund: string) => {
+    setValoresAbiertos((prev) => {
+      const copia = new Set(prev);
+      if (copia.has(fund)) copia.delete(fund);
+      else copia.add(fund);
+      return copia;
+    });
+  };
+
+  // Filtrar acciones por set
+  const accionesFiltradas =
+    setFiltro === "todos"
+      ? acciones
+      : acciones.filter(
+          (a) => a.jugador_id === jugadorId && a.set_numero === setFiltro
+        );
+
+  // Si hay filtro de set, uso solo las del jugador en ese set
+  // Si no, uso todas las del jugador
+  const accionesJugador =
+    setFiltro === "todos"
+      ? acciones.filter((a) => a.jugador_id === jugadorId)
+      : accionesFiltradas;
+
+  const est = calcularEstadisticasJugador(
+    jugadorId,
+    accionesJugador,
+    esArmador
+  );
+
+  const fundamentos = esArmador ? FUNDAMENTOS_ARMADOR : FUNDAMENTOS_NORMAL;
+
+  const promediosSaque = calcularPromedioPorSet(
+    jugadorId,
+    accionesJugador,
+    "saque",
+    VALORES_SAQUE
+  );
+  const promediosBloqueo = calcularPromedioPorSet(
+    jugadorId,
+    accionesJugador,
+    "bloqueo",
+    VALORES_BLOQUEO
+  );
+
+  // Valores detallados por fundamento
+  const valoracionesDe = (fund: string): { key: string; cantidad: number }[] => {
+    const valores = accionesJugador.filter((a) => a.fundamento === fund);
+    const mapa: Record<string, number> = {};
+    for (const a of valores) {
+      mapa[a.valoracion] = (mapa[a.valoracion] ?? 0) + a.cantidad;
+    }
+    return Object.entries(mapa).map(([key, cantidad]) => ({ key, cantidad }));
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Selector de set */}
+      <div className="flex gap-2 flex-wrap">
+        <span className="text-sm text-slate-600 self-center mr-2">
+          Ver:
+        </span>
+        {(["todos", 1, 2, 3, 4, 5] as const).map((s) => (
+          <button
+            key={String(s)}
+            onClick={() => setSetFiltro(s)}
+            className={`px-3 py-1 text-xs font-medium rounded-lg transition border ${
+              setFiltro === s
+                ? "bg-emerald-500 text-white border-emerald-500"
+                : "bg-white text-slate-600 border-slate-300 hover:bg-slate-100"
+            }`}
+          >
+            {s === "todos" ? "Todos" : `Set ${s}`}
+          </button>
+        ))}
+      </div>
+
+      {/* Tabla por fundamento */}
+      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-100">
+            <tr className="text-left text-slate-500">
+              <th className="py-2 px-3">Fundamento</th>
+              <th className="py-2 px-3 text-right">Total</th>
+              <th className="py-2 px-3 text-right">Pos</th>
+              <th className="py-2 px-3 text-right">Neg</th>
+              <th className="py-2 px-3 text-right">Puntos</th>
+              <th className="py-2 px-3 text-right">Errores</th>
+              <th className="py-2 px-3 text-right">Saldo</th>
+              <th className="py-2 px-3 text-right"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {fundamentos.map((f) => {
+              const e: EstadisticasFundamento | undefined =
+                est.porFundamento[f];
+              if (!e || e.total === 0) return null;
+              const abierto = valoresAbiertos.has(f);
+              const detalle = valoracionesDe(f);
+
+              return (
+                <>
+                  <tr key={f} className="border-b border-slate-100">
+                    <td className="py-2 px-3 font-medium text-slate-700">
+                      {NOMBRES_F[f]}
+                    </td>
+                    <td className="py-2 px-3 text-right text-slate-600">
+                      {e.total}
+                    </td>
+                    <td className="py-2 px-3 text-right text-green-700">
+                      {e.positivos}
+                    </td>
+                    <td className="py-2 px-3 text-right text-red-700">
+                      {e.negativos}
+                    </td>
+                    <td className="py-2 px-3 text-right text-slate-600">
+                      {e.puntos}
+                    </td>
+                    <td className="py-2 px-3 text-right text-slate-600">
+                      {e.errores}
+                    </td>
+                    <td
+                      className={`py-2 px-3 text-right font-semibold ${
+                        e.saldo > 0
+                          ? "text-green-700"
+                          : e.saldo < 0
+                          ? "text-red-700"
+                          : "text-slate-600"
+                      }`}
+                    >
+                      {e.saldo > 0 ? "+" : ""}
+                      {e.saldo}
+                    </td>
+                    <td className="py-2 px-3 text-right">
+                      <button
+                        onClick={() => toggleValoraciones(f)}
+                        className="px-2 py-1 text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 rounded transition"
+                      >
+                        {abierto ? "Ocultar" : "Ver valoraciones"}
+                      </button>
+                    </td>
+                  </tr>
+                  {abierto && (
+                    <tr key={`${f}-valoraciones`} className="bg-slate-100">
+                      <td colSpan={8} className="p-3">
+                        <div className="flex gap-2 flex-wrap">
+                          {detalle.length === 0 ? (
+                            <p className="text-xs text-slate-500">
+                              Sin datos
+                            </p>
+                          ) : (
+                            detalle.map((v) => (
                               <div
-                                key={s}
-                                className="p-3 bg-white border border-slate-200 rounded-lg text-center"
+                                key={v.key}
+                                className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
                               >
-                                <p className="text-xs font-semibold text-slate-500 uppercase mb-1">
-                                  Set {s}
-                                </p>
-                                {estSet.totalAcciones === 0 ? (
-                                  <p className="text-xs text-slate-400">
-                                    Sin datos
-                                  </p>
-                                ) : (
-                                  <>
-                                    <p className="text-xs text-slate-500">
-                                      {estSet.totalAcciones} acc.
-                                    </p>
-                                    <p className="text-xs text-green-700">
-                                      {estSet.totalPuntos} pts
-                                    </p>
-                                    <p className="text-xs text-red-700">
-                                      {estSet.totalErrores} err
-                                    </p>
-                                    <p
-                                      className={`text-sm font-bold mt-1 ${
-                                        estSet.saldoTotal > 0
-                                          ? "text-green-700"
-                                          : estSet.saldoTotal < 0
-                                          ? "text-red-700"
-                                          : "text-slate-700"
-                                      }`}
-                                    >
-                                      {estSet.saldoTotal > 0 ? "+" : ""}
-                                      {estSet.saldoTotal}
-                                    </p>
-                                  </>
-                                )}
+                                <span className="text-slate-500">
+                                  {ETIQUETAS_VALORACION[v.key] ?? v.key}:
+                                </span>{" "}
+                                <span className="font-semibold text-slate-800">
+                                  {v.cantidad}
+                                </span>
                               </div>
-                            );
-                          })}
+                            ))
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -162,6 +358,56 @@ export default function TablaJugadoresPorSet({
           </tbody>
         </table>
       </div>
+
+      {/* Radar */}
+      <div className="bg-white border border-slate-200 rounded-lg p-4">
+        <h5 className="font-semibold text-slate-800 mb-3 text-sm">
+          Radar en este partido
+        </h5>
+        <RadarJugador
+          jugador={est}
+          equipo={statsEquipoTotales}
+          esArmador={esArmador}
+        />
+      </div>
+
+      {/* Gráficos */}
+      {!esArmador && (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="p-3 bg-white border border-slate-200 rounded-lg">
+            <GraficoSaquePorSet promedios={promediosSaque} />
+          </div>
+          <div className="p-3 bg-white border border-slate-200 rounded-lg">
+            <GraficoRecepcionPorSet
+              promedios={est.recepcion?.promediosPorSet ?? []}
+            />
+          </div>
+          <div className="p-3 bg-white border border-slate-200 rounded-lg">
+            <GraficoBloqueoPorSet promedios={promediosBloqueo} />
+          </div>
+        </div>
+      )}
+
+      {esArmador && est.armador && (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="p-3 bg-white border border-slate-200 rounded-lg">
+            <GraficoSaquePorSet promedios={promediosSaque} />
+          </div>
+          <div className="p-3 bg-white border border-slate-200 rounded-lg">
+            <GraficoBloqueoPorSet promedios={promediosBloqueo} />
+          </div>
+          <div className="p-3 bg-white border border-slate-200 rounded-lg">
+            <GraficoArmadosPorSet
+              promedios={est.armador.promediosArmados}
+            />
+          </div>
+          <div className="col-span-3 p-3 bg-white border border-slate-200 rounded-lg">
+            <MapaCalorTendencia
+              distribucion={est.armador.distribucionTendencia}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
