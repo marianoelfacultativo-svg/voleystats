@@ -55,18 +55,18 @@ export default function RadarJugador({ jugador, esArmador }: Props) {
 
   return (
     <div>
-      <div className="w-full h-[500px]">
+      <div className="w-full h-96">
         <ResponsiveContainer width="100%" height="100%">
-          <RadarChart data={datos} outerRadius="85%">
+          <RadarChart data={datos} outerRadius="75%">
             <PolarGrid stroke="#C9DBC6" />
             <PolarAngleAxis
               dataKey="fundamento"
-              tick={{ fill: "#2F4A3A", fontSize: 14, fontWeight: 600 }}
+              tick={{ fill: "#2F4A3A", fontSize: 13, fontWeight: 500 }}
             />
             <PolarRadiusAxis
               angle={90}
               domain={[minEje, maxEje]}
-              tick={{ fill: "#8FA398", fontSize: 11 }}
+              tick={{ fill: "#8FA398", fontSize: 10 }}
             />
             <Radar
               name={jugador.jugador_id}
