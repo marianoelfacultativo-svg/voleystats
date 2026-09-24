@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   calcularEstadisticasEquipo,
   top3,
-  VALORES_POR_FUNDAMENTO,
   type AccionDB,
   type PromedioRecepcionSet,
 } from "@/lib/estadisticas";
@@ -115,29 +114,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       setCargando(false);
     });
   }, [equipoId]);
-
-  // Máximo histórico por fundamento (entre todos los partidos)
-  const maximosHistoricos = useMemo(() => {
-    const maximos: Record<string, number> = {};
-    for (const p of partidos) {
-      const porFund: Record<string, number> = {};
-      for (const a of acciones) {
-        if (a.partido_id !== p.id) continue;
-        const valores = VALORES_POR_FUNDAMENTO[a.fundamento];
-        if (!valores) continue;
-        const v = valores[a.valoracion];
-        if (v === undefined) continue;
-        porFund[a.fundamento] =
-          (porFund[a.fundamento] ?? 0) + v * a.cantidad;
-      }
-      for (const [f, v] of Object.entries(porFund)) {
-        if (maximos[f] === undefined || v > maximos[f]) {
-          maximos[f] = v;
-        }
-      }
-    }
-    return maximos;
-  }, [partidos, acciones]);
 
   const limpiarFiltros = () => {
     setFiltroRival("");
@@ -423,10 +399,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               </div>
 
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-                <RadarEquipo
-                  equipo={statsPartido.totales}
-                  maximosHistoricos={maximosHistoricos}
-                />
+                <RadarEquipo equipo={statsPartido.totales} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
