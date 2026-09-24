@@ -9,21 +9,43 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  Legend,
 } from "recharts";
 import type { PromedioPorSet } from "@/lib/estadisticas";
 
-interface Props {
+export interface SerieSaque {
+  id: string;
+  nombre: string;
+  color: string;
   promedios: PromedioPorSet[];
 }
 
-export default function GraficoSaquePorSet({ promedios }: Props) {
-  const datos = promedios.map((p) => ({
-    set: `Set ${p.set}`,
-    promedio: Number(p.promedio.toFixed(1)),
-    total: p.total,
-  }));
+interface Props {
+  promedios?: PromedioPorSet[];
+  series?: SerieSaque[];
+}
 
-  const hayDatos = promedios.some((p) => p.total > 0);
+export default function GraficoSaquePorSet({ promedios, series }: Props) {
+  const seriesFinales: SerieSaque[] = series
+    ? series
+    : promedios
+    ? [{ id: "main", nombre: "Saque", color: "#3b82f6", promedios }]
+    : [];
+
+  const esMultiple = seriesFinales.length > 1;
+
+  const datos = [1, 2, 3, 4, 5].map((s) => {
+    const fila: Record<string, string | number> = { set: `Set ${s}` };
+    for (const serie of seriesFinales) {
+      const p = serie.promedios.find((x) => x.set === s);
+      fila[serie.id] = p ? Number(p.promedio.toFixed(1)) : 0;
+    }
+    return fila;
+  });
+
+  const hayDatos = seriesFinales.some((s) =>
+    s.promedios.some((p) => p.total > 0)
+  );
 
   return (
     <div>
@@ -36,7 +58,7 @@ export default function GraficoSaquePorSet({ promedios }: Props) {
         <>
           <div
             className="bg-white border border-slate-200 rounded-lg p-2"
-            style={{ height: "200px", width: "100%", maxWidth: "280px" }}
+            style={{ height: esMultiple ? "220px" : "200px", width: "100%" }}
           >
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
@@ -58,13 +80,23 @@ export default function GraficoSaquePorSet({ promedios }: Props) {
                   contentStyle={{ fontSize: 12 }}
                 />
                 <ReferenceLine y={0} stroke="#cbd5e1" strokeWidth={1} />
-                <Line
-                  type="monotone"
-                  dataKey="promedio"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={{ fill: "#3b82f6", r: 4 }}
-                />
+                {seriesFinales.map((s) => (
+                  <Line
+                    key={s.id}
+                    type="monotone"
+                    dataKey={s.id}
+                    name={s.nombre}
+                    stroke={s.color}
+                    strokeWidth={2}
+                    dot={{ fill: s.color, r: 4 }}
+                  />
+                ))}
+                {esMultiple && (
+                  <Legend
+                    wrapperStyle={{ fontSize: 11 }}
+                    iconType="line"
+                  />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </div>

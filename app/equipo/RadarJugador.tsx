@@ -7,11 +7,20 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis,
   ResponsiveContainer,
+  Legend,
 } from "recharts";
 import type { EstadisticasJugador } from "@/lib/estadisticas";
 
-interface Props {
+export interface SerieRadar {
+  id: string;
+  nombre: string;
+  color: string;
   jugador: EstadisticasJugador;
+}
+
+interface Props {
+  jugador?: EstadisticasJugador;
+  series?: SerieRadar[];
   todosJugadores?: EstadisticasJugador[];
   esArmador?: boolean;
 }
@@ -24,7 +33,11 @@ const ETIQUETAS: Record<string, string> = {
   defensa: "Defensa",
 };
 
-export default function RadarJugador({ jugador, esArmador }: Props) {
+export default function RadarJugador({
+  jugador,
+  series,
+  esArmador,
+}: Props) {
   const fundamentosNormal = [
     "saque",
     "defensa",
@@ -36,18 +49,29 @@ export default function RadarJugador({ jugador, esArmador }: Props) {
 
   const fundamentos = esArmador ? fundamentosArmador : fundamentosNormal;
 
-  const datos = fundamentos.map((f) => {
-    const norm = jugador.valoracionPonderadaPorFundamento[f] ?? 0;
-    const real = jugador.valoracionPorFundamento[f] ?? 0;
-    const acciones = jugador.porFundamento[f]?.total ?? 0;
+  const seriesFinales: SerieRadar[] = series
+    ? series
+    : jugador
+    ? [
+        {
+          id: "main",
+          nombre: "Jugador",
+          color: "#10B981",
+          jugador,
+        },
+      ]
+    : [];
 
-    return {
+  const esMultiple = seriesFinales.length > 1;
+
+  const datos = fundamentos.map((f) => {
+    const fila: Record<string, string | number> = {
       fundamento: ETIQUETAS[f],
-      valor: norm,
-      valorNorm: norm,
-      valorReal: real,
-      acciones,
     };
+    for (const s of seriesFinales) {
+      fila[s.id] = s.jugador.valoracionPonderadaPorFundamento[f] ?? 0;
+    }
+    return fila;
   });
 
   const minEje = -3;
@@ -68,14 +92,23 @@ export default function RadarJugador({ jugador, esArmador }: Props) {
               domain={[minEje, maxEje]}
               tick={{ fill: "#8FA398", fontSize: 10 }}
             />
-            <Radar
-              name={jugador.jugador_id}
-              dataKey="valor"
-              stroke="#10B981"
-              fill="#10B981"
-              fillOpacity={0.45}
-              strokeWidth={2}
-            />
+            {seriesFinales.map((s) => (
+              <Radar
+                key={s.id}
+                name={s.nombre}
+                dataKey={s.id}
+                stroke={s.color}
+                fill={s.color}
+                fillOpacity={esMultiple ? 0 : 0.45}
+                strokeWidth={esMultiple ? 3 : 2}
+              />
+            ))}
+            {esMultiple && (
+              <Legend
+                wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+                iconType="line"
+              />
+            )}
           </RadarChart>
         </ResponsiveContainer>
       </div>
@@ -85,25 +118,31 @@ export default function RadarJugador({ jugador, esArmador }: Props) {
           esArmador ? "grid-cols-3" : "grid-cols-5"
         }`}
       >
-        {datos.map((d) => (
+        {fundamentos.map((f) => (
           <div
-            key={d.fundamento}
+            key={f}
             className="p-2 bg-slate-50 border border-slate-200 rounded text-center"
           >
-            <p className="text-xs text-slate-500">{d.fundamento}</p>
-            <p
-              className={`font-semibold text-sm ${
-                d.valorNorm > 0
-                  ? "text-green-700"
-                  : d.valorNorm < 0
-                  ? "text-red-700"
-                  : "text-slate-800"
-              }`}
-            >
-              {d.valorNorm > 0 ? "+" : ""}
-              {d.valorNorm.toFixed(2)}
-            </p>
-            <p className="text-[10px] text-slate-400">{d.acciones} acc.</p>
+            <p className="text-xs text-slate-500">{ETIQUETAS[f]}</p>
+            {seriesFinales.map((s) => (
+              <p
+                key={s.id}
+                className="font-semibold text-sm"
+                style={{ color: seriesFinales.length > 1 ? s.color : undefined }}
+              >
+                {seriesFinales.length === 1
+                  ? `${
+                      (s.jugador.valoracionPonderadaPorFundamento[f] ?? 0) > 0
+                        ? "+"
+                        : ""
+                    }${(
+                      s.jugador.valoracionPonderadaPorFundamento[f] ?? 0
+                    ).toFixed(2)}`
+                  : `${(s.jugador.valoracionPonderadaPorFundamento[f] ?? 0).toFixed(
+                      2
+                    )}`}
+              </p>
+            ))}
           </div>
         ))}
       </div>

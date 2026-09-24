@@ -8,21 +8,43 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Legend,
 } from "recharts";
 import type { PromedioArmadosSet } from "@/lib/estadisticas";
 
-interface Props {
+export interface SerieArmados {
+  id: string;
+  nombre: string;
+  color: string;
   promedios: PromedioArmadosSet[];
 }
 
-export default function GraficoArmadosPorSet({ promedios }: Props) {
-  const datos = promedios.map((p) => ({
-    set: `Set ${p.set}`,
-    promedio: Number(p.promedio.toFixed(1)),
-    totalArmados: p.totalArmados,
-  }));
+interface Props {
+  promedios?: PromedioArmadosSet[];
+  series?: SerieArmados[];
+}
 
-  const hayDatos = promedios.some((p) => p.totalArmados > 0);
+export default function GraficoArmadosPorSet({ promedios, series }: Props) {
+  const seriesFinales: SerieArmados[] = series
+    ? series
+    : promedios
+    ? [{ id: "main", nombre: "Armados", color: "#8b5cf6", promedios }]
+    : [];
+
+  const esMultiple = seriesFinales.length > 1;
+
+  const datos = [1, 2, 3, 4, 5].map((s) => {
+    const fila: Record<string, string | number> = { set: `Set ${s}` };
+    for (const serie of seriesFinales) {
+      const p = serie.promedios.find((x) => x.set === s);
+      fila[serie.id] = p ? Number(p.promedio.toFixed(1)) : 0;
+    }
+    return fila;
+  });
+
+  const hayDatos = seriesFinales.some((s) =>
+    s.promedios.some((p) => p.totalArmados > 0)
+  );
 
   return (
     <div>
@@ -37,7 +59,7 @@ export default function GraficoArmadosPorSet({ promedios }: Props) {
         <>
           <div
             className="bg-white border border-slate-200 rounded-lg p-2"
-            style={{ height: "200px", width: "100%", maxWidth: "280px" }}
+            style={{ height: esMultiple ? "220px" : "200px", width: "100%" }}
           >
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
@@ -58,13 +80,23 @@ export default function GraficoArmadosPorSet({ promedios }: Props) {
                   labelStyle={{ fontSize: 12 }}
                   contentStyle={{ fontSize: 12 }}
                 />
-                <Line
-                  type="monotone"
-                  dataKey="promedio"
-                  stroke="#8b5cf6"
-                  strokeWidth={2}
-                  dot={{ fill: "#8b5cf6", r: 4 }}
-                />
+                {seriesFinales.map((s) => (
+                  <Line
+                    key={s.id}
+                    type="monotone"
+                    dataKey={s.id}
+                    name={s.nombre}
+                    stroke={s.color}
+                    strokeWidth={2}
+                    dot={{ fill: s.color, r: 4 }}
+                  />
+                ))}
+                {esMultiple && (
+                  <Legend
+                    wrapperStyle={{ fontSize: 11 }}
+                    iconType="line"
+                  />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </div>
