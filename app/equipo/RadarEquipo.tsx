@@ -32,17 +32,19 @@ export default function RadarEquipo({ equipo }: Props) {
   ];
 
   const datos = fundamentos.map((f) => {
-    const e = equipo.porFundamento[f];
-    const efectividad = e?.efectividad ?? 0;
+    const valEq = equipo.valoracionPorFundamento[f] ?? 0;
+    const acciones = equipo.porFundamento[f]?.total ?? 0;
+
     return {
       fundamento: ETIQUETAS[f],
-      valor: efectividad,
-      valorRaw: efectividad,
-      acciones: e?.total ?? 0,
+      valor: valEq,
+      valorRaw: valEq,
+      acciones,
     };
   });
 
-  const maxEje = 100;
+  const minEje = -8;
+  const maxEje = 5;
 
   return (
     <div>
@@ -57,7 +59,7 @@ export default function RadarEquipo({ equipo }: Props) {
             />
             <PolarRadiusAxis
               angle={90}
-              domain={[-25, maxEje]}
+              domain={[minEje, maxEje]}
               tick={{ fill: "#8FA398", fontSize: 10 }}
             />
             <Radar
@@ -78,14 +80,25 @@ export default function RadarEquipo({ equipo }: Props) {
             className="p-2 bg-amber-50 border border-amber-200 rounded text-center"
           >
             <p className="text-xs text-amber-700">{d.fundamento}</p>
-            <p className="font-semibold text-amber-900 text-sm">
+            <p
+              className={`font-semibold text-sm ${
+                d.valorRaw > 0
+                  ? "text-green-700"
+                  : d.valorRaw < 0
+                  ? "text-red-700"
+                  : "text-amber-900"
+              }`}
+            >
               {d.valorRaw > 0 ? "+" : ""}
-              {d.valorRaw.toFixed(0)}%
+              {d.valorRaw.toFixed(1)}
             </p>
             <p className="text-[10px] text-amber-600">{d.acciones} acc.</p>
           </div>
         ))}
       </div>
+      <p className="text-xs text-slate-400 mt-3 text-center">
+        Valoración media de cada fundamento. Escala: -8 a +5.
+      </p>
     </div>
   );
 }
