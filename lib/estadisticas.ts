@@ -163,10 +163,11 @@ const RANGOS: Record<string, { min: number; max: number }> = {
   toque: { min: -4, max: 4 },
 };
 
-// Exponentes de volumen por fundamento (para el radar y promedios ponderados)
+// Exponentes de volumen por fundamento
+// Saque y bloqueo más generosos (0.4), el resto queda en 0.5
 const EXPONENTES_VOLUMEN: Record<string, number> = {
-  saque: 0.7,
-  bloqueo: 1.0,
+  saque: 0.4,
+  bloqueo: 0.4,
 };
 
 const EXPONENTE_DEFAULT = 0.5;
@@ -733,7 +734,7 @@ export function calcularEstadisticasJugador(
     vals.mediaNormalizadaBase * factorVolumen;
 
   // Valoración ponderada por fundamento (para radar)
-  // Exponentes: saque 0.7, bloqueo 1.0, resto 0.5
+  // Saque y bloqueo usan exponente 0.4, el resto 0.5
   const valoracionPonderadaPorFundamento: Record<string, number> = {};
   const maxPorFund =
     maxAccionesPorFundamento ??
