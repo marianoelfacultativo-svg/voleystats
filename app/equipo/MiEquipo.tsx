@@ -99,27 +99,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     armadores
   );
 
-  // 🔍 DEBUG TEMPORAL
-  if (typeof window !== "undefined") {
-    console.log("=== DEBUG ===");
-    console.log("Total acciones:", acciones.length);
-    const bloqueosPorJugador: Record<string, number> = {};
-    for (const a of acciones) {
-      if (a.fundamento === "bloqueo") {
-        bloqueosPorJugador[a.jugador_id] =
-          (bloqueosPorJugador[a.jugador_id] ?? 0) + a.cantidad;
-      }
-    }
-    console.log("Bloqueos por jugador:", bloqueosPorJugador);
-    for (const [jid, est] of Object.entries(porJugador)) {
-      const nombre = jugadores.find((j) => j.id === jid)?.nombre ?? jid;
-      console.log(
-        `${nombre}: bloqueo ponderado =`,
-        est.valoracionPonderadaPorFundamento.bloqueo
-      );
-    }
-  }
-
   const jugadorActual: EstadisticasJugador | null = jugadorSeleccionado
     ? porJugador[jugadorSeleccionado] ?? null
     : null;
@@ -137,18 +116,10 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     );
   }
 
-  // 🔍 TEST VISUAL TEMPORAL
-  const version = "V2-DEBUG";
-  const totalBloqueos = acciones
-    .filter((a) => a.fundamento === "bloqueo")
-    .reduce((s, a) => s + a.cantidad, 0);
-
   return (
     <div className="grid grid-cols-3 gap-4">
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 col-span-1">
-        <h3 className="font-semibold text-slate-800 mb-3">
-          Plantel — {version} — {totalBloqueos} bloqueos
-        </h3>
+        <h3 className="font-semibold text-slate-800 mb-3">Plantel</h3>
         <div className="space-y-1">
           {jugadores.map((j) => {
             const est = porJugador[j.id];

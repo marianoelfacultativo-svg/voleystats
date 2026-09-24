@@ -735,6 +735,16 @@ export function calcularEstadisticasJugador(
 
   // Valoración ponderada por fundamento (para radar)
   // Saque y bloqueo lineales (1.0), el resto 0.5
+  // Factor visual para que los valores se vean en el radar
+  const FACTORES_VISUALES: Record<string, number> = {
+    saque: 3,
+    recepcion: 1,
+    ataque: 1,
+    bloqueo: 6,
+    defensa: 1,
+    armados: 1,
+    toque: 3,
+  };
   const valoracionPonderadaPorFundamento: Record<string, number> = {};
   const maxPorFund =
     maxAccionesPorFundamento ??
@@ -747,7 +757,8 @@ export function calcularEstadisticasJugador(
     const exp = getExponente(f);
     const factor =
       maxFund > 0 && accFund > 0 ? Math.pow(accFund / maxFund, exp) : 0;
-    valoracionPonderadaPorFundamento[f] = norm * factor;
+    const factorVisual = FACTORES_VISUALES[f] ?? 1;
+    valoracionPonderadaPorFundamento[f] = norm * factor * factorVisual;
   }
 
   let recepcion: EstadisticasJugador["recepcion"] | undefined;
