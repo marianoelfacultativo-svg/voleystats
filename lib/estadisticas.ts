@@ -974,42 +974,48 @@ export function rankingBloqueo(
   acciones: AccionDB[]
 ): RankingCompletoItem[] {
   const ids = Object.keys(porJugador);
-  const maxPorSet = calcularMaxAccionesPorSet(acciones, ids, "bloqueo");
-  const exp = getExponente("bloqueo");
+  const exp = 2.0;
+
+  const ratios: Record<string, number> = {};
+  let maxRatio = 1;
+  for (const id of ids) {
+    const setsJugados = contarSetsJugados(acciones, id);
+    const total = acciones
+      .filter((a) => a.jugador_id === id && a.fundamento === "bloqueo")
+      .reduce((s, a) => s + a.cantidad, 0);
+    const ratio = total / setsJugados;
+    ratios[id] = ratio;
+    if (ratio > maxRatio) maxRatio = ratio;
+  }
 
   return Object.values(porJugador)
     .map((est) => {
       const propias = acciones.filter(
         (a) => a.jugador_id === est.jugador_id && a.fundamento === "bloqueo"
       );
-      let valorTotal = 0;
-
-      for (let s = 1; s <= 5; s++) {
-        const delSet = propias.filter((a) => a.set_numero === s);
-        let suma = 0;
-        let total = 0;
-        for (const a of delSet) {
-          const v = VALORES_BLOQUEO[a.valoracion] ?? 0;
-          suma += v * a.cantidad;
-          total += a.cantidad;
-        }
-        const promBruto = total > 0 ? suma / total : 0;
-        const max = maxPorSet[s] ?? 1;
-        const factor = total > 0 ? Math.pow(total / max, exp) : 0;
-        valorTotal += promBruto * factor;
+      let suma = 0;
+      let total = 0;
+      for (const a of propias) {
+        const v = VALORES_BLOQUEO[a.valoracion] ?? 0;
+        suma += v * a.cantidad;
+        total += a.cantidad;
       }
+      const calidad = total > 0 ? suma / total : 0;
+      const ratio = ratios[est.jugador_id] ?? 0;
+      const factor = maxRatio > 0 ? Math.pow(ratio / maxRatio, exp) : 0;
+      const valor = calidad * factor;
 
+      const setsJugados = contarSetsJugados(acciones, est.jugador_id);
       const puntos = contarPorValoraciones(propias, "bloqueo", ["punto"]);
       const positivos = contarPorValoraciones(propias, "bloqueo", [
         "positivo_mas",
         "positivo",
       ]);
-      const volumen = contarTotal(propias, "bloqueo");
 
       return {
         jugador_id: est.jugador_id,
-        valor: valorTotal,
-        texto: `${puntos} puntos de bloqueo / ${positivos} toques positivos / Volumen: ${volumen}`,
+        valor,
+        texto: `${puntos} puntos de bloqueo / ${positivos} toques positivos / ${total} en ${setsJugados} sets (${ratio.toFixed(2)} por set)`,
       };
     })
     .filter((r) => r.valor > 0)
@@ -1021,46 +1027,51 @@ export function rankingSaque(
   acciones: AccionDB[]
 ): RankingCompletoItem[] {
   const ids = Object.keys(porJugador);
-  const maxPorSet = calcularMaxAccionesPorSet(acciones, ids, "saque");
-  const exp = getExponente("saque");
+  const exp = 2.0;
+
+  const ratios: Record<string, number> = {};
+  let maxRatio = 1;
+  for (const id of ids) {
+    const setsJugados = contarSetsJugados(acciones, id);
+    const total = acciones
+      .filter((a) => a.jugador_id === id && a.fundamento === "saque")
+      .reduce((s, a) => s + a.cantidad, 0);
+    const ratio = total / setsJugados;
+    ratios[id] = ratio;
+    if (ratio > maxRatio) maxRatio = ratio;
+  }
 
   return Object.values(porJugador)
     .map((est) => {
       const propias = acciones.filter(
         (a) => a.jugador_id === est.jugador_id && a.fundamento === "saque"
       );
-      let valorTotal = 0;
-
-      for (let s = 1; s <= 5; s++) {
-        const delSet = propias.filter((a) => a.set_numero === s);
-        let suma = 0;
-        let total = 0;
-        for (const a of delSet) {
-          const v = VALORES_SAQUE[a.valoracion] ?? 0;
-          suma += v * a.cantidad;
-          total += a.cantidad;
-        }
-        const promBruto = total > 0 ? suma / total : 0;
-        const max = maxPorSet[s] ?? 1;
-        const factor = total > 0 ? Math.pow(total / max, exp) : 0;
-        valorTotal += promBruto * factor;
+      let suma = 0;
+      let total = 0;
+      for (const a of propias) {
+        const v = VALORES_SAQUE[a.valoracion] ?? 0;
+        suma += v * a.cantidad;
+        total += a.cantidad;
       }
+      const calidad = total > 0 ? suma / total : 0;
+      const ratio = ratios[est.jugador_id] ?? 0;
+      const factor = maxRatio > 0 ? Math.pow(ratio / maxRatio, exp) : 0;
+      const valor = calidad * factor;
 
+      const setsJugados = contarSetsJugados(acciones, est.jugador_id);
       const aces = contarPorValoraciones(propias, "saque", ["ace"]);
       const positivosMas = contarPorValoraciones(propias, "saque", [
         "positivo_mas",
       ]);
       const positivos = contarPorValoraciones(propias, "saque", ["positivo"]);
       const errores = contarPorValoraciones(propias, "saque", ["negativo"]);
-      const volumen = contarTotal(propias, "saque");
-
       const saquesPositivos = aces + positivosMas + positivos;
       const balance = saquesPositivos - errores;
 
       return {
         jugador_id: est.jugador_id,
-        valor: valorTotal,
-        texto: `${saquesPositivos} saques positivos (${aces} aces) / ${errores} errores / Balance: ${balance > 0 ? "+" : ""}${balance} / Volumen: ${volumen}`,
+        valor,
+        texto: `${saquesPositivos} saques positivos (${aces} aces) / ${errores} errores / Balance: ${balance > 0 ? "+" : ""}${balance} / ${total} en ${setsJugados} sets (${ratio.toFixed(2)} por set)`,
       };
     })
     .filter((r) => r.valor !== 0)
@@ -1072,31 +1083,38 @@ export function rankingDefensa(
   acciones: AccionDB[]
 ): RankingCompletoItem[] {
   const ids = Object.keys(porJugador);
-  const maxPorSet = calcularMaxAccionesPorSet(acciones, ids, "defensa");
-  const exp = getExponente("defensa");
+  const exp = 2.0;
+
+  const ratios: Record<string, number> = {};
+  let maxRatio = 1;
+  for (const id of ids) {
+    const setsJugados = contarSetsJugados(acciones, id);
+    const total = acciones
+      .filter((a) => a.jugador_id === id && a.fundamento === "defensa")
+      .reduce((s, a) => s + a.cantidad, 0);
+    const ratio = total / setsJugados;
+    ratios[id] = ratio;
+    if (ratio > maxRatio) maxRatio = ratio;
+  }
 
   return Object.values(porJugador)
     .map((est) => {
       const propias = acciones.filter(
         (a) => a.jugador_id === est.jugador_id && a.fundamento === "defensa"
       );
-      let valorTotal = 0;
-
-      for (let s = 1; s <= 5; s++) {
-        const delSet = propias.filter((a) => a.set_numero === s);
-        let suma = 0;
-        let total = 0;
-        for (const a of delSet) {
-          const v = VALORES_DEFENSA[a.valoracion] ?? 0;
-          suma += v * a.cantidad;
-          total += a.cantidad;
-        }
-        const promBruto = total > 0 ? suma / total : 0;
-        const max = maxPorSet[s] ?? 1;
-        const factor = total > 0 ? Math.pow(total / max, exp) : 0;
-        valorTotal += promBruto * factor;
+      let suma = 0;
+      let total = 0;
+      for (const a of propias) {
+        const v = VALORES_DEFENSA[a.valoracion] ?? 0;
+        suma += v * a.cantidad;
+        total += a.cantidad;
       }
+      const calidad = total > 0 ? suma / total : 0;
+      const ratio = ratios[est.jugador_id] ?? 0;
+      const factor = maxRatio > 0 ? Math.pow(ratio / maxRatio, exp) : 0;
+      const valor = calidad * factor;
 
+      const setsJugados = contarSetsJugados(acciones, est.jugador_id);
       const positivas = contarPorValoraciones(propias, "defensa", [
         "toque_positiva",
         "gran_def",
@@ -1109,16 +1127,12 @@ export function rankingDefensa(
         "cobertura_negativa",
         "errores_graves",
       ]);
-      const volumen = contarTotal(propias, "defensa");
       const balance = positivas - negativas;
-
-      const sets = contarSetsJugados(acciones, est.jugador_id);
-      const porSet = sets > 0 ? volumen / sets : 0;
 
       return {
         jugador_id: est.jugador_id,
-        valor: valorTotal,
-        texto: `${positivas} intervenciones positivas / Balance: ${balance > 0 ? "+" : ""}${balance} / ${volumen} totales (${porSet.toFixed(2)} por set)`,
+        valor,
+        texto: `${positivas} intervenciones positivas / Balance: ${balance > 0 ? "+" : ""}${balance} / ${total} en ${setsJugados} sets (${ratio.toFixed(2)} por set)`,
       };
     })
     .filter((r) => r.valor > 0)
