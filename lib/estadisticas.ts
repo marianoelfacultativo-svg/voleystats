@@ -989,6 +989,7 @@ export function rankingAtaque(
     .sort((a, b) => b.valor - a.valor);
 }
 
+// 🧱 BLOQUEO: suma de VALORES_BLOQUEO × cantidad / sets jugados
 export function rankingBloqueo(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]
@@ -999,6 +1000,17 @@ export function rankingBloqueo(
       const propias = acciones.filter(
         (a) => a.jugador_id === est.jugador_id && a.fundamento === "bloqueo"
       );
+      const sets = contarSetsJugados(acciones, est.jugador_id);
+
+      let sumaValores = 0;
+      let total = 0;
+      for (const a of propias) {
+        const v = VALORES_BLOQUEO[a.valoracion] ?? 0;
+        sumaValores += v * a.cantidad;
+        total += a.cantidad;
+      }
+      const valor = sets > 0 ? sumaValores / sets : 0;
+
       const puntos = contarPorValoraciones(propias, "bloqueo", ["punto"]);
       const positivos = contarPorValoraciones(propias, "bloqueo", [
         "positivo_mas",
@@ -1008,21 +1020,18 @@ export function rankingBloqueo(
         "use_rival",
         "red",
       ]);
-      const total = contarTotal(propias, "bloqueo");
-      const sets = contarSetsJugados(acciones, est.jugador_id);
-      const balance = puntos - errores;
-      const valor = sets > 0 ? balance / sets : 0;
 
       return {
         jugador_id: est.jugador_id,
         valor,
-        texto: `${puntos} puntos de bloqueo / ${positivos} toques positivos / ${errores} errores / Balance: ${balance > 0 ? "+" : ""}${balance} en ${sets} sets (${valor.toFixed(2)} por set)`,
+        texto: `${puntos} puntos / ${positivos} positivos / ${errores} errores / Balance: ${sumaValores > 0 ? "+" : ""}${sumaValores} en ${sets} sets (${valor.toFixed(2)} por set)`,
       };
     })
-    .filter((r) => r.valor > 0)
+    .filter((r) => r.valor !== 0)
     .sort((a, b) => b.valor - a.valor);
 }
 
+// 🎯 SAQUE: suma de VALORES_SAQUE × cantidad / sets jugados
 export function rankingSaque(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]
@@ -1033,29 +1042,35 @@ export function rankingSaque(
       const propias = acciones.filter(
         (a) => a.jugador_id === est.jugador_id && a.fundamento === "saque"
       );
+      const sets = contarSetsJugados(acciones, est.jugador_id);
+
+      let sumaValores = 0;
+      let total = 0;
+      for (const a of propias) {
+        const v = VALORES_SAQUE[a.valoracion] ?? 0;
+        sumaValores += v * a.cantidad;
+        total += a.cantidad;
+      }
+      const valor = sets > 0 ? sumaValores / sets : 0;
+
       const aces = contarPorValoraciones(propias, "saque", ["ace"]);
       const positivosMas = contarPorValoraciones(propias, "saque", [
         "positivo_mas",
       ]);
       const positivos = contarPorValoraciones(propias, "saque", ["positivo"]);
       const errores = contarPorValoraciones(propias, "saque", ["negativo"]);
-      const total = contarTotal(propias, "saque");
-      const sets = contarSetsJugados(acciones, est.jugador_id);
-
-      const saquesPositivos = aces + positivosMas + positivos;
-      const balance = saquesPositivos - errores;
-      const valor = sets > 0 ? balance / sets : 0;
 
       return {
         jugador_id: est.jugador_id,
         valor,
-        texto: `${saquesPositivos} saques positivos (${aces} aces) / ${errores} errores / Balance: ${balance > 0 ? "+" : ""}${balance} en ${sets} sets (${valor.toFixed(2)} por set)`,
+        texto: `${aces} aces / ${positivosMas} pos+ / ${positivos} pos / ${errores} errores / Balance: ${sumaValores > 0 ? "+" : ""}${sumaValores} en ${sets} sets (${valor.toFixed(2)} por set)`,
       };
     })
     .filter((r) => r.valor !== 0)
     .sort((a, b) => b.valor - a.valor);
 }
 
+// 🛡️ DEFENSA: suma de VALORES_DEFENSA × cantidad / sets jugados
 export function rankingDefensa(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]
@@ -1066,6 +1081,17 @@ export function rankingDefensa(
       const propias = acciones.filter(
         (a) => a.jugador_id === est.jugador_id && a.fundamento === "defensa"
       );
+      const sets = contarSetsJugados(acciones, est.jugador_id);
+
+      let sumaValores = 0;
+      let total = 0;
+      for (const a of propias) {
+        const v = VALORES_DEFENSA[a.valoracion] ?? 0;
+        sumaValores += v * a.cantidad;
+        total += a.cantidad;
+      }
+      const valor = sets > 0 ? sumaValores / sets : 0;
+
       const positivas = contarPorValoraciones(propias, "defensa", [
         "toque_positiva",
         "gran_def",
@@ -1078,18 +1104,14 @@ export function rankingDefensa(
         "cobertura_negativa",
         "errores_graves",
       ]);
-      const total = contarTotal(propias, "defensa");
-      const sets = contarSetsJugados(acciones, est.jugador_id);
-      const balance = positivas - negativas;
-      const valor = sets > 0 ? balance / sets : 0;
 
       return {
         jugador_id: est.jugador_id,
         valor,
-        texto: `${positivas} intervenciones positivas / ${negativas} negativas / Balance: ${balance > 0 ? "+" : ""}${balance} en ${sets} sets (${valor.toFixed(2)} por set)`,
+        texto: `${positivas} positivas / ${negativas} negativas / Balance: ${sumaValores > 0 ? "+" : ""}${sumaValores} en ${sets} sets (${valor.toFixed(2)} por set)`,
       };
     })
-    .filter((r) => r.valor > 0)
+    .filter((r) => r.valor !== 0)
     .sort((a, b) => b.valor - a.valor);
 }
 
