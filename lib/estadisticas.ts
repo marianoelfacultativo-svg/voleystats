@@ -174,12 +174,13 @@ function getExponente(fundamento: string): number {
   return EXPONENTES_VOLUMEN[fundamento] ?? EXPONENTE_DEFAULT;
 }
 
+// ✅ FIX: usa el valor real proporcional (centrado en 0) en vez de escala rígida
 function normalizarValor(fundamento: string, valorCrudo: number): number {
   const r = RANGOS[fundamento];
   if (!r) return valorCrudo;
-  const rango = r.max - r.min;
-  if (rango === 0) return 0;
-  return ((valorCrudo - r.min) / rango) * 2 - 1;
+  const maxAbs = Math.max(Math.abs(r.min), Math.abs(r.max));
+  if (maxAbs === 0) return 0;
+  return valorCrudo / maxAbs;
 }
 
 export const ETIQUETAS_VALORACION: Record<string, string> = {
@@ -1076,7 +1077,6 @@ export function rankingSaque(
   );
   const exp = 1.5;
 
-  // Calcular saques por set de cada jugador y el máximo
   const ratios: Record<string, number> = {};
   let maxRatio = 1;
   for (const id of ids) {
