@@ -100,6 +100,8 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     if (!equipoId) return;
     setCargando(true);
 
+    console.log("[Partidos] Iniciando fetch. equipoId =", equipoId);
+
     Promise.all([
       supabase
         .from("partidos")
@@ -111,7 +113,21 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         .select("id, nombre, numero, rol")
         .order("nombre"),
     ]).then(async ([partRes, jugRes]) => {
+      console.log(
+        "[Partidos] partidos:",
+        partRes.data?.length,
+        "err:",
+        partRes.error
+      );
+      console.log(
+        "[Partidos] jugadores:",
+        jugRes.data?.length,
+        "err:",
+        jugRes.error
+      );
+
       if (!partRes.data || !jugRes.data) {
+        console.log("[Partidos] ABORT: falta data");
         setCargando(false);
         return;
       }
@@ -119,18 +135,31 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       setJugadores(jugRes.data);
 
       const ids = partRes.data.map((p) => p.id);
+      console.log("[Partidos] ids partidos:", ids);
+
       if (ids.length === 0) {
         setAcciones([]);
         setCargando(false);
         return;
       }
 
-      const { data: accData } = await supabase
+      const { data: accData, error: accError } = await supabase
         .from("acciones")
         .select(
           "jugador_id, partido_id, set_numero, fundamento, valoracion, cantidad"
         )
         .in("partido_id", ids);
+
+      console.log(
+        "[Partidos] acciones cantidad:",
+        accData?.length,
+        "err:",
+        accError
+      );
+      console.log(
+        "[Partidos] primeras 3 acciones:",
+        accData?.slice(0, 3)
+      );
 
       setAcciones((accData ?? []) as AccionDB[]);
       setCargando(false);
@@ -1159,7 +1188,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Toggle con 3 modos */}
               <div className="flex justify-end gap-2 flex-wrap">
                 <button
                   onClick={() => {
