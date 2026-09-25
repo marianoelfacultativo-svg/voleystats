@@ -148,17 +148,14 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         .select(
           "jugador_id, partido_id, set_numero, fundamento, valoracion, cantidad"
         )
-        .in("partido_id", ids);
+        .in("partido_id", ids)
+        .range(0, 49999);
 
       console.log(
         "[Partidos] acciones cantidad:",
         accData?.length,
         "err:",
         accError
-      );
-      console.log(
-        "[Partidos] primeras 3 acciones:",
-        accData?.slice(0, 3)
       );
 
       setAcciones((accData ?? []) as AccionDB[]);
@@ -274,14 +271,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         return true;
       })
     : [];
-
-  console.log(
-    "[Render] acciones:", acciones.length,
-    "| partidoSeleccionado:", partidoSeleccionado,
-    "| partidoDetalle.id:", partidoDetalle?.id,
-    "| accionesDelPartido:", accionesDelPartido.length,
-    "| filtroSet:", filtroSet
-  );
 
   const idsJugadores = jugadores.map((j) => j.id);
   const armadores = new Set(
