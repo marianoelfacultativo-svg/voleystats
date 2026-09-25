@@ -291,7 +291,6 @@ export interface EstadisticasJugador {
   };
 }
 
-// ⚠️ MÍNIMO DE SETS JUGADOS PARA APARECER EN RANKINGS
 export const MIN_SETS_RANKING = 10;
 
 function contarPorValoraciones(
@@ -916,6 +915,10 @@ export interface RankingCompletoItem {
   positivas?: number;
   negativas?: number;
   balance?: number;
+  eficacia?: number;
+  efectividad?: number;
+  puntos?: number;
+  errores?: number;
 }
 
 export function contarSetsJugados(
@@ -965,6 +968,7 @@ export function rankingRecepcion(
     .sort((a, b) => b.valor - a.valor);
 }
 
+// ⚡ ATAQUE: ordena por promedio de (eficacia + efectividad)
 export function rankingAtaque(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]
@@ -972,20 +976,31 @@ export function rankingAtaque(
   return Object.values(porJugador)
     .filter((est) => calificaParaRanking(acciones, est.jugador_id))
     .map((est) => {
-      const propias = acciones.filter((a) => a.jugador_id === est.jugador_id);
+      const propias = acciones.filter(
+        (a) => a.jugador_id === est.jugador_id && a.fundamento === "ataque"
+      );
+
       const puntos = contarPorValoraciones(propias, "ataque", ["punto"]);
       const errores = contarPorValoraciones(propias, "ataque", ["error"]);
       const total = contarTotal(propias, "ataque");
-      const sets = contarSetsJugados(acciones, est.jugador_id);
-      const efectividad = total > 0 ? ((puntos - errores) / total) * 100 : 0;
-      const porSet = sets > 0 ? (puntos - errores) / sets : 0;
+
+      const eficacia = total > 0 ? (puntos / total) * 100 : 0;
+      const efectividad =
+        total > 0 ? ((puntos - errores) / total) * 100 : 0;
+
+      const valor = (eficacia + efectividad) / 2;
+
       return {
         jugador_id: est.jugador_id,
-        valor: porSet,
-        texto: `${efectividad.toFixed(1)}% de efectividad neta / ${puntos} puntos y ${errores} errores / ${sets} sets (${porSet.toFixed(2)} por set)`,
+        valor,
+        texto: `${puntos} puntos / ${errores} errores / ${total} ataques / Eficacia: ${eficacia.toFixed(1)}% / Efectividad: ${efectividad.toFixed(1)}% / Valor: ${valor.toFixed(1)}%`,
+        puntos,
+        errores,
+        eficacia,
+        efectividad,
       };
     })
-    .filter((r) => r.valor !== 0)
+    .filter((r) => r.valor !== 0 || (r.eficacia ?? 0) !== 0)
     .sort((a, b) => b.valor - a.valor);
 }
 
