@@ -275,6 +275,14 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       })
     : [];
 
+  console.log(
+    "[Render] acciones:", acciones.length,
+    "| partidoSeleccionado:", partidoSeleccionado,
+    "| partidoDetalle.id:", partidoDetalle?.id,
+    "| accionesDelPartido:", accionesDelPartido.length,
+    "| filtroSet:", filtroSet
+  );
+
   const idsJugadores = jugadores.map((j) => j.id);
   const armadores = new Set(
     jugadores.filter((j) => j.rol === "armador").map((j) => j.id)
