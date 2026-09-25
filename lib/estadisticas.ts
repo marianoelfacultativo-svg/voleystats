@@ -174,13 +174,21 @@ function getExponente(fundamento: string): number {
   return EXPONENTES_VOLUMEN[fundamento] ?? EXPONENTE_DEFAULT;
 }
 
-// ✅ Usa valor real proporcional centrado en 0
+// ✅ Normalización real proporcional centrada en 0
 function normalizarValor(fundamento: string, valorCrudo: number): number {
   const r = RANGOS[fundamento];
   if (!r) return valorCrudo;
   const maxAbs = Math.max(Math.abs(r.min), Math.abs(r.max));
   if (maxAbs === 0) return 0;
   return valorCrudo / maxAbs;
+}
+
+// 🎯 Amplificador para radar puntiagudo: exagera las diferencias
+const AMPLIFICADOR_RADAR = 1.6;
+
+function amplificarRadar(valor: number): number {
+  if (valor <= 0) return valor; // solo amplifica positivos
+  return Math.pow(valor, AMPLIFICADOR_RADAR);
 }
 
 export const ETIQUETAS_VALORACION: Record<string, string> = {
@@ -734,7 +742,7 @@ export function calcularEstadisticasJugador(
   const valoracionMediaNormalizada =
     vals.mediaNormalizadaBase * factorVolumen;
 
-  // ✅ FACTORES VISUALES equilibrados (bloqueo y defensa iguales)
+  // ✅ Factores visuales equilibrados
   const FACTORES_VISUALES: Record<string, number> = {
     saque: 3,
     recepcion: 1,
@@ -757,7 +765,9 @@ export function calcularEstadisticasJugador(
     const factor =
       maxFund > 0 && accFund > 0 ? Math.pow(accFund / maxFund, exp) : 0;
     const factorVisual = FACTORES_VISUALES[f] ?? 1;
-    valoracionPonderadaPorFundamento[f] = norm * factor * factorVisual;
+    const base = norm * factor * factorVisual;
+    // 🎯 Amplificar para radar puntiagudo
+    valoracionPonderadaPorFundamento[f] = amplificarRadar(base);
   }
 
   let recepcion: EstadisticasJugador["recepcion"] | undefined;
