@@ -384,7 +384,22 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
                         <tr className="text-left text-slate-500 text-xs">
                           <th className="py-1.5 px-2 w-8">#</th>
                           <th className="py-1.5 px-2">Jugador</th>
-                          <th className="py-1.5 px-2 text-right">Detalle</th>
+                          {r.id === "defensa" ? (
+                            <>
+                              <th className="py-1.5 px-2 text-right">
+                                Positivas
+                              </th>
+                              <th className="py-1.5 px-2 text-right">
+                                Negativas
+                              </th>
+                              <th className="py-1.5 px-2 text-right">
+                                Balance
+                              </th>
+                              <th className="py-1.5 px-2 text-right">Valor</th>
+                            </>
+                          ) : (
+                            <th className="py-1.5 px-2 text-right">Detalle</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
@@ -416,9 +431,35 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
                                 </span>
                               )}
                             </td>
-                            <td className="py-1.5 px-2 text-right text-xs text-slate-600">
-                              {it.texto}
-                            </td>
+                            {r.id === "defensa" ? (
+                              <>
+                                <td className="py-1.5 px-2 text-right text-green-700 font-medium">
+                                  {it.positivas ?? 0}
+                                </td>
+                                <td className="py-1.5 px-2 text-right text-red-700 font-medium">
+                                  {it.negativas ?? 0}
+                                </td>
+                                <td
+                                  className={`py-1.5 px-2 text-right font-semibold ${
+                                    (it.balance ?? 0) > 0
+                                      ? "text-green-700"
+                                      : (it.balance ?? 0) < 0
+                                      ? "text-red-700"
+                                      : "text-slate-600"
+                                  }`}
+                                >
+                                  {(it.balance ?? 0) > 0 ? "+" : ""}
+                                  {it.balance ?? 0}
+                                </td>
+                                <td className="py-1.5 px-2 text-right font-semibold text-slate-800">
+                                  {it.valor.toFixed(2)}
+                                </td>
+                              </>
+                            ) : (
+                              <td className="py-1.5 px-2 text-right text-xs text-slate-600">
+                                {it.texto}
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>

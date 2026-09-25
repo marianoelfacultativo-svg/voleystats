@@ -291,6 +291,7 @@ export interface EstadisticasJugador {
   };
 }
 
+// ⚠️ MÍNIMO DE SETS JUGADOS PARA APARECER EN RANKINGS
 export const MIN_SETS_RANKING = 10;
 
 function contarPorValoraciones(
@@ -912,6 +913,9 @@ export interface RankingCompletoItem {
   jugador_id: string;
   valor: number;
   texto: string;
+  positivas?: number;
+  negativas?: number;
+  balance?: number;
 }
 
 export function contarSetsJugados(
@@ -1085,6 +1089,7 @@ export function rankingSaque(
     .sort((a, b) => b.valor - a.valor);
 }
 
+// 🛡️ DEFENSA: balance total × positivas totales / 100
 export function rankingDefensa(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]
@@ -1095,16 +1100,12 @@ export function rankingDefensa(
       const propias = acciones.filter(
         (a) => a.jugador_id === est.jugador_id && a.fundamento === "defensa"
       );
-      const sets = contarSetsJugados(acciones, est.jugador_id);
 
       let sumaValores = 0;
-      let total = 0;
       for (const a of propias) {
         const v = VALORES_DEFENSA[a.valoracion] ?? 0;
         sumaValores += v * a.cantidad;
-        total += a.cantidad;
       }
-      const valor = sets > 0 ? sumaValores / sets : 0;
 
       const positivas = contarPorValoraciones(propias, "defensa", [
         "toque_positiva",
@@ -1119,10 +1120,15 @@ export function rankingDefensa(
         "errores_graves",
       ]);
 
+      const valor = (sumaValores * positivas) / 100;
+
       return {
         jugador_id: est.jugador_id,
         valor,
-        texto: `${positivas} positivas / ${negativas} negativas / Balance: ${sumaValores > 0 ? "+" : ""}${sumaValores} en ${sets} sets (${valor.toFixed(2)} por set)`,
+        texto: `${positivas} positivas / ${negativas} negativas / Balance: ${sumaValores > 0 ? "+" : ""}${sumaValores}`,
+        positivas,
+        negativas,
+        balance: sumaValores,
       };
     })
     .filter((r) => r.valor !== 0)
