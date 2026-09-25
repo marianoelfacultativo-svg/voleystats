@@ -915,16 +915,27 @@ export interface RankingCompletoItem {
   texto: string;
 }
 
-function contarSetsJugados(acciones: AccionDB[], jugadorId: string): number {
-  const sets = new Set<number>();
+// ✅ FIX: cuenta por (partido_id + set_numero) para no confundir
+// sets de distintos partidos que comparten el mismo número (1,2,3...)
+export function contarSetsJugados(
+  acciones: AccionDB[],
+  jugadorId: string
+): number {
+  const sets = new Set<string>();
   for (const a of acciones) {
-    if (a.jugador_id === jugadorId) sets.add(a.set_numero);
+    if (a.jugador_id === jugadorId) {
+      const key = `${a.partido_id ?? "sin-partido"}-${a.set_numero}`;
+      sets.add(key);
+    }
   }
   return sets.size;
 }
 
 // Helper: devuelve true si el jugador tiene al menos MIN_SETS_RANKING sets jugados
-function calificaParaRanking(acciones: AccionDB[], jugadorId: string): boolean {
+function calificaParaRanking(
+  acciones: AccionDB[],
+  jugadorId: string
+): boolean {
   return contarSetsJugados(acciones, jugadorId) >= MIN_SETS_RANKING;
 }
 
