@@ -174,7 +174,6 @@ function getExponente(fundamento: string): number {
   return EXPONENTES_VOLUMEN[fundamento] ?? EXPONENTE_DEFAULT;
 }
 
-// ✅ Normalización real proporcional centrada en 0
 function normalizarValor(fundamento: string, valorCrudo: number): number {
   const r = RANGOS[fundamento];
   if (!r) return valorCrudo;
@@ -183,11 +182,10 @@ function normalizarValor(fundamento: string, valorCrudo: number): number {
   return valorCrudo / maxAbs;
 }
 
-// 🎯 Amplificador para radar puntiagudo: exagera las diferencias
 const AMPLIFICADOR_RADAR = 1.3;
 
 function amplificarRadar(valor: number): number {
-  if (valor <= 0) return valor; // solo amplifica positivos
+  if (valor <= 0) return valor;
   return Math.pow(valor, AMPLIFICADOR_RADAR);
 }
 
@@ -742,7 +740,6 @@ export function calcularEstadisticasJugador(
   const valoracionMediaNormalizada =
     vals.mediaNormalizadaBase * factorVolumen;
 
-  // ✅ Factores visuales equilibrados
   const FACTORES_VISUALES: Record<string, number> = {
     saque: 3,
     recepcion: 1,
@@ -766,7 +763,6 @@ export function calcularEstadisticasJugador(
       maxFund > 0 && accFund > 0 ? Math.pow(accFund / maxFund, exp) : 0;
     const factorVisual = FACTORES_VISUALES[f] ?? 1;
     const base = norm * factor * factorVisual;
-    // 🎯 Amplificar para radar puntiagudo
     valoracionPonderadaPorFundamento[f] = amplificarRadar(base);
   }
 
@@ -1071,35 +1067,18 @@ export function rankingBloqueo(
       return {
         jugador_id: est.jugador_id,
         valor,
-        texto: `${puntos} puntos / ${positivos} positivos / ${errores} errores / ${total} bloqueos en ${sets} sets (${ratio.toFixed(2)} por set)`,
+        texto: `${puntos} puntos / ${positivos} positivos / ${errores} errores / ${total} bloqueos en ${sets} sets / Valor: ${valor.toFixed(2)}`,
       };
     })
     .filter((r) => r.valor !== 0)
     .sort((a, b) => b.valor - a.valor);
 }
 
-// 🎯 SAQUE: calidad por set × factor volumen ^1.5
+// 🎯 SAQUE: SOLO balance por set (sin factor volumen)
 export function rankingSaque(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]
 ): RankingCompletoItem[] {
-  const ids = Object.keys(porJugador).filter((id) =>
-    calificaParaRanking(acciones, id)
-  );
-  const exp = 1.5;
-
-  const ratios: Record<string, number> = {};
-  let maxRatio = 1;
-  for (const id of ids) {
-    const sets = contarSetsJugados(acciones, id);
-    const total = acciones
-      .filter((a) => a.jugador_id === id && a.fundamento === "saque")
-      .reduce((s, a) => s + a.cantidad, 0);
-    const ratio = sets > 0 ? total / sets : 0;
-    ratios[id] = ratio;
-    if (ratio > maxRatio) maxRatio = ratio;
-  }
-
   return Object.values(porJugador)
     .filter((est) => calificaParaRanking(acciones, est.jugador_id))
     .map((est) => {
@@ -1115,10 +1094,7 @@ export function rankingSaque(
         sumaValores += v * a.cantidad;
         total += a.cantidad;
       }
-      const calidadPorSet = sets > 0 ? sumaValores / sets : 0;
-      const ratio = ratios[est.jugador_id] ?? 0;
-      const factor = maxRatio > 0 ? Math.pow(ratio / maxRatio, exp) : 0;
-      const valor = calidadPorSet * factor;
+      const valor = sets > 0 ? sumaValores / sets : 0;
 
       const aces = contarPorValoraciones(propias, "saque", ["ace"]);
       const positivosMas = contarPorValoraciones(propias, "saque", [
@@ -1130,7 +1106,7 @@ export function rankingSaque(
       return {
         jugador_id: est.jugador_id,
         valor,
-        texto: `${aces} aces / ${positivosMas} pos+ / ${positivos} pos / ${errores} errores / ${total} saques en ${sets} sets (${ratio.toFixed(2)} por set)`,
+        texto: `${aces} aces / ${positivosMas} pos+ / ${positivos} pos / ${errores} errores / Balance: ${sumaValores > 0 ? "+" : ""}${sumaValores} en ${sets} sets (${valor.toFixed(2)} por set)`,
       };
     })
     .filter((r) => r.valor !== 0)
