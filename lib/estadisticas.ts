@@ -184,7 +184,7 @@ function normalizarValor(fundamento: string, valorCrudo: number): number {
 }
 
 // 🎯 Amplificador para radar puntiagudo: exagera las diferencias
-const AMPLIFICADOR_RADAR = 1.6;
+const AMPLIFICADOR_RADAR = 1.3;
 
 function amplificarRadar(valor: number): number {
   if (valor <= 0) return valor; // solo amplifica positivos
