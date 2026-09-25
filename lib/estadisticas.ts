@@ -83,12 +83,13 @@ const SALDO_DEF_NEGATIVOS = [
   "errores_graves",
 ];
 
+// 🎯 VALORES DE SAQUE (actualizados)
 export const VALORES_SAQUE: Record<string, number> = {
   ace: 5,
-  positivo_mas: 4,
-  positivo: 3,
-  neutro: 1,
-  negativo: -2,
+  positivo_mas: 3,
+  positivo: 1,
+  neutro: 0,
+  negativo: -3,
 };
 
 export const VALORES_RECEPCION: Record<string, number> = {
@@ -154,7 +155,7 @@ export const VALORES_POR_FUNDAMENTO: Record<
 };
 
 const RANGOS: Record<string, { min: number; max: number }> = {
-  saque: { min: -2, max: 5 },
+  saque: { min: -3, max: 5 }, // ← actualizado (era -2)
   recepcion: { min: 0, max: 5 },
   ataque: { min: -4, max: 4 },
   bloqueo: { min: -2, max: 4 },
@@ -915,8 +916,6 @@ export interface RankingCompletoItem {
   texto: string;
 }
 
-// ✅ FIX: cuenta por (partido_id + set_numero) para no confundir
-// sets de distintos partidos que comparten el mismo número (1,2,3...)
 export function contarSetsJugados(
   acciones: AccionDB[],
   jugadorId: string
@@ -931,7 +930,6 @@ export function contarSetsJugados(
   return sets.size;
 }
 
-// Helper: devuelve true si el jugador tiene al menos MIN_SETS_RANKING sets jugados
 function calificaParaRanking(
   acciones: AccionDB[],
   jugadorId: string
@@ -989,7 +987,6 @@ export function rankingAtaque(
     .sort((a, b) => b.valor - a.valor);
 }
 
-// 🧱 BLOQUEO: suma de VALORES_BLOQUEO × cantidad / sets jugados
 export function rankingBloqueo(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]
@@ -1031,7 +1028,6 @@ export function rankingBloqueo(
     .sort((a, b) => b.valor - a.valor);
 }
 
-// 🎯 SAQUE: suma de VALORES_SAQUE × cantidad / sets jugados
 export function rankingSaque(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]
@@ -1070,7 +1066,6 @@ export function rankingSaque(
     .sort((a, b) => b.valor - a.valor);
 }
 
-// 🛡️ DEFENSA: suma de VALORES_DEFENSA × cantidad / sets jugados
 export function rankingDefensa(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]
@@ -1160,7 +1155,6 @@ export function rankingConsistencia(
     .sort((a, b) => b.valor - a.valor);
 }
 
-// Devuelve, para cada jugador, en qué fundamentos está en el podio (1, 2, 3)
 export function calcularPodios(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]
@@ -1183,7 +1177,6 @@ export function calcularPodios(
   return resultado;
 }
 
-// Devuelve los textos de ranking de UN jugador en todos los fundamentos
 export function rankingDeJugador(
   jugadorId: string,
   porJugador: Record<string, EstadisticasJugador>,
