@@ -980,7 +980,7 @@ export function rankingRecepcion(
     .sort((a, b) => b.valor - a.valor);
 }
 
-// ⚡ ATAQUE: ordena por promedio de (eficacia + efectividad)
+// ⚡ ATAQUE: ordena por (efectividad + eficacia/2) / 2
 export function rankingAtaque(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]
@@ -1000,7 +1000,7 @@ export function rankingAtaque(
       const efectividad =
         total > 0 ? ((puntos - errores) / total) * 100 : 0;
 
-      const valor = (eficacia + efectividad) / 2;
+      const valor = (efectividad + eficacia / 2) / 2;
 
       return {
         jugador_id: est.jugador_id,
