@@ -1066,10 +1066,29 @@ export function rankingBloqueo(
     .sort((a, b) => b.valor - a.valor);
 }
 
+// 🎯 SAQUE: calidad por set × factor volumen ^1.5
 export function rankingSaque(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]
 ): RankingCompletoItem[] {
+  const ids = Object.keys(porJugador).filter((id) =>
+    calificaParaRanking(acciones, id)
+  );
+  const exp = 1.5;
+
+  // Calcular saques por set de cada jugador y el máximo
+  const ratios: Record<string, number> = {};
+  let maxRatio = 1;
+  for (const id of ids) {
+    const sets = contarSetsJugados(acciones, id);
+    const total = acciones
+      .filter((a) => a.jugador_id === id && a.fundamento === "saque")
+      .reduce((s, a) => s + a.cantidad, 0);
+    const ratio = sets > 0 ? total / sets : 0;
+    ratios[id] = ratio;
+    if (ratio > maxRatio) maxRatio = ratio;
+  }
+
   return Object.values(porJugador)
     .filter((est) => calificaParaRanking(acciones, est.jugador_id))
     .map((est) => {
@@ -1085,7 +1104,10 @@ export function rankingSaque(
         sumaValores += v * a.cantidad;
         total += a.cantidad;
       }
-      const valor = sets > 0 ? sumaValores / sets : 0;
+      const calidadPorSet = sets > 0 ? sumaValores / sets : 0;
+      const ratio = ratios[est.jugador_id] ?? 0;
+      const factor = maxRatio > 0 ? Math.pow(ratio / maxRatio, exp) : 0;
+      const valor = calidadPorSet * factor;
 
       const aces = contarPorValoraciones(propias, "saque", ["ace"]);
       const positivosMas = contarPorValoraciones(propias, "saque", [
@@ -1097,7 +1119,7 @@ export function rankingSaque(
       return {
         jugador_id: est.jugador_id,
         valor,
-        texto: `${aces} aces / ${positivosMas} pos+ / ${positivos} pos / ${errores} errores / Balance: ${sumaValores > 0 ? "+" : ""}${sumaValores} en ${sets} sets (${valor.toFixed(2)} por set)`,
+        texto: `${aces} aces / ${positivosMas} pos+ / ${positivos} pos / ${errores} errores / ${total} saques en ${sets} sets (${ratio.toFixed(2)} por set)`,
       };
     })
     .filter((r) => r.valor !== 0)
