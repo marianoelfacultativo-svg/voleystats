@@ -174,7 +174,7 @@ function getExponente(fundamento: string): number {
   return EXPONENTES_VOLUMEN[fundamento] ?? EXPONENTE_DEFAULT;
 }
 
-// ✅ FIX: usa el valor real proporcional (centrado en 0) en vez de escala rígida
+// ✅ Usa valor real proporcional centrado en 0
 function normalizarValor(fundamento: string, valorCrudo: number): number {
   const r = RANGOS[fundamento];
   if (!r) return valorCrudo;
@@ -734,12 +734,13 @@ export function calcularEstadisticasJugador(
   const valoracionMediaNormalizada =
     vals.mediaNormalizadaBase * factorVolumen;
 
+  // ✅ FACTORES VISUALES equilibrados (bloqueo y defensa iguales)
   const FACTORES_VISUALES: Record<string, number> = {
     saque: 3,
     recepcion: 1,
     ataque: 1,
-    bloqueo: 6,
-    defensa: 1,
+    bloqueo: 3,
+    defensa: 3,
     armados: 1,
     toque: 3,
   };
