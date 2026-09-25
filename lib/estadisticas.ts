@@ -83,7 +83,6 @@ const SALDO_DEF_NEGATIVOS = [
   "errores_graves",
 ];
 
-// 🎯 VALORES DE SAQUE (actualizados)
 export const VALORES_SAQUE: Record<string, number> = {
   ace: 5,
   positivo_mas: 3,
@@ -155,7 +154,7 @@ export const VALORES_POR_FUNDAMENTO: Record<
 };
 
 const RANGOS: Record<string, { min: number; max: number }> = {
-  saque: { min: -3, max: 5 }, // ← actualizado (era -2)
+  saque: { min: -3, max: 5 },
   recepcion: { min: 0, max: 5 },
   ataque: { min: -4, max: 4 },
   bloqueo: { min: -2, max: 4 },
@@ -292,7 +291,6 @@ export interface EstadisticasJugador {
   };
 }
 
-// ⚠️ MÍNIMO DE SETS JUGADOS PARA APARECER EN RANKINGS
 export const MIN_SETS_RANKING = 10;
 
 function contarPorValoraciones(
@@ -987,10 +985,28 @@ export function rankingAtaque(
     .sort((a, b) => b.valor - a.valor);
 }
 
+// 🧱 BLOQUEO: calidad por set × factor volumen ^1.5
 export function rankingBloqueo(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]
 ): RankingCompletoItem[] {
+  const ids = Object.keys(porJugador).filter((id) =>
+    calificaParaRanking(acciones, id)
+  );
+  const exp = 1.5;
+
+  const ratios: Record<string, number> = {};
+  let maxRatio = 1;
+  for (const id of ids) {
+    const sets = contarSetsJugados(acciones, id);
+    const total = acciones
+      .filter((a) => a.jugador_id === id && a.fundamento === "bloqueo")
+      .reduce((s, a) => s + a.cantidad, 0);
+    const ratio = sets > 0 ? total / sets : 0;
+    ratios[id] = ratio;
+    if (ratio > maxRatio) maxRatio = ratio;
+  }
+
   return Object.values(porJugador)
     .filter((est) => calificaParaRanking(acciones, est.jugador_id))
     .map((est) => {
@@ -1006,7 +1022,10 @@ export function rankingBloqueo(
         sumaValores += v * a.cantidad;
         total += a.cantidad;
       }
-      const valor = sets > 0 ? sumaValores / sets : 0;
+      const calidadPorSet = sets > 0 ? sumaValores / sets : 0;
+      const ratio = ratios[est.jugador_id] ?? 0;
+      const factor = maxRatio > 0 ? Math.pow(ratio / maxRatio, exp) : 0;
+      const valor = calidadPorSet * factor;
 
       const puntos = contarPorValoraciones(propias, "bloqueo", ["punto"]);
       const positivos = contarPorValoraciones(propias, "bloqueo", [
@@ -1021,7 +1040,7 @@ export function rankingBloqueo(
       return {
         jugador_id: est.jugador_id,
         valor,
-        texto: `${puntos} puntos / ${positivos} positivos / ${errores} errores / Balance: ${sumaValores > 0 ? "+" : ""}${sumaValores} en ${sets} sets (${valor.toFixed(2)} por set)`,
+        texto: `${puntos} puntos / ${positivos} positivos / ${errores} errores / ${total} bloqueos en ${sets} sets (${ratio.toFixed(2)} por set)`,
       };
     })
     .filter((r) => r.valor !== 0)
