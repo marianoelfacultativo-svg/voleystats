@@ -105,6 +105,11 @@ export default function DataEntryPage() {
   const [guardando, setGuardando] = useState(false);
   const [mensajeGuardado, setMensajeGuardado] = useState("");
 
+  // Orden local (no se guarda en la base)
+  const [ordenLocal, setOrdenLocal] = useState<string[]>([]);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
   useEffect(() => {
     const s = obtenerSesion();
     if (!s || s.tipo !== "admin") {
@@ -147,6 +152,7 @@ export default function DataEntryPage() {
     if (!equipoId) {
       setJugadores([]);
       setAsignaciones([]);
+      setOrdenLocal([]);
       return;
     }
     setCargando(true);
@@ -159,7 +165,13 @@ export default function DataEntryPage() {
       supabase.from("jugadores").select("*").order("nombre"),
     ]).then(([asigRes, jugRes]) => {
       setCargando(false);
-      if (asigRes.data) setAsignaciones(asigRes.data);
+      if (asigRes.data) {
+        setAsignaciones(asigRes.data);
+        // Inicializar el orden local con el orden que viene
+        setOrdenLocal(
+          asigRes.data.map((a: JugadorEquipo) => a.jugador_id)
+        );
+      }
       if (jugRes.data) setJugadores(jugRes.data);
     });
     setJugadorId("");
@@ -196,8 +208,9 @@ export default function DataEntryPage() {
       });
   }, [partidoId]);
 
-  const jugadoresDelEquipo = asignaciones
-    .map((a) => jugadores.find((j) => j.id === a.jugador_id))
+  // Construir lista de jugadores respetando el orden local
+  const jugadoresDelEquipo = ordenLocal
+    .map((jugId) => jugadores.find((j) => j.id === jugId))
     .filter((j): j is Jugador => j !== undefined);
 
   const jugadorActual = jugadoresDelEquipo.find((j) => j.id === jugadorId);
@@ -228,6 +241,32 @@ export default function DataEntryPage() {
     router.push("/admin");
   };
 
+  // ============ DRAG & DROP (solo local) ============
+  const handleDrop = (targetJugadorId: string) => {
+    if (!draggedId || draggedId === targetJugadorId) {
+      setDraggedId(null);
+      setDragOverId(null);
+      return;
+    }
+
+    const fromIdx = ordenLocal.indexOf(draggedId);
+    const toIdx = ordenLocal.indexOf(targetJugadorId);
+    if (fromIdx === -1 || toIdx === -1) {
+      setDraggedId(null);
+      setDragOverId(null);
+      return;
+    }
+
+    const nuevo = [...ordenLocal];
+    const [movido] = nuevo.splice(fromIdx, 1);
+    nuevo.splice(toIdx, 0, movido);
+
+    setOrdenLocal(nuevo);
+    setDraggedId(null);
+    setDragOverId(null);
+  };
+
+  // ============ CARGA DE DATOS ============
   const setValor = (
     jugId: string,
     set: string,
@@ -358,7 +397,6 @@ export default function DataEntryPage() {
     ? FUNDAMENTOS_ARMADOR
     : FUNDAMENTOS_NORMAL;
 
-  // Total de toques = punto + error + neutro
   const valoresToque = valoresDe("toque" as Fundamento);
   const toquesTotal =
     (valoresToque.punto ?? 0) +
@@ -462,9 +500,12 @@ export default function DataEntryPage() {
 
             <div className="grid grid-cols-3 gap-4">
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 col-span-1">
-                <h3 className="font-semibold text-slate-800 mb-3">
-                  Jugadores
-                </h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-slate-800">Jugadores</h3>
+                  <span className="text-[10px] text-slate-400">
+                    Arrastrá para reordenar
+                  </span>
+                </div>
                 {cargando ? (
                   <p className="text-sm text-slate-500">Cargando...</p>
                 ) : jugadoresDelEquipo.length === 0 ? (
@@ -473,33 +514,57 @@ export default function DataEntryPage() {
                   </p>
                 ) : (
                   <div className="space-y-1">
-                    {jugadoresDelEquipo.map((j) => (
-                      <button
-                        key={j.id}
-                        onClick={() => setJugadorId(j.id)}
-                        className={`w-full text-left px-3 py-2 rounded-lg transition text-sm ${
-                          jugadorId === j.id
-                            ? "bg-blue-500 text-white"
-                            : "bg-slate-50 hover:bg-slate-100 text-slate-700"
-                        }`}
-                      >
-                        <span className="font-medium">
-                          {j.nombre}
-                          {j.numero !== null && ` #${j.numero}`}
-                        </span>
-                        {j.rol === "armador" && (
-                          <span
-                            className={`block text-xs ${
-                              jugadorId === j.id
-                                ? "text-blue-100"
-                                : "text-violet-600"
-                            }`}
-                          >
-                            Armador
+                    {jugadoresDelEquipo.map((j) => {
+                      const esDrag = draggedId === j.id;
+                      const esOver =
+                        dragOverId === j.id && draggedId !== j.id;
+                      return (
+                        <div
+                          key={j.id}
+                          draggable
+                          onDragStart={() => setDraggedId(j.id)}
+                          onDragEnd={() => {
+                            setDraggedId(null);
+                            setDragOverId(null);
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            if (dragOverId !== j.id) setDragOverId(j.id);
+                          }}
+                          onDragLeave={() => {
+                            if (dragOverId === j.id) setDragOverId(null);
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            handleDrop(j.id);
+                          }}
+                          onClick={() => setJugadorId(j.id)}
+                          className={`w-full text-left px-3 py-2 rounded-lg transition text-sm cursor-grab active:cursor-grabbing select-none ${
+                            jugadorId === j.id
+                              ? "bg-blue-500 text-white"
+                              : "bg-slate-50 hover:bg-slate-100 text-slate-700"
+                          } ${esDrag ? "opacity-40" : ""} ${
+                            esOver ? "ring-2 ring-blue-400 ring-offset-1" : ""
+                          }`}
+                        >
+                          <span className="font-medium">
+                            {j.nombre}
+                            {j.numero !== null && ` #${j.numero}`}
                           </span>
-                        )}
-                      </button>
-                    ))}
+                          {j.rol === "armador" && (
+                            <span
+                              className={`block text-xs ${
+                                jugadorId === j.id
+                                  ? "text-blue-100"
+                                  : "text-violet-600"
+                              }`}
+                            >
+                              Armador
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
