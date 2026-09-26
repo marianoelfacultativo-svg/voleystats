@@ -1,5 +1,7 @@
 "use client";
 
+import NumeroEditable from "./NumeroEditable";
+
 interface Props {
   valores: Record<string, number>;
   onCambio: (valoracion: string, cantidad: number) => void;
@@ -23,7 +25,6 @@ export default function ContadorToque({
         <div className="w-1 h-6 rounded-full bg-pink-500" />
         <h3 className="text-lg font-semibold text-slate-800">Toque</h3>
       </div>
-
       <div className="grid grid-cols-3 gap-3">
         {RESULTADOS.map((r) => {
           const cantidad = valores[r.key] ?? 0;
@@ -43,9 +44,11 @@ export default function ContadorToque({
                 >
                   −
                 </button>
-                <span className="w-8 text-center font-semibold text-slate-800">
-                  {cantidad}
-                </span>
+                <NumeroEditable
+                  valor={cantidad}
+                  onCambio={(n) => onCambio(r.key, n)}
+                  disabled={soloLectura}
+                />
                 <button
                   onClick={() => onCambio(r.key, cantidad + 1)}
                   disabled={soloLectura}
@@ -58,7 +61,6 @@ export default function ContadorToque({
           );
         })}
       </div>
-
       <p className="text-xs text-slate-400 mt-3 text-center">
         Cada toque cuenta automáticamente como una tendencia "Toque".
       </p>

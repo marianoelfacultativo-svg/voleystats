@@ -1,5 +1,7 @@
 "use client";
 
+import NumeroEditable from "./NumeroEditable";
+
 interface Props {
   valores: Record<string, number>;
   onCambio: (valoracion: string, cantidad: number) => void;
@@ -21,8 +23,10 @@ export default function ContadorTendencia({
   soloLectura = false,
   toquesTotal,
 }: Props) {
-  // Suma de todas las zonas + el toque (para calcular el %)
-  const totalZonas = ZONAS.reduce((suma, z) => suma + (valores[z.key] ?? 0), 0);
+  const totalZonas = ZONAS.reduce(
+    (suma, z) => suma + (valores[z.key] ?? 0),
+    0
+  );
   const total = totalZonas + toquesTotal;
   const pctToque = total > 0 ? Math.round((toquesTotal / total) * 100) : 0;
 
@@ -32,7 +36,6 @@ export default function ContadorTendencia({
         <div className="w-1 h-6 rounded-full bg-cyan-500" />
         <h3 className="text-lg font-semibold text-slate-800">Tendencia</h3>
       </div>
-
       <div className="grid grid-cols-3 gap-3">
         {ZONAS.map((z) => {
           const cantidad = valores[z.key] ?? 0;
@@ -60,9 +63,11 @@ export default function ContadorTendencia({
                 >
                   −
                 </button>
-                <span className="w-8 text-center font-semibold text-slate-800">
-                  {cantidad}
-                </span>
+                <NumeroEditable
+                  valor={cantidad}
+                  onCambio={(n) => onCambio(z.key, n)}
+                  disabled={soloLectura}
+                />
                 <button
                   onClick={() => onCambio(z.key, cantidad + 1)}
                   disabled={soloLectura}
@@ -75,24 +80,20 @@ export default function ContadorTendencia({
           );
         })}
 
-        {/* Categoría Toque (solo lectura) */}
         <div className="flex items-center justify-between px-4 py-3 bg-pink-50 border border-pink-200 rounded-lg">
           <div>
-            <span className="text-sm font-medium text-pink-800">
-              Toque
-            </span>
+            <span className="text-sm font-medium text-pink-800">Toque</span>
             {total > 0 && (
               <span className="block text-[10px] text-pink-500">
                 {pctToque}%
               </span>
             )}
           </div>
-          <span className="w-8 text-center font-semibold text-pink-800">
+          <span className="w-10 text-center font-semibold text-pink-800">
             {toquesTotal}
           </span>
         </div>
       </div>
-
       <p className="text-xs text-slate-400 mt-3 text-center">
         La celda "Toque" se calcula sola según los toques que cargues en el
         contador de Toque.

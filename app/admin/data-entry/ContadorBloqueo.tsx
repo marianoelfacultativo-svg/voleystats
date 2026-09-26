@@ -1,5 +1,7 @@
 "use client";
 
+import NumeroEditable from "./NumeroEditable";
+
 interface Props {
   valores: Record<string, number>;
   onCambio: (valoracion: string, cantidad: number) => void;
@@ -26,7 +28,6 @@ export default function ContadorBloqueo({
         <div className="w-1 h-6 rounded-full bg-violet-500" />
         <h3 className="text-lg font-semibold text-slate-800">Bloqueo</h3>
       </div>
-
       <div className="grid grid-cols-2 gap-3">
         {VALORACIONES.map((v) => {
           const cantidad = valores[v.key] ?? 0;
@@ -46,9 +47,11 @@ export default function ContadorBloqueo({
                 >
                   −
                 </button>
-                <span className="w-8 text-center font-semibold text-slate-800">
-                  {cantidad}
-                </span>
+                <NumeroEditable
+                  valor={cantidad}
+                  onCambio={(n) => onCambio(v.key, n)}
+                  disabled={soloLectura}
+                />
                 <button
                   onClick={() => onCambio(v.key, cantidad + 1)}
                   disabled={soloLectura}

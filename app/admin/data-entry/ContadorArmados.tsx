@@ -1,5 +1,7 @@
 "use client";
 
+import NumeroEditable from "./NumeroEditable";
+
 interface Props {
   valores: Record<string, number>;
   onCambio: (valoracion: string, cantidad: number) => void;
@@ -25,7 +27,6 @@ export default function ContadorArmados({
         <div className="w-1 h-6 rounded-full bg-indigo-500" />
         <h3 className="text-lg font-semibold text-slate-800">Armados</h3>
       </div>
-
       <div className="grid grid-cols-3 gap-3">
         {NIVELES.map((n) => {
           const cantidad = valores[n.key] ?? 0;
@@ -45,9 +46,11 @@ export default function ContadorArmados({
                 >
                   −
                 </button>
-                <span className="w-8 text-center font-semibold text-slate-800">
-                  {cantidad}
-                </span>
+                <NumeroEditable
+                  valor={cantidad}
+                  onCambio={(n2) => onCambio(n.key, n2)}
+                  disabled={soloLectura}
+                />
                 <button
                   onClick={() => onCambio(n.key, cantidad + 1)}
                   disabled={soloLectura}

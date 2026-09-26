@@ -1,5 +1,7 @@
 "use client";
 
+import NumeroEditable from "./NumeroEditable";
+
 interface Props {
   valores: Record<string, number>;
   onCambio: (valoracion: string, cantidad: number) => void;
@@ -50,7 +52,6 @@ export default function ContadorDefensa({
         <div className="w-1 h-6 rounded-full bg-amber-500" />
         <h3 className="text-lg font-semibold text-slate-800">Defensa</h3>
       </div>
-
       <div className="space-y-4">
         {SUBAPARTADOS.map((sub) => (
           <div key={sub.titulo}>
@@ -78,9 +79,11 @@ export default function ContadorDefensa({
                       >
                         −
                       </button>
-                      <span className="w-8 text-center font-semibold text-slate-800">
-                        {cantidad}
-                      </span>
+                      <NumeroEditable
+                        valor={cantidad}
+                        onCambio={(n) => onCambio(v.key, n)}
+                        disabled={soloLectura}
+                      />
                       <button
                         onClick={() => onCambio(v.key, cantidad + 1)}
                         disabled={soloLectura}
