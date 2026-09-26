@@ -20,22 +20,26 @@ interface Props {
   onPuntosChange: (puntos: PuntoArmador[]) => void;
 }
 
-const CELDAS: { id: string; tipo: "mini32" | "mini33" | "single" }[] = [
-  { id: "F1-C1", tipo: "mini32" },
-  { id: "F1-C2", tipo: "mini33" },
-  { id: "F1-C3", tipo: "mini33" },
-  { id: "F1-C4", tipo: "mini33" },
-  { id: "F1-C5", tipo: "mini32" },
-  { id: "F2-C1", tipo: "mini32" },
-  { id: "F2-C2", tipo: "mini33" },
-  { id: "F2-C3", tipo: "mini33" },
-  { id: "F2-C4", tipo: "mini33" },
-  { id: "F2-C5", tipo: "mini32" },
-  { id: "F3-C1", tipo: "single" },
-  { id: "F3-C2", tipo: "single" },
-  { id: "F3-C3", tipo: "single" },
-  { id: "F3-C4", tipo: "single" },
-  { id: "F3-C5", tipo: "single" },
+const CELDAS: {
+  id: string;
+  tipo: "mini32" | "mini33" | "single";
+  zona: "afuera" | "medio";
+}[] = [
+  { id: "F1-C1", tipo: "mini32", zona: "afuera" },
+  { id: "F1-C2", tipo: "mini33", zona: "medio" },
+  { id: "F1-C3", tipo: "mini33", zona: "medio" },
+  { id: "F1-C4", tipo: "mini33", zona: "medio" },
+  { id: "F1-C5", tipo: "mini32", zona: "afuera" },
+  { id: "F2-C1", tipo: "mini32", zona: "afuera" },
+  { id: "F2-C2", tipo: "mini33", zona: "medio" },
+  { id: "F2-C3", tipo: "mini33", zona: "medio" },
+  { id: "F2-C4", tipo: "mini33", zona: "medio" },
+  { id: "F2-C5", tipo: "mini32", zona: "afuera" },
+  { id: "F3-C1", tipo: "single", zona: "afuera" },
+  { id: "F3-C2", tipo: "single", zona: "medio" },
+  { id: "F3-C3", tipo: "single", zona: "medio" },
+  { id: "F3-C4", tipo: "single", zona: "medio" },
+  { id: "F3-C5", tipo: "single", zona: "afuera" },
 ];
 
 const MINI32_SUBS = ["f1c1", "f1c2", "f2c1", "f2c2", "f3c1", "f3c2"];
@@ -449,7 +453,7 @@ export default function TableroArmador({ puntos, onPuntosChange }: Props) {
       </div>
 
       <div ref={containerRef} className="relative select-none">
-        <div className="grid grid-cols-5 gap-1.5 bg-emerald-50 p-2 rounded-xl border-2 border-emerald-300">
+        <div className="grid grid-cols-5 gap-1.5 bg-emerald-100 p-2 rounded-xl border-2 border-emerald-400">
           {CELDAS.map((c) => (
             <div key={c.id} className="min-h-[90px]">
               {c.tipo === "single" ? (
@@ -457,6 +461,7 @@ export default function TableroArmador({ puntos, onPuntosChange }: Props) {
                   celdaId={c.id}
                   registrar={registrar}
                   activa={origenPendiente === c.id}
+                  zona={c.zona}
                   onClick={() => clickCelda(c.id)}
                   onContextMenu={(e) => clickDerechoCelda(e, c.id)}
                 />
@@ -467,6 +472,7 @@ export default function TableroArmador({ puntos, onPuntosChange }: Props) {
                   cols={c.tipo === "mini32" ? 2 : 3}
                   registrar={registrar}
                   origenPendiente={origenPendiente}
+                  zona={c.zona}
                   onClick={(mini) => clickCelda(`${c.id}-${mini}`)}
                   onContextMenu={(e, mini) =>
                     clickDerechoCelda(e, `${c.id}-${mini}`)
@@ -581,6 +587,7 @@ interface MiniTablaProps {
   cols: number;
   registrar: (key: string, el: HTMLDivElement | null) => void;
   origenPendiente: string | null;
+  zona: "afuera" | "medio";
   onClick: (mini: string) => void;
   onContextMenu: (e: React.MouseEvent, mini: string) => void;
 }
@@ -591,12 +598,20 @@ function MiniTabla({
   cols,
   registrar,
   origenPendiente,
+  zona,
   onClick,
   onContextMenu,
 }: MiniTablaProps) {
+  const bordeCelda =
+    zona === "medio" ? "border-emerald-500" : "border-slate-300";
+  const bgCelda = zona === "medio" ? "bg-emerald-50" : "bg-white";
+  const bgSub = zona === "medio" ? "bg-emerald-200" : "bg-slate-100";
+  const bgSubHover =
+    zona === "medio" ? "hover:bg-emerald-300" : "hover:bg-emerald-100";
+
   return (
     <div
-      className="grid gap-[2px] p-1 bg-white border-2 border-slate-300 rounded-lg w-full h-full"
+      className={`grid gap-[2px] p-1 ${bgCelda} border-2 ${bordeCelda} rounded-lg w-full h-full`}
       style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
     >
       {subs.map((sub) => {
@@ -611,7 +626,7 @@ function MiniTabla({
             className={`rounded-sm cursor-pointer transition min-h-[20px] ${
               activa
                 ? "bg-emerald-500 ring-2 ring-emerald-700"
-                : "bg-slate-100 hover:bg-emerald-100"
+                : `${bgSub} ${bgSubHover}`
             }`}
           />
         );
@@ -624,6 +639,7 @@ interface CeldaSimpleProps {
   celdaId: string;
   registrar: (key: string, el: HTMLDivElement | null) => void;
   activa: boolean;
+  zona: "afuera" | "medio";
   onClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }
@@ -632,9 +648,16 @@ function CeldaSimple({
   celdaId,
   registrar,
   activa,
+  zona,
   onClick,
   onContextMenu,
 }: CeldaSimpleProps) {
+  const bordeBase =
+    zona === "medio" ? "border-emerald-500" : "border-slate-300";
+  const bgBase = zona === "medio" ? "bg-emerald-50" : "bg-white";
+  const bgHover =
+    zona === "medio" ? "hover:bg-emerald-100" : "hover:bg-emerald-50";
+
   return (
     <div
       ref={(el) => registrar(celdaId, el)}
@@ -643,7 +666,7 @@ function CeldaSimple({
       className={`w-full h-full rounded-lg cursor-pointer transition border-2 ${
         activa
           ? "bg-emerald-500 border-emerald-700"
-          : "bg-white border-slate-300 hover:bg-emerald-50"
+          : `${bgBase} ${bordeBase} ${bgHover}`
       }`}
     />
   );
