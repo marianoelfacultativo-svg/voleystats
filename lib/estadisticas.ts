@@ -128,10 +128,11 @@ export const VALORES_DEFENSA: Record<string, number> = {
 
 export const VALORES_ARMADOS: Record<string, number> = {
   horrible: -1,
-  malo: 2,
-  flojo: 3,
-  correcto: 4,
-  perfecto: 5,
+  malo: 1,
+  flojo: 2,
+  correcto: 3,
+  perfecto: 4,
+  genial: 5,
 };
 
 export const VALORES_TOQUE: Record<string, number> = {
@@ -219,6 +220,7 @@ export const ETIQUETAS_VALORACION: Record<string, string> = {
   flojo: "Flojo",
   correcto: "Correcto",
   perfecto: "Perfecto",
+  genial: "Genial",
   zona_4: "Zona 4",
   zona_3: "Zona 3",
   zona_2: "Zona 2",
@@ -976,7 +978,6 @@ export function rankingRecepcion(
     .sort((a, b) => b.valor - a.valor);
 }
 
-// ⚡ ATAQUE: ordena por (efectividad + eficacia/2) / 2
 export function rankingAtaque(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]
@@ -1012,7 +1013,6 @@ export function rankingAtaque(
     .sort((a, b) => b.valor - a.valor);
 }
 
-// 🧱 BLOQUEO: calidad por set × factor volumen ^1.5
 export function rankingBloqueo(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]
@@ -1074,7 +1074,6 @@ export function rankingBloqueo(
     .sort((a, b) => b.valor - a.valor);
 }
 
-// 🎯 SAQUE: SOLO balance por set (sin factor volumen)
 export function rankingSaque(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]
@@ -1113,7 +1112,6 @@ export function rankingSaque(
     .sort((a, b) => b.valor - a.valor);
 }
 
-// 🛡️ DEFENSA: balance total × positivas totales / 100
 export function rankingDefensa(
   porJugador: Record<string, EstadisticasJugador>,
   acciones: AccionDB[]

@@ -9,10 +9,12 @@ import ContadorRecepcion from "./ContadorRecepcion";
 import ContadorAtaque from "./ContadorAtaque";
 import ContadorBloqueo from "./ContadorBloqueo";
 import ContadorDefensa from "./ContadorDefensa";
-import ContadorTendencia from "./ContadorTendencia";
 import ContadorToque from "./ContadorToque";
-import ContadorArmados from "./ContadorArmados";
 import ResumenPartido from "./ResumenPartido";
+import TableroArmador, {
+  type PuntoArmador,
+  calcularZonaTendencia,
+} from "./TableroArmador";
 
 interface Equipo {
   id: string;
@@ -51,7 +53,10 @@ interface AccionDB {
 
 type SetActivo = 1 | 2 | 3 | 4 | 5 | "partido";
 
-type Datos = Record<string, Record<string, Record<string, Record<string, number>>>>;
+type Datos = Record<
+  string,
+  Record<string, Record<string, Record<string, number>>>
+>;
 
 const FUNDAMENTOS_NORMAL = [
   "saque",
@@ -64,13 +69,11 @@ const FUNDAMENTOS_ARMADOR = [
   "saque",
   "bloqueo",
   "defensa",
-  "tendencia",
-  "toque",
-  "armados",
+  "tablero",
 ] as const;
 
-type FundamentoNormal = typeof FUNDAMENTOS_NORMAL[number];
-type FundamentoArmador = typeof FUNDAMENTOS_ARMADOR[number];
+type FundamentoNormal = (typeof FUNDAMENTOS_NORMAL)[number];
+type FundamentoArmador = (typeof FUNDAMENTOS_ARMADOR)[number];
 type Fundamento = FundamentoNormal | FundamentoArmador;
 
 const NOMBRES_FUNDAMENTO: Record<string, string> = {
@@ -79,9 +82,16 @@ const NOMBRES_FUNDAMENTO: Record<string, string> = {
   ataque: "Ataque",
   bloqueo: "Bloqueo",
   defensa: "Defensa",
-  tendencia: "Tendencia",
-  toque: "Toque",
-  armados: "Armados",
+  tablero: "Tablero + Toque",
+};
+
+const MAPA_CALIDAD: Record<number, string> = {
+  1: "horrible",
+  2: "malo",
+  3: "flojo",
+  4: "correcto",
+  5: "perfecto",
+  6: "genial",
 };
 
 export default function DataEntryPage() {
@@ -101,11 +111,14 @@ export default function DataEntryPage() {
     useState<Fundamento>("saque");
 
   const [datos, setDatos] = useState<Datos>({});
+  const [armadosPorJugador, setArmadosPorJugador] = useState<
+    Record<string, PuntoArmador[]>
+  >({});
+
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [mensajeGuardado, setMensajeGuardado] = useState("");
 
-  // Orden local (no se guarda en la base)
   const [ordenLocal, setOrdenLocal] = useState<string[]>([]);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -179,23 +192,28 @@ export default function DataEntryPage() {
   useEffect(() => {
     if (!partidoId) {
       setDatos({});
+      setArmadosPorJugador({});
       return;
     }
     setCargando(true);
-    supabase
-      .from("acciones")
-      .select(
-        "jugador_id, partido_id, set_numero, fundamento, valoracion, cantidad"
-      )
-      .eq("partido_id", partidoId)
-      .then(({ data, error }) => {
-        setCargando(false);
-        if (error || !data) {
-          setDatos({});
-          return;
-        }
+    Promise.all([
+      supabase
+        .from("acciones")
+        .select(
+          "jugador_id, partido_id, set_numero, fundamento, valoracion, cantidad"
+        )
+        .eq("partido_id", partidoId),
+      supabase
+        .from("armados_detalle")
+        .select("*")
+        .eq("partido_id", partidoId)
+        .order("created_at", { ascending: true }),
+    ]).then(([accRes, armRes]) => {
+      setCargando(false);
+
+      if (accRes.data) {
         const nuevo: Datos = {};
-        (data as AccionDB[]).forEach((a) => {
+        (accRes.data as AccionDB[]).forEach((a) => {
           const setStr = String(a.set_numero);
           nuevo[a.jugador_id] = nuevo[a.jugador_id] ?? {};
           nuevo[a.jugador_id][setStr] = nuevo[a.jugador_id][setStr] ?? {};
@@ -204,10 +222,46 @@ export default function DataEntryPage() {
           nuevo[a.jugador_id][setStr][a.fundamento][a.valoracion] = a.cantidad;
         });
         setDatos(nuevo);
-      });
+      }
+
+      if (armRes.data) {
+        const agrupados: Record<
+          string,
+          Record<number, PuntoArmador>
+        > = {};
+        armRes.data.forEach((a: any) => {
+          const jid = a.jugador_id;
+          const set = a.set_numero;
+          const pnum = a.punto_numero;
+          const key = `${set}-${pnum}`;
+          agrupados[jid] = agrupados[jid] ?? {};
+          if (!agrupados[jid][pnum]) {
+            agrupados[jid][pnum] = {
+              numero: pnum,
+              lineas: [],
+              atacanteDerecho: a.atacante_derecho,
+              armadorNumero: a.armador_numero,
+            };
+          }
+          agrupados[jid][pnum].lineas.push({
+            origen: { celda: a.origen_celda, mini: a.origen_mini },
+            destino: { celda: a.destino_celda, mini: a.destino_mini },
+            calidad: a.calidad,
+          });
+        });
+
+        const porJugador: Record<string, PuntoArmador[]> = {};
+        for (const jid of Object.keys(agrupados)) {
+          const pts = Object.values(agrupados[jid]).sort(
+            (a, b) => a.numero - b.numero
+          );
+          porJugador[jid] = pts;
+        }
+        setArmadosPorJugador(porJugador);
+      }
+    });
   }, [partidoId]);
 
-  // Construir lista de jugadores respetando el orden local
   const jugadoresDelEquipo = ordenLocal
     .map((jugId) => jugadores.find((j) => j.id === jugId))
     .filter((j): j is Jugador => j !== undefined);
@@ -215,7 +269,6 @@ export default function DataEntryPage() {
   const jugadorActual = jugadoresDelEquipo.find((j) => j.id === jugadorId);
   const esArmador = jugadorActual?.rol === "armador";
 
-  // ============ ATAJOS DE TECLADO 1-9 ============
   const jugadoresRef = useRef<Jugador[]>([]);
   useEffect(() => {
     jugadoresRef.current = jugadoresDelEquipo;
@@ -273,14 +326,12 @@ export default function DataEntryPage() {
     router.push("/admin");
   };
 
-  // ============ DRAG & DROP (solo local) ============
   const handleDrop = (targetJugadorId: string) => {
     if (!draggedId || draggedId === targetJugadorId) {
       setDraggedId(null);
       setDragOverId(null);
       return;
     }
-
     const fromIdx = ordenLocal.indexOf(draggedId);
     const toIdx = ordenLocal.indexOf(targetJugadorId);
     if (fromIdx === -1 || toIdx === -1) {
@@ -288,17 +339,14 @@ export default function DataEntryPage() {
       setDragOverId(null);
       return;
     }
-
     const nuevo = [...ordenLocal];
     const [movido] = nuevo.splice(fromIdx, 1);
     nuevo.splice(toIdx, 0, movido);
-
     setOrdenLocal(nuevo);
     setDraggedId(null);
     setDragOverId(null);
   };
 
-  // ============ CARGA DE DATOS ============
   const setValor = (
     jugId: string,
     set: string,
@@ -360,6 +408,11 @@ export default function DataEntryPage() {
       return;
     }
 
+    await supabase
+      .from("armados_detalle")
+      .delete()
+      .eq("partido_id", partidoId);
+
     const filas: {
       partido_id: string;
       jugador_id: string;
@@ -369,6 +422,7 @@ export default function DataEntryPage() {
       cantidad: number;
     }[] = [];
 
+    // Datos de contadores normales
     Object.entries(datos).forEach(([jugId, sets]) => {
       Object.entries(sets).forEach(([setStr, fundos]) => {
         const setNum = parseInt(setStr);
@@ -389,6 +443,85 @@ export default function DataEntryPage() {
         });
       });
     });
+
+    // Armados detallados + tendencia + armados
+    const detallesArmados: any[] = [];
+    for (const [jugId, pts] of Object.entries(armadosPorJugador)) {
+      const conteoTendencia: Record<string, number> = {};
+      const conteoArmados: Record<number, number> = {};
+
+      pts.forEach((punto, pIdx) => {
+        punto.lineas.forEach((linea) => {
+          const zona = calcularZonaTendencia(
+            linea.destino.celda,
+            punto.atacanteDerecho
+          );
+
+          detallesArmados.push({
+            partido_id: partidoId,
+            jugador_id: jugId,
+            set_numero: setActivo === "partido" ? 1 : setActivo,
+            punto_numero: pIdx + 1,
+            origen_celda: linea.origen.celda,
+            origen_mini: linea.origen.mini,
+            destino_celda: linea.destino.celda,
+            destino_mini: linea.destino.mini,
+            zona_tendencia: zona,
+            calidad: linea.calidad,
+            atacante_derecho: punto.atacanteDerecho,
+            armador_numero: punto.armadorNumero,
+          });
+
+          if (zona !== null) {
+            const key = `zona_${zona}`;
+            conteoTendencia[key] = (conteoTendencia[key] ?? 0) + 1;
+          }
+          conteoArmados[linea.calidad] =
+            (conteoArmados[linea.calidad] ?? 0) + 1;
+        });
+      });
+
+      const setNum = setActivo === "partido" ? 1 : setActivo;
+      for (const [valor, cant] of Object.entries(conteoTendencia)) {
+        if (cant > 0) {
+          filas.push({
+            partido_id: partidoId,
+            jugador_id: jugId,
+            set_numero: setNum,
+            fundamento: "tendencia",
+            valoracion: valor,
+            cantidad: cant,
+          });
+        }
+      }
+
+      for (const [nStr, cant] of Object.entries(conteoArmados)) {
+        const valor = MAPA_CALIDAD[parseInt(nStr)];
+        if (valor && cant > 0) {
+          filas.push({
+            partido_id: partidoId,
+            jugador_id: jugId,
+            set_numero: setNum,
+            fundamento: "armados",
+            valoracion: valor,
+            cantidad: cant,
+          });
+        }
+      }
+    }
+
+    if (detallesArmados.length > 0) {
+      const { error: errDet } = await supabase
+        .from("armados_detalle")
+        .insert(detallesArmados);
+      if (errDet) {
+        setGuardando(false);
+        setMensajeGuardado(
+          "❌ Error al guardar armados detallados: " + errDet.message
+        );
+        return;
+      }
+    }
 
     if (filas.length === 0) {
       setGuardando(false);
@@ -428,12 +561,6 @@ export default function DataEntryPage() {
   const fundamentosDisponibles = esArmador
     ? FUNDAMENTOS_ARMADOR
     : FUNDAMENTOS_NORMAL;
-
-  const valoresToque = valoresDe("toque" as Fundamento);
-  const toquesTotal =
-    (valoresToque.punto ?? 0) +
-    (valoresToque.error ?? 0) +
-    (valoresToque.neutro ?? 0);
 
   return (
     <main className="min-h-screen p-8">
@@ -710,27 +837,42 @@ export default function DataEntryPage() {
                         soloLectura={soloLectura}
                       />
                     )}
-                    {fundamentoActivo === "tendencia" && (
-                      <ContadorTendencia
-                        valores={valoresDe("tendencia")}
-                        onCambio={onCambioDe("tendencia")}
-                        soloLectura={soloLectura}
-                        toquesTotal={toquesTotal}
-                      />
-                    )}
-                    {fundamentoActivo === "toque" && (
-                      <ContadorToque
-                        valores={valoresDe("toque")}
-                        onCambio={onCambioDe("toque")}
-                        soloLectura={soloLectura}
-                      />
-                    )}
-                    {fundamentoActivo === "armados" && (
-                      <ContadorArmados
-                        valores={valoresDe("armados")}
-                        onCambio={onCambioDe("armados")}
-                        soloLectura={soloLectura}
-                      />
+                    {fundamentoActivo === "tablero" && (
+                      <div className="space-y-6">
+                        <div>
+                          <div className="flex items-center gap-2 mb-4">
+                            <div className="w-1 h-6 rounded-full bg-cyan-500" />
+                            <h3 className="text-lg font-semibold text-slate-800">
+                              Tablero de armador
+                            </h3>
+                          </div>
+                          <TableroArmador
+                            puntos={
+                              armadosPorJugador[jugadorId] ?? [
+                                {
+                                  numero: 1,
+                                  lineas: [],
+                                  atacanteDerecho: "arriba",
+                                  armadorNumero: 1,
+                                },
+                              ]
+                            }
+                            onPuntosChange={(nuevos) =>
+                              setArmadosPorJugador((prev) => ({
+                                ...prev,
+                                [jugadorId]: nuevos,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="pt-4 border-t border-slate-200">
+                          <ContadorToque
+                            valores={valoresDe("toque")}
+                            onCambio={onCambioDe("toque")}
+                            soloLectura={soloLectura}
+                          />
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
