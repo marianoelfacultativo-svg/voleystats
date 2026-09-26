@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { obtenerSesion, cerrarSesion, type Sesion } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -167,7 +167,6 @@ export default function DataEntryPage() {
       setCargando(false);
       if (asigRes.data) {
         setAsignaciones(asigRes.data);
-        // Inicializar el orden local con el orden que viene
         setOrdenLocal(
           asigRes.data.map((a: JugadorEquipo) => a.jugador_id)
         );
@@ -215,6 +214,39 @@ export default function DataEntryPage() {
 
   const jugadorActual = jugadoresDelEquipo.find((j) => j.id === jugadorId);
   const esArmador = jugadorActual?.rol === "armador";
+
+  // ============ ATAJOS DE TECLADO 1-9 ============
+  const jugadoresRef = useRef<Jugador[]>([]);
+  useEffect(() => {
+    jugadoresRef.current = jugadoresDelEquipo;
+  }, [jugadoresDelEquipo]);
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      const num = parseInt(e.key);
+      if (isNaN(num) || num < 1 || num > 9) return;
+
+      const idx = num - 1;
+      const arr = jugadoresRef.current;
+      if (idx < arr.length) {
+        setJugadorId(arr[idx].id);
+      }
+    };
+
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, []);
 
   useEffect(() => {
     if (esArmador) {
@@ -502,8 +534,10 @@ export default function DataEntryPage() {
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 col-span-1">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-semibold text-slate-800">Jugadores</h3>
-                  <span className="text-[10px] text-slate-400">
+                  <span className="text-[10px] text-slate-400 text-right leading-tight">
                     Arrastrá para reordenar
+                    <br />
+                    Teclas 1-9 para elegir
                   </span>
                 </div>
                 {cargando ? (
@@ -514,10 +548,12 @@ export default function DataEntryPage() {
                   </p>
                 ) : (
                   <div className="space-y-1">
-                    {jugadoresDelEquipo.map((j) => {
+                    {jugadoresDelEquipo.map((j, idx) => {
                       const esDrag = draggedId === j.id;
                       const esOver =
                         dragOverId === j.id && draggedId !== j.id;
+                      const seleccionado = jugadorId === j.id;
+                      const muestraTecla = idx < 9;
                       return (
                         <div
                           key={j.id}
@@ -539,27 +575,39 @@ export default function DataEntryPage() {
                             handleDrop(j.id);
                           }}
                           onClick={() => setJugadorId(j.id)}
-                          className={`w-full text-left px-3 py-2 rounded-lg transition text-sm cursor-grab active:cursor-grabbing select-none ${
-                            jugadorId === j.id
+                          className={`relative w-full text-left pl-3 pr-10 py-2 rounded-lg transition text-sm cursor-grab active:cursor-grabbing select-none ${
+                            seleccionado
                               ? "bg-blue-500 text-white"
                               : "bg-slate-50 hover:bg-slate-100 text-slate-700"
                           } ${esDrag ? "opacity-40" : ""} ${
                             esOver ? "ring-2 ring-blue-400 ring-offset-1" : ""
                           }`}
                         >
-                          <span className="font-medium">
+                          <span className="font-medium block truncate">
                             {j.nombre}
                             {j.numero !== null && ` #${j.numero}`}
                           </span>
                           {j.rol === "armador" && (
                             <span
                               className={`block text-xs ${
-                                jugadorId === j.id
+                                seleccionado
                                   ? "text-blue-100"
                                   : "text-violet-600"
                               }`}
                             >
                               Armador
+                            </span>
+                          )}
+                          {muestraTecla && (
+                            <span
+                              className={`absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded text-[11px] font-bold border ${
+                                seleccionado
+                                  ? "bg-white/20 text-white border-white/30"
+                                  : "bg-white text-slate-500 border-slate-300"
+                              }`}
+                              title={`Tecla ${idx + 1}`}
+                            >
+                              {idx + 1}
                             </span>
                           )}
                         </div>
@@ -588,7 +636,7 @@ export default function DataEntryPage() {
                       Elegí un jugador de la izquierda
                     </p>
                     <p className="text-slate-500 text-sm mt-1">
-                      Después vas a ver los contadores acá
+                      O apretá una tecla del 1 al 9
                     </p>
                   </div>
                 ) : (
