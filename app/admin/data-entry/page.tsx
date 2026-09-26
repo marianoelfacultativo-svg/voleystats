@@ -65,16 +65,15 @@ const FUNDAMENTOS_NORMAL = [
   "bloqueo",
   "defensa",
 ] as const;
-const FUNDAMENTOS_ARMADOR = [
-  "saque",
-  "bloqueo",
-  "defensa",
-  "tablero",
-] as const;
+
+const FUNDAMENTOS_ARMADOR = ["saque", "bloqueo", "defensa", "tablero"] as const;
+
+const FUNDAMENTOS_TOQUE = ["toque"] as const;
 
 type FundamentoNormal = (typeof FUNDAMENTOS_NORMAL)[number];
 type FundamentoArmador = (typeof FUNDAMENTOS_ARMADOR)[number];
-type Fundamento = FundamentoNormal | FundamentoArmador;
+type FundamentoToque = (typeof FUNDAMENTOS_TOQUE)[number];
+type Fundamento = FundamentoNormal | FundamentoArmador | FundamentoToque;
 
 const NOMBRES_FUNDAMENTO: Record<string, string> = {
   saque: "Saque",
@@ -83,6 +82,7 @@ const NOMBRES_FUNDAMENTO: Record<string, string> = {
   bloqueo: "Bloqueo",
   defensa: "Defensa",
   tablero: "Tablero + Toque",
+  toque: "Toque",
 };
 
 const MAPA_CALIDAD: Record<number, string> = {
@@ -225,15 +225,10 @@ export default function DataEntryPage() {
       }
 
       if (armRes.data) {
-        const agrupados: Record<
-          string,
-          Record<number, PuntoArmador>
-        > = {};
+        const agrupados: Record<string, Record<number, PuntoArmador>> = {};
         armRes.data.forEach((a: any) => {
           const jid = a.jugador_id;
-          const set = a.set_numero;
           const pnum = a.punto_numero;
-          const key = `${set}-${pnum}`;
           agrupados[jid] = agrupados[jid] ?? {};
           if (!agrupados[jid][pnum]) {
             agrupados[jid][pnum] = {
@@ -304,7 +299,8 @@ export default function DataEntryPage() {
   useEffect(() => {
     if (esArmador) {
       if (
-        !FUNDAMENTOS_ARMADOR.includes(fundamentoActivo as FundamentoArmador)
+        !FUNDAMENTOS_ARMADOR.includes(fundamentoActivo as FundamentoArmador) &&
+        !FUNDAMENTOS_TOQUE.includes(fundamentoActivo as FundamentoToque)
       ) {
         setFundamentoActivo("saque");
       }
@@ -422,7 +418,6 @@ export default function DataEntryPage() {
       cantidad: number;
     }[] = [];
 
-    // Datos de contadores normales
     Object.entries(datos).forEach(([jugId, sets]) => {
       Object.entries(sets).forEach(([setStr, fundos]) => {
         const setNum = parseInt(setStr);
@@ -444,7 +439,6 @@ export default function DataEntryPage() {
       });
     });
 
-    // Armados detallados + tendencia + armados
     const detallesArmados: any[] = [];
     for (const [jugId, pts] of Object.entries(armadosPorJugador)) {
       const conteoTendencia: Record<string, number> = {};
