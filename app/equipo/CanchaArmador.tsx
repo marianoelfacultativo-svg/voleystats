@@ -200,6 +200,11 @@ function calcularApex(
   } else if (calidad >= 4) base = 3.5 + r * 1.0;
   else base = 2.4;
 
+  // Reduce 15% las parábolas altas (por encima de 2.70m)
+  if (base > ALTURA_TOP_ARMADO) {
+    base = base * 0.85;
+  }
+
   if (calidad >= 5 && base < ALTURA_RED) base = ALTURA_RED + 0.3;
 
   return base;
@@ -419,7 +424,6 @@ export default function CanchaArmador({
     ];
   }, [vista, escala]);
 
-  // Varillas (antenas) — 80cm sobre la red, rojas y blancas alternadas
   const redVarillas = useMemo(() => {
     const varillas: {
       p1: { sx: number; sy: number };
