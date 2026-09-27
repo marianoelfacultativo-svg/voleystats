@@ -59,6 +59,8 @@ const FILA_Z: Record<string, [number, number]> = {
 const ALTURA_RED = 2.43;
 const ALTURA_MIN_BIEN_ARMADO = 2.64;
 const ALTURA_TOP_ARMADO = 2.7;
+const ALTURA_DESTINO_MEDIA = 2.65;
+const VARIANZA_GENERAL = 0.24; // ±12cm
 
 const ISO_ANGLE_DEG = 22;
 const ISO_COS = Math.cos((ISO_ANGLE_DEG * Math.PI) / 180);
@@ -137,33 +139,62 @@ function obtenerCoords(
   };
 }
 
-function aplicarVarianza(
-  destino: { x: number; z: number },
-  calidad: number,
-  zonaTendencia: number | null,
-  seed: string
-): { x: number; z: number } {
-  if (
-    calidad >= 5 &&
-    (zonaTendencia === 4 || zonaTendencia === 2 || zonaTendencia === 1)
-  ) {
-    const r = prand(seed, "-var-z");
-    if (zonaTendencia === 4) {
-      return { x: 2 + 0.21, z: 0.5 + r * 2.0 };
+function esColumnaExterior(
+  celda: string,
+  mini: string | null,
+  zona: number | null
+): boolean {
+  if (!mini || zona === null) return false;
+  const match = mini.match(/^f(\d)c(\d)$/);
+  if (!match) return false;
+  const miniCol = parseInt(match[2]);
+
+  if (zona === 4 && miniCol === 1) return true;
+  if ((zona === 2 || zona === 1) && miniCol === 3) return true;
+  return false;
+}
+
+function calcularDestinoYAltura(
+  a: ArmadoDetalle,
+  origen: { x: number; z: number },
+  destinoBase: { x: number; z: number }
+): { destino: { x: number; z: number }; hDestino: number } {
+  const pegadaVarilla =
+    a.calidad >= 5 &&
+    esColumnaExterior(a.destino_celda, a.destino_mini, a.zona_tendencia);
+
+  if (pegadaVarilla) {
+    const rx = prand(a.id, "-varx");
+    const rz = prand(a.id, "-varz");
+    const distVarilla = 0.10 + rx * 0.20;
+
+    let zVar: number;
+    if (a.destino_celda.startsWith("F1")) {
+      zVar = 0.10 + rz * 1.10;
+    } else if (a.destino_celda.startsWith("F2")) {
+      zVar = 3.10 + rz * 2.70;
+    } else {
+      zVar = 6.10 + rz * 2.70;
     }
-    if (zonaTendencia === 2) {
-      return { x: 11 - 0.21, z: 0.5 + r * 2.0 };
+
+    if (a.zona_tendencia === 4) {
+      return { destino: { x: 2 + distVarilla, z: zVar }, hDestino: ALTURA_TOP_ARMADO };
     }
-    if (zonaTendencia === 1) {
-      return { x: 11 - 0.21, z: 6.5 + r * 2.0 };
-    }
+    return { destino: { x: 11 - distVarilla, z: zVar }, hDestino: ALTURA_TOP_ARMADO };
   }
-  const rx = prand(seed, "-var-x");
-  const rz = prand(seed, "-var-z");
-  return {
-    x: destino.x + (rx - 0.5) * 0.3,
-    z: destino.z + (rz - 0.5) * 0.3,
+
+  // Varianza general ±12cm horizontal y vertical, altura media 2.65
+  const rx = prand(a.id, "-varx");
+  const rz = prand(a.id, "-varz");
+  const ry = prand(a.id, "-vary");
+
+  const destino = {
+    x: destinoBase.x + (rx - 0.5) * VARIANZA_GENERAL,
+    z: destinoBase.z + (rz - 0.5) * VARIANZA_GENERAL,
   };
+  const hDestino = ALTURA_DESTINO_MEDIA + (ry - 0.5) * VARIANZA_GENERAL;
+
+  return { destino, hDestino };
 }
 
 function calcularApex(
@@ -200,10 +231,7 @@ function calcularApex(
   } else if (calidad >= 4) base = 3.5 + r * 1.0;
   else base = 2.4;
 
-  // Reduce 15% las parábolas altas (por encima de 2.70m)
-  if (base > ALTURA_TOP_ARMADO) {
-    base = base * 0.85;
-  }
+  if (base > ALTURA_TOP_ARMADO) base = base * 0.85;
 
   if (calidad >= 5 && base < ALTURA_RED) base = ALTURA_RED + 0.3;
 
@@ -316,15 +344,11 @@ export default function CanchaArmador({
         const destinoBase = obtenerCoords(a.destino_celda, a.destino_mini);
         if (!origen || !destinoBase) return null;
 
-        const destino = aplicarVarianza(
-          destinoBase,
-          a.calidad,
-          a.zona_tendencia,
-          a.id
+        const { destino, hDestino } = calcularDestinoYAltura(
+          a,
+          origen,
+          destinoBase
         );
-
-        const hDestino =
-          a.calidad >= 5 ? ALTURA_TOP_ARMADO : ALTURA_MIN_BIEN_ARMADO;
 
         const hApex = calcularApex(
           origen,
