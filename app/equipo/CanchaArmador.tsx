@@ -49,6 +49,9 @@ const FILA_Z: Record<string, [number, number]> = {
   F3: [6, 9],
 };
 
+const ALTURA_RED = 2.43;
+const ALTURA_MIN_BIEN_ARMADO = 2.64;
+
 function hashSeed(str: string): number {
   let h = 5381;
   for (let i = 0; i < str.length; i++) {
@@ -157,26 +160,28 @@ function calcularApex(
   const [fila, col] = celda.split("-");
   const r = prand(seed, "-apex");
 
-  if (distancia > 5) return 4.5 + r * 0.5;
-  if (fila === "F3") return 4.5 + r * 0.5;
+  let base: number;
 
-  if (fila === "F1" && mini && mini.startsWith("f1")) {
-    if (calidad === 1 || calidad === 2) return 2.4;
-    if (calidad === 3) {
-      if (col === "C3" && mini === "f1c1") return 3.5;
-      if (col === "C2" || col === "C4") return 2.55;
-    }
-    if (calidad >= 4) return 3.0 + r * 0.5;
-  }
+  if (distancia > 5) base = 4.5 + r * 0.5;
+  else if (fila === "F3") base = 4.5 + r * 0.5;
+  else if (fila === "F1" && mini && mini.startsWith("f1")) {
+    if (calidad === 1 || calidad === 2) base = 2.4;
+    else if (calidad === 3) {
+      if (col === "C3" && mini === "f1c1") base = 3.5;
+      else if (col === "C2" || col === "C4") base = 2.55;
+      else base = 2.4;
+    } else base = 3.0 + r * 0.5;
+  } else if (fila === "F1") {
+    if (calidad === 1 || calidad === 2) base = 2.4;
+    else if (calidad === 3) base = 2.55;
+    else base = 3.0 + r * 0.5;
+  } else if (calidad >= 4) base = 3.5 + r * 1.0;
+  else base = 2.4;
 
-  if (fila === "F1") {
-    if (calidad === 1 || calidad === 2) return 2.4;
-    if (calidad === 3) return 2.55;
-    return 3.0 + r * 0.5;
-  }
+  // Regla: buena calidad (5-6) nunca por debajo de la red
+  if (calidad >= 5 && base < ALTURA_RED) base = ALTURA_RED + 0.3;
 
-  if (calidad >= 4) return 3.5 + r * 1.0;
-  return 2.4;
+  return base;
 }
 
 const ESCALA = 45;
@@ -221,10 +226,11 @@ function generarCurva(
   destino: { x: number; z: number },
   hApex: number,
   vista: Vista,
-  escala: number
+  escala: number,
+  calidad: number
 ): string {
   const hOrigen = 0.1;
-  const hDestino = 2.64;
+  const hDestino = ALTURA_MIN_BIEN_ARMADO;
   const pasos = 24;
   let path = "";
   for (let i = 0; i <= pasos; i++) {
@@ -232,8 +238,15 @@ function generarCurva(
     const x = origen.x + t * (destino.x - origen.x);
     const z = origen.z + t * (destino.z - origen.z);
     const hBase = hOrigen + t * (hDestino - hOrigen);
-    const altura =
+    let altura =
       hBase + 4 * t * (1 - t) * (hApex - (hOrigen + hDestino) / 2);
+
+    // Regla: si es armado bueno (5-6), después de pasar la altura de la red
+    // nunca baja de la red
+    if (calidad >= 5 && altura < ALTURA_RED && t > 0.4) {
+      altura = ALTURA_RED;
+    }
+
     const p = proyectar(x, z, altura, vista, escala);
     path += i === 0 ? `M ${p.sx} ${p.sy}` : ` L ${p.sx} ${p.sy}`;
   }
@@ -284,6 +297,8 @@ export default function CanchaArmador({
 
   const RED_X1 = 0.5;
   const RED_X2 = 12.5;
+  const RED_Y_TOP = 2.43;
+  const RED_Y_BOTTOM = 1.43;
 
   const contornoExt = useMemo(() => {
     const esquinas = [
@@ -321,8 +336,8 @@ export default function CanchaArmador({
 
   const red = useMemo(() => {
     return {
-      p1: proyectar(RED_X1, 0, 2.43, vista, escala),
-      p2: proyectar(RED_X2, 0, 2.43, vista, escala),
+      p1: proyectar(RED_X1, 0, RED_Y_TOP, vista, escala),
+      p2: proyectar(RED_X2, 0, RED_Y_TOP, vista, escala),
     };
   }, [vista, escala]);
 
@@ -334,12 +349,14 @@ export default function CanchaArmador({
     const pasos = 36;
     for (let i = 0; i <= pasos; i++) {
       const x = RED_X1 + ((RED_X2 - RED_X1) * i) / pasos;
-      const abajo = proyectar(x, 0, 2.0, vista, escala);
-      const arriba = proyectar(x, 0, 2.43, vista, escala);
+      const abajo = proyectar(x, 0, RED_Y_BOTTOM, vista, escala);
+      const arriba = proyectar(x, 0, RED_Y_TOP, vista, escala);
       lineas.push({ p1: abajo, p2: arriba });
     }
-    for (let j = 0; j <= 3; j++) {
-      const h = 2.0 + (0.43 * j) / 3;
+    const filasRed = 6;
+    for (let j = 0; j <= filasRed; j++) {
+      const h =
+        RED_Y_BOTTOM + ((RED_Y_TOP - RED_Y_BOTTOM) * j) / filasRed;
       const izq = proyectar(RED_X1, 0, h, vista, escala);
       const der = proyectar(RED_X2, 0, h, vista, escala);
       lineas.push({ p1: izq, p2: der });
@@ -351,11 +368,11 @@ export default function CanchaArmador({
     return [
       {
         p1: proyectar(RED_X1, 0, 0, vista, escala),
-        p2: proyectar(RED_X1, 0, 2.43, vista, escala),
+        p2: proyectar(RED_X1, 0, RED_Y_TOP, vista, escala),
       },
       {
         p1: proyectar(RED_X2, 0, 0, vista, escala),
-        p2: proyectar(RED_X2, 0, 2.43, vista, escala),
+        p2: proyectar(RED_X2, 0, RED_Y_TOP, vista, escala),
       },
     ];
   }, [vista, escala]);
@@ -412,8 +429,8 @@ export default function CanchaArmador({
           x2={l.p2.sx}
           y2={l.p2.sy}
           stroke="#ffffff"
-          strokeWidth={0.8}
-          opacity={0.55}
+          strokeWidth={0.7}
+          opacity={0.5}
         />
       ))}
 
@@ -445,7 +462,8 @@ export default function CanchaArmador({
           t.destino,
           t.hApex,
           vista,
-          escala
+          escala,
+          t.armado.calidad
         );
         const origenFloorPos = proyectar(
           t.origen.x,
@@ -464,7 +482,7 @@ export default function CanchaArmador({
         const destinoAlturaPos = proyectar(
           t.destino.x,
           t.destino.z,
-          2.64,
+          ALTURA_MIN_BIEN_ARMADO,
           vista,
           escala
         );
@@ -474,7 +492,7 @@ export default function CanchaArmador({
             <circle
               cx={destinoPos.sx}
               cy={destinoPos.sy}
-              r={6}
+              r={5}
               fill={t.color}
               opacity={0.35}
             />
@@ -489,14 +507,14 @@ export default function CanchaArmador({
             <EstrellaValor
               cx={origenFloorPos.sx}
               cy={origenFloorPos.sy}
-              radio={15}
+              radio={10}
               colorCalidad={t.color}
               valor={t.armado.calidad}
             />
             <VolleyballPelota
               cx={destinoAlturaPos.sx}
               cy={destinoAlturaPos.sy}
-              radio={14}
+              radio={11}
               colorCalidad={t.color}
             />
           </g>
@@ -534,7 +552,7 @@ function EstrellaValor({
         points={pts.join(" ")}
         fill={colorCalidad}
         stroke="white"
-        strokeWidth={2}
+        strokeWidth={1.5}
         strokeLinejoin="round"
       />
       <text
@@ -542,7 +560,7 @@ function EstrellaValor({
         y={cy + radio * 0.05}
         textAnchor="middle"
         dominantBaseline="middle"
-        fontSize={radio * 0.95}
+        fontSize={radio * 1.05}
         fontWeight="bold"
         fill="white"
       >
@@ -567,7 +585,7 @@ function VolleyballPelota({
   return (
     <g
       style={{
-        filter: `drop-shadow(0 0 ${radio * 0.6}px ${colorCalidad}aa)`,
+        filter: `drop-shadow(0 0 ${radio * 0.5}px ${colorCalidad}aa)`,
       }}
     >
       <defs>
@@ -593,7 +611,7 @@ function VolleyballPelota({
         r={radio}
         fill={`url(#${id}-base)`}
         stroke="#94a3b8"
-        strokeWidth={0.8}
+        strokeWidth={0.6}
       />
 
       <g clipPath={`url(#${id}-clip)`}>
@@ -605,7 +623,7 @@ function VolleyballPelota({
                 ${cx + radio * 0.7} ${cy - radio * 0.2}`}
           fill="none"
           stroke="#1e3a8a"
-          strokeWidth={radio * 0.55}
+          strokeWidth={radio * 0.5}
           strokeLinecap="round"
           opacity={0.9}
         />
@@ -615,7 +633,7 @@ function VolleyballPelota({
                 ${cx - radio * 0.3} ${cy + radio * 0.9}`}
           fill="none"
           stroke="#1e3a8a"
-          strokeWidth={radio * 0.5}
+          strokeWidth={radio * 0.45}
           strokeLinecap="round"
           opacity={0.9}
         />
@@ -625,7 +643,7 @@ function VolleyballPelota({
                 ${cx - radio * 0.5} ${cy + radio * 1.1}`}
           fill="none"
           stroke={colorCalidad}
-          strokeWidth={radio * 0.45}
+          strokeWidth={radio * 0.42}
           strokeLinecap="round"
           opacity={0.95}
         />
@@ -635,7 +653,7 @@ function VolleyballPelota({
                 ${cx - radio * 0.3} ${cy + radio * 1.1}`}
           fill="none"
           stroke={colorCalidad}
-          strokeWidth={radio * 0.4}
+          strokeWidth={radio * 0.38}
           strokeLinecap="round"
           opacity={0.95}
         />
@@ -644,16 +662,16 @@ function VolleyballPelota({
       <ellipse
         cx={cx - radio * 0.35}
         cy={cy - radio * 0.4}
-        rx={radio * 0.35}
-        ry={radio * 0.22}
+        rx={radio * 0.3}
+        ry={radio * 0.18}
         fill="white"
         opacity={0.55}
       />
       <ellipse
         cx={cx + radio * 0.2}
         cy={cy + radio * 0.55}
-        rx={radio * 0.5}
-        ry={radio * 0.15}
+        rx={radio * 0.45}
+        ry={radio * 0.12}
         fill="black"
         opacity={0.12}
       />
