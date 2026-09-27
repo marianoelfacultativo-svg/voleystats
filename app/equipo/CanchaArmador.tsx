@@ -221,6 +221,19 @@ export default function CanchaArmador({
       .filter((t): t is NonNullable<typeof t> => t !== null);
   }, [armados]);
 
+  // ============ LÍNEAS DE LA CANCHA (estilo vóley real) ============
+  // 1. Contorno completo (incluye las columnas laterales "fuera")
+  const contornoExt = useMemo(() => {
+    const esquinas = [
+      proyectar(0, 0, 0, vista, escala),
+      proyectar(13, 0, 0, vista, escala),
+      proyectar(13, 9, 0, vista, escala),
+      proyectar(0, 9, 0, vista, escala),
+    ];
+    return esquinas.map((p) => `${p.sx},${p.sy}`).join(" ");
+  }, [vista, escala]);
+
+  // 2. Cancha interior (9x9)
   const contornoCancha = useMemo(() => {
     const esquinas = [
       proyectar(2, 0, 0, vista, escala),
@@ -231,27 +244,20 @@ export default function CanchaArmador({
     return esquinas.map((p) => `${p.sx},${p.sy}`).join(" ");
   }, [vista, escala]);
 
-  const lineasGrilla = useMemo(() => {
-    const lineas: {
-      p1: { sx: number; sy: number };
-      p2: { sx: number; sy: number };
-      tipo: "col" | "fila";
-    }[] = [];
-    for (const x of [5, 8]) {
-      lineas.push({
-        p1: proyectar(x, 0, 0, vista, escala),
-        p2: proyectar(x, 9, 0, vista, escala),
-        tipo: "col",
-      });
-    }
-    for (const z of [3, 6]) {
-      lineas.push({
-        p1: proyectar(2, z, 0, vista, escala),
-        p2: proyectar(11, z, 0, vista, escala),
-        tipo: "fila",
-      });
-    }
-    return lineas;
+  // 3. Línea de ataque (a 3m de la red) — solo en la cancha interior
+  const lineaAtaque = useMemo(() => {
+    return {
+      p1: proyectar(2, 3, 0, vista, escala),
+      p2: proyectar(11, 3, 0, vista, escala),
+    };
+  }, [vista, escala]);
+
+  // 4. Línea del medio (donde está la red)
+  const lineaMedio = useMemo(() => {
+    return {
+      p1: proyectar(2, 0, 0, vista, escala),
+      p2: proyectar(11, 0, 0, vista, escala),
+    };
   }, [vista, escala]);
 
   const red = useMemo(() => {
@@ -306,7 +312,47 @@ export default function CanchaArmador({
           "linear-gradient(180deg, #cfe4f7 0%, #b8d8f0 50%, #a8cbe8 100%)",
       }}
     >
-      {/* Red malla */}
+      {/* Piso exterior (más claro, hace de "área externa") */}
+      <polygon
+        points={contornoExt}
+        fill="#2563eb"
+        stroke="#1e40af"
+        strokeWidth={2}
+        strokeLinejoin="round"
+      />
+
+      {/* Cancha interior (más brillante) */}
+      <polygon
+        points={contornoCancha}
+        fill="#3b82f6"
+        stroke="#ffffff"
+        strokeWidth={3}
+        strokeLinejoin="round"
+      />
+
+      {/* Línea del medio (donde está la red, sobre el piso) */}
+      <line
+        x1={lineaMedio.p1.sx}
+        y1={lineaMedio.p1.sy}
+        x2={lineaMedio.p2.sx}
+        y2={lineaMedio.p2.sy}
+        stroke="#ffffff"
+        strokeWidth={2}
+        opacity={0.9}
+      />
+
+      {/* Línea de ataque (3m) */}
+      <line
+        x1={lineaAtaque.p1.sx}
+        y1={lineaAtaque.p1.sy}
+        x2={lineaAtaque.p2.sx}
+        y2={lineaAtaque.p2.sy}
+        stroke="#ffffff"
+        strokeWidth={2}
+        opacity={0.85}
+      />
+
+      {/* Red: malla */}
       {redMalla.map((l, i) => (
         <line
           key={`malla-${i}`}
@@ -320,7 +366,7 @@ export default function CanchaArmador({
         />
       ))}
 
-      {/* Red superior */}
+      {/* Red: línea superior */}
       <line
         x1={red.p1.sx}
         y1={red.p1.sy}
@@ -330,7 +376,7 @@ export default function CanchaArmador({
         strokeWidth={2.5}
       />
 
-      {/* Postes */}
+      {/* Red: postes */}
       {redPostes.map((p, i) => (
         <line
           key={`poste-${i}`}
@@ -341,31 +387,6 @@ export default function CanchaArmador({
           stroke="#ffffff"
           strokeWidth={4}
           strokeLinecap="round"
-        />
-      ))}
-
-      {/* Piso de la cancha */}
-      <polygon
-        points={contornoCancha}
-        fill="#3b82f6"
-        stroke="#ffffff"
-        strokeWidth={2.5}
-        strokeLinejoin="round"
-        opacity={0.92}
-      />
-
-      {/* Grilla interior */}
-      {lineasGrilla.map((l, i) => (
-        <line
-          key={i}
-          x1={l.p1.sx}
-          y1={l.p1.sy}
-          x2={l.p2.sx}
-          y2={l.p2.sy}
-          stroke="#ffffff"
-          strokeWidth={1.2}
-          strokeDasharray={l.tipo === "col" ? "6 5" : "4 6"}
-          opacity={0.65}
         />
       ))}
 
@@ -409,7 +430,7 @@ export default function CanchaArmador({
 
         return (
           <g key={i}>
-            {/* Línea vertical destino (altura pelota) */}
+            {/* Línea vertical en el destino */}
             <line
               x1={destinoPos.sx}
               y1={destinoPos.sy}
@@ -420,13 +441,13 @@ export default function CanchaArmador({
               strokeDasharray="3 3"
               opacity={0.5}
             />
-            {/* Marca destino en el piso */}
+            {/* Marca del destino en el piso */}
             <circle
               cx={destinoPos.sx}
               cy={destinoPos.sy}
               r={8}
               fill={t.color}
-              opacity={0.3}
+              opacity={0.35}
             />
             <circle
               cx={destinoPos.sx}
@@ -436,7 +457,7 @@ export default function CanchaArmador({
               stroke="white"
               strokeWidth={1}
             />
-            {/* Estela (parábola) */}
+            {/* Estela */}
             <path
               d={path}
               fill="none"
