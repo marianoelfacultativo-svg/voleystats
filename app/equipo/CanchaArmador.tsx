@@ -58,8 +58,7 @@ const FILA_Z: Record<string, [number, number]> = {
 
 const ALTURA_RED = 2.43;
 const ALTURA_MIN_BIEN_ARMADO = 2.64;
-const ALTURA_TOP_ARMADO = 5.0;
-const DISTANCIA_TOP_ARMADO = 3.05;
+const ALTURA_TOP_ARMADO = 2.7;
 
 const ISO_ANGLE_DEG = 22;
 const ISO_COS = Math.cos((ISO_ANGLE_DEG * Math.PI) / 180);
@@ -67,6 +66,11 @@ const ISO_SIN = Math.sin((ISO_ANGLE_DEG * Math.PI) / 180);
 
 const FRONT_Z_FACTOR = 0.12;
 const PARALELA_X_FACTOR = 0.15;
+
+const RED_X1 = 2;
+const RED_X2 = 11;
+const RED_Y_TOP = 2.43;
+const RED_Y_BOTTOM = 1.43;
 
 function hashSeed(str: string): number {
   let h = 5381;
@@ -162,21 +166,6 @@ function aplicarVarianza(
   };
 }
 
-function acortarDestinoTop(
-  origen: { x: number; z: number },
-  destino: { x: number; z: number }
-): { x: number; z: number } {
-  const dx = destino.x - origen.x;
-  const dz = destino.z - origen.z;
-  const dist = Math.sqrt(dx * dx + dz * dz);
-  if (dist === 0) return destino;
-  const factor = DISTANCIA_TOP_ARMADO / dist;
-  return {
-    x: origen.x + dx * factor,
-    z: origen.z + dz * factor,
-  };
-}
-
 function calcularApex(
   origen: { x: number; z: number },
   destino: { x: number; z: number },
@@ -193,7 +182,7 @@ function calcularApex(
 
   let base: number;
 
-  if (calidad >= 5 && distancia <= DISTANCIA_TOP_ARMADO + 0.01) {
+  if (calidad >= 5) {
     base = ALTURA_TOP_ARMADO;
   } else if (distancia > 5) base = 4.5 + r * 0.5;
   else if (fila === "F3") base = 4.5 + r * 0.5;
@@ -257,7 +246,10 @@ function proyectar(
       };
     case "paralela-izq":
       return {
-        sx: z * escala + x * escala * PARALELA_X_FACTOR + OFFSET.paralelaIzq.x,
+        sx:
+          z * escala +
+          x * escala * PARALELA_X_FACTOR +
+          OFFSET.paralelaIzq.x,
         sy: -y * escala + OFFSET.paralelaIzq.y,
       };
     case "paralela-der":
@@ -319,19 +311,15 @@ export default function CanchaArmador({
         const destinoBase = obtenerCoords(a.destino_celda, a.destino_mini);
         if (!origen || !destinoBase) return null;
 
-        let destino = aplicarVarianza(
+        const destino = aplicarVarianza(
           destinoBase,
           a.calidad,
           a.zona_tendencia,
           a.id
         );
 
-        let hDestino = ALTURA_MIN_BIEN_ARMADO;
-
-        if (a.calidad >= 5) {
-          destino = acortarDestinoTop(origen, destino);
-          hDestino = ALTURA_TOP_ARMADO;
-        }
+        const hDestino =
+          a.calidad >= 5 ? ALTURA_TOP_ARMADO : ALTURA_MIN_BIEN_ARMADO;
 
         const hApex = calcularApex(
           origen,
@@ -353,11 +341,6 @@ export default function CanchaArmador({
       })
       .filter((t): t is NonNullable<typeof t> => t !== null);
   }, [armados]);
-
-  const RED_X1 = 2;
-  const RED_X2 = 11;
-  const RED_Y_TOP = 2.43;
-  const RED_Y_BOTTOM = 1.43;
 
   const contornoExt = useMemo(() => {
     const esquinas = [
@@ -436,6 +419,30 @@ export default function CanchaArmador({
     ];
   }, [vista, escala]);
 
+  // Varillas (antenas) — 80cm sobre la red, rojas y blancas alternadas
+  const redVarillas = useMemo(() => {
+    const varillas: {
+      p1: { sx: number; sy: number };
+      p2: { sx: number; sy: number };
+      color: string;
+    }[] = [];
+    const segmentos = 4;
+    const alturaVarilla = 0.8;
+    const alturaSeg = alturaVarilla / segmentos;
+    for (const x of [RED_X1, RED_X2]) {
+      for (let i = 0; i < segmentos; i++) {
+        const y1 = RED_Y_TOP + i * alturaSeg;
+        const y2 = RED_Y_TOP + (i + 1) * alturaSeg;
+        varillas.push({
+          p1: proyectar(x, 0, y1, vista, escala),
+          p2: proyectar(x, 0, y2, vista, escala),
+          color: i % 2 === 0 ? "#dc2626" : "#ffffff",
+        });
+      }
+    }
+    return varillas;
+  }, [vista, escala]);
+
   return (
     <svg
       width={width}
@@ -512,6 +519,19 @@ export default function CanchaArmador({
           stroke="#ffffff"
           strokeWidth={4}
           strokeLinecap="round"
+        />
+      ))}
+
+      {redVarillas.map((v, i) => (
+        <line
+          key={`varilla-${i}`}
+          x1={v.p1.sx}
+          y1={v.p1.sy}
+          x2={v.p2.sx}
+          y2={v.p2.sy}
+          stroke={v.color}
+          strokeWidth={3}
+          strokeLinecap="butt"
         />
       ))}
 
