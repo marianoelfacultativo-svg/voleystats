@@ -289,11 +289,14 @@ function proyectar(
         sx: (x - z) * ISO_COS * escala + OFFSET.iso.x,
         sy: (x + z) * ISO_SIN * escala - y * escala + OFFSET.iso.y,
       };
-    case "iso-opuesta":
+    case "iso-opuesta": {
+      const xr = 13 - x;
+      const zr = 9 - z;
       return {
-        sx: (z - x) * ISO_COS * escala + OFFSET.isoOpuesta.x,
-        sy: (x + z) * ISO_SIN * escala - y * escala + OFFSET.isoOpuesta.y,
+        sx: (xr - zr) * ISO_COS * escala + OFFSET.isoOpuesta.x,
+        sy: (xr + zr) * ISO_SIN * escala - y * escala + OFFSET.isoOpuesta.y,
       };
+    }
     case "paralela-izq":
       return {
         sx:
