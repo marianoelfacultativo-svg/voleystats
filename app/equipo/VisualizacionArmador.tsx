@@ -26,12 +26,15 @@ const VISTAS: { id: Vista; label: string }[] = [
   { id: "iso-opuesta", label: "Isométrica opuesta" },
   { id: "top", label: "Superior" },
   { id: "front", label: "Frontal" },
+  { id: "paralela-izq", label: "Paralela izq." },
+  { id: "paralela-der", label: "Paralela der." },
 ];
 
 export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
   const [armados, setArmados] = useState<ArmadoDetalle[]>([]);
   const [cargando, setCargando] = useState(true);
   const [vista, setVista] = useState<Vista>("iso");
+  const [mostrarEstelas, setMostrarEstelas] = useState(true);
 
   const [filtroSet, setFiltroSet] = useState<number | "todos">("todos");
   const [filtroZona, setFiltroZona] = useState<number | null>(null);
@@ -126,7 +129,7 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
-        <div className="grid grid-cols-3 gap-4 mb-3">
+        <div className="grid grid-cols-2 gap-4 mb-3">
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">
               Set
@@ -215,26 +218,38 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
               </button>
             </div>
           </div>
+        </div>
 
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">
-              Vista
-            </label>
-            <div className="flex flex-wrap gap-1">
-              {VISTAS.map((v) => (
-                <button
-                  key={v.id}
-                  onClick={() => setVista(v.id)}
-                  className={`px-2.5 py-1 text-xs rounded-lg border transition ${
-                    vista === v.id
-                      ? "bg-slate-800 text-white border-slate-800"
-                      : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
-                  }`}
-                >
-                  {v.label}
-                </button>
-              ))}
-            </div>
+        <div className="mb-3">
+          <label className="block text-xs font-medium text-slate-500 mb-1">
+            Vista
+          </label>
+          <div className="flex flex-wrap gap-1">
+            {VISTAS.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => setVista(v.id)}
+                className={`px-2.5 py-1 text-xs rounded-lg border transition ${
+                  vista === v.id
+                    ? "bg-slate-800 text-white border-slate-800"
+                    : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+            <span className="mx-2 border-l border-slate-300" />
+            <button
+              onClick={() => setMostrarEstelas(!mostrarEstelas)}
+              className={`px-2.5 py-1 text-xs rounded-lg border transition ${
+                mostrarEstelas
+                  ? "bg-emerald-500 text-white border-emerald-500"
+                  : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+              }`}
+              title="Mostrar u ocultar estelas de las pelotas"
+            >
+              {mostrarEstelas ? "✓ Estelas" : "Estelas ocultas"}
+            </button>
           </div>
         </div>
 
@@ -374,6 +389,7 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
           vista={vista}
           width={1000}
           height={760}
+          mostrarEstelas={mostrarEstelas}
         />
       </div>
     </div>

@@ -17,13 +17,20 @@ export interface ArmadoDetalle {
   armador_numero: number;
 }
 
-export type Vista = "top" | "front" | "iso" | "iso-opuesta";
+export type Vista =
+  | "top"
+  | "front"
+  | "iso"
+  | "iso-opuesta"
+  | "paralela-izq"
+  | "paralela-der";
 
 interface Props {
   armados: ArmadoDetalle[];
   vista?: Vista;
   width?: number;
   height?: number;
+  mostrarEstelas?: boolean;
 }
 
 const COLORES_CALIDAD: Record<number, string> = {
@@ -51,14 +58,15 @@ const FILA_Z: Record<string, [number, number]> = {
 
 const ALTURA_RED = 2.43;
 const ALTURA_MIN_BIEN_ARMADO = 2.64;
+const ALTURA_TOP_ARMADO = 5.0;
+const DISTANCIA_TOP_ARMADO = 3.05;
 
-// Ángulo de la vista isométrica (más bajo = más al ras del suelo)
 const ISO_ANGLE_DEG = 22;
 const ISO_COS = Math.cos((ISO_ANGLE_DEG * Math.PI) / 180);
 const ISO_SIN = Math.sin((ISO_ANGLE_DEG * Math.PI) / 180);
 
-// Factor de profundidad de la vista frontal (más bajo = más al ras del suelo)
 const FRONT_Z_FACTOR = 0.12;
+const PARALELA_X_FACTOR = 0.15;
 
 function hashSeed(str: string): number {
   let h = 5381;
@@ -154,6 +162,21 @@ function aplicarVarianza(
   };
 }
 
+function acortarDestinoTop(
+  origen: { x: number; z: number },
+  destino: { x: number; z: number }
+): { x: number; z: number } {
+  const dx = destino.x - origen.x;
+  const dz = destino.z - origen.z;
+  const dist = Math.sqrt(dx * dx + dz * dz);
+  if (dist === 0) return destino;
+  const factor = DISTANCIA_TOP_ARMADO / dist;
+  return {
+    x: origen.x + dx * factor,
+    z: origen.z + dz * factor,
+  };
+}
+
 function calcularApex(
   origen: { x: number; z: number },
   destino: { x: number; z: number },
@@ -170,7 +193,9 @@ function calcularApex(
 
   let base: number;
 
-  if (distancia > 5) base = 4.5 + r * 0.5;
+  if (calidad >= 5 && distancia <= DISTANCIA_TOP_ARMADO + 0.01) {
+    base = ALTURA_TOP_ARMADO;
+  } else if (distancia > 5) base = 4.5 + r * 0.5;
   else if (fila === "F3") base = 4.5 + r * 0.5;
   else if (fila === "F1" && mini && mini.startsWith("f1")) {
     if (calidad === 1 || calidad === 2) base = 2.4;
@@ -198,6 +223,8 @@ const OFFSET = {
   front: { x: 150, y: 520 },
   iso: { x: 400, y: 270 },
   isoOpuesta: { x: 590, y: 270 },
+  paralelaIzq: { x: 80, y: 400 },
+  paralelaDer: { x: 920, y: 400 },
 };
 
 function proyectar(
@@ -228,6 +255,21 @@ function proyectar(
         sx: (z - x) * ISO_COS * escala + OFFSET.isoOpuesta.x,
         sy: (x + z) * ISO_SIN * escala - y * escala + OFFSET.isoOpuesta.y,
       };
+    case "paralela-izq":
+      return {
+        sx: z * escala + x * escala * PARALELA_X_FACTOR + OFFSET.paralelaIzq.x,
+        sy: -y * escala + OFFSET.paralelaIzq.y,
+      };
+    case "paralela-der":
+      return {
+        sx:
+          (9 - z) * escala +
+          (13 - x) * escala * PARALELA_X_FACTOR +
+          OFFSET.paralelaDer.x -
+          9 * escala -
+          13 * escala * PARALELA_X_FACTOR,
+        sy: -y * escala + OFFSET.paralelaDer.y,
+      };
   }
 }
 
@@ -235,12 +277,12 @@ function generarCurva(
   origen: { x: number; z: number },
   destino: { x: number; z: number },
   hApex: number,
+  hDestino: number,
   vista: Vista,
   escala: number,
   calidad: number
 ): string {
   const hOrigen = 0.1;
-  const hDestino = ALTURA_MIN_BIEN_ARMADO;
   const pasos = 24;
   let path = "";
   for (let i = 0; i <= pasos; i++) {
@@ -266,6 +308,7 @@ export default function CanchaArmador({
   vista = "iso",
   width = 1000,
   height = 800,
+  mostrarEstelas = true,
 }: Props) {
   const escala = ESCALA;
 
@@ -276,12 +319,19 @@ export default function CanchaArmador({
         const destinoBase = obtenerCoords(a.destino_celda, a.destino_mini);
         if (!origen || !destinoBase) return null;
 
-        const destino = aplicarVarianza(
+        let destino = aplicarVarianza(
           destinoBase,
           a.calidad,
           a.zona_tendencia,
           a.id
         );
+
+        let hDestino = ALTURA_MIN_BIEN_ARMADO;
+
+        if (a.calidad >= 5) {
+          destino = acortarDestinoTop(origen, destino);
+          hDestino = ALTURA_TOP_ARMADO;
+        }
 
         const hApex = calcularApex(
           origen,
@@ -297,14 +347,15 @@ export default function CanchaArmador({
           origen,
           destino,
           hApex,
+          hDestino,
           color: COLORES_CALIDAD[a.calidad] ?? "#64748b",
         };
       })
       .filter((t): t is NonNullable<typeof t> => t !== null);
   }, [armados]);
 
-  const RED_X1 = 0.5;
-  const RED_X2 = 12.5;
+  const RED_X1 = 2;
+  const RED_X2 = 11;
   const RED_Y_TOP = 2.43;
   const RED_Y_BOTTOM = 1.43;
 
@@ -354,7 +405,7 @@ export default function CanchaArmador({
       p1: { sx: number; sy: number };
       p2: { sx: number; sy: number };
     }[] = [];
-    const pasos = 36;
+    const pasos = 27;
     for (let i = 0; i <= pasos; i++) {
       const x = RED_X1 + ((RED_X2 - RED_X1) * i) / pasos;
       const abajo = proyectar(x, 0, RED_Y_BOTTOM, vista, escala);
@@ -469,6 +520,7 @@ export default function CanchaArmador({
           t.origen,
           t.destino,
           t.hApex,
+          t.hDestino,
           vista,
           escala,
           t.armado.calidad
@@ -490,7 +542,7 @@ export default function CanchaArmador({
         const destinoAlturaPos = proyectar(
           t.destino.x,
           t.destino.z,
-          ALTURA_MIN_BIEN_ARMADO,
+          t.hDestino,
           vista,
           escala
         );
@@ -504,14 +556,16 @@ export default function CanchaArmador({
               fill={t.color}
               opacity={0.35}
             />
-            <path
-              d={path}
-              fill="none"
-              stroke={t.color}
-              strokeWidth={3}
-              strokeOpacity={0.75}
-              strokeLinecap="round"
-            />
+            {mostrarEstelas && (
+              <path
+                d={path}
+                fill="none"
+                stroke={t.color}
+                strokeWidth={3}
+                strokeOpacity={0.75}
+                strokeLinecap="round"
+              />
+            )}
             <EstrellaValor
               cx={origenFloorPos.sx}
               cy={origenFloorPos.sy}
