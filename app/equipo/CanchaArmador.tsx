@@ -221,8 +221,6 @@ export default function CanchaArmador({
       .filter((t): t is NonNullable<typeof t> => t !== null);
   }, [armados]);
 
-  // ============ LÍNEAS DE LA CANCHA (estilo vóley real) ============
-  // 1. Contorno completo (incluye las columnas laterales "fuera")
   const contornoExt = useMemo(() => {
     const esquinas = [
       proyectar(0, 0, 0, vista, escala),
@@ -233,7 +231,6 @@ export default function CanchaArmador({
     return esquinas.map((p) => `${p.sx},${p.sy}`).join(" ");
   }, [vista, escala]);
 
-  // 2. Cancha interior (9x9)
   const contornoCancha = useMemo(() => {
     const esquinas = [
       proyectar(2, 0, 0, vista, escala),
@@ -244,7 +241,6 @@ export default function CanchaArmador({
     return esquinas.map((p) => `${p.sx},${p.sy}`).join(" ");
   }, [vista, escala]);
 
-  // 3. Línea de ataque (a 3m de la red) — solo en la cancha interior
   const lineaAtaque = useMemo(() => {
     return {
       p1: proyectar(2, 3, 0, vista, escala),
@@ -252,7 +248,6 @@ export default function CanchaArmador({
     };
   }, [vista, escala]);
 
-  // 4. Línea del medio (donde está la red)
   const lineaMedio = useMemo(() => {
     return {
       p1: proyectar(2, 0, 0, vista, escala),
@@ -312,7 +307,7 @@ export default function CanchaArmador({
           "linear-gradient(180deg, #cfe4f7 0%, #b8d8f0 50%, #a8cbe8 100%)",
       }}
     >
-      {/* Piso exterior (más claro, hace de "área externa") */}
+      {/* Piso exterior */}
       <polygon
         points={contornoExt}
         fill="#2563eb"
@@ -321,7 +316,7 @@ export default function CanchaArmador({
         strokeLinejoin="round"
       />
 
-      {/* Cancha interior (más brillante) */}
+      {/* Cancha interior */}
       <polygon
         points={contornoCancha}
         fill="#3b82f6"
@@ -330,7 +325,7 @@ export default function CanchaArmador({
         strokeLinejoin="round"
       />
 
-      {/* Línea del medio (donde está la red, sobre el piso) */}
+      {/* Línea del medio */}
       <line
         x1={lineaMedio.p1.sx}
         y1={lineaMedio.p1.sy}
@@ -341,7 +336,7 @@ export default function CanchaArmador({
         opacity={0.9}
       />
 
-      {/* Línea de ataque (3m) */}
+      {/* Línea de ataque */}
       <line
         x1={lineaAtaque.p1.sx}
         y1={lineaAtaque.p1.sy}
@@ -395,13 +390,6 @@ export default function CanchaArmador({
         const path = generarCurva(
           t.origen,
           t.destino,
-          t.hApex,
-          vista,
-          escala
-        );
-        const apexPos = proyectar(
-          (t.origen.x + t.destino.x) / 2,
-          (t.origen.z + t.destino.z) / 2,
           t.hApex,
           vista,
           escala
@@ -475,21 +463,139 @@ export default function CanchaArmador({
               stroke="white"
               strokeWidth={1.5}
             />
-            {/* Pelota en el apex */}
-            <circle
-              cx={apexPos.sx}
-              cy={apexPos.sy}
-              r={10}
-              fill={t.color}
-              stroke="white"
-              strokeWidth={2.5}
-              style={{
-                filter: `drop-shadow(0 0 8px ${t.color})`,
-              }}
+            {/* Pelota de vóley en el destino */}
+            <VolleyballPelota
+              cx={destinoAlturaPos.sx}
+              cy={destinoAlturaPos.sy}
+              radio={14}
+              colorCalidad={t.color}
             />
           </g>
         );
       })}
     </svg>
+  );
+}
+
+function VolleyballPelota({
+  cx,
+  cy,
+  radio,
+  colorCalidad,
+}: {
+  cx: number;
+  cy: number;
+  radio: number;
+  colorCalidad: string;
+}) {
+  const id = `pelota-${Math.round(cx)}-${Math.round(cy)}`;
+  return (
+    <g
+      style={{
+        filter: `drop-shadow(0 0 ${radio * 0.7}px ${colorCalidad}aa)`,
+      }}
+    >
+      <defs>
+        <radialGradient id={`${id}-base`} cx="35%" cy="30%">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="65%" stopColor="#f5f5f5" />
+          <stop offset="100%" stopColor="#d4d4d4" />
+        </radialGradient>
+        <clipPath id={`${id}-clip`}>
+          <circle cx={cx} cy={cy} r={radio} />
+        </clipPath>
+      </defs>
+
+      {/* Base blanca */}
+      <circle
+        cx={cx}
+        cy={cy}
+        r={radio}
+        fill={`url(#${id}-base)`}
+        stroke="#94a3b8"
+        strokeWidth={0.8}
+      />
+
+      {/* Franjas dentro del clip */}
+      <g clipPath={`url(#${id}-clip)`}>
+        {/* Franja azul 1 */}
+        <path
+          d={`M ${cx - radio} ${cy - radio * 0.4}
+              Q ${cx - radio * 0.3} ${cy - radio * 1.1}
+                ${cx + radio * 0.3} ${cy - radio * 0.8}
+              Q ${cx + radio * 0.6} ${cy - radio * 0.6}
+                ${cx + radio * 0.7} ${cy - radio * 0.2}`}
+          fill="none"
+          stroke="#1e3a8a"
+          strokeWidth={radio * 0.55}
+          strokeLinecap="round"
+          opacity={0.92}
+        />
+        {/* Franja azul 2 */}
+        <path
+          d={`M ${cx + radio * 0.9} ${cy + radio * 0.2}
+              Q ${cx + radio * 0.4} ${cy + radio * 0.7}
+                ${cx - radio * 0.3} ${cy + radio * 0.9}`}
+          fill="none"
+          stroke="#1e3a8a"
+          strokeWidth={radio * 0.5}
+          strokeLinecap="round"
+          opacity={0.92}
+        />
+        {/* Franja amarilla 1 */}
+        <path
+          d={`M ${cx - radio * 0.2} ${cy - radio * 1.1}
+              Q ${cx - radio * 0.1} ${cy}
+                ${cx - radio * 0.5} ${cy + radio * 1.1}`}
+          fill="none"
+          stroke="#eab308"
+          strokeWidth={radio * 0.45}
+          strokeLinecap="round"
+          opacity={0.95}
+        />
+        {/* Franja amarilla 2 */}
+        <path
+          d={`M ${cx - radio * 1.1} ${cy + radio * 0.3}
+              Q ${cx - radio * 0.6} ${cy + radio * 0.5}
+                ${cx - radio * 0.3} ${cy + radio * 1.1}`}
+          fill="none"
+          stroke="#eab308"
+          strokeWidth={radio * 0.4}
+          strokeLinecap="round"
+          opacity={0.95}
+        />
+      </g>
+
+      {/* Brillo superior */}
+      <ellipse
+        cx={cx - radio * 0.35}
+        cy={cy - radio * 0.4}
+        rx={radio * 0.35}
+        ry={radio * 0.22}
+        fill="white"
+        opacity={0.55}
+      />
+
+      {/* Sombra inferior */}
+      <ellipse
+        cx={cx + radio * 0.2}
+        cy={cy + radio * 0.55}
+        rx={radio * 0.5}
+        ry={radio * 0.15}
+        fill="black"
+        opacity={0.12}
+      />
+
+      {/* Aro de calidad */}
+      <circle
+        cx={cx}
+        cy={cy}
+        r={radio + 2}
+        fill="none"
+        stroke={colorCalidad}
+        strokeWidth={1.5}
+        opacity={0.65}
+      />
+    </g>
   );
 }
