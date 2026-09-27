@@ -240,16 +240,15 @@ function calcularApex(
   } else if (calidad >= 4) base = 3.5 + r * 1.0;
   else base = 2.4;
 
-  // A las parábolas más bajas (<= 2.55) les damos un poco más de curva
-  if (base <= 2.55) {
-    base = base + 0.25;
-  }
-
   if (base > ALTURA_TOP_ARMADO) {
     base = base * 0.85;
   }
 
   base = base * 1.05;
+
+  if (base <= 2.75) {
+    base = base + 0.55;
+  }
 
   if (calidad >= 5 && base < ALTURA_RED) base = ALTURA_RED + 0.3;
 
