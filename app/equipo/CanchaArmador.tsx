@@ -60,7 +60,7 @@ const ALTURA_RED = 2.43;
 const ALTURA_MIN_BIEN_ARMADO = 2.64;
 const ALTURA_TOP_ARMADO = 2.7;
 const ALTURA_DESTINO_MEDIA = 2.65;
-const VARIANZA_GENERAL = 0.24; // ±12cm
+const VARIANZA_GENERAL = 0.24;
 
 const ISO_ANGLE_DEG = 22;
 const ISO_COS = Math.cos((ISO_ANGLE_DEG * Math.PI) / 180);
@@ -178,12 +178,17 @@ function calcularDestinoYAltura(
     }
 
     if (a.zona_tendencia === 4) {
-      return { destino: { x: 2 + distVarilla, z: zVar }, hDestino: ALTURA_TOP_ARMADO };
+      return {
+        destino: { x: 2 + distVarilla, z: zVar },
+        hDestino: ALTURA_TOP_ARMADO,
+      };
     }
-    return { destino: { x: 11 - distVarilla, z: zVar }, hDestino: ALTURA_TOP_ARMADO };
+    return {
+      destino: { x: 11 - distVarilla, z: zVar },
+      hDestino: ALTURA_TOP_ARMADO,
+    };
   }
 
-  // Varianza general ±12cm horizontal y vertical, altura media 2.65
   const rx = prand(a.id, "-varx");
   const rz = prand(a.id, "-varz");
   const ry = prand(a.id, "-vary");
@@ -231,7 +236,11 @@ function calcularApex(
   } else if (calidad >= 4) base = 3.5 + r * 1.0;
   else base = 2.4;
 
-  if (base > ALTURA_TOP_ARMADO) base = base * 0.85;
+  if (base > ALTURA_TOP_ARMADO) {
+    base = base * 0.85;
+  }
+
+  base = base * 1.05;
 
   if (calidad >= 5 && base < ALTURA_RED) base = ALTURA_RED + 0.3;
 
