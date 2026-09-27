@@ -12,14 +12,14 @@ interface Props {
   jugadorId?: string | null;
 }
 
-const CALIDADES: { valor: number; label: string }[] = [
-  { valor: 1, label: "Horrible" },
-  { valor: 2, label: "Malo" },
-  { valor: 3, label: "Flojo" },
-  { valor: 4, label: "Correcto" },
-  { valor: 5, label: "Perfecto" },
-  { valor: 6, label: "Genial" },
-];
+const COLORES_CALIDAD: Record<number, string> = {
+  1: "#dc2626",
+  2: "#ea580c",
+  3: "#eab308",
+  4: "#84cc16",
+  5: "#16a34a",
+  6: "#059669",
+};
 
 const VISTAS: { id: Vista; label: string }[] = [
   { id: "iso", label: "Isométrica" },
@@ -35,6 +35,7 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
   const [filtroSet, setFiltroSet] = useState<number | "todos">("todos");
   const [filtroZona, setFiltroZona] = useState<number | null>(null);
   const [filtroPunto, setFiltroPunto] = useState<number | "todos">("todos");
+  const [filtrosCalidad, setFiltrosCalidad] = useState<number[]>([]);
   const [puntoActual, setPuntoActual] = useState(1);
 
   useEffect(() => {
@@ -96,9 +97,11 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
       if (filtroZona !== null && a.zona_tendencia !== filtroZona) return false;
       if (filtroPunto !== "todos" && a.punto_numero !== filtroPunto)
         return false;
+      if (filtrosCalidad.length > 0 && !filtrosCalidad.includes(a.calidad))
+        return false;
       return true;
     });
-  }, [armados, filtroSet, filtroZona, filtroPunto]);
+  }, [armados, filtroSet, filtroZona, filtroPunto, filtrosCalidad]);
 
   const totalArmados = armados.length;
 
@@ -257,9 +260,91 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
                 onClick={() => setFiltroZona(null)}
                 className="px-3 py-1 text-xs rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
               >
-                ✕ Quitar
+                ✕ Quitar zona
               </button>
             )}
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <label className="block text-xs font-medium text-slate-500 mb-1">
+            Calidad (click para filtrar, múltiples)
+          </label>
+          <div className="flex flex-wrap gap-1">
+            <button
+              onClick={() => setFiltrosCalidad([])}
+              className={`px-2.5 py-1 text-xs rounded-lg border transition ${
+                filtrosCalidad.length === 0
+                  ? "bg-slate-800 text-white border-slate-800"
+                  : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              Todas
+            </button>
+            <button
+              onClick={() => setFiltrosCalidad([1, 2])}
+              className={`px-2.5 py-1 text-xs rounded-lg border transition ${
+                filtrosCalidad.length === 2 &&
+                filtrosCalidad.includes(1) &&
+                filtrosCalidad.includes(2)
+                  ? "bg-red-500 text-white border-red-500"
+                  : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              Malas (1-2)
+            </button>
+            <button
+              onClick={() => setFiltrosCalidad([3, 4])}
+              className={`px-2.5 py-1 text-xs rounded-lg border transition ${
+                filtrosCalidad.length === 2 &&
+                filtrosCalidad.includes(3) &&
+                filtrosCalidad.includes(4)
+                  ? "bg-yellow-500 text-white border-yellow-500"
+                  : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              Medias (3-4)
+            </button>
+            <button
+              onClick={() => setFiltrosCalidad([5, 6])}
+              className={`px-2.5 py-1 text-xs rounded-lg border transition ${
+                filtrosCalidad.length === 2 &&
+                filtrosCalidad.includes(5) &&
+                filtrosCalidad.includes(6)
+                  ? "bg-green-600 text-white border-green-600"
+                  : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              Buenas (5-6)
+            </button>
+            {[1, 2, 3, 4, 5, 6].map((c) => {
+              const color = COLORES_CALIDAD[c];
+              const activo = filtrosCalidad.includes(c);
+              return (
+                <button
+                  key={c}
+                  onClick={() => {
+                    if (activo) {
+                      setFiltrosCalidad(
+                        filtrosCalidad.filter((x) => x !== c)
+                      );
+                    } else {
+                      setFiltrosCalidad([...filtrosCalidad, c]);
+                    }
+                  }}
+                  className={`w-8 h-7 text-xs rounded-lg border-2 font-bold transition ${
+                    activo ? "text-white" : "bg-white text-slate-600"
+                  }`}
+                  style={
+                    activo
+                      ? { backgroundColor: color, borderColor: color }
+                      : { borderColor: color }
+                  }
+                >
+                  {c}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -269,23 +354,13 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
           </span>
           <div className="flex items-center gap-3">
             <span className="font-medium text-slate-600">Calidad:</span>
-            {CALIDADES.map((c) => (
-              <span key={c.valor} className="flex items-center gap-1">
+            {[1, 2, 3, 4, 5, 6].map((c) => (
+              <span key={c} className="flex items-center gap-1">
                 <span
                   className="w-3 h-3 rounded-full"
-                  style={{
-                    backgroundColor:
-                      {
-                        1: "#dc2626",
-                        2: "#ea580c",
-                        3: "#eab308",
-                        4: "#84cc16",
-                        5: "#16a34a",
-                        6: "#059669",
-                      }[c.valor] ?? "#64748b",
-                  }}
+                  style={{ backgroundColor: COLORES_CALIDAD[c] }}
                 />
-                <span>{c.valor}</span>
+                <span>{c}</span>
               </span>
             ))}
           </div>

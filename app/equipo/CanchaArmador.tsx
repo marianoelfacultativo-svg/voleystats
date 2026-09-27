@@ -49,6 +49,37 @@ const FILA_Z: Record<string, [number, number]> = {
   F3: [6, 9],
 };
 
+function hashSeed(str: string): number {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = (h << 5) + h + str.charCodeAt(i);
+    h = h & h;
+  }
+  return Math.abs(h);
+}
+
+function prand(seed: string, key: string): number {
+  const h = hashSeed(seed + key);
+  return (h % 100000) / 100000;
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.substring(0, 2), 16),
+    parseInt(h.substring(2, 4), 16),
+    parseInt(h.substring(4, 6), 16),
+  ];
+}
+
+function mezclarConBlanco(hex: string, cantidad: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  const nr = Math.round(r + (255 - r) * cantidad);
+  const ng = Math.round(g + (255 - g) * cantidad);
+  const nb = Math.round(b + (255 - b) * cantidad);
+  return `rgb(${nr}, ${ng}, ${nb})`;
+}
+
 function obtenerCoords(
   celda: string,
   mini: string | null
@@ -83,12 +114,33 @@ function obtenerCoords(
   };
 }
 
-function pseudoRandom(seed: string): number {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+function aplicarVarianza(
+  destino: { x: number; z: number },
+  calidad: number,
+  zonaTendencia: number | null,
+  seed: string
+): { x: number; z: number } {
+  if (
+    calidad >= 5 &&
+    (zonaTendencia === 4 || zonaTendencia === 2 || zonaTendencia === 1)
+  ) {
+    const r = prand(seed, "-var-z");
+    if (zonaTendencia === 4) {
+      return { x: 2 + 0.21, z: 0.5 + r * 2.0 };
+    }
+    if (zonaTendencia === 2) {
+      return { x: 11 - 0.21, z: 0.5 + r * 2.0 };
+    }
+    if (zonaTendencia === 1) {
+      return { x: 11 - 0.21, z: 6.5 + r * 2.0 };
+    }
   }
-  return Math.abs(hash % 10000) / 10000;
+  const rx = prand(seed, "-var-x");
+  const rz = prand(seed, "-var-z");
+  return {
+    x: destino.x + (rx - 0.5) * 0.3,
+    z: destino.z + (rz - 0.5) * 0.3,
+  };
 }
 
 function calcularApex(
@@ -103,7 +155,7 @@ function calcularApex(
     (destino.x - origen.x) ** 2 + (destino.z - origen.z) ** 2
   );
   const [fila, col] = celda.split("-");
-  const r = pseudoRandom(seed);
+  const r = prand(seed, "-apex");
 
   if (distancia > 5) return 4.5 + r * 0.5;
   if (fila === "F3") return 4.5 + r * 0.5;
@@ -171,7 +223,7 @@ function generarCurva(
   vista: Vista,
   escala: number
 ): string {
-  const hOrigen = 2.35;
+  const hOrigen = 0.1;
   const hDestino = 2.64;
   const pasos = 24;
   let path = "";
@@ -200,8 +252,16 @@ export default function CanchaArmador({
     return armados
       .map((a) => {
         const origen = obtenerCoords(a.origen_celda, a.origen_mini);
-        const destino = obtenerCoords(a.destino_celda, a.destino_mini);
-        if (!origen || !destino) return null;
+        const destinoBase = obtenerCoords(a.destino_celda, a.destino_mini);
+        if (!origen || !destinoBase) return null;
+
+        const destino = aplicarVarianza(
+          destinoBase,
+          a.calidad,
+          a.zona_tendencia,
+          a.id
+        );
+
         const hApex = calcularApex(
           origen,
           destino,
@@ -210,6 +270,7 @@ export default function CanchaArmador({
           a.calidad,
           a.id
         );
+
         return {
           armado: a,
           origen,
@@ -220,6 +281,9 @@ export default function CanchaArmador({
       })
       .filter((t): t is NonNullable<typeof t> => t !== null);
   }, [armados]);
+
+  const RED_X1 = 0.5;
+  const RED_X2 = 12.5;
 
   const contornoExt = useMemo(() => {
     const esquinas = [
@@ -257,8 +321,8 @@ export default function CanchaArmador({
 
   const red = useMemo(() => {
     return {
-      p1: proyectar(2, 0, 2.43, vista, escala),
-      p2: proyectar(11, 0, 2.43, vista, escala),
+      p1: proyectar(RED_X1, 0, 2.43, vista, escala),
+      p2: proyectar(RED_X2, 0, 2.43, vista, escala),
     };
   }, [vista, escala]);
 
@@ -267,17 +331,17 @@ export default function CanchaArmador({
       p1: { sx: number; sy: number };
       p2: { sx: number; sy: number };
     }[] = [];
-    const pasos = 30;
+    const pasos = 36;
     for (let i = 0; i <= pasos; i++) {
-      const x = 2 + (9 * i) / pasos;
+      const x = RED_X1 + ((RED_X2 - RED_X1) * i) / pasos;
       const abajo = proyectar(x, 0, 2.0, vista, escala);
       const arriba = proyectar(x, 0, 2.43, vista, escala);
       lineas.push({ p1: abajo, p2: arriba });
     }
     for (let j = 0; j <= 3; j++) {
       const h = 2.0 + (0.43 * j) / 3;
-      const izq = proyectar(2, 0, h, vista, escala);
-      const der = proyectar(11, 0, h, vista, escala);
+      const izq = proyectar(RED_X1, 0, h, vista, escala);
+      const der = proyectar(RED_X2, 0, h, vista, escala);
       lineas.push({ p1: izq, p2: der });
     }
     return lineas;
@@ -286,12 +350,12 @@ export default function CanchaArmador({
   const redPostes = useMemo(() => {
     return [
       {
-        p1: proyectar(2, 0, 0, vista, escala),
-        p2: proyectar(2, 0, 2.43, vista, escala),
+        p1: proyectar(RED_X1, 0, 0, vista, escala),
+        p2: proyectar(RED_X1, 0, 2.43, vista, escala),
       },
       {
-        p1: proyectar(11, 0, 0, vista, escala),
-        p2: proyectar(11, 0, 2.43, vista, escala),
+        p1: proyectar(RED_X2, 0, 0, vista, escala),
+        p2: proyectar(RED_X2, 0, 2.43, vista, escala),
       },
     ];
   }, [vista, escala]);
@@ -307,7 +371,6 @@ export default function CanchaArmador({
           "linear-gradient(180deg, #cfe4f7 0%, #b8d8f0 50%, #a8cbe8 100%)",
       }}
     >
-      {/* Piso exterior */}
       <polygon
         points={contornoExt}
         fill="#2563eb"
@@ -315,8 +378,6 @@ export default function CanchaArmador({
         strokeWidth={2}
         strokeLinejoin="round"
       />
-
-      {/* Cancha interior */}
       <polygon
         points={contornoCancha}
         fill="#3b82f6"
@@ -324,8 +385,6 @@ export default function CanchaArmador({
         strokeWidth={3}
         strokeLinejoin="round"
       />
-
-      {/* Línea del medio */}
       <line
         x1={lineaMedio.p1.sx}
         y1={lineaMedio.p1.sy}
@@ -335,8 +394,6 @@ export default function CanchaArmador({
         strokeWidth={2}
         opacity={0.9}
       />
-
-      {/* Línea de ataque */}
       <line
         x1={lineaAtaque.p1.sx}
         y1={lineaAtaque.p1.sy}
@@ -347,7 +404,6 @@ export default function CanchaArmador({
         opacity={0.85}
       />
 
-      {/* Red: malla */}
       {redMalla.map((l, i) => (
         <line
           key={`malla-${i}`}
@@ -361,7 +417,6 @@ export default function CanchaArmador({
         />
       ))}
 
-      {/* Red: línea superior */}
       <line
         x1={red.p1.sx}
         y1={red.p1.sy}
@@ -371,7 +426,6 @@ export default function CanchaArmador({
         strokeWidth={2.5}
       />
 
-      {/* Red: postes */}
       {redPostes.map((p, i) => (
         <line
           key={`poste-${i}`}
@@ -385,7 +439,6 @@ export default function CanchaArmador({
         />
       ))}
 
-      {/* Trayectorias */}
       {trayectorias.map((t, i) => {
         const path = generarCurva(
           t.origen,
@@ -394,10 +447,10 @@ export default function CanchaArmador({
           vista,
           escala
         );
-        const origenPos = proyectar(
+        const origenFloorPos = proyectar(
           t.origen.x,
           t.origen.z,
-          2.35,
+          0,
           vista,
           escala
         );
@@ -418,34 +471,13 @@ export default function CanchaArmador({
 
         return (
           <g key={i}>
-            {/* Línea vertical en el destino */}
-            <line
-              x1={destinoPos.sx}
-              y1={destinoPos.sy}
-              x2={destinoAlturaPos.sx}
-              y2={destinoAlturaPos.sy}
-              stroke={t.color}
-              strokeWidth={1.5}
-              strokeDasharray="3 3"
-              opacity={0.5}
-            />
-            {/* Marca del destino en el piso */}
             <circle
               cx={destinoPos.sx}
               cy={destinoPos.sy}
-              r={8}
+              r={6}
               fill={t.color}
               opacity={0.35}
             />
-            <circle
-              cx={destinoPos.sx}
-              cy={destinoPos.sy}
-              r={3.5}
-              fill={t.color}
-              stroke="white"
-              strokeWidth={1}
-            />
-            {/* Estela */}
             <path
               d={path}
               fill="none"
@@ -454,16 +486,13 @@ export default function CanchaArmador({
               strokeOpacity={0.75}
               strokeLinecap="round"
             />
-            {/* Origen */}
-            <circle
-              cx={origenPos.sx}
-              cy={origenPos.sy}
-              r={4.5}
-              fill={t.color}
-              stroke="white"
-              strokeWidth={1.5}
+            <EstrellaValor
+              cx={origenFloorPos.sx}
+              cy={origenFloorPos.sy}
+              radio={15}
+              colorCalidad={t.color}
+              valor={t.armado.calidad}
             />
-            {/* Pelota de vóley en el destino */}
             <VolleyballPelota
               cx={destinoAlturaPos.sx}
               cy={destinoAlturaPos.sy}
@@ -474,6 +503,52 @@ export default function CanchaArmador({
         );
       })}
     </svg>
+  );
+}
+
+function EstrellaValor({
+  cx,
+  cy,
+  radio,
+  colorCalidad,
+  valor,
+}: {
+  cx: number;
+  cy: number;
+  radio: number;
+  colorCalidad: string;
+  valor: number;
+}) {
+  const pts: string[] = [];
+  const puntoInterno = radio * 0.42;
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 === 0 ? radio : puntoInterno;
+    const angulo = (Math.PI / 5) * i - Math.PI / 2;
+    const x = cx + r * Math.cos(angulo);
+    const y = cy + r * Math.sin(angulo);
+    pts.push(`${x},${y}`);
+  }
+  return (
+    <g>
+      <polygon
+        points={pts.join(" ")}
+        fill={colorCalidad}
+        stroke="white"
+        strokeWidth={2}
+        strokeLinejoin="round"
+      />
+      <text
+        x={cx}
+        y={cy + radio * 0.05}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fontSize={radio * 0.95}
+        fontWeight="bold"
+        fill="white"
+      >
+        {valor}
+      </text>
+    </g>
   );
 }
 
@@ -492,21 +567,26 @@ function VolleyballPelota({
   return (
     <g
       style={{
-        filter: `drop-shadow(0 0 ${radio * 0.7}px ${colorCalidad}aa)`,
+        filter: `drop-shadow(0 0 ${radio * 0.6}px ${colorCalidad}aa)`,
       }}
     >
       <defs>
         <radialGradient id={`${id}-base`} cx="35%" cy="30%">
           <stop offset="0%" stopColor="#ffffff" />
-          <stop offset="65%" stopColor="#f5f5f5" />
-          <stop offset="100%" stopColor="#d4d4d4" />
+          <stop
+            offset="55%"
+            stopColor={mezclarConBlanco(colorCalidad, 0.68)}
+          />
+          <stop
+            offset="100%"
+            stopColor={mezclarConBlanco(colorCalidad, 0.4)}
+          />
         </radialGradient>
         <clipPath id={`${id}-clip`}>
           <circle cx={cx} cy={cy} r={radio} />
         </clipPath>
       </defs>
 
-      {/* Base blanca */}
       <circle
         cx={cx}
         cy={cy}
@@ -516,9 +596,7 @@ function VolleyballPelota({
         strokeWidth={0.8}
       />
 
-      {/* Franjas dentro del clip */}
       <g clipPath={`url(#${id}-clip)`}>
-        {/* Franja azul 1 */}
         <path
           d={`M ${cx - radio} ${cy - radio * 0.4}
               Q ${cx - radio * 0.3} ${cy - radio * 1.1}
@@ -529,9 +607,8 @@ function VolleyballPelota({
           stroke="#1e3a8a"
           strokeWidth={radio * 0.55}
           strokeLinecap="round"
-          opacity={0.92}
+          opacity={0.9}
         />
-        {/* Franja azul 2 */}
         <path
           d={`M ${cx + radio * 0.9} ${cy + radio * 0.2}
               Q ${cx + radio * 0.4} ${cy + radio * 0.7}
@@ -540,33 +617,30 @@ function VolleyballPelota({
           stroke="#1e3a8a"
           strokeWidth={radio * 0.5}
           strokeLinecap="round"
-          opacity={0.92}
+          opacity={0.9}
         />
-        {/* Franja amarilla 1 */}
         <path
           d={`M ${cx - radio * 0.2} ${cy - radio * 1.1}
               Q ${cx - radio * 0.1} ${cy}
                 ${cx - radio * 0.5} ${cy + radio * 1.1}`}
           fill="none"
-          stroke="#eab308"
+          stroke={colorCalidad}
           strokeWidth={radio * 0.45}
           strokeLinecap="round"
           opacity={0.95}
         />
-        {/* Franja amarilla 2 */}
         <path
           d={`M ${cx - radio * 1.1} ${cy + radio * 0.3}
               Q ${cx - radio * 0.6} ${cy + radio * 0.5}
                 ${cx - radio * 0.3} ${cy + radio * 1.1}`}
           fill="none"
-          stroke="#eab308"
+          stroke={colorCalidad}
           strokeWidth={radio * 0.4}
           strokeLinecap="round"
           opacity={0.95}
         />
       </g>
 
-      {/* Brillo superior */}
       <ellipse
         cx={cx - radio * 0.35}
         cy={cy - radio * 0.4}
@@ -575,8 +649,6 @@ function VolleyballPelota({
         fill="white"
         opacity={0.55}
       />
-
-      {/* Sombra inferior */}
       <ellipse
         cx={cx + radio * 0.2}
         cy={cy + radio * 0.55}
@@ -584,17 +656,6 @@ function VolleyballPelota({
         ry={radio * 0.15}
         fill="black"
         opacity={0.12}
-      />
-
-      {/* Aro de calidad */}
-      <circle
-        cx={cx}
-        cy={cy}
-        r={radio + 2}
-        fill="none"
-        stroke={colorCalidad}
-        strokeWidth={1.5}
-        opacity={0.65}
       />
     </g>
   );
