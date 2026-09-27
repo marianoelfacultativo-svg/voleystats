@@ -60,7 +60,10 @@ const ALTURA_RED = 2.43;
 const ALTURA_MIN_BIEN_ARMADO = 2.64;
 const ALTURA_TOP_ARMADO = 2.7;
 const ALTURA_DESTINO_MEDIA = 2.65;
+const ALTURA_ORIGEN_ARMADO = 2.35;
 const VARIANZA_GENERAL = 0.24;
+
+const RADIO_PELOTA = 9;
 
 const ISO_ANGLE_DEG = 22;
 const ISO_COS = Math.cos((ISO_ANGLE_DEG * Math.PI) / 180);
@@ -73,6 +76,7 @@ const RED_X1 = 2;
 const RED_X2 = 11;
 const RED_Y_TOP = 2.43;
 const RED_Y_BOTTOM = 1.43;
+const ALTURA_VARILLA = 1.0;
 
 function hashSeed(str: string): number {
   let h = 5381;
@@ -316,7 +320,7 @@ function generarCurva(
   escala: number,
   calidad: number
 ): string {
-  const hOrigen = 0.1;
+  const hOrigen = ALTURA_ORIGEN_ARMADO;
   const pasos = 24;
   let path = "";
   for (let i = 0; i <= pasos; i++) {
@@ -464,8 +468,7 @@ export default function CanchaArmador({
       color: string;
     }[] = [];
     const segmentos = 4;
-    const alturaVarilla = 0.8;
-    const alturaSeg = alturaVarilla / segmentos;
+    const alturaSeg = ALTURA_VARILLA / segmentos;
     for (const x of [RED_X1, RED_X2]) {
       for (let i = 0; i < segmentos; i++) {
         const y1 = RED_Y_TOP + i * alturaSeg;
@@ -582,10 +585,10 @@ export default function CanchaArmador({
           escala,
           t.armado.calidad
         );
-        const origenFloorPos = proyectar(
+        const origenAlturaPos = proyectar(
           t.origen.x,
           t.origen.z,
-          0,
+          ALTURA_ORIGEN_ARMADO,
           vista,
           escala
         );
@@ -624,8 +627,8 @@ export default function CanchaArmador({
               />
             )}
             <EstrellaValor
-              cx={origenFloorPos.sx}
-              cy={origenFloorPos.sy}
+              cx={origenAlturaPos.sx}
+              cy={origenAlturaPos.sy}
               radio={10}
               colorCalidad={t.color}
               valor={t.armado.calidad}
@@ -633,7 +636,7 @@ export default function CanchaArmador({
             <VolleyballPelota
               cx={destinoAlturaPos.sx}
               cy={destinoAlturaPos.sy}
-              radio={11}
+              radio={RADIO_PELOTA}
               colorCalidad={t.color}
             />
           </g>
