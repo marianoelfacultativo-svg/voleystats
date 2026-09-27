@@ -17,7 +17,7 @@ export interface ArmadoDetalle {
   armador_numero: number;
 }
 
-export type Vista = "top" | "front" | "iso";
+export type Vista = "top" | "front" | "iso" | "iso-opuesta";
 
 interface Props {
   armados: ArmadoDetalle[];
@@ -51,6 +51,14 @@ const FILA_Z: Record<string, [number, number]> = {
 
 const ALTURA_RED = 2.43;
 const ALTURA_MIN_BIEN_ARMADO = 2.64;
+
+// Ángulo de la vista isométrica (más bajo = más al ras del suelo)
+const ISO_ANGLE_DEG = 22;
+const ISO_COS = Math.cos((ISO_ANGLE_DEG * Math.PI) / 180);
+const ISO_SIN = Math.sin((ISO_ANGLE_DEG * Math.PI) / 180);
+
+// Factor de profundidad de la vista frontal (más bajo = más al ras del suelo)
+const FRONT_Z_FACTOR = 0.12;
 
 function hashSeed(str: string): number {
   let h = 5381;
@@ -178,7 +186,6 @@ function calcularApex(
   } else if (calidad >= 4) base = 3.5 + r * 1.0;
   else base = 2.4;
 
-  // Regla: buena calidad (5-6) nunca por debajo de la red
   if (calidad >= 5 && base < ALTURA_RED) base = ALTURA_RED + 0.3;
 
   return base;
@@ -188,8 +195,9 @@ const ESCALA = 45;
 
 const OFFSET = {
   top: { x: 150, y: 100 },
-  front: { x: 150, y: 500 },
-  iso: { x: 400, y: 250 },
+  front: { x: 150, y: 520 },
+  iso: { x: 400, y: 270 },
+  isoOpuesta: { x: 590, y: 270 },
 };
 
 function proyectar(
@@ -208,16 +216,18 @@ function proyectar(
     case "front":
       return {
         sx: x * escala + OFFSET.front.x,
-        sy: -y * escala + z * escala * 0.35 + OFFSET.front.y,
+        sy: -y * escala + z * escala * FRONT_Z_FACTOR + OFFSET.front.y,
       };
-    case "iso": {
-      const cos30 = 0.866;
-      const sin30 = 0.5;
+    case "iso":
       return {
-        sx: (x - z) * cos30 * escala + OFFSET.iso.x,
-        sy: (x + z) * sin30 * escala - y * escala + OFFSET.iso.y,
+        sx: (x - z) * ISO_COS * escala + OFFSET.iso.x,
+        sy: (x + z) * ISO_SIN * escala - y * escala + OFFSET.iso.y,
       };
-    }
+    case "iso-opuesta":
+      return {
+        sx: (z - x) * ISO_COS * escala + OFFSET.isoOpuesta.x,
+        sy: (x + z) * ISO_SIN * escala - y * escala + OFFSET.isoOpuesta.y,
+      };
   }
 }
 
@@ -241,8 +251,6 @@ function generarCurva(
     let altura =
       hBase + 4 * t * (1 - t) * (hApex - (hOrigen + hDestino) / 2);
 
-    // Regla: si es armado bueno (5-6), después de pasar la altura de la red
-    // nunca baja de la red
     if (calidad >= 5 && altura < ALTURA_RED && t > 0.4) {
       altura = ALTURA_RED;
     }

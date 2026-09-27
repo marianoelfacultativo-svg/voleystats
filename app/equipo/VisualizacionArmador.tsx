@@ -23,6 +23,7 @@ const COLORES_CALIDAD: Record<number, string> = {
 
 const VISTAS: { id: Vista; label: string }[] = [
   { id: "iso", label: "Isométrica" },
+  { id: "iso-opuesta", label: "Isométrica opuesta" },
   { id: "top", label: "Superior" },
   { id: "front", label: "Frontal" },
 ];
@@ -219,7 +220,7 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
             <label className="block text-xs font-medium text-slate-500 mb-1">
               Vista
             </label>
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
               {VISTAS.map((v) => (
                 <button
                   key={v.id}
