@@ -2,13 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  COLUMNAS,
   celdasDeContexto,
   centroDeMini,
   esCanchaRival,
   keyPunto,
   minisDeCelda,
-  parseKeyPunto,
   zonaDeOrigenAtaque,
   type Celda,
 } from "@/lib/cancha";
@@ -30,7 +28,12 @@ interface Punto {
 
 interface Props {
   ataquesDelPunto: AtaqueRow[];
-  onAgregar: (ataque: Omit<AtaqueRow, "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero">) => void;
+  onAgregar: (
+    a: Omit<
+      AtaqueRow,
+      "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero"
+    >
+  ) => void;
   onBorrarUltimo: () => void;
   atacanteSugerido: string | null;
 }
@@ -67,7 +70,6 @@ export default function CanchaAtaque({
     };
   }, []);
 
-  // ---- Lógica de clicks ----
   const clickPunto = (p: Punto) => {
     if (fase === "origen") {
       setOrigen(p);
@@ -109,12 +111,10 @@ export default function CanchaAtaque({
     setPreview(null);
   };
 
-  // ---- Teclado ----
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT") return;
-
       if (e.key === "Escape") {
         reset();
         return;
@@ -127,7 +127,6 @@ export default function CanchaAtaque({
     return () => window.removeEventListener("keydown", onKey);
   }, [fase, esperaDesvio]);
 
-  // ---- Preview de la línea al mover el mouse ----
   useEffect(() => {
     if (fase !== "navegando" || !origen) {
       setPreview(null);
@@ -143,15 +142,17 @@ export default function CanchaAtaque({
     return () => window.removeEventListener("mousemove", onMove);
   }, [fase, origen]);
 
-  // ---- Celdas ----
   const celdas = useMemo(() => celdasDeContexto("ataque"), []);
 
-  // ---- Render de cada celda ----
   const renderCelda = (celda: Celda, tipo: "mini33" | "mini32" | "single") => {
     const minis = tipo === "single" ? [] : minisDeCelda(celda, "ataque");
     const esRival = esCanchaRival(celda.split("-")[0] as any);
-    const bgBase = esRival ? "bg-orange-50 border-orange-300" : "bg-emerald-50 border-emerald-400";
-    const bgMini = esRival ? "bg-orange-200 hover:bg-orange-300" : "bg-emerald-200 hover:bg-emerald-300";
+    const bgBase = esRival
+      ? "bg-orange-50 border-orange-300"
+      : "bg-emerald-50 border-emerald-400";
+    const bgMini = esRival
+      ? "bg-orange-200 hover:bg-orange-300"
+      : "bg-emerald-200 hover:bg-emerald-300";
 
     if (tipo === "single") {
       const k = celda;
@@ -160,7 +161,7 @@ export default function CanchaAtaque({
           key={celda}
           ref={(el) => registrar(k, el)}
           onClick={() => clickPunto({ celda, mini: null })}
-          className={`rounded-lg cursor-pointer border-2 min-h-[60px] ${bgBase} hover:brightness-95`}
+          className={`rounded-md cursor-pointer border-2 min-h-[40px] ${bgBase} hover:brightness-95`}
         />
       );
     }
@@ -170,8 +171,12 @@ export default function CanchaAtaque({
     return (
       <div
         key={celda}
-        className={`rounded-lg border-2 p-1 ${bgBase}`}
-        style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 2 }}
+        className={`rounded-md border-2 p-0.5 ${bgBase}`}
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(${cols}, 1fr)`,
+          gap: 1,
+        }}
       >
         {minis.map((m) => {
           const k = `${celda}-${m}`;
@@ -180,7 +185,7 @@ export default function CanchaAtaque({
               key={m}
               ref={(el) => registrar(k, el)}
               onClick={() => clickPunto({ celda, mini: m })}
-              className={`min-h-[18px] rounded-sm cursor-pointer ${bgMini}`}
+              className={`min-h-[14px] rounded-sm cursor-pointer ${bgMini}`}
             />
           );
         })}
@@ -188,13 +193,9 @@ export default function CanchaAtaque({
     );
   };
 
-  // ---- Dibujado de líneas de ataques ya guardados + actual ----
   const lineasGuardadas = useMemo(() => {
     return ataquesDelPunto
       .map((a) => {
-        const o = centroDeMini(a.origen_celda as Celda, a.origen_mini, "ataque");
-        const d = centroDeMini(a.destino_celda as Celda, a.destino_mini, "ataque");
-        if (!o || !d) return null;
         const oKey = keyPunto(a.origen_celda, a.origen_mini);
         const dKey = keyPunto(a.destino_celda, a.destino_mini);
         const posO = posicion(oKey);
@@ -221,8 +222,7 @@ export default function CanchaAtaque({
     : null;
 
   return (
-    <div>
-      {/* Barra de estado */}
+    <div className="max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-3 text-xs">
         <div className="flex items-center gap-2">
           <span className="font-semibold text-slate-600">Ataque:</span>
@@ -237,7 +237,7 @@ export default function CanchaAtaque({
           </span>
           {esperaDesvio && (
             <span className="px-2 py-1 rounded bg-amber-500 text-white font-semibold">
-              Modo desvío activo — clic en dónde toca
+              Modo desvío activo
             </span>
           )}
         </div>
@@ -261,44 +261,51 @@ export default function CanchaAtaque({
 
       {atacanteSugerido && (
         <div className="mb-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-1.5">
-          Atacante sugerido por rotación y zona: <strong>{atacanteSugerido}</strong>
+          Atacante sugerido: <strong>{atacanteSugerido}</strong>
         </div>
       )}
 
-      {/* Cancha */}
       <div ref={containerRef} className="relative select-none">
-        <div className="grid grid-cols-5 gap-1.5">
-          {/* F1, F2, F3 (propias) */}
+        <div className="text-[10px] font-bold text-emerald-700 text-center mb-1 tracking-wide">
+          ▲ TU CANCHA ▲
+        </div>
+
+        <div className="grid grid-cols-5 gap-1">
           {celdas.slice(0, 15).map(({ celda, tipo }) => renderCelda(celda, tipo))}
+        </div>
 
-          {/* RED */}
-          <div className="col-span-5 flex items-center justify-center my-1">
-            <div className="w-full h-2 bg-slate-800 rounded" />
+        <div className="flex items-center justify-center my-1.5 gap-2">
+          <div className="flex-1 h-0.5 bg-slate-300" />
+          <div className="px-2 py-0.5 bg-slate-800 text-white text-[9px] font-bold rounded">
+            RED
           </div>
+          <div className="flex-1 h-0.5 bg-slate-300" />
+        </div>
 
-          {/* F4, F5, F6 (rivales) */}
+        <div className="text-[10px] font-bold text-orange-700 text-center mb-1 tracking-wide">
+          ▼ CANCHA RIVAL ▼
+        </div>
+
+        <div className="grid grid-cols-5 gap-1">
           {celdas.slice(15).map(({ celda, tipo }) => renderCelda(celda, tipo))}
         </div>
 
-        {/* SVG con líneas */}
         <svg className="absolute inset-0 pointer-events-none" style={{ width: "100%", height: "100%" }}>
-          {/* Ataques guardados */}
           {lineasGuardadas.map((l, i) => (
             <g key={i}>
-              <line x1={l.o.x} y1={l.o.y} x2={l.d.x} y2={l.d.y} stroke={l.color} strokeWidth={3} strokeLinecap="round" opacity={0.85} />
+              <line x1={l.o.x} y1={l.o.y} x2={l.d.x} y2={l.d.y} stroke={l.color} strokeWidth={2.5} strokeLinecap="round" opacity={0.85} />
               {l.desvios.map((dv, j) => (
-                <circle key={j} cx={dv.x} cy={dv.y} r={4} fill={l.color} />
+                <circle key={j} cx={dv.x} cy={dv.y} r={3} fill={l.color} />
               ))}
-              <circle cx={l.o.x} cy={l.o.y} r={5} fill={l.color} stroke="white" strokeWidth={1.5} />
-              <circle cx={l.d.x} cy={l.d.y} r={7} fill={l.color} stroke="white" strokeWidth={2} />
+              <circle cx={l.o.x} cy={l.o.y} r={4} fill={l.color} stroke="white" strokeWidth={1.5} />
+              <circle cx={l.d.x} cy={l.d.y} r={6} fill={l.color} stroke="white" strokeWidth={2} />
             </g>
           ))}
 
-          {/* Preview actual */}
           {origenPos && (
             <>
               {desviosPos.map((dv, i) => (
-                <circle key={i} cx={dv.x} cy={dv.y} r={4} fill="#10b981" stroke="white" strokeWidth={1.5} />
+                <circle key={i} cx={dv.x} cy={dv.y} r={3} fill="#10b981" stroke="white" strokeWidth={1.5} />
               ))}
               {destinoPos && (
                 <line
@@ -307,7 +314,7 @@ export default function CanchaAtaque({
                   x2={destinoPos.x}
                   y2={destinoPos.y}
                   stroke="#10b981"
-                  strokeWidth={3}
+                  strokeWidth={2.5}
                 />
               )}
               {!destinoPos && preview && (
@@ -322,12 +329,11 @@ export default function CanchaAtaque({
                   opacity={0.7}
                 />
               )}
-              <circle cx={origenPos.x} cy={origenPos.y} r={6} fill="#10b981" stroke="white" strokeWidth={2} />
+              <circle cx={origenPos.x} cy={origenPos.y} r={5} fill="#10b981" stroke="white" strokeWidth={2} />
             </>
           )}
         </svg>
 
-        {/* Selector de valoración */}
         {fase === "valoracion" && destinoPos && (
           <div
             className="absolute z-50 bg-white border-2 border-slate-300 rounded-xl shadow-lg p-2 flex gap-1"
@@ -337,25 +343,13 @@ export default function CanchaAtaque({
               transform: "translate(-50%, calc(-100% - 10px))",
             }}
           >
-            <button
-              onClick={() => elegirValoracion("punto")}
-              className="px-3 py-2 rounded-lg text-white text-xs font-bold"
-              style={{ backgroundColor: COLORES.punto }}
-            >
+            <button onClick={() => elegirValoracion("punto")} className="px-3 py-2 rounded-lg text-white text-xs font-bold" style={{ backgroundColor: COLORES.punto }}>
               Punto
             </button>
-            <button
-              onClick={() => elegirValoracion("neutro")}
-              className="px-3 py-2 rounded-lg text-white text-xs font-bold"
-              style={{ backgroundColor: COLORES.neutro }}
-            >
+            <button onClick={() => elegirValoracion("neutro")} className="px-3 py-2 rounded-lg text-white text-xs font-bold" style={{ backgroundColor: COLORES.neutro }}>
               Neutro
             </button>
-            <button
-              onClick={() => elegirValoracion("error")}
-              className="px-3 py-2 rounded-lg text-white text-xs font-bold"
-              style={{ backgroundColor: COLORES.error }}
-            >
+            <button onClick={() => elegirValoracion("error")} className="px-3 py-2 rounded-lg text-white text-xs font-bold" style={{ backgroundColor: COLORES.error }}>
               Error
             </button>
           </div>
@@ -363,11 +357,9 @@ export default function CanchaAtaque({
       </div>
 
       <p className="text-[11px] text-slate-400 mt-3 text-center">
-        Clic origen → opcional D para desvíos → clic destino → elegí valoración.
-        Esc cancela. Los ataques en propia no cruzan la red.
+        Clic origen → D opcional para desvíos → clic destino → valoración. Esc cancela.
       </p>
 
-      {/* Lista de ataques del punto */}
       {ataquesDelPunto.length > 0 && (
         <div className="mt-3 pt-3 border-t border-slate-200">
           <p className="text-xs text-slate-500 mb-2">
@@ -378,19 +370,13 @@ export default function CanchaAtaque({
               <div
                 key={i}
                 className="flex items-center gap-2 px-2 py-1 rounded border text-xs"
-                style={{
-                  borderColor: COLORES[a.valoracion as Valoracion],
-                  color: COLORES[a.valoracion as Valoracion],
-                }}
+                style={{ borderColor: COLORES[a.valoracion as Valoracion], color: COLORES[a.valoracion as Valoracion] }}
               >
-                <span className="font-semibold">
-                  {a.valoracion.toUpperCase()}
-                </span>
+                <span className="font-semibold">{a.valoracion.toUpperCase()}</span>
                 <span className="text-slate-500">
                   {a.origen_celda}
                   {a.origen_mini ? `-${a.origen_mini}` : ""} → {a.destino_celda}
                   {a.destino_mini ? `-${a.destino_mini}` : ""}
-                  {a.desvios.length > 0 && ` (${a.desvios.length} desvío${a.desvios.length > 1 ? "s" : ""})`}
                 </span>
               </div>
             ))}
