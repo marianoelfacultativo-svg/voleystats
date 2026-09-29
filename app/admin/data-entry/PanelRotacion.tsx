@@ -5,7 +5,6 @@ import {
   girarRotacion,
   rotacionVacia,
   asignarJugador,
-  ETIQUETA_TIPO,
   type RotacionPunto,
   type Zona,
   type SaqueEquipo,
@@ -25,13 +24,13 @@ interface Props {
   onCambioRotacion: (n: number) => void;
 }
 
-const LAYOUT: { zona: Zona; label: string; fila: "frente" | "fondo" }[] = [
-  { zona: 4, label: "4", fila: "frente" },
-  { zona: 3, label: "3", fila: "frente" },
-  { zona: 2, label: "2", fila: "frente" },
-  { zona: 5, label: "5", fila: "fondo" },
-  { zona: 6, label: "6", fila: "fondo" },
-  { zona: 1, label: "1", fila: "fondo" },
+const LAYOUT: { zona: Zona; fila: "frente" | "fondo" }[] = [
+  { zona: 4, fila: "frente" },
+  { zona: 3, fila: "frente" },
+  { zona: 2, fila: "frente" },
+  { zona: 5, fila: "fondo" },
+  { zona: 6, fila: "fondo" },
+  { zona: 1, fila: "fondo" },
 ];
 
 export default function PanelRotacion({
@@ -46,7 +45,10 @@ export default function PanelRotacion({
   const nombreDe = (id: string | null) => {
     if (!id) return null;
     const j = jugadores.find((x) => x.id === id);
-    return j ? `${j.nombre}${j.numero !== null ? ` #${j.numero}` : ""}` : "?";
+    if (!j) return "?";
+    // Solo apellido o primeras 8 letras
+    const partes = j.nombre.split(" ");
+    return partes.length > 1 ? partes[0] : j.nombre.slice(0, 8);
   };
 
   const handleGirar = (dir: 1 | -1) => {
@@ -70,96 +72,86 @@ export default function PanelRotacion({
   const fondo = LAYOUT.filter((l) => l.fila === "fondo");
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-slate-800">
-          Rotación {numeroRotacion}
-        </h3>
-        <div className="flex gap-1">
+    <div className="bg-white border border-slate-200 rounded-lg p-2 inline-block">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <span className="text-xs font-semibold text-slate-700">
+          Rot {numeroRotacion}
+        </span>
+        <div className="flex gap-0.5">
           <button
             onClick={() => handleGirar(-1)}
-            className="px-3 py-1 bg-white border border-slate-300 rounded-lg text-sm hover:bg-slate-50"
-            title="Girar a la izquierda"
+            className="w-5 h-5 flex items-center justify-center bg-white border border-slate-300 rounded text-[10px] hover:bg-slate-50"
           >
             ◀
           </button>
           <button
             onClick={() => handleGirar(1)}
-            className="px-3 py-1 bg-white border border-slate-300 rounded-lg text-sm hover:bg-slate-50"
-            title="Girar a la derecha"
+            className="w-5 h-5 flex items-center justify-center bg-white border border-slate-300 rounded text-[10px] hover:bg-slate-50"
           >
             ▶
           </button>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mb-4">
-        <span className="text-xs font-semibold text-slate-500 uppercase">
-          Saque:
-        </span>
-        <div className="flex rounded-lg overflow-hidden border border-slate-300">
+      <div className="flex items-center gap-1 mb-1.5">
+        <div className="flex rounded overflow-hidden border border-slate-300 text-[9px]">
           <button
             onClick={() => handleToggleSaque("propio")}
-            className={`px-3 py-1 text-xs font-medium transition ${
+            className={`px-1.5 py-0.5 font-medium transition ${
               rotacion.saque_equipo === "propio"
                 ? "bg-emerald-500 text-white"
-                : "bg-white text-slate-600 hover:bg-slate-50"
+                : "bg-white text-slate-600"
             }`}
+            title="Mi equipo saca"
           >
-            Propio
+            S
           </button>
           <button
             onClick={() => handleToggleSaque("rival")}
-            className={`px-3 py-1 text-xs font-medium transition ${
+            className={`px-1.5 py-0.5 font-medium transition ${
               rotacion.saque_equipo === "rival"
                 ? "bg-orange-500 text-white"
-                : "bg-white text-slate-600 hover:bg-slate-50"
+                : "bg-white text-slate-600"
             }`}
+            title="Rival saca"
           >
-            Rival
+            R
           </button>
         </div>
       </div>
 
-      <div className="space-y-2">
-        <div className="text-center text-[10px] font-bold text-slate-400 mb-1">
-          ─── RED ───
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          {frente.map((l) => (
-            <CeldaZona
-              key={l.zona}
-              zona={l.zona}
-              rotacion={rotacion}
-              nombreDe={nombreDe}
-              jugadores={jugadores}
-              editando={editandoZona === l.zona}
-              onAbrir={() => setEditandoZona(l.zona)}
-              onCerrar={() => setEditandoZona(null)}
-              onAsignar={(id) => handleAsignar(l.zona, id)}
-            />
-          ))}
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          {fondo.map((l) => (
-            <CeldaZona
-              key={l.zona}
-              zona={l.zona}
-              rotacion={rotacion}
-              nombreDe={nombreDe}
-              jugadores={jugadores}
-              editando={editandoZona === l.zona}
-              onAbrir={() => setEditandoZona(l.zona)}
-              onCerrar={() => setEditandoZona(null)}
-              onAsignar={(id) => handleAsignar(l.zona, id)}
-            />
-          ))}
-        </div>
+      <div className="text-center text-[8px] font-bold text-slate-400 leading-none mb-0.5">
+        ── RED ──
       </div>
 
-      <p className="text-[11px] text-slate-400 mt-3 text-center">
-        Click en una zona para asignar jugador. Flechas para girar.
-      </p>
+      <div className="grid grid-cols-3 gap-0.5">
+        {frente.map((l) => (
+          <CeldaZona
+            key={l.zona}
+            zona={l.zona}
+            rotacion={rotacion}
+            nombreDe={nombreDe}
+            jugadores={jugadores}
+            editando={editandoZona === l.zona}
+            onAbrir={() => setEditandoZona(l.zona)}
+            onCerrar={() => setEditandoZona(null)}
+            onAsignar={(id) => handleAsignar(l.zona, id)}
+          />
+        ))}
+        {fondo.map((l) => (
+          <CeldaZona
+            key={l.zona}
+            zona={l.zona}
+            rotacion={rotacion}
+            nombreDe={nombreDe}
+            jugadores={jugadores}
+            editando={editandoZona === l.zona}
+            onAbrir={() => setEditandoZona(l.zona)}
+            onCerrar={() => setEditandoZona(null)}
+            onAsignar={(id) => handleAsignar(l.zona, id)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -202,23 +194,23 @@ function CeldaZona({
     <div className="relative">
       <button
         onClick={onAbrir}
-        className={`w-full aspect-square border-2 rounded-lg p-1 flex flex-col items-center justify-center transition hover:shadow-md ${color}`}
+        className={`w-12 h-10 border rounded p-0.5 flex flex-col items-center justify-center transition hover:shadow-sm ${color}`}
       >
-        <span className="text-[10px] font-bold text-slate-500 absolute top-0.5 left-1.5">
+        <span className="text-[7px] font-bold text-slate-400 absolute top-0 left-0.5">
           {zona}
         </span>
-        <span className="text-lg font-bold text-slate-800">
+        <span className="text-[10px] font-bold text-slate-800 leading-none">
           {asig?.rol ?? "?"}
         </span>
-        <span className="text-[9px] text-slate-500 text-center leading-tight px-1 truncate w-full">
-          {nombre ?? ETIQUETA_TIPO[asig?.tipo ?? "A"]}
+        <span className="text-[7px] text-slate-500 leading-tight truncate w-full px-0.5">
+          {nombre ?? "—"}
         </span>
       </button>
 
       {editando && (
         <>
           <div className="fixed inset-0 z-40" onClick={onCerrar} />
-          <div className="absolute z-50 top-full mt-1 left-1/2 -translate-x-1/2 bg-white border-2 border-slate-300 rounded-lg shadow-lg p-2 w-48 max-h-60 overflow-y-auto">
+          <div className="absolute z-50 top-full mt-1 left-1/2 -translate-x-1/2 bg-white border-2 border-slate-300 rounded-lg shadow-lg p-2 w-44 max-h-56 overflow-y-auto">
             <button
               onClick={() => onAsignar("")}
               className="w-full text-left px-2 py-1 text-xs text-slate-400 hover:bg-slate-50 rounded"
