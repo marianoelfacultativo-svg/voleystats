@@ -69,7 +69,6 @@ export default function PanelRotacion({
     onChange({ ...rotacion, saque_equipo: equipo });
   };
 
-  // ---- Líberos ----
   const toggleLibero = (jugador_id: string) => {
     const existentes = rotacion.liberos;
     const yaEsta = existentes.find((l) => l.jugador_id === jugador_id);
@@ -191,13 +190,15 @@ export default function PanelRotacion({
         ))}
       </div>
 
-      {/* Panel de líberos */}
       {editandoLiberos && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setEditandoLiberos(false)} />
           <div className="absolute z-50 top-full mt-1 left-0 bg-white border-2 border-slate-300 rounded-lg shadow-lg p-2 w-60 max-h-72 overflow-y-auto">
             <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">
               Elegí hasta 2 líberos
+            </p>
+            <p className="text-[9px] text-slate-400 mb-2">
+              Si hay 1 solo, cumple defensa y recepción.
             </p>
             {jugadores.map((j) => {
               const lib = liberos.find((l) => l.jugador_id === j.id);
