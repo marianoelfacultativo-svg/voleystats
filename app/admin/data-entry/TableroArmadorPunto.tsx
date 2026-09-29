@@ -200,48 +200,49 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
   };
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-4 mb-4">
-        <div className="flex items-center gap-2">
+    <div className="max-w-xl mx-auto">
+      <div className="flex flex-wrap items-center gap-3 mb-2">
+        <div className="flex items-center gap-1.5">
           <span className="text-[10px] font-semibold text-slate-500 uppercase">
             Armador:
           </span>
-          <div className="flex rounded-lg overflow-hidden border border-slate-300">
+          <div className="flex rounded overflow-hidden border border-slate-300">
             <button
               onClick={() => cambiarArmador(1)}
-              className={`px-3 py-1 text-xs font-medium transition ${
+              className={`px-2 py-0.5 text-[10px] font-medium transition ${
                 punto.armadorNumero === 1
                   ? "bg-violet-500 text-white"
                   : "bg-white text-slate-600 hover:bg-slate-50"
               }`}
             >
-              Armador 1
+              A1
             </button>
             <button
               onClick={() => cambiarArmador(2)}
-              className={`px-3 py-1 text-xs font-medium transition ${
+              className={`px-2 py-0.5 text-[10px] font-medium transition ${
                 punto.armadorNumero === 2
                   ? "bg-violet-500 text-white"
                   : "bg-white text-slate-600 hover:bg-slate-50"
               }`}
             >
-              Armador 2
+              A2
             </button>
           </div>
         </div>
         <button
           onClick={borrarLinea}
           disabled={punto.lineas.length === 0}
-          className="px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg text-xs hover:bg-red-100 disabled:opacity-40"
+          className="px-2 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded text-[10px] hover:bg-red-100 disabled:opacity-40"
         >
-          🗑 Borrar última línea
+          🗑 Borrar línea
         </button>
       </div>
 
       <div ref={containerRef} className="relative select-none">
-        <div className="grid grid-cols-5 gap-1.5 bg-emerald-100 p-2 rounded-xl border-2 border-emerald-400">
+        <div className="grid grid-cols-5 gap-1 p-1.5 rounded-lg border-2 border-emerald-400"
+          style={{ background: "linear-gradient(180deg, #d1fae5 0%, #a7f3d0 100%)" }}>
           {CELDAS.map((c) => (
-            <div key={c.id} className="min-h-[90px]">
+            <div key={c.id} className="min-h-[60px]">
               {c.tipo === "single" ? (
                 <CeldaSimple
                   celdaId={c.id}
@@ -292,7 +293,7 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
                 x2={d.x}
                 y2={d.y}
                 stroke={color}
-                strokeWidth={3}
+                strokeWidth={2.5}
                 strokeLinecap="round"
               />
             );
@@ -308,8 +309,8 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
                   x2={preview.x}
                   y2={preview.y}
                   stroke="#10b981"
-                  strokeWidth={2}
-                  strokeDasharray="6 4"
+                  strokeWidth={1.5}
+                  strokeDasharray="5 3"
                   opacity={0.75}
                 />
               );
@@ -326,15 +327,15 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
           return (
             <div
               key={i}
-              className="absolute pointer-events-none flex items-center justify-center text-white text-[10px] font-bold rounded-full"
+              className="absolute pointer-events-none flex items-center justify-center text-white text-[9px] font-bold rounded-full"
               style={{
                 left: d.x,
                 top: d.y,
                 transform: "translate(-50%, -50%)",
-                width: "18px",
-                height: "18px",
+                width: "14px",
+                height: "14px",
                 backgroundColor: color,
-                boxShadow: "0 0 0 2px white",
+                boxShadow: "0 0 0 1.5px white",
                 zIndex: 10,
               }}
             >
@@ -345,18 +346,18 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
 
         {selector && (
           <div
-            className="absolute z-50 bg-white border-2 border-slate-300 rounded-xl shadow-lg p-2 flex gap-1"
+            className="absolute z-50 bg-white border-2 border-slate-300 rounded-lg shadow-lg p-1.5 flex gap-1"
             style={{
               left: selector.x,
               top: selector.y,
-              transform: "translate(-50%, calc(-100% - 8px))",
+              transform: "translate(-50%, calc(-100% - 6px))",
             }}
           >
             {[1, 2, 3, 4, 5, 6].map((n) => (
               <button
                 key={n}
                 onClick={() => elegirCalidad(n)}
-                className="w-9 h-9 rounded-lg text-white font-bold text-sm transition hover:scale-110"
+                className="w-7 h-7 rounded text-white font-bold text-[11px] transition hover:scale-110"
                 style={{ backgroundColor: COLORES_CALIDAD[n] }}
               >
                 {n}
@@ -366,7 +367,7 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
         )}
       </div>
 
-      <p className="text-[11px] text-slate-400 mt-3 text-center">
+      <p className="text-[10px] text-slate-400 mt-2 text-center">
         Clic origen → clic destino (o clic derecho). Elegí calidad con 1-6.
       </p>
     </div>
@@ -395,15 +396,15 @@ function MiniTabla({
   onContextMenu,
 }: MiniTablaProps) {
   const bordeCelda =
-    zona === "medio" ? "border-emerald-500" : "border-slate-300";
-  const bgCelda = zona === "medio" ? "bg-emerald-50" : "bg-white";
-  const bgSub = zona === "medio" ? "bg-emerald-200" : "bg-slate-100";
+    zona === "medio" ? "border-emerald-600" : "border-slate-300";
+  const bgCelda = zona === "medio" ? "bg-emerald-200" : "bg-white";
+  const bgSub = zona === "medio" ? "bg-emerald-400" : "bg-slate-100";
   const bgSubHover =
-    zona === "medio" ? "hover:bg-emerald-300" : "hover:bg-emerald-100";
+    zona === "medio" ? "hover:bg-emerald-500" : "hover:bg-emerald-100";
 
   return (
     <div
-      className={`grid gap-[2px] p-1 ${bgCelda} border-2 ${bordeCelda} rounded-lg w-full h-full`}
+      className={`grid gap-[2px] p-0.5 ${bgCelda} border-2 ${bordeCelda} rounded-md w-full h-full`}
       style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
     >
       {subs.map((sub) => {
@@ -415,7 +416,7 @@ function MiniTabla({
             ref={(el) => registrar(key, el)}
             onClick={() => onClick(sub)}
             onContextMenu={(e) => onContextMenu(e, sub)}
-            className={`rounded-sm cursor-pointer transition min-h-[20px] ${
+            className={`rounded-sm cursor-pointer transition min-h-[14px] ${
               activa
                 ? "bg-emerald-500 ring-2 ring-emerald-700"
                 : `${bgSub} ${bgSubHover}`
@@ -445,17 +446,17 @@ function CeldaSimple({
   onContextMenu,
 }: CeldaSimpleProps) {
   const bordeBase =
-    zona === "medio" ? "border-emerald-500" : "border-slate-300";
-  const bgBase = zona === "medio" ? "bg-emerald-50" : "bg-white";
+    zona === "medio" ? "border-emerald-600" : "border-slate-300";
+  const bgBase = zona === "medio" ? "bg-emerald-200" : "bg-white";
   const bgHover =
-    zona === "medio" ? "hover:bg-emerald-100" : "hover:bg-emerald-50";
+    zona === "medio" ? "hover:bg-emerald-300" : "hover:bg-emerald-50";
 
   return (
     <div
       ref={(el) => registrar(celdaId, el)}
       onClick={onClick}
       onContextMenu={onContextMenu}
-      className={`w-full h-full rounded-lg cursor-pointer transition border-2 ${
+      className={`w-full h-full rounded-md cursor-pointer transition border-2 ${
         activa
           ? "bg-emerald-500 border-emerald-700"
           : `${bgBase} ${bordeBase} ${bgHover}`
