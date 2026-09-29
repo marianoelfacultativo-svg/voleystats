@@ -18,9 +18,7 @@ import {
   rotacionVacia,
   jugadorDeTipo,
   type RotacionPunto,
-  type Zona,
 } from "@/lib/rotaciones";
-import { zonaDeOrigenAtaque } from "@/lib/cancha";
 
 import PanelRotacion from "./PanelRotacion";
 import TableroArmadorPunto, {
@@ -53,7 +51,7 @@ interface EstadoLocal {
 }
 
 const CLAVE_LOCAL = "voleystats_dataentry_";
-const TTL_MS = 3 * 24 * 60 * 60 * 1000; // 3 días
+const TTL_MS = 3 * 24 * 60 * 60 * 1000;
 
 const PESTANAS: { id: Pestana; nombre: string; icono: string }[] = [
   { id: "armado", nombre: "Armado", icono: "🎯" },
@@ -79,7 +77,6 @@ export default function DataEntryPage() {
   const [puntoActual, setPuntoActual] = useState(1);
   const [pestana, setPestana] = useState<Pestana>("armado");
 
-  // Estado de datos (todo en memoria hasta guardar)
   const [rotaciones, setRotaciones] = useState<Record<string, RotacionPunto>>({});
   const [armados, setArmados] = useState<Record<string, ArmadoLinea[]>>({});
   const [ataques, setAtaques] = useState<AtaqueRow[]>([]);
@@ -95,7 +92,6 @@ export default function DataEntryPage() {
 
   const keyPuntoActual = `${setActivo}-${puntoActual}`;
 
-  // Sesión
   useEffect(() => {
     const s = obtenerSesion();
     if (!s || s.tipo !== "admin") {
@@ -105,7 +101,6 @@ export default function DataEntryPage() {
     setSesion(s);
   }, [router]);
 
-  // Equipos
   useEffect(() => {
     if (!sesion) return;
     supabase
@@ -115,7 +110,6 @@ export default function DataEntryPage() {
       .then(({ data }) => data && setEquipos(data));
   }, [sesion]);
 
-  // Partidos del equipo
   useEffect(() => {
     if (!equipoId) {
       setPartidos([]);
@@ -131,7 +125,6 @@ export default function DataEntryPage() {
     setPartidoId("");
   }, [equipoId]);
 
-  // Jugadores del equipo
   useEffect(() => {
     if (!equipoId) {
       setJugadores([]);
@@ -153,19 +146,17 @@ export default function DataEntryPage() {
     });
   }, [equipoId]);
 
-  // Cargar partido
   useEffect(() => {
     if (!partidoId) return;
     setCargando(true);
     limpiarTodo();
 
-    // 1) Intentar recuperar de localStorage
     const raw = typeof window !== "undefined" ? localStorage.getItem(CLAVE_LOCAL + partidoId) : null;
     if (raw) {
       try {
         const data: EstadoLocal = JSON.parse(raw);
         if (Date.now() - data.ts < TTL_MS) {
-          if (confirm("Hay datos sin guardar de este partido en este navegador. ¿Recuperarlos?")) {
+          if (confirm("Hay datos sin guardar de este partido. ¿Recuperarlos?")) {
             setRotaciones(data.rotaciones ?? {});
             setArmados(data.armados ?? {});
             setAtaques(data.ataques ?? []);
@@ -187,7 +178,6 @@ export default function DataEntryPage() {
       }
     }
 
-    // 2) Cargar de la DB
     cargarDetalles(partidoId).then((d) => {
       setCargando(false);
 
@@ -203,8 +193,6 @@ export default function DataEntryPage() {
       });
       setRotaciones(rot);
 
-      const arm: Record<string, ArmadoLinea[]> = {};
-      // armados_detalle todavía se lee de la tabla vieja (mientras migramos armado)
       supabase
         .from("armados_detalle")
         .select("*")
@@ -232,7 +220,6 @@ export default function DataEntryPage() {
       setRecepciones(d.recepciones);
       setCambios(d.cambios);
 
-      // Detectar último punto
       const puntos = new Set<number>();
       [...d.ataques, ...d.defensas, ...d.bloqueos, ...d.saques, ...d.recepciones].forEach((x: any) => {
         if (x.set_numero === setActivo) puntos.add(x.punto_numero);
@@ -242,7 +229,6 @@ export default function DataEntryPage() {
     });
   }, [partidoId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Autoguardado local (debounce simple)
   useEffect(() => {
     if (!partidoId) return;
     const t = setTimeout(() => {
@@ -265,6 +251,21 @@ export default function DataEntryPage() {
     }, 800);
     return () => clearTimeout(t);
   }, [partidoId, rotaciones, armados, ataques, defensas, bloqueos, saques, recepciones, cambios]);
+
+  // Teclas 1-6 → cambiar pestaña
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT") return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const n = parseInt(e.key);
+      if (n >= 1 && n <= 6) {
+        setPestana(PESTANAS[n - 1].id);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Ctrl+G
   const guardarRef = useRef<() => void>(() => {});
@@ -292,7 +293,6 @@ export default function DataEntryPage() {
     setPuntoActual(1);
   };
 
-  // Jugadores del equipo
   const jugadoresDelEquipo = asignaciones
     .map((a) => jugadores.find((j) => j.id === a.jugador_id))
     .filter((j): j is Jugador => !!j);
@@ -303,7 +303,6 @@ export default function DataEntryPage() {
     return j ? `${j.nombre}${j.numero !== null ? ` #${j.numero}` : ""}` : "?";
   };
 
-  // Rotación actual
   const rotActual: RotacionPunto =
     rotaciones[keyPuntoActual] ??
     rotacionVacia(1, setActivo, puntoActual, "propio");
@@ -311,18 +310,11 @@ export default function DataEntryPage() {
   const setRotActual = (r: RotacionPunto) =>
     setRotaciones((prev) => ({ ...prev, [keyPuntoActual]: r }));
 
-  // Filtros por set + punto
   const filtrar = <T extends { set_numero: number; punto_numero: number }>(arr: T[]) =>
     arr.filter((x) => x.set_numero === setActivo && x.punto_numero === puntoActual);
 
-  // Atacante sugerido para ataque
-  const atacanteSugerido: string | null = (() => {
-    if (pestana !== "ataque") return null;
-    const z: number | null = null; // se calcula al hacer click, no acá
-    return null;
-  })();
+  const atacanteSugerido: string | null = null;
 
-  // ---- Handlers de agregar ----
   const agregarAtaque = (
     a: Omit<AtaqueRow, "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero">
   ) => {
@@ -354,14 +346,11 @@ export default function DataEntryPage() {
   };
 
   const agregarBloqueo = (
-    b: Omit<BloqueoRow, "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero">
+    b: Omit<BloqueoRow, "id" | "partido_id" | "set_numero" | "punto_numero">
   ) => {
-    const jugId = jugadoresDelEquipo[0]?.id;
-    if (!jugId) return;
     const row: BloqueoRow = {
       ...b,
       partido_id: partidoId,
-      jugador_id: jugId,
       set_numero: setActivo,
       punto_numero: puntoActual,
     };
@@ -398,7 +387,6 @@ export default function DataEntryPage() {
     setRecepciones((prev) => [...prev, row]);
   };
 
-  // ---- Guardar ----
   async function guardarTodo() {
     if (!partidoId) return;
     if (!confirm("¿Guardar los datos de este partido en la base?")) return;
@@ -406,7 +394,6 @@ export default function DataEntryPage() {
     setGuardando(true);
     setMensaje("");
 
-    // Armados → armados_detalle (tabla vieja, sigue funcionando)
     const filasArmados: any[] = [];
     for (const [k, lineas] of Object.entries(armados)) {
       const [sStr, pStr] = k.split("-");
@@ -428,16 +415,14 @@ export default function DataEntryPage() {
           destino_mini: l.destino.mini,
           zona_tendencia: zona,
           calidad: l.calidad,
-          atacante_derecho: "arriba", // deprecated
-          armador_numero: 1, // deprecated
+          atacante_derecho: "arriba",
+          armador_numero: 1,
         });
       });
     }
 
-    // Borrar armados_detalle viejo del partido
     await supabase.from("armados_detalle").delete().eq("partido_id", partidoId);
 
-    // Guardar armados nuevos
     if (filasArmados.length > 0) {
       const { error } = await supabase.from("armados_detalle").insert(filasArmados);
       if (error) {
@@ -447,7 +432,6 @@ export default function DataEntryPage() {
       }
     }
 
-    // Guardar todo lo nuevo
     const rots = Object.values(rotaciones).map((r) => ({
       ...r,
       partido_id: partidoId,
@@ -470,7 +454,6 @@ export default function DataEntryPage() {
       return;
     }
 
-    // Guardado OK → limpiar localStorage
     localStorage.removeItem(CLAVE_LOCAL + partidoId);
     setMensaje("✅ Datos guardados");
   }
@@ -486,8 +469,7 @@ export default function DataEntryPage() {
 
   return (
     <main className="min-h-screen p-4 md:p-8">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
+      <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
             <button
@@ -508,7 +490,6 @@ export default function DataEntryPage() {
           </button>
         </div>
 
-        {/* Selectores */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -550,7 +531,6 @@ export default function DataEntryPage() {
 
         {!noHayPartido && (
           <>
-            {/* Sets + Punto */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-4">
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-1">
@@ -595,8 +575,7 @@ export default function DataEntryPage() {
               </div>
             </div>
 
-            {/* Rotación */}
-            <div className="mb-4">
+            <div className="mb-4 flex justify-start">
               <PanelRotacion
                 rotacion={rotActual}
                 jugadores={jugadoresDelEquipo}
@@ -606,24 +585,25 @@ export default function DataEntryPage() {
               />
             </div>
 
-            {/* Pestañas */}
             <div className="flex flex-wrap gap-2 mb-4 border-b border-slate-200">
-              {PESTANAS.map((p) => (
+              {PESTANAS.map((p, i) => (
                 <button
                   key={p.id}
                   onClick={() => setPestana(p.id)}
-                  className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
+                  className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px flex items-center gap-2 ${
                     pestana === p.id
                       ? "border-emerald-500 text-emerald-600"
                       : "border-transparent text-slate-500 hover:text-slate-700"
                   }`}
                 >
-                  {p.icono} {p.nombre}
+                  <span className="w-5 h-5 rounded bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center">
+                    {i + 1}
+                  </span>
+                  <span>{p.icono} {p.nombre}</span>
                 </button>
               ))}
             </div>
 
-            {/* Contenido de la pestaña */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
               {pestana === "armado" && (
                 <TableroArmadorPunto
@@ -676,6 +656,11 @@ export default function DataEntryPage() {
               {pestana === "bloqueo" && (
                 <CanchaBloqueo
                   bloqueosDelPunto={filtrar(bloqueos)}
+                  jugadoresRed={[
+                    { zona: 4, jugador_id: rotActual.posiciones[4]?.jugador_id ?? "", nombre: nombreDe(rotActual.posiciones[4]?.jugador_id ?? null) ?? "Z4" },
+                    { zona: 3, jugador_id: rotActual.posiciones[3]?.jugador_id ?? "", nombre: nombreDe(rotActual.posiciones[3]?.jugador_id ?? null) ?? "Z3" },
+                    { zona: 2, jugador_id: rotActual.posiciones[2]?.jugador_id ?? "", nombre: nombreDe(rotActual.posiciones[2]?.jugador_id ?? null) ?? "Z2" },
+                  ].filter((j) => j.jugador_id)}
                   onAgregar={agregarBloqueo}
                   onBorrarUltimo={() => {
                     const idx = bloqueos.findLastIndex(
@@ -713,10 +698,9 @@ export default function DataEntryPage() {
               )}
             </div>
 
-            {/* Footer guardar */}
             <div className="sticky bottom-4 bg-white rounded-2xl shadow-lg border border-slate-200 p-4 flex items-center justify-between">
               <p className="text-sm text-slate-600">
-                {mensaje || "Ctrl+G para guardar. Autoguardado local cada 2s."}
+                {mensaje || "Ctrl+G para guardar. Teclas 1-6 cambian de pestaña. Autoguardado local."}
               </p>
               <button
                 onClick={guardarTodo}
