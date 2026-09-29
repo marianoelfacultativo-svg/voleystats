@@ -640,11 +640,11 @@ export default function DataEntryPage() {
                     );
                     if (idx >= 0) setDefensas((prev) => prev.filter((_, i) => i !== idx));
                   }}
-                  onBorrarTodasParadas={() =>
+                  onLimpiarPunto={() =>
                     setDefensas((prev) =>
                       prev.filter(
                         (x) =>
-                          !(x.set_numero === setActivo && x.punto_numero === puntoActual && x.tipo === "parado")
+                          !(x.set_numero === setActivo && x.punto_numero === puntoActual)
                       )
                     )
                   }
