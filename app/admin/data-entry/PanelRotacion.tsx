@@ -8,6 +8,7 @@ import {
   type RotacionPunto,
   type Zona,
   type SaqueEquipo,
+  type Libero,
 } from "@/lib/rotaciones";
 
 interface Jugador {
@@ -41,12 +42,12 @@ export default function PanelRotacion({
   onCambioRotacion,
 }: Props) {
   const [editandoZona, setEditandoZona] = useState<Zona | null>(null);
+  const [editandoLiberos, setEditandoLiberos] = useState(false);
 
   const nombreDe = (id: string | null) => {
     if (!id) return null;
     const j = jugadores.find((x) => x.id === id);
     if (!j) return "?";
-    // Solo apellido o primeras 8 letras
     const partes = j.nombre.split(" ");
     return partes.length > 1 ? partes[0] : j.nombre.slice(0, 8);
   };
@@ -68,11 +69,36 @@ export default function PanelRotacion({
     onChange({ ...rotacion, saque_equipo: equipo });
   };
 
+  // ---- Líberos ----
+  const toggleLibero = (jugador_id: string) => {
+    const existentes = rotacion.liberos;
+    const yaEsta = existentes.find((l) => l.jugador_id === jugador_id);
+    let nuevos: Libero[];
+    if (yaEsta) {
+      nuevos = existentes.filter((l) => l.jugador_id !== jugador_id);
+    } else {
+      if (existentes.length >= 2) return;
+      const tipo: Libero["tipo"] = existentes.length === 0 ? "defensa" : "recepcion";
+      nuevos = [...existentes, { jugador_id, tipo }];
+    }
+    onChange({ ...rotacion, liberos: nuevos });
+  };
+
+  const cambiarTipoLibero = (jugador_id: string, tipo: Libero["tipo"]) => {
+    onChange({
+      ...rotacion,
+      liberos: rotacion.liberos.map((l) =>
+        l.jugador_id === jugador_id ? { ...l, tipo } : l
+      ),
+    });
+  };
+
   const frente = LAYOUT.filter((l) => l.fila === "frente");
   const fondo = LAYOUT.filter((l) => l.fila === "fondo");
+  const liberos = rotacion.liberos ?? [];
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-2 inline-block">
+    <div className="bg-white border border-slate-200 rounded-lg p-2 inline-block relative">
       <div className="flex items-center justify-between gap-2 mb-1">
         <span className="text-xs font-semibold text-slate-700">
           Rot {numeroRotacion}
@@ -118,6 +144,18 @@ export default function PanelRotacion({
             R
           </button>
         </div>
+
+        <button
+          onClick={() => setEditandoLiberos((v) => !v)}
+          className={`px-1.5 py-0.5 rounded text-[9px] font-medium border ${
+            liberos.length > 0
+              ? "bg-pink-500 text-white border-pink-500"
+              : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+          }`}
+          title="Líberos"
+        >
+          Líberos ({liberos.length})
+        </button>
       </div>
 
       <div className="text-center text-[8px] font-bold text-slate-400 leading-none mb-0.5">
@@ -152,6 +190,73 @@ export default function PanelRotacion({
           />
         ))}
       </div>
+
+      {/* Panel de líberos */}
+      {editandoLiberos && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setEditandoLiberos(false)} />
+          <div className="absolute z-50 top-full mt-1 left-0 bg-white border-2 border-slate-300 rounded-lg shadow-lg p-2 w-60 max-h-72 overflow-y-auto">
+            <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">
+              Elegí hasta 2 líberos
+            </p>
+            {jugadores.map((j) => {
+              const lib = liberos.find((l) => l.jugador_id === j.id);
+              const activo = !!lib;
+              const puedeAgregar = activo || liberos.length < 2;
+              return (
+                <div key={j.id} className="flex items-center gap-1 mb-1">
+                  <button
+                    onClick={() => puedeAgregar && toggleLibero(j.id)}
+                    disabled={!puedeAgregar}
+                    className={`flex-1 text-left px-2 py-1 text-xs rounded ${
+                      activo
+                        ? "bg-pink-500 text-white font-semibold"
+                        : puedeAgregar
+                        ? "text-slate-700 hover:bg-pink-50"
+                        : "text-slate-300 cursor-not-allowed"
+                    }`}
+                  >
+                    {j.nombre}
+                    {j.numero !== null && ` #${j.numero}`}
+                  </button>
+                  {activo && (
+                    <div className="flex rounded overflow-hidden border border-pink-300 text-[9px]">
+                      <button
+                        onClick={() => cambiarTipoLibero(j.id, "defensa")}
+                        className={`px-1 py-0.5 ${
+                          lib.tipo === "defensa"
+                            ? "bg-pink-500 text-white"
+                            : "bg-white text-slate-500"
+                        }`}
+                        title="Defensa"
+                      >
+                        D
+                      </button>
+                      <button
+                        onClick={() => cambiarTipoLibero(j.id, "recepcion")}
+                        className={`px-1 py-0.5 ${
+                          lib.tipo === "recepcion"
+                            ? "bg-pink-500 text-white"
+                            : "bg-white text-slate-500"
+                        }`}
+                        title="Recepción"
+                      >
+                        R
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <button
+              onClick={() => setEditandoLiberos(false)}
+              className="w-full mt-2 py-1 text-[10px] text-slate-500 hover:text-slate-700"
+            >
+              Cerrar
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
