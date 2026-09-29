@@ -235,3 +235,148 @@ export async function borrarDetalles(partidoId: string) {
     await supabase.from(t).delete().eq("partido_id", partidoId);
   }
 }
+
+// ============================================
+// ADAPTADOR: tablas nuevas → formato AccionDB
+// ============================================
+
+export interface AccionDB {
+  jugador_id: string;
+  partido_id?: string;
+  set_numero: number;
+  fundamento: string;
+  valoracion: string;
+  cantidad: number;
+}
+
+const RECEPCION_NUM_A_STR: Record<number, string> = {
+  1: "ace_contra",
+  2: "3x_negativa",
+  3: "2x_negativa",
+  4: "negativa",
+  5: "positiva",
+  6: "2x_positiva",
+};
+
+const CALIDAD_A_STR: Record<number, string> = {
+  1: "horrible",
+  2: "malo",
+  3: "flojo",
+  4: "correcto",
+  5: "perfecto",
+  6: "genial",
+};
+
+function mapDefensa(
+  tipo: string | null,
+  resultado: string | null
+): string | null {
+  if (!tipo || !resultado) return null;
+  if (tipo === "toque") {
+    return resultado === "salvada" ? "toque_positiva" : "toque_negativa";
+  }
+  if (tipo === "defensa") {
+    return resultado === "salvada" ? "gran_def" : "error_def";
+  }
+  if (tipo === "cobertura") {
+    return resultado === "salvada"
+      ? "cobertura_positiva"
+      : "cobertura_negativa";
+  }
+  return null;
+}
+
+export async function cargarAccionesCompatibles(
+  partidoId: string
+): Promise<AccionDB[]> {
+  const [ataques, defensas, bloqueos, saques, recepciones, armados] =
+    await Promise.all([
+      supabase
+        .from("ataques_detalle")
+        .select("jugador_id, set_numero, valoracion")
+        .eq("partido_id", partidoId),
+      supabase
+        .from("defensa_detalle")
+        .select("jugador_id, set_numero, tipo_accion, resultado")
+        .eq("partido_id", partidoId),
+      supabase
+        .from("bloqueo_detalle")
+        .select("jugador_id, set_numero, valoracion")
+        .eq("partido_id", partidoId),
+      supabase
+        .from("saque_detalle")
+        .select("jugador_id, set_numero, valoracion")
+        .eq("partido_id", partidoId),
+      supabase
+        .from("recepcion_detalle")
+        .select("jugador_id, set_numero, valoracion")
+        .eq("partido_id", partidoId),
+      supabase
+        .from("armados_detalle")
+        .select("jugador_id, set_numero, calidad, zona_tendencia")
+        .eq("partido_id", partidoId),
+    ]);
+
+  const bucket = new Map<string, AccionDB>();
+  const add = (
+    jugador_id: string | null,
+    set_numero: number,
+    fundamento: string,
+    valoracion: string
+  ) => {
+    if (!jugador_id) return;
+    const k = `${jugador_id}|${set_numero}|${fundamento}|${valoracion}`;
+    const existing = bucket.get(k);
+    if (existing) {
+      existing.cantidad += 1;
+    } else {
+      bucket.set(k, {
+        jugador_id,
+        partido_id: partidoId,
+        set_numero,
+        fundamento,
+        valoracion,
+        cantidad: 1,
+      });
+    }
+  };
+
+  (ataques.data ?? []).forEach((a: any) => {
+    if (!a.valoracion) return;
+    add(a.jugador_id, a.set_numero, "ataque", a.valoracion);
+  });
+
+  (defensas.data ?? []).forEach((d: any) => {
+    const val = mapDefensa(d.tipo_accion, d.resultado);
+    if (!val) return;
+    add(d.jugador_id, d.set_numero, "defensa", val);
+  });
+
+  (bloqueos.data ?? []).forEach((b: any) => {
+    if (!b.valoracion) return;
+    add(b.jugador_id, b.set_numero, "bloqueo", b.valoracion);
+  });
+
+  (saques.data ?? []).forEach((s: any) => {
+    if (!s.valoracion) return;
+    add(s.jugador_id, s.set_numero, "saque", s.valoracion);
+  });
+
+  (recepciones.data ?? []).forEach((r: any) => {
+    const val = RECEPCION_NUM_A_STR[r.valoracion];
+    if (!val) return;
+    add(r.jugador_id, r.set_numero, "recepcion", val);
+  });
+
+  (armados.data ?? []).forEach((a: any) => {
+    const valCalidad = CALIDAD_A_STR[a.calidad];
+    if (valCalidad) {
+      add(a.jugador_id, a.set_numero, "armados", valCalidad);
+    }
+    if (a.zona_tendencia !== null && a.zona_tendencia !== undefined) {
+      add(a.jugador_id, a.set_numero, "tendencia", `zona_${a.zona_tendencia}`);
+    }
+  });
+
+  return Array.from(bucket.values());
+}

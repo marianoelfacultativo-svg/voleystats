@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { cargarAccionesCompatibles, type AccionDB } from "@/lib/db";
 import {
   calcularEstadisticasEquipo,
   calcularPodios,
@@ -11,7 +12,6 @@ import {
   VALORES_SAQUE,
   VALORES_RECEPCION,
   VALORES_BLOQUEO,
-  type AccionDB,
   type EstadisticasJugador,
 } from "@/lib/estadisticas";
 import RadarJugador from "./RadarJugador";
@@ -97,15 +97,12 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
         return;
       }
 
-      const { data: accData } = await supabase
-        .from("acciones")
-        .select(
-          "jugador_id, partido_id, set_numero, fundamento, valoracion, cantidad"
-        )
-        .in("partido_id", idsPartidos);
+      const resultados = await Promise.all(
+        idsPartidos.map((pid) => cargarAccionesCompatibles(pid))
+      );
 
       setJugadores(jugRes.data);
-      setAcciones((accData ?? []) as AccionDB[]);
+      setAcciones(resultados.flat());
       setCargando(false);
     });
   }, [equipoId]);
@@ -119,7 +116,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     jugadores.filter((j) => j.rol === "armador").map((j) => j.id)
   );
 
-  const { porJugador, totales } = calcularEstadisticasEquipo(
+  const { porJugador } = calcularEstadisticasEquipo(
     idsJugadores,
     acciones,
     armadores
@@ -169,20 +166,17 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     setComparados([...comparados, jugadorId]);
   };
 
-  // Build comparison series
   const comparadosData = comparados
     .map((id, idx) => ({
       id,
-      nombre:
-        jugadores.find((j) => j.id === id)?.nombre ?? "?",
+      nombre: jugadores.find((j) => j.id === id)?.nombre ?? "?",
       color: COLORES_COMPARACION[idx] ?? "#94a3b8",
       jugador: porJugador[id],
     }))
     .filter((s) => s.jugador);
 
   const esComparacionArmador =
-    comparadosData.length > 0 &&
-    armadores.has(comparadosData[0].id);
+    comparadosData.length > 0 && armadores.has(comparadosData[0].id);
 
   const seriesRadar = comparadosData.map((s) => ({
     id: s.id,
@@ -254,7 +248,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Toggle de modo */}
       <div className="flex justify-end gap-2">
         <button
           onClick={() => handleToggleModo("individual")}
@@ -279,7 +272,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
       </div>
 
       <div className="grid grid-cols-3 gap-4">
-        {/* Panel izquierdo: plantel */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 col-span-1">
           <h3 className="font-semibold text-slate-800 mb-3">
             {modo === "individual" ? "Plantel" : "Elegí hasta 3 jugadores"}
@@ -297,7 +289,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               const seleccionadoIndividual =
                 modo === "individual" && jugadorSeleccionado === j.id;
 
-              // En modo comparar, no permitir click si es rol distinto al primero
               let bloqueado = false;
               if (modo === "comparar" && comparados.length > 0 && colorIdx === -1) {
                 const primerSel = jugadores.find(
@@ -386,7 +377,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
           </div>
         </div>
 
-        {/* Panel derecho */}
         <div className="col-span-2">
           {modo === "individual" ? (
             !jugadorSeleccionado || !jugadorActual || !datosJugador ? (
@@ -687,7 +677,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               </div>
             )
           ) : (
-            // MODO COMPARAR
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
               {comparadosData.length === 0 ? (
                 <div className="p-12 text-center h-full flex items-center justify-center">
@@ -700,7 +689,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                 </div>
               ) : (
                 <>
-                  {/* Leyenda */}
                   <div className="mb-6 pb-4 border-b border-slate-200">
                     <h3 className="text-xl font-bold text-slate-900 mb-3">
                       Comparando{" "}
@@ -726,7 +714,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     </div>
                   </div>
 
-                  {/* Radar */}
                   <div className="mb-6">
                     <h4 className="font-semibold text-slate-800 mb-3">
                       Radar comparativo
@@ -737,7 +724,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     />
                   </div>
 
-                  {/* Gráficos por set */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                       <GraficoSaquePorSet series={seriesSaque} />
@@ -764,7 +750,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     </div>
                   </div>
 
-                  {/* Stats resumen por jugador */}
                   <div className="mt-6 overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>

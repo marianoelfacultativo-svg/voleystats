@@ -14,7 +14,6 @@ import type { SaqueRow } from "@/lib/db";
 type Valoracion = "ace" | "positivo_mas" | "positivo" | "neutro" | "negativo";
 type Tipo = "flotado" | "potencia";
 
-// 5=mejor, 1=peor
 const VALORACIONES: { id: Valoracion; label: string; color: string; tecla: number }[] = [
   { id: "negativo", label: "Negativo", color: "#dc2626", tecla: 1 },
   { id: "neutro", label: "Neutro", color: "#64748b", tecla: 2 },
@@ -137,7 +136,14 @@ export default function CanchaSaque({
     return () => window.removeEventListener("mousemove", onMove);
   }, [fase, origen]);
 
-  const celdasRival = useMemo(() => celdasDeContexto("ataque").slice(15), []);
+  // Celdas rival ordenadas F6 → F5 → F4 (arriba a abajo)
+  const celdasRival = useMemo(() => {
+    const all = celdasDeContexto("ataque");
+    const f4 = all.slice(15, 20);
+    const f5 = all.slice(20, 25);
+    const f6 = all.slice(25, 30);
+    return [...f6, ...f5, ...f4];
+  }, []);
 
   const esColumnaMedia = (celda: string) => {
     const col = celda.split("-")[1];
@@ -211,45 +217,9 @@ export default function CanchaSaque({
       </div>
 
       <div ref={containerRef} className="relative select-none">
-        <div className="mb-1">
-          <p className="text-[9px] text-slate-400 mb-0.5 text-center">
-            Origen
-          </p>
-          <div className="grid grid-cols-9 gap-0.5">
-            {SAQUE_ORIGEN.map((s) => (
-              <div
-                key={s}
-                ref={(el) => registrar(s, el)}
-                onClick={() => clickPunto({ celda: s, mini: null })}
-                className="aspect-square bg-emerald-200 hover:bg-emerald-300 rounded cursor-pointer border border-emerald-400 flex items-center justify-center text-[8px] text-emerald-800 font-bold"
-              >
-                {s}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="mb-1">
-          <p className="text-[9px] text-slate-400 mb-0.5 text-center">
-            Red (destino)
-          </p>
-          <div className="grid grid-cols-9 gap-0.5">
-            {SAQUE_DESTINO.map((d) => (
-              <div
-                key={d}
-                ref={(el) => registrar(d, el)}
-                onClick={() => clickPunto({ celda: d, mini: null })}
-                className="aspect-[2/1] bg-slate-700 hover:bg-slate-600 rounded cursor-pointer flex items-center justify-center text-[8px] text-white font-bold"
-              >
-                {d}
-              </div>
-            ))}
-          </div>
-        </div>
-
         <div>
-          <p className="text-[9px] text-slate-400 mb-0.5 text-center">
-            Cancha rival
+          <p className="text-[9px] font-bold text-orange-700 mb-0.5 text-center tracking-wide">
+            ▼ CANCHA RIVAL ▼
           </p>
           <div className="grid grid-cols-5 gap-0.5">
             {celdasRival.map(({ celda, tipo: tipoCelda }) => {
@@ -294,6 +264,42 @@ export default function CanchaSaque({
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        <div className="my-1">
+          <p className="text-[9px] text-slate-400 mb-0.5 text-center">
+            Red (destino)
+          </p>
+          <div className="grid grid-cols-9 gap-0.5">
+            {SAQUE_DESTINO.map((d) => (
+              <div
+                key={d}
+                ref={(el) => registrar(d, el)}
+                onClick={() => clickPunto({ celda: d, mini: null })}
+                className="aspect-[2/1] bg-slate-700 hover:bg-slate-600 rounded cursor-pointer flex items-center justify-center text-[8px] text-white font-bold"
+              >
+                {d}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[9px] text-slate-400 mb-0.5 text-center">
+            Origen
+          </p>
+          <div className="grid grid-cols-9 gap-0.5">
+            {SAQUE_ORIGEN.map((s) => (
+              <div
+                key={s}
+                ref={(el) => registrar(s, el)}
+                onClick={() => clickPunto({ celda: s, mini: null })}
+                className="aspect-square bg-emerald-200 hover:bg-emerald-300 rounded cursor-pointer border border-emerald-400 flex items-center justify-center text-[8px] text-emerald-800 font-bold"
+              >
+                {s}
+              </div>
+            ))}
           </div>
         </div>
 

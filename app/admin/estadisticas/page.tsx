@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { obtenerSesion, cerrarSesion, type Sesion } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { cargarAccionesCompatibles, type AccionDB } from "@/lib/db";
 import {
   calcularEstadisticasEquipo,
   top3,
-  type AccionDB,
 } from "@/lib/estadisticas";
 
 interface Equipo {
@@ -117,14 +117,11 @@ export default function EstadisticasPage() {
         return;
       }
 
-      const { data: accData } = await supabase
-        .from("acciones")
-        .select(
-          "jugador_id, partido_id, set_numero, fundamento, valoracion, cantidad"
-        )
-        .in("partido_id", idsPartidos);
+      const resultados = await Promise.all(
+        idsPartidos.map((pid) => cargarAccionesCompatibles(pid))
+      );
 
-      setAcciones((accData ?? []) as AccionDB[]);
+      setAcciones(resultados.flat());
       setCargando(false);
     });
   }, [equipoId]);

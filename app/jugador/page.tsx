@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { obtenerSesion, cerrarSesion, type Sesion } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { cargarAccionesCompatibles, type AccionDB } from "@/lib/db";
 import {
   calcularEstadisticasJugador,
   calcularEstadisticasEquipo,
@@ -15,7 +16,6 @@ import {
   VALORES_SAQUE,
   VALORES_RECEPCION,
   VALORES_BLOQUEO,
-  type AccionDB,
   type EstadisticasJugador,
 } from "@/lib/estadisticas";
 import RadarJugador from "../equipo/RadarJugador";
@@ -169,12 +169,10 @@ export default function JugadorPage() {
             setPartidos(partRes);
             const idsPartidos = partRes.map((p) => p.id);
 
-            const { data: accData } = await supabase
-              .from("acciones")
-              .select(
-                "jugador_id, partido_id, set_numero, fundamento, valoracion, cantidad"
-              )
-              .in("partido_id", idsPartidos);
+            // Cargar acciones desde las tablas nuevas, por partido
+            const resultados = await Promise.all(
+              idsPartidos.map((pid) => cargarAccionesCompatibles(pid))
+            );
 
             const { data: jugRes } = await supabase
               .from("jugador_equipo")
@@ -198,7 +196,7 @@ export default function JugadorPage() {
                 .map((j) => j.id)
             );
 
-            const acc = (accData ?? []) as AccionDB[];
+            const acc = resultados.flat();
             setAcciones(acc);
 
             const { porJugador } = calcularEstadisticasEquipo(
@@ -284,7 +282,6 @@ export default function JugadorPage() {
   const esArmador = jugador?.rol === "armador";
   const partidoActual = partidos.find((p) => p.id === partidoActivo);
 
-  // ==== DATOS COMPARACIÓN DE PARTIDOS ====
   const partidosComparadosData =
     vista === "por-partido" && modoPartido === "comparar" && jugador
       ? partidosComparados

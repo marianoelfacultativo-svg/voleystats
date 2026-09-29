@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { cargarAccionesCompatibles, type AccionDB } from "@/lib/db";
 import {
   calcularEstadisticasEquipo,
   rankingRecepcion,
@@ -10,7 +11,6 @@ import {
   rankingSaque,
   rankingDefensa,
   rankingConsistencia,
-  type AccionDB,
   type RankingCompletoItem,
 } from "@/lib/estadisticas";
 
@@ -101,14 +101,11 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
         return;
       }
 
-      const { data: accData } = await supabase
-        .from("acciones")
-        .select(
-          "jugador_id, partido_id, set_numero, fundamento, valoracion, cantidad"
-        )
-        .in("partido_id", ids);
+      const resultados = await Promise.all(
+        ids.map((pid) => cargarAccionesCompatibles(pid))
+      );
 
-      setAcciones((accData ?? []) as AccionDB[]);
+      setAcciones(resultados.flat());
       setCargando(false);
     });
   }, [equipoId]);

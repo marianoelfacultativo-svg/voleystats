@@ -14,7 +14,6 @@ import type { AtaqueRow } from "@/lib/db";
 type Valoracion = "punto" | "neutro" | "error";
 type Fase = "origen" | "navegando" | "valoracion";
 
-// 3 = mejor, 1 = peor
 const VALORACIONES_ORDEN: { id: Valoracion; label: string; color: string; tecla: number }[] = [
   { id: "error", label: "Error", color: "#dc2626", tecla: 1 },
   { id: "neutro", label: "Neutro", color: "#64748b", tecla: 2 },
@@ -155,6 +154,17 @@ export default function CanchaAtaque({
 
   const celdas = useMemo(() => celdasDeContexto("ataque"), []);
 
+  // Rival arriba: F6 → F5 → F4
+  const celdasRival = useMemo(() => {
+    const f4 = celdas.slice(15, 20);
+    const f5 = celdas.slice(20, 25);
+    const f6 = celdas.slice(25, 30);
+    return [...f6, ...f5, ...f4];
+  }, [celdas]);
+
+  // Propias abajo: F1 → F2 → F3
+  const celdasPropias = useMemo(() => celdas.slice(0, 15), [celdas]);
+
   const esColumnaMedia = (celda: string) => {
     const col = celda.split("-")[1];
     return col === "C2" || col === "C3" || col === "C4";
@@ -292,12 +302,12 @@ export default function CanchaAtaque({
       )}
 
       <div ref={containerRef} className="relative select-none">
-        <div className="text-[9px] font-bold text-emerald-700 text-center mb-0.5 tracking-wide">
-          ▲ TU CANCHA ▲
+        <div className="text-[9px] font-bold text-orange-700 text-center mb-0.5 tracking-wide">
+          ▼ CANCHA RIVAL ▼
         </div>
 
         <div className="grid grid-cols-5 gap-0.5">
-          {celdas.slice(0, 15).map(({ celda, tipo }) => renderCelda(celda, tipo))}
+          {celdasRival.map(({ celda, tipo }) => renderCelda(celda, tipo))}
         </div>
 
         <div className="flex items-center justify-center my-1 gap-2">
@@ -308,12 +318,12 @@ export default function CanchaAtaque({
           <div className="flex-1 h-0.5 bg-slate-300" />
         </div>
 
-        <div className="text-[9px] font-bold text-orange-700 text-center mb-0.5 tracking-wide">
-          ▼ CANCHA RIVAL ▼
+        <div className="text-[9px] font-bold text-emerald-700 text-center mb-0.5 tracking-wide">
+          ▲ TU CANCHA ▲
         </div>
 
         <div className="grid grid-cols-5 gap-0.5">
-          {celdas.slice(15).map(({ celda, tipo }) => renderCelda(celda, tipo))}
+          {celdasPropias.map(({ celda, tipo }) => renderCelda(celda, tipo))}
         </div>
 
         <svg className="absolute inset-0 pointer-events-none" style={{ width: "100%", height: "100%" }}>
