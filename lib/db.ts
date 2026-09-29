@@ -5,9 +5,6 @@
 import { supabase } from "./supabase";
 import type { RotacionPunto } from "./rotaciones";
 
-// ------------------------------------------------------------
-// TIPOS
-// ------------------------------------------------------------
 export interface AtaqueRow {
   id?: string;
   partido_id: string;
@@ -32,7 +29,11 @@ export interface DefensaRow {
   celda: string;
   mini: string | null;
   rol: "L" | "A" | "O" | "Pd" | "Pz" | "C";
-  tipo: "parado" | "salvada" | "error";
+  tipo: "parado";
+  celda_accion: string | null;
+  mini_accion: string | null;
+  tipo_accion: "defensa" | "toque" | "cobertura" | null;
+  resultado: "salvada" | "error" | null;
 }
 
 export interface BloqueoRow {
@@ -88,9 +89,6 @@ export interface CambioRow {
   rol: string | null;
 }
 
-// ------------------------------------------------------------
-// GUARDAR — rota todas las tablas de un partido (borra + inserta)
-// ------------------------------------------------------------
 export async function guardarDetalles(
   partidoId: string,
   data: {
@@ -113,7 +111,6 @@ export async function guardarDetalles(
     "cambios_jugador",
   ] as const;
 
-  // Borrar todo lo del partido
   for (const t of tablas) {
     const { error } = await supabase
       .from(t)
@@ -122,7 +119,6 @@ export async function guardarDetalles(
     if (error) return { ok: false, error: `Error borrando ${t}: ${error.message}` };
   }
 
-  // Insertar rotaciones
   if (data.rotaciones.length > 0) {
     const filas = data.rotaciones.map((r) => ({
       partido_id: r.partido_id,
@@ -136,31 +132,26 @@ export async function guardarDetalles(
     if (error) return { ok: false, error: `rotaciones: ${error.message}` };
   }
 
-  // Insertar ataques
   if (data.ataques.length > 0) {
     const { error } = await supabase.from("ataques_detalle").insert(data.ataques);
     if (error) return { ok: false, error: `ataques: ${error.message}` };
   }
 
-  // Defensas
   if (data.defensas.length > 0) {
     const { error } = await supabase.from("defensa_detalle").insert(data.defensas);
     if (error) return { ok: false, error: `defensas: ${error.message}` };
   }
 
-  // Bloqueos
   if (data.bloqueos.length > 0) {
     const { error } = await supabase.from("bloqueo_detalle").insert(data.bloqueos);
     if (error) return { ok: false, error: `bloqueos: ${error.message}` };
   }
 
-  // Saques
   if (data.saques.length > 0) {
     const { error } = await supabase.from("saque_detalle").insert(data.saques);
     if (error) return { ok: false, error: `saques: ${error.message}` };
   }
 
-  // Recepciones
   if (data.recepciones.length > 0) {
     const { error } = await supabase
       .from("recepcion_detalle")
@@ -168,7 +159,6 @@ export async function guardarDetalles(
     if (error) return { ok: false, error: `recepciones: ${error.message}` };
   }
 
-  // Cambios
   if (data.cambios.length > 0) {
     const { error } = await supabase.from("cambios_jugador").insert(data.cambios);
     if (error) return { ok: false, error: `cambios: ${error.message}` };
@@ -177,9 +167,6 @@ export async function guardarDetalles(
   return { ok: true };
 }
 
-// ------------------------------------------------------------
-// CARGAR — trae todo de un partido
-// ------------------------------------------------------------
 export async function cargarDetalles(partidoId: string) {
   const [
     rotaciones,
@@ -234,9 +221,6 @@ export async function cargarDetalles(partidoId: string) {
   };
 }
 
-// ------------------------------------------------------------
-// BORRAR todo lo de un partido en las 7 tablas
-// ------------------------------------------------------------
 export async function borrarDetalles(partidoId: string) {
   const tablas = [
     "rotaciones",
