@@ -5,21 +5,29 @@ import { celdasDeContexto, keyPunto, minisDeCelda, type Celda } from "@/lib/canc
 import type { DefensaRow } from "@/lib/db";
 
 type Rol = "L" | "A" | "O" | "Pd" | "Pz" | "C";
-type Modo = "parado" | "salvada" | "error";
+type Paso = "parado" | "evaluacion";
+type Evaluacion = "salvada" | "error" | "neutro";
 
-const ROLES: { id: Rol; label: string }[] = [
-  { id: "L", label: "Líbero" },
-  { id: "A", label: "Armador" },
-  { id: "O", label: "Opuesto" },
-  { id: "Pd", label: "Punta delantero" },
-  { id: "Pz", label: "Punta zaguero" },
-  { id: "C", label: "Central" },
+const ROLES: { id: Rol; label: string; tecla: string }[] = [
+  { id: "L", label: "Líbero", tecla: "L" },
+  { id: "A", label: "Armador", tecla: "A" },
+  { id: "O", label: "Opuesto", tecla: "O" },
+  { id: "C", label: "Central", tecla: "C" },
+  { id: "Pz", label: "Punta zaguero", tecla: "Z" },
+  { id: "Pd", label: "Punta delantero", tecla: "D" },
 ];
 
-const COLORES_MODO: Record<Modo, string> = {
+const EVALUACIONES: { id: Evaluacion; label: string; color: string; tecla: string }[] = [
+  { id: "salvada", label: "Salvada", color: "#16a34a", tecla: "S" },
+  { id: "error", label: "Error", color: "#dc2626", tecla: "E" },
+  { id: "neutro", label: "Neutro", color: "#64748b", tecla: "N" },
+];
+
+const COLORES_MODO: Record<string, string> = {
   parado: "#64748b",
   salvada: "#16a34a",
   error: "#dc2626",
+  neutro: "#94a3b8",
 };
 
 interface Punto {
@@ -42,8 +50,9 @@ export default function CanchaDefensa({
   onBorrarUltimo,
   onBorrarTodasParadas,
 }: Props) {
-  const [modo, setModo] = useState<Modo>("parado");
-  const [rolActivo, setRolActivo] = useState<Rol>("L");
+  const [paso, setPaso] = useState<Paso>("parado");
+  const [celdaPendiente, setCeldaPendiente] = useState<Punto | null>(null);
+  const [miniPendiente, setMiniPendiente] = useState<Punto | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const refs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -64,26 +73,89 @@ export default function CanchaDefensa({
     };
   }, []);
 
+  // ---- Click en celda ----
   const clickPunto = (p: Punto) => {
-    onAgregar({
-      celda: p.celda,
-      mini: p.mini,
-      rol: rolActivo,
-      tipo: modo,
-    });
+    if (paso === "parado") {
+      // Abrir globo de roles en esa celda
+      setCeldaPendiente(p);
+    } else if (paso === "evaluacion" && miniPendiente) {
+      // Guardar evaluación en la celda del jugador parado
+      onAgregar({
+        celda: miniPendiente.celda,
+        mini: miniPendiente.mini,
+        rol: "L", // placeholder, no aplica
+        tipo: "salvada", // se reemplaza abajo
+      });
+      // La evaluación se maneja con elegirEvaluacion
+      setCeldaPendiente(p);
+    }
   };
 
+  // ---- Elegir rol → guarda "parado" y pasa a evaluación ----
+  const elegirRol = (rol: Rol) => {
+    if (!celdaPendiente) return;
+    onAgregar({
+      celda: celdaPendiente.celda,
+      mini: celdaPendiente.mini,
+      rol,
+      tipo: "parado",
+    });
+    setMiniPendiente(celdaPendiente);
+    setCeldaPendiente(null);
+    setPaso("evaluacion");
+  };
+
+  // ---- Elegir evaluación → guarda y vuelve a parado ----
+  const elegirEvaluacion = (ev: Evaluacion) => {
+    if (!miniPendiente) return;
+    if (ev !== "neutro") {
+      onAgregar({
+        celda: miniPendiente.celda,
+        mini: miniPendiente.mini,
+        rol: "L",
+        tipo: ev,
+      });
+    }
+    setMiniPendiente(null);
+    setPaso("parado");
+  };
+
+  const saltarEvaluacion = () => {
+    setMiniPendiente(null);
+    setPaso("parado");
+  };
+
+  const cancelar = () => {
+    setCeldaPendiente(null);
+    setMiniPendiente(null);
+    setPaso("parado");
+  };
+
+  // ---- Teclado ----
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT") return;
-      if (e.key === "1") setModo("parado");
-      if (e.key === "2") setModo("salvada");
-      if (e.key === "3") setModo("error");
+      const k = e.key.toUpperCase();
+
+      if (e.key === "Escape") {
+        cancelar();
+        return;
+      }
+
+      if (paso === "parado" && celdaPendiente) {
+        const r = ROLES.find((x) => x.tecla === k);
+        if (r) elegirRol(r.id);
+      }
+
+      if (paso === "evaluacion" && miniPendiente) {
+        const ev = EVALUACIONES.find((x) => x.tecla === k);
+        if (ev) elegirEvaluacion(ev.id);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [paso, celdaPendiente, miniPendiente]);
 
   const celdas = useMemo(() => celdasDeContexto("defensa"), []);
 
@@ -148,36 +220,27 @@ export default function CanchaDefensa({
     return map;
   }, [defensasDelPunto]);
 
+  const celdaPendientePos = celdaPendiente ? posicion(keyPunto(celdaPendiente.celda, celdaPendiente.mini)) : null;
+  const evalPendientePos = miniPendiente ? posicion(keyPunto(miniPendiente.celda, miniPendiente.mini)) : null;
+
   return (
     <div className="max-w-xl mx-auto">
-      <div className="flex items-center justify-between mb-2 text-[10px] flex-wrap gap-1">
-        <div className="flex items-center gap-1">
-          <span className="font-semibold text-slate-600">Modo:</span>
-          <button
-            onClick={() => setModo("parado")}
-            className={`px-2 py-0.5 rounded ${modo === "parado" ? "bg-slate-700 text-white" : "bg-slate-200 hover:bg-slate-300"}`}
-          >
-            ⭐ Parado (1)
-          </button>
-          <button
-            onClick={() => setModo("salvada")}
-            className={`px-2 py-0.5 rounded ${modo === "salvada" ? "bg-green-600 text-white" : "bg-slate-200 hover:bg-slate-300"}`}
-          >
-            ✓ Salvada (2)
-          </button>
-          <button
-            onClick={() => setModo("error")}
-            className={`px-2 py-0.5 rounded ${modo === "error" ? "bg-red-600 text-white" : "bg-slate-200 hover:bg-slate-300"}`}
-          >
-            ✗ Error (3)
-          </button>
+      <div className="flex items-center justify-between mb-2 text-[10px]">
+        <div className="flex items-center gap-1.5">
+          <span className={`px-1.5 py-0.5 rounded font-semibold ${paso === "parado" ? "bg-slate-700 text-white" : "bg-slate-200"}`}>
+            1. Dónde estaba parado
+          </span>
+          <span className={`px-1.5 py-0.5 rounded font-semibold ${paso === "evaluacion" ? "bg-emerald-600 text-white" : "bg-slate-200"}`}>
+            2. Evaluación de la acción
+          </span>
         </div>
         <div className="flex gap-1">
           <button
             onClick={onBorrarTodasParadas}
             className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 rounded"
+            title="Borrar todos los parados del punto"
           >
-            🧹
+            🧹 Parados
           </button>
           <button
             onClick={onBorrarUltimo}
@@ -188,29 +251,6 @@ export default function CanchaDefensa({
           </button>
         </div>
       </div>
-
-      {modo === "parado" && (
-        <div className="mb-2 p-1.5 bg-slate-50 border border-slate-200 rounded-md">
-          <p className="text-[9px] font-semibold text-slate-500 uppercase mb-1">
-            Rol:
-          </p>
-          <div className="flex flex-wrap gap-1">
-            {ROLES.map((r) => (
-              <button
-                key={r.id}
-                onClick={() => setRolActivo(r.id)}
-                className={`px-1.5 py-0.5 text-[9px] font-medium rounded border transition ${
-                  rolActivo === r.id
-                    ? "bg-slate-800 text-white border-slate-800"
-                    : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
-                }`}
-              >
-                <span className="font-bold mr-0.5">{r.id}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div ref={containerRef} className="relative select-none">
         <div className="grid grid-cols-5 gap-0.5">
@@ -241,15 +281,7 @@ export default function CanchaDefensa({
             marcas.salvada.forEach((_, i) => {
               const dx = tieneMultiples ? -4 + i * 8 : 0;
               elementos.push(
-                <circle
-                  key={`salvada-${i}`}
-                  cx={p.x + dx}
-                  cy={p.y + 5}
-                  r={4}
-                  fill={COLORES_MODO.salvada}
-                  stroke="white"
-                  strokeWidth={1}
-                />
+                <circle key={`salvada-${i}`} cx={p.x + dx} cy={p.y + 5} r={4} fill={COLORES_MODO.salvada} stroke="white" strokeWidth={1} />
               );
             });
 
@@ -267,10 +299,79 @@ export default function CanchaDefensa({
             return <g key={k}>{elementos}</g>;
           })}
         </svg>
+
+        {/* Globo de roles (paso 1) */}
+        {paso === "parado" && celdaPendiente && celdaPendientePos && (
+          <div
+            className="absolute z-50 bg-white border-2 border-slate-300 rounded-lg shadow-lg p-2 w-[260px]"
+            style={{
+              left: celdaPendientePos.x,
+              top: celdaPendientePos.y,
+              transform: "translate(-50%, calc(-100% - 8px))",
+            }}
+          >
+            <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 text-center">
+              Rol del jugador
+            </p>
+            <div className="grid grid-cols-3 gap-1">
+              {ROLES.map((r) => (
+                <button
+                  key={r.id}
+                  onClick={() => elegirRol(r.id)}
+                  className="py-1.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-800 text-[10px] font-semibold flex flex-col items-center"
+                >
+                  <span className="font-bold">{r.id}</span>
+                  <span className="text-[8px] text-slate-500">({r.tecla})</span>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={cancelar}
+              className="w-full mt-1 py-0.5 text-[9px] text-slate-400 hover:text-slate-600"
+            >
+              Cancelar (Esc)
+            </button>
+          </div>
+        )}
+
+        {/* Globo de evaluación (paso 2) */}
+        {paso === "evaluacion" && evalPendientePos && (
+          <div
+            className="absolute z-50 bg-white border-2 border-emerald-400 rounded-lg shadow-lg p-2 w-[220px]"
+            style={{
+              left: evalPendientePos.x,
+              top: evalPendientePos.y,
+              transform: "translate(-50%, calc(-100% - 8px))",
+            }}
+          >
+            <p className="text-[10px] font-bold text-emerald-700 uppercase mb-1 text-center">
+              ¿Cómo salió la acción?
+            </p>
+            <div className="grid grid-cols-3 gap-1">
+              {EVALUACIONES.map((ev) => (
+                <button
+                  key={ev.id}
+                  onClick={() => elegirEvaluacion(ev.id)}
+                  className="py-1.5 rounded text-white text-[10px] font-semibold flex flex-col items-center"
+                  style={{ backgroundColor: ev.color }}
+                >
+                  <span>{ev.label}</span>
+                  <span className="text-[8px] opacity-80">({ev.tecla})</span>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={saltarEvaluacion}
+              className="w-full mt-1 py-0.5 text-[9px] text-slate-400 hover:text-slate-600"
+            >
+              Saltar (sin guardar)
+            </button>
+          </div>
+        )}
       </div>
 
       <p className="text-[10px] text-slate-400 mt-2 text-center">
-        Elegí modo (1-2-3) → clic. Pueden coexistir parado + salvada/error.
+        Clic celda → rol (L/A/O/C/Z/D) → evaluación (S/E/N). Esc cancela.
       </p>
 
       <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-500">
