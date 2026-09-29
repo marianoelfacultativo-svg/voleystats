@@ -252,7 +252,6 @@ export default function DataEntryPage() {
     return () => clearTimeout(t);
   }, [partidoId, rotaciones, armados, ataques, defensas, bloqueos, saques, recepciones, cambios]);
 
-  // Teclas 1-6 → cambiar pestaña
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
@@ -267,7 +266,6 @@ export default function DataEntryPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Ctrl+G
   const guardarRef = useRef<() => void>(() => {});
   guardarRef.current = guardarTodo;
   useEffect(() => {
@@ -656,11 +654,13 @@ export default function DataEntryPage() {
               {pestana === "bloqueo" && (
                 <CanchaBloqueo
                   bloqueosDelPunto={filtrar(bloqueos)}
-                  jugadoresRed={[
-                    { zona: 4, jugador_id: rotActual.posiciones[4]?.jugador_id ?? "", nombre: nombreDe(rotActual.posiciones[4]?.jugador_id ?? null) ?? "Z4" },
-                    { zona: 3, jugador_id: rotActual.posiciones[3]?.jugador_id ?? "", nombre: nombreDe(rotActual.posiciones[3]?.jugador_id ?? null) ?? "Z3" },
-                    { zona: 2, jugador_id: rotActual.posiciones[2]?.jugador_id ?? "", nombre: nombreDe(rotActual.posiciones[2]?.jugador_id ?? null) ?? "Z2" },
-                  ].filter((j) => j.jugador_id)}
+                  jugadoresRed={
+                    [
+                      { zona: 4 as const, jugador_id: rotActual.posiciones[4]?.jugador_id ?? "", nombre: nombreDe(rotActual.posiciones[4]?.jugador_id ?? null) ?? "Z4" },
+                      { zona: 3 as const, jugador_id: rotActual.posiciones[3]?.jugador_id ?? "", nombre: nombreDe(rotActual.posiciones[3]?.jugador_id ?? null) ?? "Z3" },
+                      { zona: 2 as const, jugador_id: rotActual.posiciones[2]?.jugador_id ?? "", nombre: nombreDe(rotActual.posiciones[2]?.jugador_id ?? null) ?? "Z2" },
+                    ].filter((j) => j.jugador_id)
+                  }
                   onAgregar={agregarBloqueo}
                   onBorrarUltimo={() => {
                     const idx = bloqueos.findLastIndex(
