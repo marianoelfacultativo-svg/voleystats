@@ -155,7 +155,6 @@ export default function CanchaAtaque({
 
   const celdas = useMemo(() => celdasDeContexto("ataque"), []);
 
-  // Columnas del medio C2, C3, C4
   const esColumnaMedia = (celda: string) => {
     const col = celda.split("-")[1];
     return col === "C2" || col === "C3" || col === "C4";
@@ -166,7 +165,6 @@ export default function CanchaAtaque({
     const esRival = esCanchaRival(celda.split("-")[0] as any);
     const esMedia = esColumnaMedia(celda);
 
-    // Columnas del medio: tono más oscuro
     const bgBase = esRival
       ? esMedia
         ? "bg-orange-100 border-orange-400"
@@ -364,6 +362,7 @@ export default function CanchaAtaque({
 
         {fase === "valoracion" && destinoPos && (
           <div
+            data-popup
             className="absolute z-50 bg-white border-2 border-slate-300 rounded-lg shadow-lg p-1.5 flex gap-1"
             style={{
               left: destinoPos.x,

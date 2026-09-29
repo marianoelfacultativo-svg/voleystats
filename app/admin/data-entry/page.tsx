@@ -252,11 +252,13 @@ export default function DataEntryPage() {
     return () => clearTimeout(t);
   }, [partidoId, rotaciones, armados, ataques, defensas, bloqueos, saques, recepciones, cambios]);
 
+  // Teclas 1-6 → cambiar pestaña (solo si NO hay popup abierto)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT") return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (typeof document !== "undefined" && document.querySelector("[data-popup]")) return;
       const n = parseInt(e.key);
       if (n >= 1 && n <= 6) {
         setPestana(PESTANAS[n - 1].id);

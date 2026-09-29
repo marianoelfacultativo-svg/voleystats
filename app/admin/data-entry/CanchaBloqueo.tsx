@@ -38,7 +38,7 @@ interface JugadorRed {
 
 interface Bloqueador {
   zona: 4 | 3 | 2;
-  x: number; // 0..1
+  x: number;
   jugador_id: string;
   nombre: string;
 }
@@ -47,10 +47,7 @@ interface Props {
   bloqueosDelPunto: BloqueoRow[];
   jugadoresRed: JugadorRed[];
   onAgregar: (
-    b: Omit<
-      BloqueoRow,
-      "id" | "partido_id" | "set_numero" | "punto_numero"
-    >
+    b: Omit<BloqueoRow, "id" | "partido_id" | "set_numero" | "punto_numero">
   ) => void;
   onBorrarUltimo: () => void;
 }
@@ -73,10 +70,8 @@ export default function CanchaBloqueo({
   onAgregar,
   onBorrarUltimo,
 }: Props) {
-  // 3 bloqueadores, uno por cada jugador de red
   const [bloqueadores, setBloqueadores] = useState<Bloqueador[]>([]);
 
-  // Inicializar/reiniciar cuando cambia la rotación (jugadoresRed)
   useEffect(() => {
     setBloqueadores(
       jugadoresRed.map((j) => ({
@@ -92,7 +87,6 @@ export default function CanchaBloqueo({
   const barraRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ idx: number; inicioX: number; movido: boolean } | null>(null);
 
-  // ---- Drag ----
   const onMouseDown = (idx: number) => (e: React.MouseEvent) => {
     e.preventDefault();
     dragRef.current = { idx, inicioX: e.clientX, movido: false };
@@ -129,7 +123,6 @@ export default function CanchaBloqueo({
     };
   }, []);
 
-  // ---- Confirmar valoración ----
   const elegir = (v: Valoracion) => {
     if (selectorIdx === null) return;
     const b = bloqueadores[selectorIdx];
@@ -142,7 +135,6 @@ export default function CanchaBloqueo({
       valoracion: v,
     });
 
-    // Volver el muñequito a su zona base
     setBloqueadores((prev) =>
       prev.map((bb, i) =>
         i === selectorIdx ? { ...bb, x: xDeZona(bb.zona), zona: bb.zona } : bb
@@ -151,7 +143,6 @@ export default function CanchaBloqueo({
     setSelectorIdx(null);
   };
 
-  // Atajos teclado
   useEffect(() => {
     if (selectorIdx === null) return;
     const onKey = (e: KeyboardEvent) => {
@@ -165,7 +156,6 @@ export default function CanchaBloqueo({
     return () => window.removeEventListener("keydown", onKey);
   }, [selectorIdx, bloqueadores]);
 
-  // Posición de bloqueos guardados
   const guardados = useMemo(() => {
     return bloqueosDelPunto.map((b) => ({
       ...b,
@@ -214,7 +204,6 @@ export default function CanchaBloqueo({
             />
           ))}
 
-          {/* Bloqueos guardados */}
           {guardados.map((b, i) => (
             <div
               key={b.id ?? i}
@@ -237,7 +226,6 @@ export default function CanchaBloqueo({
             </div>
           ))}
 
-          {/* 3 muñequitos activos */}
           {selectorIdx === null &&
             bloqueadores.map((b, i) => (
               <div
@@ -255,9 +243,11 @@ export default function CanchaBloqueo({
               </div>
             ))}
 
-          {/* Selector */}
           {selectorIdx !== null && bloqueadores[selectorIdx] && (
-            <div className="absolute z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white border-2 border-slate-300 rounded-xl shadow-lg p-3 w-[320px]">
+            <div
+              data-popup
+              className="absolute z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white border-2 border-slate-300 rounded-xl shadow-lg p-3 w-[320px]"
+            >
               <p className="text-xs font-semibold text-slate-500 uppercase mb-2 text-center">
                 Bloqueo de {bloqueadores[selectorIdx].nombre} (Z{bloqueadores[selectorIdx].zona})
               </p>

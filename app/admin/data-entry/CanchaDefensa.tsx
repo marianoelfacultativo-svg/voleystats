@@ -364,6 +364,7 @@ export default function CanchaDefensa({
 
         {paso === "tipo" && puntoParadoPos && (
           <div
+            data-popup
             className="absolute z-50 bg-white border-2 border-blue-400 rounded-lg shadow-lg p-2 w-[240px]"
             style={{
               left: puntoParadoPos.x,
@@ -398,6 +399,7 @@ export default function CanchaDefensa({
 
         {paso === "resultado" && puntoAccionPos && (
           <div
+            data-popup
             className="absolute z-50 bg-white border-2 border-emerald-400 rounded-lg shadow-lg p-2 w-[220px]"
             style={{
               left: puntoAccionPos.x,

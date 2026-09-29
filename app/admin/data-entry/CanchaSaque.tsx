@@ -320,6 +320,7 @@ export default function CanchaSaque({
 
         {fase === "valoracion" && destinoPos && (
           <div
+            data-popup
             className="absolute z-50 bg-white border-2 border-slate-300 rounded-lg shadow-lg p-1.5 flex gap-1 flex-wrap max-w-[260px]"
             style={{
               left: destinoPos.x,

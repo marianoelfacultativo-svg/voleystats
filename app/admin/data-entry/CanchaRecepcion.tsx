@@ -268,6 +268,7 @@ export default function CanchaRecepcion({
 
         {fase === "valoracion" && destinoPos && (
           <div
+            data-popup
             className="absolute z-50 bg-white border-2 border-slate-300 rounded-lg shadow-lg p-1.5 grid grid-cols-3 gap-1 w-[180px]"
             style={{
               left: destinoPos.x,

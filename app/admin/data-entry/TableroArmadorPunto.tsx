@@ -346,6 +346,7 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
 
         {selector && (
           <div
+            data-popup
             className="absolute z-50 bg-white border-2 border-slate-300 rounded-lg shadow-lg p-1.5 flex gap-1"
             style={{
               left: selector.x,
