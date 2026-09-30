@@ -1,9 +1,14 @@
 // ============================================
 // ACCESO A DATOS — 7 tablas de detalle
+// + adaptador con puntaje contextual
 // ============================================
 
 import { supabase } from "./supabase";
 import type { RotacionPunto } from "./rotaciones";
+import {
+  puntajeBase,
+  ajustarPorContexto,
+} from "./estadisticas";
 
 export interface AtaqueRow {
   id?: string;
@@ -238,15 +243,19 @@ export async function borrarDetalles(partidoId: string) {
 
 // ============================================
 // ADAPTADOR: tablas nuevas → formato AccionDB
+// con puntaje 0-10 y ajuste contextual
 // ============================================
 
 export interface AccionDB {
   jugador_id: string;
   partido_id?: string;
   set_numero: number;
+  punto_numero?: number;
   fundamento: string;
   valoracion: string;
   cantidad: number;
+  puntaje?: number;
+  puntajeBase?: number;
 }
 
 const RECEPCION_NUM_A_STR: Record<number, string> = {
@@ -286,6 +295,24 @@ function mapDefensa(
   return null;
 }
 
+interface AccionIndividual {
+  jugador_id: string;
+  set_numero: number;
+  punto_numero: number;
+  fundamento: string;
+  valoracion: string;
+  created_at: string;
+}
+
+/**
+ * Lee las 7 tablas nuevas y las convierte al formato AccionDB.
+ *
+ * Aplica el sistema de puntaje:
+ *  - Escala 0-10 (5 = neutro)
+ *  - Ajuste contextual: final = base − 0.4 × (baseAnterior − 5)
+ *  - Regla K1/K2 de armados: solo el primer armado del punto se ajusta
+ *  - Cap final a [0, 10]
+ */
 export async function cargarAccionesCompatibles(
   partidoId: string
 ): Promise<AccionDB[]> {
@@ -293,90 +320,197 @@ export async function cargarAccionesCompatibles(
     await Promise.all([
       supabase
         .from("ataques_detalle")
-        .select("jugador_id, set_numero, valoracion")
+        .select("jugador_id, set_numero, punto_numero, valoracion, created_at")
         .eq("partido_id", partidoId),
       supabase
         .from("defensa_detalle")
-        .select("jugador_id, set_numero, tipo_accion, resultado")
+        .select(
+          "jugador_id, set_numero, punto_numero, tipo_accion, resultado, created_at"
+        )
         .eq("partido_id", partidoId),
       supabase
         .from("bloqueo_detalle")
-        .select("jugador_id, set_numero, valoracion")
+        .select("jugador_id, set_numero, punto_numero, valoracion, created_at")
         .eq("partido_id", partidoId),
       supabase
         .from("saque_detalle")
-        .select("jugador_id, set_numero, valoracion")
+        .select("jugador_id, set_numero, punto_numero, valoracion, created_at")
         .eq("partido_id", partidoId),
       supabase
         .from("recepcion_detalle")
-        .select("jugador_id, set_numero, valoracion")
+        .select("jugador_id, set_numero, punto_numero, valoracion, created_at")
         .eq("partido_id", partidoId),
       supabase
         .from("armados_detalle")
-        .select("jugador_id, set_numero, calidad, zona_tendencia")
+        .select(
+          "jugador_id, set_numero, punto_numero, calidad, zona_tendencia, created_at"
+        )
         .eq("partido_id", partidoId),
     ]);
 
-  const bucket = new Map<string, AccionDB>();
-  const add = (
-    jugador_id: string | null,
-    set_numero: number,
-    fundamento: string,
-    valoracion: string
-  ) => {
-    if (!jugador_id) return;
-    const k = `${jugador_id}|${set_numero}|${fundamento}|${valoracion}`;
-    const existing = bucket.get(k);
-    if (existing) {
-      existing.cantidad += 1;
-    } else {
-      bucket.set(k, {
-        jugador_id,
-        partido_id: partidoId,
-        set_numero,
-        fundamento,
-        valoracion,
-        cantidad: 1,
-      });
-    }
-  };
+  // ---- 1. Convertir todo a acciones individuales ----
+  const acciones: AccionIndividual[] = [];
 
   (ataques.data ?? []).forEach((a: any) => {
     if (!a.valoracion) return;
-    add(a.jugador_id, a.set_numero, "ataque", a.valoracion);
+    acciones.push({
+      jugador_id: a.jugador_id,
+      set_numero: a.set_numero,
+      punto_numero: a.punto_numero ?? 1,
+      fundamento: "ataque",
+      valoracion: a.valoracion,
+      created_at: a.created_at ?? "",
+    });
   });
 
   (defensas.data ?? []).forEach((d: any) => {
     const val = mapDefensa(d.tipo_accion, d.resultado);
     if (!val) return;
-    add(d.jugador_id, d.set_numero, "defensa", val);
+    acciones.push({
+      jugador_id: d.jugador_id,
+      set_numero: d.set_numero,
+      punto_numero: d.punto_numero ?? 1,
+      fundamento: "defensa",
+      valoracion: val,
+      created_at: d.created_at ?? "",
+    });
   });
 
   (bloqueos.data ?? []).forEach((b: any) => {
     if (!b.valoracion) return;
-    add(b.jugador_id, b.set_numero, "bloqueo", b.valoracion);
+    acciones.push({
+      jugador_id: b.jugador_id,
+      set_numero: b.set_numero,
+      punto_numero: b.punto_numero ?? 1,
+      fundamento: "bloqueo",
+      valoracion: b.valoracion,
+      created_at: b.created_at ?? "",
+    });
   });
 
   (saques.data ?? []).forEach((s: any) => {
     if (!s.valoracion) return;
-    add(s.jugador_id, s.set_numero, "saque", s.valoracion);
+    acciones.push({
+      jugador_id: s.jugador_id,
+      set_numero: s.set_numero,
+      punto_numero: s.punto_numero ?? 1,
+      fundamento: "saque",
+      valoracion: s.valoracion,
+      created_at: s.created_at ?? "",
+    });
   });
 
   (recepciones.data ?? []).forEach((r: any) => {
     const val = RECEPCION_NUM_A_STR[r.valoracion];
     if (!val) return;
-    add(r.jugador_id, r.set_numero, "recepcion", val);
+    acciones.push({
+      jugador_id: r.jugador_id,
+      set_numero: r.set_numero,
+      punto_numero: r.punto_numero ?? 1,
+      fundamento: "recepcion",
+      valoracion: val,
+      created_at: r.created_at ?? "",
+    });
   });
 
   (armados.data ?? []).forEach((a: any) => {
-    const valCalidad = CALIDAD_A_STR[a.calidad];
-    if (valCalidad) {
-      add(a.jugador_id, a.set_numero, "armados", valCalidad);
-    }
-    if (a.zona_tendencia !== null && a.zona_tendencia !== undefined) {
-      add(a.jugador_id, a.set_numero, "tendencia", `zona_${a.zona_tendencia}`);
-    }
+    const val = CALIDAD_A_STR[a.calidad];
+    if (!val) return;
+    acciones.push({
+      jugador_id: a.jugador_id,
+      set_numero: a.set_numero,
+      punto_numero: a.punto_numero ?? 1,
+      fundamento: "armados",
+      valoracion: val,
+      created_at: a.created_at ?? "",
+    });
   });
 
-  return Array.from(bucket.values());
+  // ---- 2. Ordenar por (set, punto, created_at) ----
+  acciones.sort((a, b) => {
+    if (a.set_numero !== b.set_numero) return a.set_numero - b.set_numero;
+    if (a.punto_numero !== b.punto_numero)
+      return a.punto_numero - b.punto_numero;
+    return a.created_at.localeCompare(b.created_at);
+  });
+
+  // ---- 3. Aplicar ajuste contextual ----
+  const armadosPorPunto: Record<string, number> = {};
+  let puntoAnterior = "";
+  let puntajeAnterior: number | null = null;
+
+  const procesadas: AccionDB[] = [];
+
+  for (const acc of acciones) {
+    const puntoKey = `${acc.set_numero}-${acc.punto_numero}`;
+    if (puntoKey !== puntoAnterior) {
+      puntajeAnterior = null;
+      puntoAnterior = puntoKey;
+    }
+
+    const base = puntajeBase(acc.fundamento, acc.valoracion);
+    if (base === null) continue;
+
+    let final = base;
+
+    if (acc.fundamento === "armados") {
+      const count = armadosPorPunto[puntoKey] ?? 0;
+      armadosPorPunto[puntoKey] = count + 1;
+
+      if (count >= 1) {
+        // K2+ → sin ajuste (viene después de una defensa)
+        final = base;
+      } else {
+        // K1 → ajusta según la acción anterior
+        final = ajustarPorContexto(base, puntajeAnterior);
+      }
+    } else {
+      final = ajustarPorContexto(base, puntajeAnterior);
+    }
+
+    procesadas.push({
+      jugador_id: acc.jugador_id,
+      partido_id: partidoId,
+      set_numero: acc.set_numero,
+      punto_numero: acc.punto_numero,
+      fundamento: acc.fundamento,
+      valoracion: acc.valoracion,
+      cantidad: 1,
+      puntaje: final,
+      puntajeBase: base,
+    });
+
+    puntajeAnterior = final;
+  }
+
+  // ---- 4. Agregar tendencia (sin ajuste, puntaje neutro 5) ----
+  (armados.data ?? []).forEach((a: any) => {
+    if (a.zona_tendencia === null || a.zona_tendencia === undefined) return;
+    procesadas.push({
+      jugador_id: a.jugador_id,
+      partido_id: partidoId,
+      set_numero: a.set_numero,
+      punto_numero: a.punto_numero ?? 1,
+      fundamento: "tendencia",
+      valoracion: `zona_${a.zona_tendencia}`,
+      cantidad: 1,
+      puntaje: 5,
+      puntajeBase: 5,
+    });
+  });
+
+  // ---- 5. Agrupar por (jugador, set, fundamento, valoración, puntaje) ----
+  const agrupado = new Map<string, AccionDB>();
+  for (const r of procesadas) {
+    const pRed = Math.round((r.puntaje ?? 5) * 10) / 10;
+    const k = `${r.jugador_id}|${r.set_numero}|${r.fundamento}|${r.valoracion}|${pRed}`;
+    const existente = agrupado.get(k);
+    if (existente) {
+      existente.cantidad += 1;
+    } else {
+      agrupado.set(k, { ...r, puntaje: pRed });
+    }
+  }
+
+  return Array.from(agrupado.values());
 }

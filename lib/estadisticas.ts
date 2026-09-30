@@ -1,15 +1,112 @@
 // ============================================
 // MOTOR DE ESTADÍSTICAS DE VOLEYSTATS
+// Sistema de puntaje: escala 0-10 uniforme
 // ============================================
 
 export interface AccionDB {
   jugador_id: string;
   partido_id?: string;
   set_numero: number;
+  punto_numero?: number;
   fundamento: string;
   valoracion: string;
   cantidad: number;
+  puntaje?: number;
+  puntajeBase?: number;
 }
+
+// ------------------------------------------------------------
+// PUNTAJES BASE 0-10 (uniforme para todos los fundamentos)
+// ------------------------------------------------------------
+export const BASE_SCORES: Record<string, Record<string, number>> = {
+  saque: {
+    ace: 10,
+    positivo_mas: 8,
+    positivo: 6,
+    neutro: 5,
+    negativo: 2,
+  },
+  recepcion: {
+    "2x_positiva": 10,
+    positiva: 8,
+    negativa: 5,
+    "2x_negativa": 3,
+    "3x_negativa": 1,
+    ace_contra: 0,
+  },
+  ataque: {
+    punto: 10,
+    neutro: 5,
+    error: 0,
+  },
+  bloqueo: {
+    punto: 10,
+    positivo_mas: 8,
+    positivo: 6,
+    use_rival: 4,
+    filtrada: 3,
+    red: 0,
+  },
+  defensa: {
+    gran_def: 10,
+    toque_positiva: 8,
+    cobertura_positiva: 8,
+    toque_negativa: 3,
+    cobertura_negativa: 3,
+    error_def: 2,
+    mala_libre: 0,
+    errores_graves: 0,
+  },
+  armados: {
+    genial: 10,
+    perfecto: 8,
+    correcto: 6,
+    flojo: 3,
+    malo: 1,
+    horrible: 0,
+  },
+  toque: {
+    punto: 10,
+    neutro: 5,
+    error: 0,
+  },
+};
+
+export const PUNTAJE_NEUTRO = 5;
+export const FACTOR_CONTEXTO = 0.4;
+
+export function puntajeBase(
+  fundamento: string,
+  valoracion: string
+): number | null {
+  const f = BASE_SCORES[fundamento];
+  if (!f) return null;
+  const v = f[valoracion];
+  return v === undefined ? null : v;
+}
+
+export function ajustarPorContexto(
+  base: number,
+  anteriorBase: number | null
+): number {
+  if (anteriorBase === null) return base;
+  const ajuste =
+    base - FACTOR_CONTEXTO * (anteriorBase - PUNTAJE_NEUTRO);
+  return Math.max(0, Math.min(10, ajuste));
+}
+
+// ------------------------------------------------------------
+// Alias de compatibilidad
+// ------------------------------------------------------------
+export const VALORES_SAQUE = BASE_SCORES.saque;
+export const VALORES_RECEPCION = BASE_SCORES.recepcion;
+export const VALORES_ATAQUE = BASE_SCORES.ataque;
+export const VALORES_BLOQUEO = BASE_SCORES.bloqueo;
+export const VALORES_DEFENSA = BASE_SCORES.defensa;
+export const VALORES_ARMADOS = BASE_SCORES.armados;
+export const VALORES_TOQUE = BASE_SCORES.toque;
+
+export const VALORES_POR_FUNDAMENTO = BASE_SCORES;
 
 const ACCIONES_POSITIVAS: Record<string, string[]> = {
   saque: ["ace", "positivo_mas", "positivo"],
@@ -83,87 +180,6 @@ const SALDO_DEF_NEGATIVOS = [
   "errores_graves",
 ];
 
-export const VALORES_SAQUE: Record<string, number> = {
-  ace: 5,
-  positivo_mas: 3,
-  positivo: 1,
-  neutro: 0,
-  negativo: -3,
-};
-
-export const VALORES_RECEPCION: Record<string, number> = {
-  "2x_positiva": 5,
-  positiva: 4,
-  negativa: 3,
-  "2x_negativa": 2,
-  "3x_negativa": 1,
-  ace_contra: 0,
-};
-
-export const VALORES_ATAQUE: Record<string, number> = {
-  punto: 4,
-  neutro: 0,
-  error: -4,
-};
-
-export const VALORES_BLOQUEO: Record<string, number> = {
-  punto: 4,
-  positivo_mas: 2,
-  positivo: 1,
-  use_rival: -1,
-  red: -2,
-  filtrada: -1,
-};
-
-export const VALORES_DEFENSA: Record<string, number> = {
-  toque_positiva: 4,
-  toque_negativa: -4,
-  mala_libre: -8,
-  error_def: -4,
-  gran_def: 4,
-  cobertura_positiva: 4,
-  cobertura_negativa: -4,
-  errores_graves: -4,
-};
-
-export const VALORES_ARMADOS: Record<string, number> = {
-  horrible: -1,
-  malo: 1,
-  flojo: 2,
-  correcto: 3,
-  perfecto: 4,
-  genial: 5,
-};
-
-export const VALORES_TOQUE: Record<string, number> = {
-  punto: 4,
-  neutro: 0,
-  error: -4,
-};
-
-export const VALORES_POR_FUNDAMENTO: Record<
-  string,
-  Record<string, number>
-> = {
-  saque: VALORES_SAQUE,
-  recepcion: VALORES_RECEPCION,
-  ataque: VALORES_ATAQUE,
-  bloqueo: VALORES_BLOQUEO,
-  defensa: VALORES_DEFENSA,
-  armados: VALORES_ARMADOS,
-  toque: VALORES_TOQUE,
-};
-
-const RANGOS: Record<string, { min: number; max: number }> = {
-  saque: { min: -3, max: 5 },
-  recepcion: { min: 0, max: 5 },
-  ataque: { min: -4, max: 4 },
-  bloqueo: { min: -2, max: 4 },
-  defensa: { min: -8, max: 4 },
-  armados: { min: -1, max: 5 },
-  toque: { min: -4, max: 4 },
-};
-
 const EXPONENTES_VOLUMEN: Record<string, number> = {
   saque: 1.0,
   bloqueo: 1.0,
@@ -175,12 +191,13 @@ function getExponente(fundamento: string): number {
   return EXPONENTES_VOLUMEN[fundamento] ?? EXPONENTE_DEFAULT;
 }
 
-function normalizarValor(fundamento: string, valorCrudo: number): number {
-  const r = RANGOS[fundamento];
-  if (!r) return valorCrudo;
-  const maxAbs = Math.max(Math.abs(r.min), Math.abs(r.max));
-  if (maxAbs === 0) return 0;
-  return valorCrudo / maxAbs;
+function puntajeEfectivo(a: AccionDB): number | null {
+  if (a.puntaje !== undefined) return a.puntaje;
+  return puntajeBase(a.fundamento, a.valoracion);
+}
+
+function normalizarPuntaje(p: number): number {
+  return (p - PUNTAJE_NEUTRO) / 5;
 }
 
 const AMPLIFICADOR_RADAR = 1.3;
@@ -309,7 +326,8 @@ function contarPorValoraciones(
 ): number {
   return acciones
     .filter(
-      (a) => a.fundamento === fundamento && valoraciones.includes(a.valoracion)
+      (a) =>
+        a.fundamento === fundamento && valoraciones.includes(a.valoracion)
     )
     .reduce((suma, a) => suma + a.cantidad, 0);
 }
@@ -392,19 +410,16 @@ function calcularValoraciones(
   let countCrudaTotal = 0;
 
   for (const fund of fundamentos) {
-    const valores = VALORES_POR_FUNDAMENTO[fund];
-    if (!valores) continue;
-
     const propias = acciones.filter((a) => a.fundamento === fund);
     let sumaCruda = 0;
     let sumaNorm = 0;
     let count = 0;
 
     for (const a of propias) {
-      const v = valores[a.valoracion];
-      if (v === undefined) continue;
-      sumaCruda += v * a.cantidad;
-      sumaNorm += normalizarValor(fund, v) * a.cantidad;
+      const p = puntajeEfectivo(a);
+      if (p === null) continue;
+      sumaCruda += p * a.cantidad;
+      sumaNorm += normalizarPuntaje(p) * a.cantidad;
       count += a.cantidad;
     }
 
@@ -485,7 +500,7 @@ export function calcularPromedioPonderadoPorSet(
   todasAcciones: AccionDB[],
   jugadoresIdsEquipo: string[],
   fundamento: string,
-  valores: Record<string, number>
+  _valores: Record<string, number> = {}
 ): PromedioPorSet[] {
   const maxPorSet = calcularMaxAccionesPorSet(
     todasAcciones,
@@ -502,14 +517,17 @@ export function calcularPromedioPonderadoPorSet(
     let suma = 0;
     let total = 0;
     for (const a of delSet) {
-      const v = valores[a.valoracion] ?? 0;
-      suma += v * a.cantidad;
+      const p = puntajeEfectivo(a);
+      if (p === null) continue;
+      suma += p * a.cantidad;
       total += a.cantidad;
     }
     const promedioBruto = total > 0 ? suma / total : 0;
     const max = maxPorSet[s] ?? 1;
     const factor = total > 0 ? Math.pow(total / max, exp) : 0;
-    result.push({ set: s, promedio: promedioBruto * factor, total });
+    const valorVisual =
+      total > 0 ? promedioBruto * factor + (1 - factor) * 5 : 0;
+    result.push({ set: s, promedio: valorVisual, total });
   }
   return result;
 }
@@ -534,16 +552,19 @@ export function calcularPromedioArmadosPonderadoPorSet(
     let suma = 0;
     let count = 0;
     for (const a of delSet) {
-      const v = VALORES_ARMADOS[a.valoracion] ?? 0;
-      suma += v * a.cantidad;
+      const p = puntajeEfectivo(a);
+      if (p === null) continue;
+      suma += p * a.cantidad;
       count += a.cantidad;
     }
     const promedioBruto = count > 0 ? suma / count : 0;
     const max = maxPorSet[s] ?? 1;
     const factor = count > 0 ? Math.pow(count / max, exp) : 0;
+    const valorVisual =
+      count > 0 ? promedioBruto * factor + (1 - factor) * 5 : 0;
     result.push({
       set: s,
-      promedio: promedioBruto * factor,
+      promedio: valorVisual,
       totalArmados: count,
     });
   }
@@ -587,12 +608,17 @@ function calcularEstadisticasArmador(
     let sumaSet = 0;
     let countSet = 0;
     for (const a of delSet) {
-      const v = VALORES_ARMADOS[a.valoracion] ?? 0;
-      sumaSet += v * a.cantidad;
+      const p = puntajeEfectivo(a);
+      if (p === null) continue;
+      sumaSet += p * a.cantidad;
       countSet += a.cantidad;
     }
     const promedio = countSet > 0 ? sumaSet / countSet : 0;
-    promediosArmados.push({ set: s, promedio, totalArmados: countSet });
+    promediosArmados.push({
+      set: s,
+      promedio,
+      totalArmados: countSet,
+    });
     sumaTotal += sumaSet;
     totalArmados += countSet;
   }
@@ -620,12 +646,17 @@ function calcularEstadisticasRecepcion(propias: AccionDB[]) {
     let sumaSet = 0;
     let countSet = 0;
     for (const a of delSet) {
-      const v = VALORES_RECEPCION[a.valoracion] ?? 0;
-      sumaSet += v * a.cantidad;
+      const p = puntajeEfectivo(a);
+      if (p === null) continue;
+      sumaSet += p * a.cantidad;
       countSet += a.cantidad;
     }
     const promedio = countSet > 0 ? sumaSet / countSet : 0;
-    promediosPorSet.push({ set: s, promedio, totalRecepciones: countSet });
+    promediosPorSet.push({
+      set: s,
+      promedio,
+      totalRecepciones: countSet,
+    });
     sumaTotal += sumaSet;
     totalRecepciones += countSet;
   }
@@ -640,7 +671,7 @@ export function calcularPromedioPorSet(
   jugadorId: string,
   acciones: AccionDB[],
   fundamento: string,
-  valores: Record<string, number>
+  _valores: Record<string, number> = {}
 ): PromedioPorSet[] {
   const propias = acciones.filter(
     (a) => a.jugador_id === jugadorId && a.fundamento === fundamento
@@ -651,8 +682,9 @@ export function calcularPromedioPorSet(
     let suma = 0;
     let total = 0;
     for (const a of delSet) {
-      const v = valores[a.valoracion] ?? 0;
-      suma += v * a.cantidad;
+      const p = puntajeEfectivo(a);
+      if (p === null) continue;
+      suma += p * a.cantidad;
       total += a.cantidad;
     }
     result.push({
@@ -738,7 +770,9 @@ export function calcularEstadisticasJugador(
   }
 
   const factorVolumen =
-    maxAcc > 0 && totalAcciones > 0 ? Math.sqrt(totalAcciones / maxAcc) : 0;
+    maxAcc > 0 && totalAcciones > 0
+      ? Math.sqrt(totalAcciones / maxAcc)
+      : 0;
   const valoracionMediaNormalizada =
     vals.mediaNormalizadaBase * factorVolumen;
 
@@ -814,7 +848,13 @@ export function calcularEstadisticasEquipo(
   }
 
   const porJugador: Record<string, EstadisticasJugador> = {};
-  const fundamentos = ["saque", "recepcion", "ataque", "bloqueo", "defensa"];
+  const fundamentos = [
+    "saque",
+    "recepcion",
+    "ataque",
+    "bloqueo",
+    "defensa",
+  ];
 
   const totalesIniciales: EstadisticasJugador = {
     jugador_id: "TOTAL",
@@ -959,7 +999,9 @@ export function rankingRecepcion(
   return Object.values(porJugador)
     .filter((est) => calificaParaRanking(acciones, est.jugador_id))
     .map((est) => {
-      const propias = acciones.filter((a) => a.jugador_id === est.jugador_id);
+      const propias = acciones.filter(
+        (a) => a.jugador_id === est.jugador_id
+      );
       const positivos = contarPorValoraciones(propias, "recepcion", [
         "2x_positiva",
         "positiva",
@@ -1038,15 +1080,17 @@ export function rankingBloqueo(
     .filter((est) => calificaParaRanking(acciones, est.jugador_id))
     .map((est) => {
       const propias = acciones.filter(
-        (a) => a.jugador_id === est.jugador_id && a.fundamento === "bloqueo"
+        (a) =>
+          a.jugador_id === est.jugador_id && a.fundamento === "bloqueo"
       );
       const sets = contarSetsJugados(acciones, est.jugador_id);
 
       let sumaValores = 0;
       let total = 0;
       for (const a of propias) {
-        const v = VALORES_BLOQUEO[a.valoracion] ?? 0;
-        sumaValores += v * a.cantidad;
+        const p = puntajeEfectivo(a);
+        if (p === null) continue;
+        sumaValores += (p - PUNTAJE_NEUTRO) * a.cantidad;
         total += a.cantidad;
       }
       const calidadPorSet = sets > 0 ? sumaValores / sets : 0;
@@ -1089,8 +1133,9 @@ export function rankingSaque(
       let sumaValores = 0;
       let total = 0;
       for (const a of propias) {
-        const v = VALORES_SAQUE[a.valoracion] ?? 0;
-        sumaValores += v * a.cantidad;
+        const p = puntajeEfectivo(a);
+        if (p === null) continue;
+        sumaValores += (p - PUNTAJE_NEUTRO) * a.cantidad;
         total += a.cantidad;
       }
       const valor = sets > 0 ? sumaValores / sets : 0;
@@ -1099,7 +1144,9 @@ export function rankingSaque(
       const positivosMas = contarPorValoraciones(propias, "saque", [
         "positivo_mas",
       ]);
-      const positivos = contarPorValoraciones(propias, "saque", ["positivo"]);
+      const positivos = contarPorValoraciones(propias, "saque", [
+        "positivo",
+      ]);
       const errores = contarPorValoraciones(propias, "saque", ["negativo"]);
 
       return {
@@ -1125,8 +1172,9 @@ export function rankingDefensa(
 
       let sumaValores = 0;
       for (const a of propias) {
-        const v = VALORES_DEFENSA[a.valoracion] ?? 0;
-        sumaValores += v * a.cantidad;
+        const p = puntajeEfectivo(a);
+        if (p === null) continue;
+        sumaValores += (p - PUNTAJE_NEUTRO) * a.cantidad;
       }
 
       const positivas = contarPorValoraciones(propias, "defensa", [
@@ -1184,7 +1232,9 @@ export function rankingConsistencia(
   return Object.values(porJugador)
     .filter((est) => calificaParaRanking(acciones, est.jugador_id))
     .map((est) => {
-      const propias = acciones.filter((a) => a.jugador_id === est.jugador_id);
+      const propias = acciones.filter(
+        (a) => a.jugador_id === est.jugador_id
+      );
       const positivas = propias
         .filter((a) => valoresPositivos.includes(a.valoracion))
         .reduce((s, a) => s + a.cantidad, 0);
@@ -1231,7 +1281,10 @@ export function rankingDeJugador(
 ): Record<string, string> {
   const resultado: Record<string, string> = {};
 
-  const buscar = (fundamento: string, items: RankingCompletoItem[]) => {
+  const buscar = (
+    fundamento: string,
+    items: RankingCompletoItem[]
+  ) => {
     const item = items.find((i) => i.jugador_id === jugadorId);
     if (item) resultado[fundamento] = item.texto;
   };
@@ -1246,14 +1299,10 @@ export function rankingDeJugador(
   return resultado;
 }
 
-// ============================================
-// PROMEDIOS POR SET DEL EQUIPO COMPLETO
-// ============================================
-
 export function calcularPromediosEquipoPorSet(
   acciones: AccionDB[],
   fundamento: string,
-  valores: Record<string, number>
+  _valores: Record<string, number> = {}
 ): PromedioPorSet[] {
   const result: PromedioPorSet[] = [];
   for (let s = 1; s <= 5; s++) {
@@ -1263,8 +1312,9 @@ export function calcularPromediosEquipoPorSet(
     let suma = 0;
     let total = 0;
     for (const a of delSet) {
-      const v = valores[a.valoracion] ?? 0;
-      suma += v * a.cantidad;
+      const p = puntajeEfectivo(a);
+      if (p === null) continue;
+      suma += p * a.cantidad;
       total += a.cantidad;
     }
     result.push({
@@ -1287,8 +1337,9 @@ export function calcularPromediosEquipoArmadosPorSet(
     let suma = 0;
     let total = 0;
     for (const a of delSet) {
-      const v = VALORES_ARMADOS[a.valoracion] ?? 0;
-      suma += v * a.cantidad;
+      const p = puntajeEfectivo(a);
+      if (p === null) continue;
+      suma += p * a.cantidad;
       total += a.cantidad;
     }
     result.push({
