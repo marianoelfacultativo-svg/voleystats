@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   celdasDeContexto,
   keyPunto,
@@ -55,6 +62,7 @@ export default function CanchaSaque({
   const [origen, setOrigen] = useState<Punto | null>(null);
   const [destino, setDestino] = useState<Punto | null>(null);
   const [preview, setPreview] = useState<{ x: number; y: number } | null>(null);
+  const [tick, setTick] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const refs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -72,6 +80,19 @@ export default function CanchaSaque({
     return {
       x: rEl.left + rEl.width / 2 - rCont.left,
       y: rEl.top + rEl.height / 2 - rCont.top,
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    setTick((t) => t + 1);
+  }, [saquesDelPunto.length]);
+
+  useLayoutEffect(() => {
+    const t = setTimeout(() => setTick((x) => x + 1), 0);
+    const t2 = setTimeout(() => setTick((x) => x + 1), 150);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(t2);
     };
   }, []);
 
@@ -136,7 +157,6 @@ export default function CanchaSaque({
     return () => window.removeEventListener("mousemove", onMove);
   }, [fase, origen]);
 
-  // Celdas rival ordenadas F6 → F5 → F4 (arriba a abajo)
   const celdasRival = useMemo(() => {
     const all = celdasDeContexto("ataque");
     const f4 = all.slice(15, 20);
@@ -163,7 +183,7 @@ export default function CanchaSaque({
         };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
-  }, [saquesDelPunto, posicion]);
+  }, [saquesDelPunto, posicion, tick]);
 
   const origenPos = origen ? posicion(origen.celda) : null;
   const destinoPos = destino ? posicion(keyPunto(destino.celda, destino.mini)) : null;
@@ -305,7 +325,7 @@ export default function CanchaSaque({
 
         <svg className="absolute inset-0 pointer-events-none" style={{ width: "100%", height: "100%" }}>
           {lineasGuardadas.map((l, i) => (
-            <g key={i}>
+            <g key={`${i}-${tick}`}>
               <line x1={l.o.x} y1={l.o.y} x2={l.d.x} y2={l.d.y} stroke={l.color} strokeWidth={2} strokeLinecap="round" opacity={0.85} />
               <circle cx={l.o.x} cy={l.o.y} r={3.5} fill={l.color} stroke="white" strokeWidth={1} />
               <circle cx={l.d.x} cy={l.d.y} r={5} fill={l.color} stroke="white" strokeWidth={1.5} />

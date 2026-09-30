@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { celdasDeContexto, keyPunto, minisDeCelda, type Celda } from "@/lib/cancha";
 import type { DefensaRow } from "@/lib/db";
 
@@ -59,6 +66,7 @@ export default function CanchaDefensa({
   const [puntoParado, setPuntoParado] = useState<Punto | null>(null);
   const [tipoAccion, setTipoAccion] = useState<TipoAccion | null>(null);
   const [puntoAccion, setPuntoAccion] = useState<Punto | null>(null);
+  const [tick, setTick] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const refs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -76,6 +84,19 @@ export default function CanchaDefensa({
     return {
       x: rEl.left + rEl.width / 2 - rCont.left,
       y: rEl.top + rEl.height / 2 - rCont.top,
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    setTick((t) => t + 1);
+  }, [defensasDelPunto.length]);
+
+  useLayoutEffect(() => {
+    const t = setTimeout(() => setTick((x) => x + 1), 0);
+    const t2 = setTimeout(() => setTick((x) => x + 1), 150);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(t2);
     };
   }, []);
 
@@ -211,7 +232,7 @@ export default function CanchaDefensa({
         };
       })
       .filter((x) => !!x);
-  }, [defensasDelPunto]);
+  }, [defensasDelPunto, tick]);
 
   const puntoParadoPos = puntoParado ? posicion(keyPunto(puntoParado.celda, puntoParado.mini)) : null;
   const puntoAccionPos = puntoAccion ? posicion(keyPunto(puntoAccion.celda, puntoAccion.mini)) : null;
@@ -287,7 +308,7 @@ export default function CanchaDefensa({
             const esSalvada = g.d.resultado === "salvada";
 
             return (
-              <g key={i}>
+              <g key={`${i}-${tick}`}>
                 {aPos && (aPos.x !== pPos.x || aPos.y !== pPos.y) && (
                   <line
                     x1={pPos.x}

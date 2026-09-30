@@ -16,7 +16,7 @@ export interface AccionDB {
 }
 
 // ------------------------------------------------------------
-// PUNTAJES BASE 0-10 (uniforme para todos los fundamentos)
+// PUNTAJES BASE 0-10
 // ------------------------------------------------------------
 export const BASE_SCORES: Record<string, Record<string, number>> = {
   saque: {
@@ -95,9 +95,6 @@ export function ajustarPorContexto(
   return Math.max(0, Math.min(10, ajuste));
 }
 
-// ------------------------------------------------------------
-// Alias de compatibilidad
-// ------------------------------------------------------------
 export const VALORES_SAQUE = BASE_SCORES.saque;
 export const VALORES_RECEPCION = BASE_SCORES.recepcion;
 export const VALORES_ATAQUE = BASE_SCORES.ataque;
@@ -194,17 +191,6 @@ function getExponente(fundamento: string): number {
 function puntajeEfectivo(a: AccionDB): number | null {
   if (a.puntaje !== undefined) return a.puntaje;
   return puntajeBase(a.fundamento, a.valoracion);
-}
-
-function normalizarPuntaje(p: number): number {
-  return (p - PUNTAJE_NEUTRO) / 5;
-}
-
-const AMPLIFICADOR_RADAR = 1.3;
-
-function amplificarRadar(valor: number): number {
-  if (valor <= 0) return valor;
-  return Math.pow(valor, AMPLIFICADOR_RADAR);
 }
 
 export const ETIQUETAS_VALORACION: Record<string, string> = {
@@ -419,14 +405,15 @@ function calcularValoraciones(
       const p = puntajeEfectivo(a);
       if (p === null) continue;
       sumaCruda += p * a.cantidad;
-      sumaNorm += normalizarPuntaje(p) * a.cantidad;
+      sumaNorm += (p - PUNTAJE_NEUTRO) * a.cantidad;
       count += a.cantidad;
     }
 
     if (count > 0) {
       totalPorFundamento[fund] = sumaCruda;
       promedioPorFundamento[fund] = sumaCruda / count;
-      promedioNormalizado[fund] = (sumaNorm / count) * 10;
+      // Normalizado: [-5, +5] (promedio de puntaje - 5)
+      promedioNormalizado[fund] = sumaNorm / count;
       sumaNormTotal += sumaNorm;
       countNormTotal += count;
       sumaCrudaTotal += sumaCruda;
@@ -437,7 +424,7 @@ function calcularValoraciones(
   return {
     promedioNormalizado,
     mediaNormalizadaBase:
-      countNormTotal > 0 ? (sumaNormTotal / countNormTotal) * 10 : 0,
+      countNormTotal > 0 ? sumaNormTotal / countNormTotal : 0,
     valoracionMediaCruda:
       countCrudaTotal > 0 ? sumaCrudaTotal / countCrudaTotal : 0,
     totalPorFundamento,
@@ -525,6 +512,7 @@ export function calcularPromedioPonderadoPorSet(
     const promedioBruto = total > 0 ? suma / total : 0;
     const max = maxPorSet[s] ?? 1;
     const factor = total > 0 ? Math.pow(total / max, exp) : 0;
+    // Ajustar hacia 5 (neutro) si el volumen es bajo
     const valorVisual =
       total > 0 ? promedioBruto * factor + (1 - factor) * 5 : 0;
     result.push({ set: s, promedio: valorVisual, total });
@@ -738,8 +726,9 @@ export function calcularEstadisticasJugador(
     totalPuntos += armador.toquesPunto;
     totalErrores += armador.toquesError;
     saldoTotal += armador.toquesPunto - armador.toquesError;
+    // El armado cuenta como acción (1 armado = 1 acción).
+    // La tendencia NO cuenta: es metadata para el mapa de calor.
     totalAcciones +=
-      armador.distribucionTendencia.total +
       contarTotal(propias, "armados") +
       contarTotal(propias, "toque");
   }
@@ -776,15 +765,11 @@ export function calcularEstadisticasJugador(
   const valoracionMediaNormalizada =
     vals.mediaNormalizadaBase * factorVolumen;
 
-  const FACTORES_VISUALES: Record<string, number> = {
-    saque: 3,
-    recepcion: 1,
-    ataque: 1,
-    bloqueo: 3,
-    defensa: 3,
-    armados: 1,
-    toque: 3,
-  };
+  // ----------------------------------------------------------
+  // Radar: escala 0-10 (5 = neutro)
+  // valorRadar = ((promedioNorm * factorVolumen) + 5) * 1 → 0-10
+  // donde promedioNorm va de -5 a +5
+  // ----------------------------------------------------------
   const valoracionPonderadaPorFundamento: Record<string, number> = {};
   const maxPorFund =
     maxAccionesPorFundamento ??
@@ -795,11 +780,16 @@ export function calcularEstadisticasJugador(
     const accFund = contarTotal(propias, f);
     const maxFund = maxPorFund[f] ?? 1;
     const exp = getExponente(f);
-    const factor =
-      maxFund > 0 && accFund > 0 ? Math.pow(accFund / maxFund, exp) : 0;
-    const factorVisual = FACTORES_VISUALES[f] ?? 1;
-    const base = norm * factor * factorVisual;
-    valoracionPonderadaPorFundamento[f] = amplificarRadar(base);
+    const factorVol =
+      maxFund > 0 && accFund > 0
+        ? Math.pow(accFund / maxFund, exp)
+        : 0;
+    // norm va de -5 a +5 → lo normalizo a -1..+1 → lo escalo a 0-10
+    const norm01 = norm / 5;
+    // Con poco volumen tira a neutro (5)
+    const valor = (norm01 * factorVol * 5) + 5;
+    valoracionPonderadaPorFundamento[f] =
+      Math.round(valor * 10) / 10;
   }
 
   let recepcion: EstadisticasJugador["recepcion"] | undefined;
@@ -1090,10 +1080,11 @@ export function rankingBloqueo(
       for (const a of propias) {
         const p = puntajeEfectivo(a);
         if (p === null) continue;
-        sumaValores += (p - PUNTAJE_NEUTRO) * a.cantidad;
+        sumaValores += p * a.cantidad;
         total += a.cantidad;
       }
-      const calidadPorSet = sets > 0 ? sumaValores / sets : 0;
+      const promedioBruto = total > 0 ? sumaValores / total : 5;
+      const calidadPorSet = sets > 0 ? (promedioBruto - 5) * sets : 0;
       const ratio = ratios[est.jugador_id] ?? 0;
       const factor = maxRatio > 0 ? Math.pow(ratio / maxRatio, exp) : 0;
       const valor = calidadPorSet * factor;
@@ -1111,7 +1102,7 @@ export function rankingBloqueo(
       return {
         jugador_id: est.jugador_id,
         valor,
-        texto: `${puntos} puntos / ${positivos} positivos / ${errores} errores / ${total} bloqueos en ${sets} sets / Valor: ${valor.toFixed(2)}`,
+        texto: `${puntos} puntos / ${positivos} positivos / ${errores} errores / ${total} bloqueos en ${sets} sets / Promedio: ${promedioBruto.toFixed(2)}`,
       };
     })
     .filter((r) => r.valor !== 0)
@@ -1135,10 +1126,11 @@ export function rankingSaque(
       for (const a of propias) {
         const p = puntajeEfectivo(a);
         if (p === null) continue;
-        sumaValores += (p - PUNTAJE_NEUTRO) * a.cantidad;
+        sumaValores += p * a.cantidad;
         total += a.cantidad;
       }
-      const valor = sets > 0 ? sumaValores / sets : 0;
+      const promedio = total > 0 ? sumaValores / total : 5;
+      const valor = sets > 0 ? (promedio - 5) * sets : 0;
 
       const aces = contarPorValoraciones(propias, "saque", ["ace"]);
       const positivosMas = contarPorValoraciones(propias, "saque", [
@@ -1152,7 +1144,7 @@ export function rankingSaque(
       return {
         jugador_id: est.jugador_id,
         valor,
-        texto: `${aces} aces / ${positivosMas} pos+ / ${positivos} pos / ${errores} errores / Balance: ${sumaValores > 0 ? "+" : ""}${sumaValores} en ${sets} sets (${valor.toFixed(2)} por set)`,
+        texto: `${aces} aces / ${positivosMas} pos+ / ${positivos} pos / ${errores} errores / Promedio: ${promedio.toFixed(2)} en ${sets} sets`,
       };
     })
     .filter((r) => r.valor !== 0)
@@ -1171,11 +1163,15 @@ export function rankingDefensa(
       );
 
       let sumaValores = 0;
+      let total = 0;
       for (const a of propias) {
         const p = puntajeEfectivo(a);
         if (p === null) continue;
-        sumaValores += (p - PUNTAJE_NEUTRO) * a.cantidad;
+        sumaValores += p * a.cantidad;
+        total += a.cantidad;
       }
+      const promedio = total > 0 ? sumaValores / total : 5;
+      const valor = promedio;
 
       const positivas = contarPorValoraciones(propias, "defensa", [
         "toque_positiva",
@@ -1190,15 +1186,13 @@ export function rankingDefensa(
         "errores_graves",
       ]);
 
-      const valor = (sumaValores * positivas) / 100;
-
       return {
         jugador_id: est.jugador_id,
         valor,
-        texto: `${positivas} positivas / ${negativas} negativas / Balance: ${sumaValores > 0 ? "+" : ""}${sumaValores}`,
+        texto: `${positivas} positivas / ${negativas} negativas / Promedio: ${promedio.toFixed(2)}`,
         positivas,
         negativas,
-        balance: sumaValores,
+        balance: positivas - negativas,
       };
     })
     .filter((r) => r.valor !== 0)

@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 export interface ArmadoLinea {
   origen: { celda: string; mini: string | null };
@@ -93,6 +99,8 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
     x: number;
     y: number;
   } | null>(null);
+  // tick fuerza re-render después de montar el DOM
+  const [tick, setTick] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const refs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -110,6 +118,20 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
     return {
       x: rEl.left + rEl.width / 2 - rCont.left,
       y: rEl.top + rEl.height / 2 - rCont.top,
+    };
+  }, []);
+
+  // Re-render forzado después del mount para calcular posiciones
+  useLayoutEffect(() => {
+    setTick((t) => t + 1);
+  }, [punto.lineas.length, punto.numero]);
+
+  useLayoutEffect(() => {
+    const t = setTimeout(() => setTick((x) => x + 1), 0);
+    const t2 = setTimeout(() => setTick((x) => x + 1), 150);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(t2);
     };
   }, []);
 
@@ -239,8 +261,10 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
       </div>
 
       <div ref={containerRef} className="relative select-none">
-        <div className="grid grid-cols-5 gap-1 p-1.5 rounded-lg border-2 border-emerald-400"
-          style={{ background: "linear-gradient(180deg, #d1fae5 0%, #a7f3d0 100%)" }}>
+        <div
+          className="grid grid-cols-5 gap-1 p-1.5 rounded-lg border-2 border-emerald-400"
+          style={{ background: "linear-gradient(180deg, #d1fae5 0%, #a7f3d0 100%)" }}
+        >
           {CELDAS.map((c) => (
             <div key={c.id} className="min-h-[60px]">
               {c.tipo === "single" ? (
@@ -287,7 +311,7 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
             const color = COLORES_CALIDAD[l.calidad] ?? "#64748b";
             return (
               <line
-                key={i}
+                key={`${i}-${tick}`}
                 x1={o.x}
                 y1={o.y}
                 x2={d.x}
@@ -326,7 +350,7 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
           const color = COLORES_CALIDAD[l.calidad] ?? "#64748b";
           return (
             <div
-              key={i}
+              key={`${i}-${tick}`}
               className="absolute pointer-events-none flex items-center justify-center text-white text-[9px] font-bold rounded-full"
               style={{
                 left: d.x,

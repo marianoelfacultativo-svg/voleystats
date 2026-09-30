@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   celdasDeContexto,
   esCanchaRival,
@@ -55,6 +62,7 @@ export default function CanchaAtaque({
   const [destinoTemp, setDestinoTemp] = useState<Punto | null>(null);
   const [esperaDesvio, setEsperaDesvio] = useState(false);
   const [preview, setPreview] = useState<{ x: number; y: number } | null>(null);
+  const [tick, setTick] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const refs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -72,6 +80,20 @@ export default function CanchaAtaque({
     return {
       x: rEl.left + rEl.width / 2 - rCont.left,
       y: rEl.top + rEl.height / 2 - rCont.top,
+    };
+  }, []);
+
+  // Re-render forzado cuando cambian las líneas guardadas
+  useLayoutEffect(() => {
+    setTick((t) => t + 1);
+  }, [ataquesDelPunto.length]);
+
+  useLayoutEffect(() => {
+    const t = setTimeout(() => setTick((x) => x + 1), 0);
+    const t2 = setTimeout(() => setTick((x) => x + 1), 150);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(t2);
     };
   }, []);
 
@@ -154,7 +176,6 @@ export default function CanchaAtaque({
 
   const celdas = useMemo(() => celdasDeContexto("ataque"), []);
 
-  // Rival arriba: F6 → F5 → F4
   const celdasRival = useMemo(() => {
     const f4 = celdas.slice(15, 20);
     const f5 = celdas.slice(20, 25);
@@ -162,7 +183,6 @@ export default function CanchaAtaque({
     return [...f6, ...f5, ...f4];
   }, [celdas]);
 
-  // Propias abajo: F1 → F2 → F3
   const celdasPropias = useMemo(() => celdas.slice(0, 15), [celdas]);
 
   const esColumnaMedia = (celda: string) => {
@@ -248,7 +268,7 @@ export default function CanchaAtaque({
         };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
-  }, [ataquesDelPunto, posicion]);
+  }, [ataquesDelPunto, posicion, tick]);
 
   const origenPos = origen ? posicion(keyPunto(origen.celda, origen.mini)) : null;
   const desviosPos = desvios
@@ -328,7 +348,7 @@ export default function CanchaAtaque({
 
         <svg className="absolute inset-0 pointer-events-none" style={{ width: "100%", height: "100%" }}>
           {lineasGuardadas.map((l, i) => (
-            <g key={i}>
+            <g key={`${i}-${tick}`}>
               <line x1={l.o.x} y1={l.o.y} x2={l.d.x} y2={l.d.y} stroke={l.color} strokeWidth={2} strokeLinecap="round" opacity={0.85} />
               {l.desvios.map((dv, j) => (
                 <circle key={j} cx={dv.x} cy={dv.y} r={2.5} fill={l.color} />
