@@ -37,15 +37,34 @@ const LAYOUT: { zona: Zona; fila: "frente" | "fondo" }[] = [
   { zona: 1, fila: "fondo" },
 ];
 
+// Deriva el número de rotación desde las posiciones actuales
+function numeroRotacionDesdePosiciones(rot: RotacionPunto): number {
+  for (let i = 1; i <= 6; i++) {
+    const base = ROTACION_BASE[i];
+    let match = true;
+    for (const zona of Object.keys(base) as unknown as Zona[]) {
+      const z = Number(zona) as Zona;
+      if (base[z] !== rot.posiciones[z]?.tipo) {
+        match = false;
+        break;
+      }
+    }
+    if (match) return i;
+  }
+  return 1;
+}
+
 export default function PanelRotacion({
   rotacion,
   jugadores,
   onChange,
-  numeroRotacion,
+  numeroRotacion: _numeroRotacionProp,
   onCambioRotacion,
 }: Props) {
   const [editandoZona, setEditandoZona] = useState<Zona | null>(null);
   const [editandoLiberos, setEditandoLiberos] = useState(false);
+
+  const numeroActual = numeroRotacionDesdePosiciones(rotacion);
 
   const nombreDe = (id: string | null) => {
     if (!id) return null;
@@ -56,7 +75,7 @@ export default function PanelRotacion({
   };
 
   const handleGirar = (dir: 1 | -1) => {
-    const nuevoNumero = girarRotacion(numeroRotacion, dir);
+    const nuevoNumero = girarRotacion(numeroActual, dir);
 
     // Mapear tipo → jugador_id de la rotación actual
     const jugadorPorTipo: Partial<Record<TipoLogico, string | null>> = {};
@@ -126,7 +145,7 @@ export default function PanelRotacion({
     <div className="bg-white border border-slate-200 rounded-lg p-2 inline-block relative">
       <div className="flex items-center justify-between gap-2 mb-1">
         <span className="text-xs font-semibold text-slate-700">
-          Rot {numeroRotacion}
+          Rot {numeroActual}
         </span>
         <div className="flex gap-0.5">
           <button
