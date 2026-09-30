@@ -186,19 +186,35 @@ export default function CanchaSaque({
   }, [saquesDelPunto, posicion, tick]);
 
   const origenPos = origen ? posicion(origen.celda) : null;
-  const destinoPos = destino ? posicion(keyPunto(destino.celda, destino.mini)) : null;
+  const destinoPos = destino
+    ? posicion(keyPunto(destino.celda, destino.mini))
+    : null;
 
   return (
     <div className="max-w-xl mx-auto">
       <div className="flex items-center justify-between mb-2 text-[10px] flex-wrap gap-2">
         <div className="flex items-center gap-1.5">
-          <span className={`px-1.5 py-0.5 rounded ${fase === "origen" ? "bg-emerald-500 text-white" : "bg-slate-200"}`}>
+          <span
+            className={`px-1.5 py-0.5 rounded ${
+              fase === "origen" ? "bg-emerald-500 text-white" : "bg-slate-200"
+            }`}
+          >
             1. Origen
           </span>
-          <span className={`px-1.5 py-0.5 rounded ${fase === "destino" ? "bg-emerald-500 text-white" : "bg-slate-200"}`}>
+          <span
+            className={`px-1.5 py-0.5 rounded ${
+              fase === "destino" ? "bg-emerald-500 text-white" : "bg-slate-200"
+            }`}
+          >
             2. Destino
           </span>
-          <span className={`px-1.5 py-0.5 rounded ${fase === "valoracion" ? "bg-emerald-500 text-white" : "bg-slate-200"}`}>
+          <span
+            className={`px-1.5 py-0.5 rounded ${
+              fase === "valoracion"
+                ? "bg-emerald-500 text-white"
+                : "bg-slate-200"
+            }`}
+          >
             3. Valoración
           </span>
         </div>
@@ -206,7 +222,9 @@ export default function CanchaSaque({
           <button
             onClick={() => setTipo("flotado")}
             className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-              tipo === "flotado" ? "bg-blue-500 text-white" : "bg-slate-200 hover:bg-slate-300"
+              tipo === "flotado"
+                ? "bg-blue-500 text-white"
+                : "bg-slate-200 hover:bg-slate-300"
             }`}
           >
             Flotado
@@ -214,7 +232,9 @@ export default function CanchaSaque({
           <button
             onClick={() => setTipo("potencia")}
             className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-              tipo === "potencia" ? "bg-orange-500 text-white" : "bg-slate-200 hover:bg-slate-300"
+              tipo === "potencia"
+                ? "bg-orange-500 text-white"
+                : "bg-slate-200 hover:bg-slate-300"
             }`}
           >
             Potencia
@@ -237,17 +257,23 @@ export default function CanchaSaque({
       </div>
 
       <div ref={containerRef} className="relative select-none">
+        {/* Cancha rival: ancho completo */}
         <div>
           <p className="text-[9px] font-bold text-orange-700 mb-0.5 text-center tracking-wide">
             ▼ CANCHA RIVAL ▼
           </p>
           <div className="grid grid-cols-5 gap-0.5">
             {celdasRival.map(({ celda, tipo: tipoCelda }) => {
-              const minis = tipoCelda === "single" ? [] : minisDeCelda(celda, "ataque");
+              const minis =
+                tipoCelda === "single" ? [] : minisDeCelda(celda, "ataque");
               const cols = tipoCelda === "mini32" ? 2 : 3;
               const esMedia = esColumnaMedia(celda);
-              const bgBase = esMedia ? "bg-orange-100 border-orange-400" : "bg-orange-50 border-orange-300";
-              const bgMini = esMedia ? "bg-orange-300 hover:bg-orange-400" : "bg-orange-200 hover:bg-orange-300";
+              const bgBase = esMedia
+                ? "bg-orange-100 border-orange-400"
+                : "bg-orange-50 border-orange-300";
+              const bgMini = esMedia
+                ? "bg-orange-300 hover:bg-orange-400"
+                : "bg-orange-200 hover:bg-orange-300";
 
               if (tipoCelda === "single") {
                 return (
@@ -287,7 +313,8 @@ export default function CanchaSaque({
           </div>
         </div>
 
-        <div className="my-1">
+        {/* Red: SOLO ancho de C2-C3-C4 (9/13 del total, centrado) */}
+        <div className="w-[69.23%] mx-auto my-1">
           <p className="text-[9px] text-slate-400 mb-0.5 text-center">
             Red (destino)
           </p>
@@ -305,7 +332,8 @@ export default function CanchaSaque({
           </div>
         </div>
 
-        <div>
+        {/* Origen: SOLO ancho de C2-C3-C4 (9/13 del total, centrado) */}
+        <div className="w-[69.23%] mx-auto">
           <p className="text-[9px] text-slate-400 mb-0.5 text-center">
             Origen
           </p>
@@ -323,23 +351,72 @@ export default function CanchaSaque({
           </div>
         </div>
 
-        <svg className="absolute inset-0 pointer-events-none" style={{ width: "100%", height: "100%" }}>
+        <svg
+          className="absolute inset-0 pointer-events-none"
+          style={{ width: "100%", height: "100%" }}
+        >
           {lineasGuardadas.map((l, i) => (
             <g key={`${i}-${tick}`}>
-              <line x1={l.o.x} y1={l.o.y} x2={l.d.x} y2={l.d.y} stroke={l.color} strokeWidth={2} strokeLinecap="round" opacity={0.85} />
-              <circle cx={l.o.x} cy={l.o.y} r={3.5} fill={l.color} stroke="white" strokeWidth={1} />
-              <circle cx={l.d.x} cy={l.d.y} r={5} fill={l.color} stroke="white" strokeWidth={1.5} />
+              <line
+                x1={l.o.x}
+                y1={l.o.y}
+                x2={l.d.x}
+                y2={l.d.y}
+                stroke={l.color}
+                strokeWidth={2}
+                strokeLinecap="round"
+                opacity={0.85}
+              />
+              <circle
+                cx={l.o.x}
+                cy={l.o.y}
+                r={3.5}
+                fill={l.color}
+                stroke="white"
+                strokeWidth={1}
+              />
+              <circle
+                cx={l.d.x}
+                cy={l.d.y}
+                r={5}
+                fill={l.color}
+                stroke="white"
+                strokeWidth={1.5}
+              />
             </g>
           ))}
           {origenPos && (
             <>
               {destinoPos && (
-                <line x1={origenPos.x} y1={origenPos.y} x2={destinoPos.x} y2={destinoPos.y} stroke="#10b981" strokeWidth={2} />
+                <line
+                  x1={origenPos.x}
+                  y1={origenPos.y}
+                  x2={destinoPos.x}
+                  y2={destinoPos.y}
+                  stroke="#10b981"
+                  strokeWidth={2}
+                />
               )}
               {!destinoPos && preview && (
-                <line x1={origenPos.x} y1={origenPos.y} x2={preview.x} y2={preview.y} stroke="#10b981" strokeWidth={1.5} strokeDasharray="5 3" opacity={0.7} />
+                <line
+                  x1={origenPos.x}
+                  y1={origenPos.y}
+                  x2={preview.x}
+                  y2={preview.y}
+                  stroke="#10b981"
+                  strokeWidth={1.5}
+                  strokeDasharray="5 3"
+                  opacity={0.7}
+                />
               )}
-              <circle cx={origenPos.x} cy={origenPos.y} r={4} fill="#10b981" stroke="white" strokeWidth={1.5} />
+              <circle
+                cx={origenPos.x}
+                cy={origenPos.y}
+                r={4}
+                fill="#10b981"
+                stroke="white"
+                strokeWidth={1.5}
+              />
             </>
           )}
         </svg>
@@ -383,7 +460,10 @@ export default function CanchaSaque({
               <div
                 key={i}
                 className="flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px]"
-                style={{ borderColor: COLOR_VAL[s.valoracion as Valoracion], color: COLOR_VAL[s.valoracion as Valoracion] }}
+                style={{
+                  borderColor: COLOR_VAL[s.valoracion as Valoracion],
+                  color: COLOR_VAL[s.valoracion as Valoracion],
+                }}
               >
                 <span className="font-semibold">{s.valoracion}</span>
                 <span className="text-slate-500">
