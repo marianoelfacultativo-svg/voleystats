@@ -1,6 +1,6 @@
 // ============================================
 // MOTOR DE ESTADÍSTICAS DE VOLEYSTATS
-// Sistema de puntaje: escala 0-10 uniforme
+// Sistema de puntaje: escala -2 a 10 (neutro 5)
 // ============================================
 
 export interface AccionDB {
@@ -15,9 +15,6 @@ export interface AccionDB {
   puntajeBase?: number;
 }
 
-// ------------------------------------------------------------
-// PUNTAJES BASE 0-10
-// ------------------------------------------------------------
 export const BASE_SCORES: Record<string, Record<string, number>> = {
   saque: {
     ace: 10,
@@ -36,26 +33,26 @@ export const BASE_SCORES: Record<string, Record<string, number>> = {
   },
   ataque: {
     punto: 10,
-    neutro: 5,
+    neutro: 2,
     error: 0,
   },
   bloqueo: {
     punto: 10,
     positivo_mas: 8,
     positivo: 6,
-    use_rival: 4,
-    filtrada: 3,
+    use_rival: 3,
+    filtrada: 2,
     red: 0,
   },
   defensa: {
     gran_def: 10,
-    toque_positiva: 8,
-    cobertura_positiva: 8,
-    toque_negativa: 3,
-    cobertura_negativa: 3,
-    error_def: 2,
-    mala_libre: 0,
+    toque_positiva: 10,
+    cobertura_positiva: 10,
+    toque_negativa: 0,
+    cobertura_negativa: 0,
+    error_def: 0,
     errores_graves: 0,
+    mala_libre: -2,
   },
   armados: {
     genial: 10,
@@ -73,7 +70,10 @@ export const BASE_SCORES: Record<string, Record<string, number>> = {
 };
 
 export const PUNTAJE_NEUTRO = 5;
+export const PUNTAJE_MIN = -2;
+export const PUNTAJE_MAX = 10;
 export const FACTOR_CONTEXTO = 0.4;
+export const MIN_ACCIONES_RADAR = 10;
 
 export function puntajeBase(
   fundamento: string,
@@ -92,7 +92,7 @@ export function ajustarPorContexto(
   if (anteriorBase === null) return base;
   const ajuste =
     base - FACTOR_CONTEXTO * (anteriorBase - PUNTAJE_NEUTRO);
-  return Math.max(0, Math.min(10, ajuste));
+  return Math.max(PUNTAJE_MIN, Math.min(PUNTAJE_MAX, ajuste));
 }
 
 export const VALORES_SAQUE = BASE_SCORES.saque;
@@ -102,7 +102,6 @@ export const VALORES_BLOQUEO = BASE_SCORES.bloqueo;
 export const VALORES_DEFENSA = BASE_SCORES.defensa;
 export const VALORES_ARMADOS = BASE_SCORES.armados;
 export const VALORES_TOQUE = BASE_SCORES.toque;
-
 export const VALORES_POR_FUNDAMENTO = BASE_SCORES;
 
 const ACCIONES_POSITIVAS: Record<string, string[]> = {
@@ -191,6 +190,14 @@ function getExponente(fundamento: string): number {
 function puntajeEfectivo(a: AccionDB): number | null {
   if (a.puntaje !== undefined) return a.puntaje;
   return puntajeBase(a.fundamento, a.valoracion);
+}
+
+function normalizarPuntaje(p: number): number {
+  if (p <= PUNTAJE_NEUTRO) {
+    if (p >= 0) return (p / 5) * 0.25;
+    return (p / 2) * 0.25;
+  }
+  return ((p - 5) / 5) * 0.75 + 0.25;
 }
 
 export const ETIQUETAS_VALORACION: Record<string, string> = {
@@ -405,15 +412,14 @@ function calcularValoraciones(
       const p = puntajeEfectivo(a);
       if (p === null) continue;
       sumaCruda += p * a.cantidad;
-      sumaNorm += (p - PUNTAJE_NEUTRO) * a.cantidad;
+      sumaNorm += normalizarPuntaje(p) * a.cantidad;
       count += a.cantidad;
     }
 
     if (count > 0) {
       totalPorFundamento[fund] = sumaCruda;
       promedioPorFundamento[fund] = sumaCruda / count;
-      // Normalizado: [-5, +5] (promedio de puntaje - 5)
-      promedioNormalizado[fund] = sumaNorm / count;
+      promedioNormalizado[fund] = (sumaNorm / count) * 10;
       sumaNormTotal += sumaNorm;
       countNormTotal += count;
       sumaCrudaTotal += sumaCruda;
@@ -424,7 +430,7 @@ function calcularValoraciones(
   return {
     promedioNormalizado,
     mediaNormalizadaBase:
-      countNormTotal > 0 ? sumaNormTotal / countNormTotal : 0,
+      countNormTotal > 0 ? (sumaNormTotal / countNormTotal) * 10 : 0,
     valoracionMediaCruda:
       countCrudaTotal > 0 ? sumaCrudaTotal / countCrudaTotal : 0,
     totalPorFundamento,
@@ -512,7 +518,6 @@ export function calcularPromedioPonderadoPorSet(
     const promedioBruto = total > 0 ? suma / total : 0;
     const max = maxPorSet[s] ?? 1;
     const factor = total > 0 ? Math.pow(total / max, exp) : 0;
-    // Ajustar hacia 5 (neutro) si el volumen es bajo
     const valorVisual =
       total > 0 ? promedioBruto * factor + (1 - factor) * 5 : 0;
     result.push({ set: s, promedio: valorVisual, total });
@@ -726,8 +731,6 @@ export function calcularEstadisticasJugador(
     totalPuntos += armador.toquesPunto;
     totalErrores += armador.toquesError;
     saldoTotal += armador.toquesPunto - armador.toquesError;
-    // El armado cuenta como acción (1 armado = 1 acción).
-    // La tendencia NO cuenta: es metadata para el mapa de calor.
     totalAcciones +=
       contarTotal(propias, "armados") +
       contarTotal(propias, "toque");
@@ -765,31 +768,36 @@ export function calcularEstadisticasJugador(
   const valoracionMediaNormalizada =
     vals.mediaNormalizadaBase * factorVolumen;
 
-  // ----------------------------------------------------------
-  // Radar: escala 0-10 (5 = neutro)
-  // valorRadar = ((promedioNorm * factorVolumen) + 5) * 1 → 0-10
-  // donde promedioNorm va de -5 a +5
-  // ----------------------------------------------------------
   const valoracionPonderadaPorFundamento: Record<string, number> = {};
   const maxPorFund =
     maxAccionesPorFundamento ??
     calcularMaxAccionesPorFundamento(acciones, [jugadorId]);
   for (const f of fundamentosValoracion) {
-    const norm = vals.promedioNormalizado[f];
-    if (norm === undefined) continue;
     const accFund = contarTotal(propias, f);
+
+    if (accFund < MIN_ACCIONES_RADAR) {
+      valoracionPonderadaPorFundamento[f] = 0;
+      continue;
+    }
+
+    const propiasFund = propias.filter((a) => a.fundamento === f);
+    let suma = 0;
+    let count = 0;
+    for (const a of propiasFund) {
+      const p = puntajeEfectivo(a);
+      if (p === null) continue;
+      suma += p * a.cantidad;
+      count += a.cantidad;
+    }
+    const promedio = count > 0 ? suma / count : 5;
+
     const maxFund = maxPorFund[f] ?? 1;
     const exp = getExponente(f);
-    const factorVol =
-      maxFund > 0 && accFund > 0
-        ? Math.pow(accFund / maxFund, exp)
-        : 0;
-    // norm va de -5 a +5 → lo normalizo a -1..+1 → lo escalo a 0-10
-    const norm01 = norm / 5;
-    // Con poco volumen tira a neutro (5)
-    const valor = (norm01 * factorVol * 5) + 5;
+    const factorVol = Math.pow(count / maxFund, exp);
+
+    const valor = promedio * factorVol + 5 * (1 - factorVol);
     valoracionPonderadaPorFundamento[f] =
-      Math.round(valor * 10) / 10;
+      Math.round(Math.max(0, Math.min(10, valor)) * 10) / 10;
   }
 
   let recepcion: EstadisticasJugador["recepcion"] | undefined;
@@ -938,6 +946,20 @@ export function calcularEstadisticasEquipo(
     }
   }
 
+  for (const fund of fundamentos) {
+    let suma = 0;
+    let count = 0;
+    for (const id of jugadoresIds) {
+      const val = porJugador[id]?.valoracionPonderadaPorFundamento[fund] ?? 0;
+      if (val > 0) {
+        suma += val;
+        count += 1;
+      }
+    }
+    totalesIniciales.valoracionPonderadaPorFundamento[fund] =
+      count > 0 ? Math.round((suma / count) * 10) / 10 : 0;
+  }
+
   totalesIniciales.valoracionMediaNormalizada =
     countNormTotal > 0 ? sumaNormTotal / countNormTotal : 0;
 
@@ -945,7 +967,7 @@ export function calcularEstadisticasEquipo(
 }
 
 // ============================================
-// RANKINGS COMPLETOS POR FUNDAMENTO
+// RANKINGS
 // ============================================
 
 export interface RankingCompletoItem {
