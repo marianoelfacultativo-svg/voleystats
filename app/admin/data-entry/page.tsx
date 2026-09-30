@@ -292,12 +292,10 @@ export default function DataEntryPage() {
   // ------------------------------------------------------------
   useEffect(() => {
     if (!partidoId) return;
-    if (rotaciones[keyPuntoActual]) return; // ya tiene, no tocar
+    if (rotaciones[keyPuntoActual]) return;
 
-    // Buscar la rotación más cercana hacia atrás
     let heredada: RotacionPunto | null = null;
 
-    // 1) Mismo set, punto anterior
     for (let p = puntoActual - 1; p >= 1; p--) {
       const k = `${setActivo}-${p}`;
       if (rotaciones[k]) {
@@ -306,7 +304,6 @@ export default function DataEntryPage() {
       }
     }
 
-    // 2) Set anterior (último punto disponible)
     if (!heredada) {
       for (let s = setActivo - 1; s >= 1; s--) {
         const keys = Object.keys(rotaciones)
@@ -323,7 +320,6 @@ export default function DataEntryPage() {
       }
     }
 
-    // 3) Sin herencia → rotación vacía
     const nueva: RotacionPunto = heredada
       ? {
           ...heredada,
@@ -442,6 +438,9 @@ export default function DataEntryPage() {
 
   const atacanteSugerido: string | null = null;
 
+  // Jugador que saca: siempre el que está en zona 1
+  const sacadorActual = rotActual.posiciones[1]?.jugador_id ?? null;
+
   const agregarAtaque = (
     a: Omit<
       AtaqueRow,
@@ -498,7 +497,9 @@ export default function DataEntryPage() {
       "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero"
     >
   ) => {
-    const jugId = jugadorDeTipo(rotActual, "A") ?? jugadoresDelEquipo[0]?.id;
+    // El que saca es siempre el jugador que está en zona 1
+    const jugId =
+      rotActual.posiciones[1]?.jugador_id ?? jugadoresDelEquipo[0]?.id;
     if (!jugId) return;
     const row: SaqueRow = {
       ...s,
@@ -876,19 +877,26 @@ export default function DataEntryPage() {
               )}
 
               {pestana === "saque" && (
-                <CanchaSaque
-                  saquesDelPunto={filtrar(saques)}
-                  onAgregar={agregarSaque}
-                  onBorrarUltimo={() => {
-                    const idx = saques.findLastIndex(
-                      (x) =>
-                        x.set_numero === setActivo &&
-                        x.punto_numero === puntoActual
-                    );
-                    if (idx >= 0)
-                      setSaques((prev) => prev.filter((_, i) => i !== idx));
-                  }}
-                />
+                <>
+                  {sacadorActual && (
+                    <div className="mb-2 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 text-center">
+                      Sacador (zona 1): <strong>{nombreDe(sacadorActual)}</strong>
+                    </div>
+                  )}
+                  <CanchaSaque
+                    saquesDelPunto={filtrar(saques)}
+                    onAgregar={agregarSaque}
+                    onBorrarUltimo={() => {
+                      const idx = saques.findLastIndex(
+                        (x) =>
+                          x.set_numero === setActivo &&
+                          x.punto_numero === puntoActual
+                      );
+                      if (idx >= 0)
+                        setSaques((prev) => prev.filter((_, i) => i !== idx));
+                    }}
+                  />
+                </>
               )}
 
               {pestana === "recepcion" && (
