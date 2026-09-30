@@ -18,6 +18,8 @@ import {
   rotacionVacia,
   jugadorDeTipo,
   type RotacionPunto,
+  type Libero,
+  type Zona,
 } from "@/lib/rotaciones";
 
 import PanelRotacion from "./PanelRotacion";
@@ -61,6 +63,62 @@ const PESTANAS: { id: Pestana; nombre: string; icono: string }[] = [
   { id: "saque", nombre: "Saque", icono: "🎯" },
   { id: "recepcion", nombre: "Recepción", icono: "🙌" },
 ];
+
+// ------------------------------------------------------------
+// Resuelve un rol (L, A, O, C, Pd, Pz) al jugador real
+// usando la rotación actual + los líberos elegidos.
+// ------------------------------------------------------------
+function resolverJugadorPorRol(
+  rol: "L" | "A" | "O" | "C" | "Pd" | "Pz",
+  rot: RotacionPunto,
+  liberos: Libero[]
+): string | null {
+  // Líbero: sale de los líberos elegidos en el panel de rotación
+  if (rol === "L") {
+    const def = liberos.find((l) => l.tipo === "defensa");
+    if (def?.jugador_id) return def.jugador_id;
+    const lib = liberos.find((l) => l.tipo === "recepcion");
+    if (lib?.jugador_id) return lib.jugador_id;
+    return liberos[0]?.jugador_id ?? null;
+  }
+
+  const zonasDelanteras: Zona[] = [4, 3, 2];
+  const zonasTraseras: Zona[] = [5, 6, 1];
+
+  // Central: busca cualquier tipo C1 o C2 con jugador
+  if (rol === "C") {
+    for (const z of Object.values(rot.posiciones)) {
+      if ((z.tipo === "C1" || z.tipo === "C2") && z.jugador_id) {
+        return z.jugador_id;
+      }
+    }
+    return null;
+  }
+
+  // Puntas: uno delantero (Pd) y uno zaguero (Pz)
+  if (rol === "Pd" || rol === "Pz") {
+    const zonasBuscadas = rol === "Pd" ? zonasDelanteras : zonasTraseras;
+    for (const z of Object.values(rot.posiciones)) {
+      if (
+        (z.tipo === "P1" || z.tipo === "P2") &&
+        zonasBuscadas.includes(z.zona) &&
+        z.jugador_id
+      ) {
+        return z.jugador_id;
+      }
+    }
+    return null;
+  }
+
+  // Armador / Opuesto: por tipo directo
+  const tipoBuscado = rol === "A" ? "A" : "O";
+  for (const z of Object.values(rot.posiciones)) {
+    if (z.tipo === tipoBuscado && z.jugador_id) {
+      return z.jugador_id;
+    }
+  }
+  return null;
+}
 
 export default function DataEntryPage() {
   const router = useRouter();
@@ -252,7 +310,6 @@ export default function DataEntryPage() {
     return () => clearTimeout(t);
   }, [partidoId, rotaciones, armados, ataques, defensas, bloqueos, saques, recepciones, cambios]);
 
-  // Teclas 1-6 → cambiar pestaña (solo si NO hay popup abierto)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
@@ -333,7 +390,10 @@ export default function DataEntryPage() {
   const agregarDefensa = (
     d: Omit<DefensaRow, "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero">
   ) => {
-    const jugId = jugadoresDelEquipo[0]?.id;
+    // Resolver el rol marcado (L, A, O, C, Pd, Pz) al jugador real
+    const jugId =
+      resolverJugadorPorRol(d.rol, rotActual, rotActual.liberos) ??
+      jugadoresDelEquipo[0]?.id;
     if (!jugId) return;
     const row: DefensaRow = {
       ...d,
@@ -375,7 +435,14 @@ export default function DataEntryPage() {
   const agregarRecepcion = (
     r: Omit<RecepcionRow, "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero">
   ) => {
-    const jugId = jugadoresDelEquipo[0]?.id;
+    // Recepción: siempre la hace el líbero (de recepción si hay 2, o el único)
+    const libRecep = rotActual.liberos.find((l) => l.tipo === "recepcion");
+    const libDef = rotActual.liberos.find((l) => l.tipo === "defensa");
+    const jugId =
+      libRecep?.jugador_id ??
+      libDef?.jugador_id ??
+      rotActual.liberos[0]?.jugador_id ??
+      jugadoresDelEquipo[0]?.id;
     if (!jugId) return;
     const row: RecepcionRow = {
       ...r,

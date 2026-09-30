@@ -99,7 +99,6 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
     x: number;
     y: number;
   } | null>(null);
-  // tick fuerza re-render después de montar el DOM
   const [tick, setTick] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -121,7 +120,6 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
     };
   }, []);
 
-  // Re-render forzado después del mount para calcular posiciones
   useLayoutEffect(() => {
     setTick((t) => t + 1);
   }, [punto.lineas.length, punto.numero]);
@@ -220,6 +218,11 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
   const cambiarArmador = (v: 1 | 2) => {
     onChange({ ...punto, armadorNumero: v });
   };
+
+  const coordDe = (l: ArmadoLinea) =>
+    `${l.origen.celda}${l.origen.mini ? `-${l.origen.mini}` : ""} → ${
+      l.destino.celda
+    }${l.destino.mini ? `-${l.destino.mini}` : ""}`;
 
   return (
     <div className="max-w-xl mx-auto">
@@ -395,6 +398,29 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
       <p className="text-[10px] text-slate-400 mt-2 text-center">
         Clic origen → clic destino (o clic derecho). Elegí calidad con 1-6.
       </p>
+
+      {punto.lineas.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-slate-200">
+          <p className="text-[10px] text-slate-500 mb-1">
+            Armados del punto ({punto.lineas.length}):
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {punto.lineas.map((l, i) => {
+              const color = COLORES_CALIDAD[l.calidad] ?? "#64748b";
+              return (
+                <div
+                  key={i}
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px]"
+                  style={{ borderColor: color, color }}
+                >
+                  <span className="font-semibold">C{l.calidad}</span>
+                  <span className="text-slate-500">{coordDe(l)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
