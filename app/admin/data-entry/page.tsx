@@ -54,6 +54,7 @@ interface EstadoLocal {
   defensas: DefensaRow[];
   bloqueos: BloqueoRow[];
   saques: SaqueRow[];
+  saquesTipo: Record<string, "flotado" | "potencia">;
   recepciones: RecepcionRow[];
   cambios: CambioRow[];
 }
@@ -140,6 +141,9 @@ export default function DataEntryPage() {
   const [defensas, setDefensas] = useState<DefensaRow[]>([]);
   const [bloqueos, setBloqueos] = useState<BloqueoRow[]>([]);
   const [saques, setSaques] = useState<SaqueRow[]>([]);
+  const [saquesTipo, setSaquesTipo] = useState<
+    Record<string, "flotado" | "potencia">
+  >({});
   const [recepciones, setRecepciones] = useState<RecepcionRow[]>([]);
   const [cambios, setCambios] = useState<CambioRow[]>([]);
 
@@ -223,6 +227,7 @@ export default function DataEntryPage() {
             setDefensas(data.defensas ?? []);
             setBloqueos(data.bloqueos ?? []);
             setSaques(data.saques ?? []);
+            setSaquesTipo(data.saquesTipo ?? {});
             setRecepciones(data.recepciones ?? []);
             setCambios(data.cambios ?? []);
             setCargando(false);
@@ -282,6 +287,7 @@ export default function DataEntryPage() {
       setDefensas(d.defensas);
       setBloqueos(d.bloqueos);
       setSaques(d.saques);
+      setSaquesTipo({});
       setRecepciones(d.recepciones);
       setCambios(d.cambios);
 
@@ -344,6 +350,7 @@ export default function DataEntryPage() {
         defensas,
         bloqueos,
         saques,
+        saquesTipo,
         recepciones,
         cambios,
       };
@@ -362,6 +369,7 @@ export default function DataEntryPage() {
     defensas,
     bloqueos,
     saques,
+    saquesTipo,
     recepciones,
     cambios,
   ]);
@@ -407,6 +415,7 @@ export default function DataEntryPage() {
     setDefensas([]);
     setBloqueos([]);
     setSaques([]);
+    setSaquesTipo({});
     setRecepciones([]);
     setCambios([]);
     setPuntoActual(1);
@@ -500,9 +509,6 @@ export default function DataEntryPage() {
     setArmadoIdx((prev) => Math.max(0, prev - 1));
   };
 
-  // ------------------------------------------------------------
-  // Re-propagar rotación a los puntos siguientes del set
-  // ------------------------------------------------------------
   const rePropagarRotacion = () => {
     if (!partidoId) return;
     const rotBase = rotaciones[keyPuntoActual];
@@ -511,7 +517,6 @@ export default function DataEntryPage() {
       return;
     }
 
-    // Encontrar el último punto con datos en este set
     const puntosDelSet = new Set<number>();
     Object.keys(rotaciones).forEach((k) => {
       const [sStr, pStr] = k.split("-");
@@ -607,7 +612,7 @@ export default function DataEntryPage() {
   const agregarSaque = (
     s: Omit<
       SaqueRow,
-      "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero"
+      "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero" | "tipo"
     >
   ) => {
     const jugId =
@@ -615,6 +620,7 @@ export default function DataEntryPage() {
     if (!jugId) return;
     const row: SaqueRow = {
       ...s,
+      tipo: saquesTipo[keyPuntoActual] ?? "flotado",
       partido_id: partidoId,
       jugador_id: jugId,
       set_numero: setActivo,
@@ -1069,6 +1075,13 @@ export default function DataEntryPage() {
                   )}
                   <CanchaSaque
                     saquesDelPunto={filtrar(saques)}
+                    tipo={saquesTipo[keyPuntoActual] ?? "flotado"}
+                    onCambiarTipo={(t) =>
+                      setSaquesTipo((prev) => ({
+                        ...prev,
+                        [keyPuntoActual]: t,
+                      }))
+                    }
                     onAgregar={agregarSaque}
                     onBorrarUltimo={() => {
                       const idx = saques.findLastIndex(

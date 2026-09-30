@@ -43,6 +43,8 @@ type Fase = "origen" | "destino" | "valoracion";
 
 interface Props {
   saquesDelPunto: SaqueRow[];
+  tipo: Tipo;
+  onCambiarTipo: (t: Tipo) => void;
   onAgregar: (
     s: Omit<
       SaqueRow,
@@ -54,11 +56,12 @@ interface Props {
 
 export default function CanchaSaque({
   saquesDelPunto,
+  tipo,
+  onCambiarTipo,
   onAgregar,
   onBorrarUltimo,
 }: Props) {
   const [fase, setFase] = useState<Fase>("origen");
-  const [tipo, setTipo] = useState<Tipo>("flotado");
   const [origen, setOrigen] = useState<Punto | null>(null);
   const [destino, setDestino] = useState<Punto | null>(null);
   const [preview, setPreview] = useState<{ x: number; y: number } | null>(null);
@@ -220,7 +223,7 @@ export default function CanchaSaque({
         </div>
         <div className="flex gap-1">
           <button
-            onClick={() => setTipo("flotado")}
+            onClick={() => onCambiarTipo("flotado")}
             className={`px-2 py-0.5 rounded text-[10px] font-medium ${
               tipo === "flotado"
                 ? "bg-blue-500 text-white"
@@ -230,7 +233,7 @@ export default function CanchaSaque({
             Flotado
           </button>
           <button
-            onClick={() => setTipo("potencia")}
+            onClick={() => onCambiarTipo("potencia")}
             className={`px-2 py-0.5 rounded text-[10px] font-medium ${
               tipo === "potencia"
                 ? "bg-orange-500 text-white"
@@ -257,7 +260,6 @@ export default function CanchaSaque({
       </div>
 
       <div ref={containerRef} className="relative select-none">
-        {/* Cancha rival: ancho completo */}
         <div>
           <p className="text-[9px] font-bold text-orange-700 mb-0.5 text-center tracking-wide">
             ▼ CANCHA RIVAL ▼
@@ -313,7 +315,6 @@ export default function CanchaSaque({
           </div>
         </div>
 
-        {/* Red: SOLO ancho de C2-C3-C4 (9/13 del total, centrado) */}
         <div className="w-[69.23%] mx-auto my-1">
           <p className="text-[9px] text-slate-400 mb-0.5 text-center">
             Red (destino)
@@ -332,7 +333,6 @@ export default function CanchaSaque({
           </div>
         </div>
 
-        {/* Origen: SOLO ancho de C2-C3-C4 (9/13 del total, centrado) */}
         <div className="w-[69.23%] mx-auto">
           <p className="text-[9px] text-slate-400 mb-0.5 text-center">
             Origen
