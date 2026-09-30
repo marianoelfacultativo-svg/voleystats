@@ -17,6 +17,7 @@ import {
 import {
   rotacionVacia,
   jugadorDeTipo,
+  girarRotacionPunto,
   type RotacionPunto,
   type Libero,
   type Zona,
@@ -75,9 +76,9 @@ function resolverJugadorPorRol(
   liberos: Libero[]
 ): string | null {
   if (rol === "L") {
-    const def = liberos.find((l) => l.tipo === "defensa");
-    if (def?.jugador_id) return def.jugador_id;
-    const lib = liberos.find((l) => l.tipo === "recepcion");
+    const tipoEsperado =
+      rot.saque_equipo === "rival" ? "recepcion" : "defensa";
+    const lib = liberos.find((l) => l.tipo === tipoEsperado);
     if (lib?.jugador_id) return lib.jugador_id;
     return liberos[0]?.jugador_id ?? null;
   }
@@ -442,7 +443,6 @@ export default function DataEntryPage() {
   const sacadorActual = rotActual.posiciones[1]?.jugador_id ?? null;
   const armadorDelPunto = jugadorDeTipo(rotActual, "A");
 
-  // Armados del punto actual
   const armadosDelPunto = armados[keyPuntoActual] ?? [];
   const armadoActual = armadosDelPunto[armadoIdx] ?? {
     jugador_id: armadorDelPunto ?? "",
@@ -498,6 +498,60 @@ export default function DataEntryPage() {
       return { ...prev, [keyPuntoActual]: actuales };
     });
     setArmadoIdx((prev) => Math.max(0, prev - 1));
+  };
+
+  // ------------------------------------------------------------
+  // Re-propagar rotación a los puntos siguientes del set
+  // ------------------------------------------------------------
+  const rePropagarRotacion = () => {
+    if (!partidoId) return;
+    const rotBase = rotaciones[keyPuntoActual];
+    if (!rotBase) {
+      alert("No hay rotación en este punto para propagar.");
+      return;
+    }
+
+    // Encontrar el último punto con datos en este set
+    const puntosDelSet = new Set<number>();
+    Object.keys(rotaciones).forEach((k) => {
+      const [sStr, pStr] = k.split("-");
+      if (parseInt(sStr) === setActivo) puntosDelSet.add(parseInt(pStr));
+    });
+    [...ataques, ...defensas, ...bloqueos, ...saques, ...recepciones].forEach(
+      (x) => {
+        if (x.set_numero === setActivo) puntosDelSet.add(x.punto_numero);
+      }
+    );
+
+    const ultimoPunto =
+      puntosDelSet.size > 0 ? Math.max(...Array.from(puntosDelSet)) : puntoActual;
+
+    if (ultimoPunto <= puntoActual) {
+      alert("No hay puntos siguientes en este set para re-propagar.");
+      return;
+    }
+
+    const ok = confirm(
+      `Esto va a sobreescribir la rotación de los puntos ${puntoActual + 1} al ${ultimoPunto} del set ${setActivo}. ¿Continuar?`
+    );
+    if (!ok) return;
+
+    const nuevasRots = { ...rotaciones };
+    let rotPrevia = rotBase;
+    for (let p = puntoActual + 1; p <= ultimoPunto; p++) {
+      const { rotacion: rotNueva } = girarRotacionPunto(rotPrevia, 1);
+      const rotAjustada: RotacionPunto = {
+        ...rotNueva,
+        set_numero: setActivo,
+        punto_numero: p,
+      };
+      nuevasRots[`${setActivo}-${p}`] = rotAjustada;
+      rotPrevia = rotAjustada;
+    }
+    setRotaciones(nuevasRots);
+    setMensaje(
+      `✅ Rotación re-propagada al set ${setActivo} (puntos ${puntoActual + 1}-${ultimoPunto})`
+    );
   };
 
   const agregarAtaque = (
@@ -575,11 +629,11 @@ export default function DataEntryPage() {
       "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero"
     >
   ) => {
-    const libRecep = rotActual.liberos.find((l) => l.tipo === "recepcion");
-    const libDef = rotActual.liberos.find((l) => l.tipo === "defensa");
+    const tipoEsperado =
+      rotActual.saque_equipo === "rival" ? "recepcion" : "defensa";
+    const lib = rotActual.liberos.find((l) => l.tipo === tipoEsperado);
     const jugId =
-      libRecep?.jugador_id ??
-      libDef?.jugador_id ??
+      lib?.jugador_id ??
       rotActual.liberos[0]?.jugador_id ??
       jugadoresDelEquipo[0]?.id;
     if (!jugId) return;
@@ -804,7 +858,7 @@ export default function DataEntryPage() {
               </div>
             </div>
 
-            <div className="mb-4 flex justify-start">
+            <div className="mb-4 flex items-start gap-2">
               <PanelRotacion
                 rotacion={rotActual}
                 jugadores={jugadoresDelEquipo}
@@ -812,6 +866,13 @@ export default function DataEntryPage() {
                 numeroRotacion={1}
                 onCambioRotacion={() => {}}
               />
+              <button
+                onClick={rePropagarRotacion}
+                className="px-3 py-2 text-xs bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 rounded-lg transition"
+                title="Re-propagar esta rotación a los puntos siguientes del set"
+              >
+                🔄 Re-propagar a siguientes
+              </button>
             </div>
 
             <div className="flex flex-wrap gap-2 mb-4 border-b border-slate-200">
@@ -838,7 +899,6 @@ export default function DataEntryPage() {
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
               {pestana === "armado" && (
                 <div>
-                  {/* Barra de armados del punto */}
                   <div className="flex flex-wrap items-center gap-2 mb-3">
                     <span className="text-[10px] font-semibold text-slate-500 uppercase">
                       Armados del punto:
@@ -877,7 +937,6 @@ export default function DataEntryPage() {
                     )}
                   </div>
 
-                  {/* Selector de quién armó */}
                   {armadosDelPunto.length > 0 && (
                     <div className="flex items-center gap-2 mb-3">
                       <span className="text-[10px] font-semibold text-slate-500 uppercase">
@@ -903,7 +962,6 @@ export default function DataEntryPage() {
                     </div>
                   )}
 
-                  {/* Tablero */}
                   <TableroArmadorPunto
                     punto={{
                       numero: puntoActual,
@@ -918,6 +976,10 @@ export default function DataEntryPage() {
               {pestana === "ataque" && (
                 <CanchaAtaque
                   ataquesDelPunto={filtrar(ataques)}
+                  armadosPendientes={Math.max(
+                    0,
+                    armadosDelPunto.length - filtrar(ataques).length
+                  )}
                   onAgregar={agregarAtaque}
                   onBorrarUltimo={() => {
                     const idx = ataques.findLastIndex(

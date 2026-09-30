@@ -2,16 +2,13 @@
 
 import { useState } from "react";
 import {
-  girarRotacion,
   asignarJugador,
-  ROTACION_BASE,
-  ROL_DE_TIPO,
+  girarRotacionPunto,
+  numeroRotacionDesdePosiciones,
   type RotacionPunto,
   type Zona,
   type SaqueEquipo,
   type Libero,
-  type TipoLogico,
-  type AsignacionZona,
 } from "@/lib/rotaciones";
 
 interface Jugador {
@@ -37,23 +34,6 @@ const LAYOUT: { zona: Zona; fila: "frente" | "fondo" }[] = [
   { zona: 1, fila: "fondo" },
 ];
 
-// Deriva el número de rotación desde las posiciones actuales
-function numeroRotacionDesdePosiciones(rot: RotacionPunto): number {
-  for (let i = 1; i <= 6; i++) {
-    const base = ROTACION_BASE[i];
-    let match = true;
-    for (const zona of Object.keys(base) as unknown as Zona[]) {
-      const z = Number(zona) as Zona;
-      if (base[z] !== rot.posiciones[z]?.tipo) {
-        match = false;
-        break;
-      }
-    }
-    if (match) return i;
-  }
-  return 1;
-}
-
 export default function PanelRotacion({
   rotacion,
   jugadores,
@@ -75,33 +55,9 @@ export default function PanelRotacion({
   };
 
   const handleGirar = (dir: 1 | -1) => {
-    const nuevoNumero = girarRotacion(numeroActual, dir);
-
-    // Mapear tipo → jugador_id de la rotación actual
-    const jugadorPorTipo: Partial<Record<TipoLogico, string | null>> = {};
-    Object.values(rotacion.posiciones).forEach((p) => {
-      jugadorPorTipo[p.tipo] = p.jugador_id;
-    });
-
-    // Construir la nueva rotación manteniendo los jugadores en sus tipos
-    const base = ROTACION_BASE[nuevoNumero] ?? ROTACION_BASE[1];
-    const nuevasPosiciones: Partial<Record<Zona, AsignacionZona>> = {};
-    (Object.keys(base) as unknown as Zona[]).forEach((z) => {
-      const zona = Number(z) as Zona;
-      const tipo = base[zona];
-      nuevasPosiciones[zona] = {
-        zona,
-        jugador_id: jugadorPorTipo[tipo] ?? null,
-        rol: ROL_DE_TIPO[tipo],
-        tipo,
-      };
-    });
-
+    const { rotacion: nueva, nuevoNumero } = girarRotacionPunto(rotacion, dir);
     onCambioRotacion(nuevoNumero);
-    onChange({
-      ...rotacion,
-      posiciones: nuevasPosiciones as Record<Zona, AsignacionZona>,
-    });
+    onChange(nueva);
   };
 
   const handleAsignar = (zona: Zona, jugador_id: string) => {

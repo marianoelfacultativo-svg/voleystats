@@ -44,7 +44,6 @@ export const ROTACION_BASE: Record<
   6: { 1: "C2", 2: "A", 3: "P1", 4: "C1", 5: "O", 6: "P2" },
 };
 
-// Rol visible por tipo lógico
 export const ROL_DE_TIPO: Record<TipoLogico, Rol> = {
   A: "A",
   O: "O",
@@ -54,7 +53,6 @@ export const ROL_DE_TIPO: Record<TipoLogico, Rol> = {
   P2: "P",
 };
 
-// Etiquetas para mostrar
 export const ETIQUETA_ROL: Record<Rol, string> = {
   P: "Punta",
   L: "Líbero",
@@ -72,16 +70,10 @@ export const ETIQUETA_TIPO: Record<TipoLogico, string> = {
   P2: "Punta 2",
 };
 
-// ------------------------------------------------------------
-// Girar rotación en sentido horario (1 → 2 → ... → 6 → 1)
-// ------------------------------------------------------------
 export function girarRotacion(actual: number, dir: 1 | -1): number {
   return ((actual - 1 + dir + 6) % 6) + 1;
 }
 
-// ------------------------------------------------------------
-// Genera la plantilla de una rotación vacía (jugadores sin asignar)
-// ------------------------------------------------------------
 export function rotacionVacia(
   numeroRotacion: number,
   set_numero: number,
@@ -109,9 +101,6 @@ export function rotacionVacia(
   };
 }
 
-// ------------------------------------------------------------
-// Asigna un jugador a una zona (respetando el tipo lógico)
-// ------------------------------------------------------------
 export function asignarJugador(
   rot: RotacionPunto,
   zona: Zona,
@@ -126,9 +115,6 @@ export function asignarJugador(
   };
 }
 
-// ------------------------------------------------------------
-// Devuelve qué zona ocupa un tipo lógico en esta rotación
-// ------------------------------------------------------------
 export function zonaDeTipo(rot: RotacionPunto, tipo: TipoLogico): Zona | null {
   for (const z of Object.values(rot.posiciones)) {
     if (z.tipo === tipo) return z.zona;
@@ -136,9 +122,6 @@ export function zonaDeTipo(rot: RotacionPunto, tipo: TipoLogico): Zona | null {
   return null;
 }
 
-// ------------------------------------------------------------
-// Devuelve el jugador asignado a un tipo lógico
-// ------------------------------------------------------------
 export function jugadorDeTipo(
   rot: RotacionPunto,
   tipo: TipoLogico
@@ -149,10 +132,6 @@ export function jugadorDeTipo(
   return null;
 }
 
-// ------------------------------------------------------------
-// Determina el atacante según zona y si el equipo saca o recibe
-// (según handoff: el opuesto ataca cruzado, la punta por la punta)
-// ------------------------------------------------------------
 export function atacanteDeZona(
   rot: RotacionPunto,
   zona: number
@@ -160,4 +139,60 @@ export function atacanteDeZona(
   const z = rot.posiciones[zona as Zona];
   if (!z) return null;
   return z.jugador_id;
+}
+
+// ------------------------------------------------------------
+// Helper: derivar número de rotación desde las posiciones
+// ------------------------------------------------------------
+export function numeroRotacionDesdePosiciones(rot: RotacionPunto): number {
+  for (let i = 1; i <= 6; i++) {
+    const base = ROTACION_BASE[i];
+    let match = true;
+    for (const zona of Object.keys(base) as unknown as Zona[]) {
+      const z = Number(zona) as Zona;
+      if (base[z] !== rot.posiciones[z]?.tipo) {
+        match = false;
+        break;
+      }
+    }
+    if (match) return i;
+  }
+  return 1;
+}
+
+// ------------------------------------------------------------
+// Helper: girar una rotación manteniendo los jugadores en sus tipos
+// ------------------------------------------------------------
+export function girarRotacionPunto(
+  rot: RotacionPunto,
+  dir: 1 | -1
+): { rotacion: RotacionPunto; nuevoNumero: number } {
+  const numeroActual = numeroRotacionDesdePosiciones(rot);
+  const nuevoNumero = girarRotacion(numeroActual, dir);
+
+  const jugadorPorTipo: Partial<Record<TipoLogico, string | null>> = {};
+  Object.values(rot.posiciones).forEach((p) => {
+    jugadorPorTipo[p.tipo] = p.jugador_id;
+  });
+
+  const base = ROTACION_BASE[nuevoNumero] ?? ROTACION_BASE[1];
+  const nuevasPosiciones: Partial<Record<Zona, AsignacionZona>> = {};
+  (Object.keys(base) as unknown as Zona[]).forEach((z) => {
+    const zona = Number(z) as Zona;
+    const tipo = base[zona];
+    nuevasPosiciones[zona] = {
+      zona,
+      jugador_id: jugadorPorTipo[tipo] ?? null,
+      rol: ROL_DE_TIPO[tipo],
+      tipo,
+    };
+  });
+
+  return {
+    rotacion: {
+      ...rot,
+      posiciones: nuevasPosiciones as Record<Zona, AsignacionZona>,
+    },
+    nuevoNumero,
+  };
 }
