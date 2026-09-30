@@ -3,12 +3,15 @@
 import { useState } from "react";
 import {
   girarRotacion,
-  rotacionVacia,
   asignarJugador,
+  ROTACION_BASE,
+  ROL_DE_TIPO,
   type RotacionPunto,
   type Zona,
   type SaqueEquipo,
   type Libero,
+  type TipoLogico,
+  type AsignacionZona,
 } from "@/lib/rotaciones";
 
 interface Jugador {
@@ -53,11 +56,33 @@ export default function PanelRotacion({
   };
 
   const handleGirar = (dir: 1 | -1) => {
-    const nuevo = girarRotacion(numeroRotacion, dir);
-    onCambioRotacion(nuevo);
-    onChange(
-      rotacionVacia(nuevo, rotacion.set_numero, rotacion.punto_numero, rotacion.saque_equipo)
-    );
+    const nuevoNumero = girarRotacion(numeroRotacion, dir);
+
+    // Mapear tipo → jugador_id de la rotación actual
+    const jugadorPorTipo: Partial<Record<TipoLogico, string | null>> = {};
+    Object.values(rotacion.posiciones).forEach((p) => {
+      jugadorPorTipo[p.tipo] = p.jugador_id;
+    });
+
+    // Construir la nueva rotación manteniendo los jugadores en sus tipos
+    const base = ROTACION_BASE[nuevoNumero] ?? ROTACION_BASE[1];
+    const nuevasPosiciones: Partial<Record<Zona, AsignacionZona>> = {};
+    (Object.keys(base) as unknown as Zona[]).forEach((z) => {
+      const zona = Number(z) as Zona;
+      const tipo = base[zona];
+      nuevasPosiciones[zona] = {
+        zona,
+        jugador_id: jugadorPorTipo[tipo] ?? null,
+        rol: ROL_DE_TIPO[tipo],
+        tipo,
+      };
+    });
+
+    onCambioRotacion(nuevoNumero);
+    onChange({
+      ...rotacion,
+      posiciones: nuevasPosiciones as Record<Zona, AsignacionZona>,
+    });
   };
 
   const handleAsignar = (zona: Zona, jugador_id: string) => {
@@ -77,7 +102,8 @@ export default function PanelRotacion({
       nuevos = existentes.filter((l) => l.jugador_id !== jugador_id);
     } else {
       if (existentes.length >= 2) return;
-      const tipo: Libero["tipo"] = existentes.length === 0 ? "defensa" : "recepcion";
+      const tipo: Libero["tipo"] =
+        existentes.length === 0 ? "defensa" : "recepcion";
       nuevos = [...existentes, { jugador_id, tipo }];
     }
     onChange({ ...rotacion, liberos: nuevos });

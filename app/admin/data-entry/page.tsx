@@ -66,14 +66,12 @@ const PESTANAS: { id: Pestana; nombre: string; icono: string }[] = [
 
 // ------------------------------------------------------------
 // Resuelve un rol (L, A, O, C, Pd, Pz) al jugador real
-// usando la rotación actual + los líberos elegidos.
 // ------------------------------------------------------------
 function resolverJugadorPorRol(
   rol: "L" | "A" | "O" | "C" | "Pd" | "Pz",
   rot: RotacionPunto,
   liberos: Libero[]
 ): string | null {
-  // Líbero: sale de los líberos elegidos en el panel de rotación
   if (rol === "L") {
     const def = liberos.find((l) => l.tipo === "defensa");
     if (def?.jugador_id) return def.jugador_id;
@@ -85,7 +83,6 @@ function resolverJugadorPorRol(
   const zonasDelanteras: Zona[] = [4, 3, 2];
   const zonasTraseras: Zona[] = [5, 6, 1];
 
-  // Central: busca cualquier tipo C1 o C2 con jugador
   if (rol === "C") {
     for (const z of Object.values(rot.posiciones)) {
       if ((z.tipo === "C1" || z.tipo === "C2") && z.jugador_id) {
@@ -95,7 +92,6 @@ function resolverJugadorPorRol(
     return null;
   }
 
-  // Puntas: uno delantero (Pd) y uno zaguero (Pz)
   if (rol === "Pd" || rol === "Pz") {
     const zonasBuscadas = rol === "Pd" ? zonasDelanteras : zonasTraseras;
     for (const z of Object.values(rot.posiciones)) {
@@ -110,7 +106,6 @@ function resolverJugadorPorRol(
     return null;
   }
 
-  // Armador / Opuesto: por tipo directo
   const tipoBuscado = rol === "A" ? "A" : "O";
   for (const z of Object.values(rot.posiciones)) {
     if (z.tipo === tipoBuscado && z.jugador_id) {
@@ -209,7 +204,10 @@ export default function DataEntryPage() {
     setCargando(true);
     limpiarTodo();
 
-    const raw = typeof window !== "undefined" ? localStorage.getItem(CLAVE_LOCAL + partidoId) : null;
+    const raw =
+      typeof window !== "undefined"
+        ? localStorage.getItem(CLAVE_LOCAL + partidoId)
+        : null;
     if (raw) {
       try {
         const data: EstadoLocal = JSON.parse(raw);
@@ -279,13 +277,63 @@ export default function DataEntryPage() {
       setCambios(d.cambios);
 
       const puntos = new Set<number>();
-      [...d.ataques, ...d.defensas, ...d.bloqueos, ...d.saques, ...d.recepciones].forEach((x: any) => {
-        if (x.set_numero === setActivo) puntos.add(x.punto_numero);
-      });
+      [...d.ataques, ...d.defensas, ...d.bloqueos, ...d.saques, ...d.recepciones].forEach(
+        (x: any) => {
+          if (x.set_numero === setActivo) puntos.add(x.punto_numero);
+        }
+      );
       const maxP = puntos.size > 0 ? Math.max(...puntos) : 1;
       setPuntoActual(maxP);
     });
   }, [partidoId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ------------------------------------------------------------
+  // Heredar rotación del punto anterior si el nuevo no tiene
+  // ------------------------------------------------------------
+  useEffect(() => {
+    if (!partidoId) return;
+    if (rotaciones[keyPuntoActual]) return; // ya tiene, no tocar
+
+    // Buscar la rotación más cercana hacia atrás
+    let heredada: RotacionPunto | null = null;
+
+    // 1) Mismo set, punto anterior
+    for (let p = puntoActual - 1; p >= 1; p--) {
+      const k = `${setActivo}-${p}`;
+      if (rotaciones[k]) {
+        heredada = rotaciones[k];
+        break;
+      }
+    }
+
+    // 2) Set anterior (último punto disponible)
+    if (!heredada) {
+      for (let s = setActivo - 1; s >= 1; s--) {
+        const keys = Object.keys(rotaciones)
+          .filter((k) => k.startsWith(`${s}-`))
+          .sort((a, b) => {
+            const pa = parseInt(a.split("-")[1]);
+            const pb = parseInt(b.split("-")[1]);
+            return pb - pa;
+          });
+        if (keys.length > 0) {
+          heredada = rotaciones[keys[0]];
+          break;
+        }
+      }
+    }
+
+    // 3) Sin herencia → rotación vacía
+    const nueva: RotacionPunto = heredada
+      ? {
+          ...heredada,
+          set_numero: setActivo,
+          punto_numero: puntoActual,
+        }
+      : rotacionVacia(1, setActivo, puntoActual, "propio");
+
+    setRotaciones((prev) => ({ ...prev, [keyPuntoActual]: nueva }));
+  }, [keyPuntoActual, partidoId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!partidoId) return;
@@ -308,14 +356,30 @@ export default function DataEntryPage() {
       }
     }, 800);
     return () => clearTimeout(t);
-  }, [partidoId, rotaciones, armados, ataques, defensas, bloqueos, saques, recepciones, cambios]);
+  }, [
+    partidoId,
+    rotaciones,
+    armados,
+    ataques,
+    defensas,
+    bloqueos,
+    saques,
+    recepciones,
+    cambios,
+  ]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT") return;
+      if (
+        t.tagName === "INPUT" ||
+        t.tagName === "TEXTAREA" ||
+        t.tagName === "SELECT"
+      )
+        return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (typeof document !== "undefined" && document.querySelector("[data-popup]")) return;
+      if (typeof document !== "undefined" && document.querySelector("[data-popup]"))
+        return;
       const n = parseInt(e.key);
       if (n >= 1 && n <= 6) {
         setPestana(PESTANAS[n - 1].id);
@@ -367,13 +431,22 @@ export default function DataEntryPage() {
   const setRotActual = (r: RotacionPunto) =>
     setRotaciones((prev) => ({ ...prev, [keyPuntoActual]: r }));
 
-  const filtrar = <T extends { set_numero: number; punto_numero: number }>(arr: T[]) =>
-    arr.filter((x) => x.set_numero === setActivo && x.punto_numero === puntoActual);
+  const filtrar = <
+    T extends { set_numero: number; punto_numero: number }
+  >(
+    arr: T[]
+  ) =>
+    arr.filter(
+      (x) => x.set_numero === setActivo && x.punto_numero === puntoActual
+    );
 
   const atacanteSugerido: string | null = null;
 
   const agregarAtaque = (
-    a: Omit<AtaqueRow, "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero">
+    a: Omit<
+      AtaqueRow,
+      "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero"
+    >
   ) => {
     const jugId = jugadorDeTipo(rotActual, "O") ?? jugadoresDelEquipo[0]?.id;
     if (!jugId) return;
@@ -388,9 +461,11 @@ export default function DataEntryPage() {
   };
 
   const agregarDefensa = (
-    d: Omit<DefensaRow, "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero">
+    d: Omit<
+      DefensaRow,
+      "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero"
+    >
   ) => {
-    // Resolver el rol marcado (L, A, O, C, Pd, Pz) al jugador real
     const jugId =
       resolverJugadorPorRol(d.rol, rotActual, rotActual.liberos) ??
       jugadoresDelEquipo[0]?.id;
@@ -418,7 +493,10 @@ export default function DataEntryPage() {
   };
 
   const agregarSaque = (
-    s: Omit<SaqueRow, "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero">
+    s: Omit<
+      SaqueRow,
+      "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero"
+    >
   ) => {
     const jugId = jugadorDeTipo(rotActual, "A") ?? jugadoresDelEquipo[0]?.id;
     if (!jugId) return;
@@ -433,9 +511,11 @@ export default function DataEntryPage() {
   };
 
   const agregarRecepcion = (
-    r: Omit<RecepcionRow, "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero">
+    r: Omit<
+      RecepcionRow,
+      "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero"
+    >
   ) => {
-    // Recepción: siempre la hace el líbero (de recepción si hay 2, o el único)
     const libRecep = rotActual.liberos.find((l) => l.tipo === "recepcion");
     const libDef = rotActual.liberos.find((l) => l.tipo === "defensa");
     const jugId =
@@ -470,10 +550,9 @@ export default function DataEntryPage() {
         const zona = calcularZonaTendencia(l.destino.celda);
         filasArmados.push({
           partido_id: partidoId,
-          jugador_id: jugadorDeTipo(
-            rotaciones[k] ?? rotacionVacia(1, s, p),
-            "A"
-          ) ?? jugadoresDelEquipo[0]?.id,
+          jugador_id:
+            jugadorDeTipo(rotaciones[k] ?? rotacionVacia(1, s, p), "A") ??
+            jugadoresDelEquipo[0]?.id,
           set_numero: s,
           punto_numero: p,
           origen_celda: l.origen.celda,
@@ -491,7 +570,9 @@ export default function DataEntryPage() {
     await supabase.from("armados_detalle").delete().eq("partido_id", partidoId);
 
     if (filasArmados.length > 0) {
-      const { error } = await supabase.from("armados_detalle").insert(filasArmados);
+      const { error } = await supabase
+        .from("armados_detalle")
+        .insert(filasArmados);
       if (error) {
         setGuardando(false);
         setMensaje("❌ Error armados: " + error.message);
@@ -560,7 +641,9 @@ export default function DataEntryPage() {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Equipo</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Equipo
+              </label>
               <select
                 value={equipoId}
                 onChange={(e) => setEquipoId(e.target.value)}
@@ -568,21 +651,29 @@ export default function DataEntryPage() {
               >
                 <option value="">Elegí un equipo</option>
                 {equipos.map((eq) => (
-                  <option key={eq.id} value={eq.id}>{eq.nombre}</option>
+                  <option key={eq.id} value={eq.id}>
+                    {eq.nombre}
+                  </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Partido</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Partido
+              </label>
               <select
                 value={partidoId}
                 onChange={(e) => setPartidoId(e.target.value)}
                 disabled={!equipoId}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg disabled:bg-slate-100"
               >
-                <option value="">{equipoId ? "Elegí un partido" : "Primero elegí un equipo"}</option>
+                <option value="">
+                  {equipoId ? "Elegí un partido" : "Primero elegí un equipo"}
+                </option>
                 {partidos.map((p) => (
-                  <option key={p.id} value={p.id}>vs {p.rival} · {p.fecha}</option>
+                  <option key={p.id} value={p.id}>
+                    vs {p.rival} · {p.fecha}
+                  </option>
                 ))}
               </select>
             </div>
@@ -592,7 +683,9 @@ export default function DataEntryPage() {
         {noHayPartido && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
             <p className="text-5xl mb-4">🎯</p>
-            <p className="text-slate-600 font-medium">Elegí un equipo y un partido arriba</p>
+            <p className="text-slate-600 font-medium">
+              Elegí un equipo y un partido arriba
+            </p>
           </div>
         )}
 
@@ -601,11 +694,16 @@ export default function DataEntryPage() {
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-4">
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-1">
-                  <span className="text-xs font-semibold text-slate-500 uppercase mr-2">Set:</span>
+                  <span className="text-xs font-semibold text-slate-500 uppercase mr-2">
+                    Set:
+                  </span>
                   {([1, 2, 3, 4, 5] as const).map((s) => (
                     <button
                       key={s}
-                      onClick={() => { setSetActivo(s); setPuntoActual(1); }}
+                      onClick={() => {
+                        setSetActivo(s);
+                        setPuntoActual(1);
+                      }}
                       className={`px-3 py-1.5 text-sm font-medium rounded-lg transition ${
                         setActivo === s
                           ? "bg-emerald-500 text-white"
@@ -618,7 +716,9 @@ export default function DataEntryPage() {
                 </div>
 
                 <div className="flex items-center gap-1">
-                  <span className="text-xs font-semibold text-slate-500 uppercase mr-2">Punto:</span>
+                  <span className="text-xs font-semibold text-slate-500 uppercase mr-2">
+                    Punto:
+                  </span>
                   <button
                     onClick={() => setPuntoActual((p) => Math.max(1, p - 1))}
                     disabled={puntoActual === 1}
@@ -629,7 +729,9 @@ export default function DataEntryPage() {
                   <input
                     type="number"
                     value={puntoActual}
-                    onChange={(e) => setPuntoActual(Math.max(1, parseInt(e.target.value) || 1))}
+                    onChange={(e) =>
+                      setPuntoActual(Math.max(1, parseInt(e.target.value) || 1))
+                    }
                     className="w-16 px-2 py-1.5 text-center border border-slate-300 rounded-lg text-sm"
                   />
                   <button
@@ -666,7 +768,9 @@ export default function DataEntryPage() {
                   <span className="w-5 h-5 rounded bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center">
                     {i + 1}
                   </span>
-                  <span>{p.icono} {p.nombre}</span>
+                  <span>
+                    {p.icono} {p.nombre}
+                  </span>
                 </button>
               ))}
             </div>
@@ -680,7 +784,10 @@ export default function DataEntryPage() {
                     armadorNumero: 1,
                   }}
                   onChange={(p) =>
-                    setArmados((prev) => ({ ...prev, [keyPuntoActual]: p.lineas }))
+                    setArmados((prev) => ({
+                      ...prev,
+                      [keyPuntoActual]: p.lineas,
+                    }))
                   }
                 />
               )}
@@ -691,9 +798,12 @@ export default function DataEntryPage() {
                   onAgregar={agregarAtaque}
                   onBorrarUltimo={() => {
                     const idx = ataques.findLastIndex(
-                      (x) => x.set_numero === setActivo && x.punto_numero === puntoActual
+                      (x) =>
+                        x.set_numero === setActivo &&
+                        x.punto_numero === puntoActual
                     );
-                    if (idx >= 0) setAtaques((prev) => prev.filter((_, i) => i !== idx));
+                    if (idx >= 0)
+                      setAtaques((prev) => prev.filter((_, i) => i !== idx));
                   }}
                   atacanteSugerido={atacanteSugerido}
                 />
@@ -705,15 +815,21 @@ export default function DataEntryPage() {
                   onAgregar={agregarDefensa}
                   onBorrarUltimo={() => {
                     const idx = defensas.findLastIndex(
-                      (x) => x.set_numero === setActivo && x.punto_numero === puntoActual
+                      (x) =>
+                        x.set_numero === setActivo &&
+                        x.punto_numero === puntoActual
                     );
-                    if (idx >= 0) setDefensas((prev) => prev.filter((_, i) => i !== idx));
+                    if (idx >= 0)
+                      setDefensas((prev) => prev.filter((_, i) => i !== idx));
                   }}
                   onLimpiarPunto={() =>
                     setDefensas((prev) =>
                       prev.filter(
                         (x) =>
-                          !(x.set_numero === setActivo && x.punto_numero === puntoActual)
+                          !(
+                            x.set_numero === setActivo &&
+                            x.punto_numero === puntoActual
+                          )
                       )
                     )
                   }
@@ -723,19 +839,38 @@ export default function DataEntryPage() {
               {pestana === "bloqueo" && (
                 <CanchaBloqueo
                   bloqueosDelPunto={filtrar(bloqueos)}
-                  jugadoresRed={
-                    [
-                      { zona: 4 as const, jugador_id: rotActual.posiciones[4]?.jugador_id ?? "", nombre: nombreDe(rotActual.posiciones[4]?.jugador_id ?? null) ?? "Z4" },
-                      { zona: 3 as const, jugador_id: rotActual.posiciones[3]?.jugador_id ?? "", nombre: nombreDe(rotActual.posiciones[3]?.jugador_id ?? null) ?? "Z3" },
-                      { zona: 2 as const, jugador_id: rotActual.posiciones[2]?.jugador_id ?? "", nombre: nombreDe(rotActual.posiciones[2]?.jugador_id ?? null) ?? "Z2" },
-                    ].filter((j) => j.jugador_id)
-                  }
+                  jugadoresRed={[
+                    {
+                      zona: 4 as const,
+                      jugador_id: rotActual.posiciones[4]?.jugador_id ?? "",
+                      nombre:
+                        nombreDe(rotActual.posiciones[4]?.jugador_id ?? null) ??
+                        "Z4",
+                    },
+                    {
+                      zona: 3 as const,
+                      jugador_id: rotActual.posiciones[3]?.jugador_id ?? "",
+                      nombre:
+                        nombreDe(rotActual.posiciones[3]?.jugador_id ?? null) ??
+                        "Z3",
+                    },
+                    {
+                      zona: 2 as const,
+                      jugador_id: rotActual.posiciones[2]?.jugador_id ?? "",
+                      nombre:
+                        nombreDe(rotActual.posiciones[2]?.jugador_id ?? null) ??
+                        "Z2",
+                    },
+                  ].filter((j) => j.jugador_id)}
                   onAgregar={agregarBloqueo}
                   onBorrarUltimo={() => {
                     const idx = bloqueos.findLastIndex(
-                      (x) => x.set_numero === setActivo && x.punto_numero === puntoActual
+                      (x) =>
+                        x.set_numero === setActivo &&
+                        x.punto_numero === puntoActual
                     );
-                    if (idx >= 0) setBloqueos((prev) => prev.filter((_, i) => i !== idx));
+                    if (idx >= 0)
+                      setBloqueos((prev) => prev.filter((_, i) => i !== idx));
                   }}
                 />
               )}
@@ -746,9 +881,12 @@ export default function DataEntryPage() {
                   onAgregar={agregarSaque}
                   onBorrarUltimo={() => {
                     const idx = saques.findLastIndex(
-                      (x) => x.set_numero === setActivo && x.punto_numero === puntoActual
+                      (x) =>
+                        x.set_numero === setActivo &&
+                        x.punto_numero === puntoActual
                     );
-                    if (idx >= 0) setSaques((prev) => prev.filter((_, i) => i !== idx));
+                    if (idx >= 0)
+                      setSaques((prev) => prev.filter((_, i) => i !== idx));
                   }}
                 />
               )}
@@ -759,9 +897,12 @@ export default function DataEntryPage() {
                   onAgregar={agregarRecepcion}
                   onBorrarUltimo={() => {
                     const idx = recepciones.findLastIndex(
-                      (x) => x.set_numero === setActivo && x.punto_numero === puntoActual
+                      (x) =>
+                        x.set_numero === setActivo &&
+                        x.punto_numero === puntoActual
                     );
-                    if (idx >= 0) setRecepciones((prev) => prev.filter((_, i) => i !== idx));
+                    if (idx >= 0)
+                      setRecepciones((prev) => prev.filter((_, i) => i !== idx));
                   }}
                 />
               )}
@@ -769,7 +910,8 @@ export default function DataEntryPage() {
 
             <div className="sticky bottom-4 bg-white rounded-2xl shadow-lg border border-slate-200 p-4 flex items-center justify-between">
               <p className="text-sm text-slate-600">
-                {mensaje || "Ctrl+G para guardar. Teclas 1-6 cambian de pestaña. Autoguardado local."}
+                {mensaje ||
+                  "Ctrl+G para guardar. Teclas 1-6 cambian de pestaña. Autoguardado local."}
               </p>
               <button
                 onClick={guardarTodo}
