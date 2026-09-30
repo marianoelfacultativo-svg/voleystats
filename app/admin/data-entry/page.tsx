@@ -38,12 +38,17 @@ interface Jugador { id: string; nombre: string; numero: number | null; rol: stri
 interface Partido { id: string; equipo_id: string; rival: string; fecha: string }
 interface JugadorEquipo { id: string; jugador_id: string; equipo_id: string; activo: boolean }
 
+interface ArmadoEntry {
+  jugador_id: string;
+  lineas: ArmadoLinea[];
+}
+
 type Pestana = "armado" | "ataque" | "defensa" | "bloqueo" | "saque" | "recepcion";
 
 interface EstadoLocal {
   ts: number;
   rotaciones: Record<string, RotacionPunto>;
-  armados: Record<string, ArmadoLinea[]>;
+  armados: Record<string, ArmadoEntry[]>;
   ataques: AtaqueRow[];
   defensas: DefensaRow[];
   bloqueos: BloqueoRow[];
@@ -64,9 +69,6 @@ const PESTANAS: { id: Pestana; nombre: string; icono: string }[] = [
   { id: "recepcion", nombre: "Recepción", icono: "🙌" },
 ];
 
-// ------------------------------------------------------------
-// Resuelve un rol (L, A, O, C, Pd, Pz) al jugador real
-// ------------------------------------------------------------
 function resolverJugadorPorRol(
   rol: "L" | "A" | "O" | "C" | "Pd" | "Pz",
   rot: RotacionPunto,
@@ -131,7 +133,8 @@ export default function DataEntryPage() {
   const [pestana, setPestana] = useState<Pestana>("armado");
 
   const [rotaciones, setRotaciones] = useState<Record<string, RotacionPunto>>({});
-  const [armados, setArmados] = useState<Record<string, ArmadoLinea[]>>({});
+  const [armados, setArmados] = useState<Record<string, ArmadoEntry[]>>({});
+  const [armadoIdx, setArmadoIdx] = useState(0);
   const [ataques, setAtaques] = useState<AtaqueRow[]>([]);
   const [defensas, setDefensas] = useState<DefensaRow[]>([]);
   const [bloqueos, setBloqueos] = useState<BloqueoRow[]>([]);
@@ -256,11 +259,16 @@ export default function DataEntryPage() {
         .order("created_at")
         .then(({ data }) => {
           if (!data) return;
-          const porPunto: Record<string, ArmadoLinea[]> = {};
+          const porPunto: Record<string, ArmadoEntry[]> = {};
           data.forEach((a: any) => {
             const k = `${a.set_numero}-${a.punto_numero}`;
-            porPunto[k] = porPunto[k] ?? [];
-            porPunto[k].push({
+            if (!porPunto[k]) porPunto[k] = [];
+            let entry = porPunto[k].find((x) => x.jugador_id === a.jugador_id);
+            if (!entry) {
+              entry = { jugador_id: a.jugador_id, lineas: [] };
+              porPunto[k].push(entry);
+            }
+            entry.lineas.push({
               origen: { celda: a.origen_celda, mini: a.origen_mini },
               destino: { celda: a.destino_celda, mini: a.destino_mini },
               calidad: a.calidad,
@@ -287,9 +295,6 @@ export default function DataEntryPage() {
     });
   }, [partidoId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ------------------------------------------------------------
-  // Heredar rotación del punto anterior si el nuevo no tiene
-  // ------------------------------------------------------------
   useEffect(() => {
     if (!partidoId) return;
     if (rotaciones[keyPuntoActual]) return;
@@ -321,11 +326,7 @@ export default function DataEntryPage() {
     }
 
     const nueva: RotacionPunto = heredada
-      ? {
-          ...heredada,
-          set_numero: setActivo,
-          punto_numero: puntoActual,
-        }
+      ? { ...heredada, set_numero: setActivo, punto_numero: puntoActual }
       : rotacionVacia(1, setActivo, puntoActual, "propio");
 
     setRotaciones((prev) => ({ ...prev, [keyPuntoActual]: nueva }));
@@ -408,6 +409,7 @@ export default function DataEntryPage() {
     setRecepciones([]);
     setCambios([]);
     setPuntoActual(1);
+    setArmadoIdx(0);
   };
 
   const jugadoresDelEquipo = asignaciones
@@ -437,9 +439,66 @@ export default function DataEntryPage() {
     );
 
   const atacanteSugerido: string | null = null;
-
-  // Jugador que saca: siempre el que está en zona 1
   const sacadorActual = rotActual.posiciones[1]?.jugador_id ?? null;
+  const armadorDelPunto = jugadorDeTipo(rotActual, "A");
+
+  // Armados del punto actual
+  const armadosDelPunto = armados[keyPuntoActual] ?? [];
+  const armadoActual = armadosDelPunto[armadoIdx] ?? {
+    jugador_id: armadorDelPunto ?? "",
+    lineas: [],
+  };
+
+  useEffect(() => {
+    setArmadoIdx(0);
+  }, [keyPuntoActual]);
+
+  const agregarArmado = () => {
+    setArmados((prev) => {
+      const actuales = prev[keyPuntoActual] ?? [];
+      return {
+        ...prev,
+        [keyPuntoActual]: [
+          ...actuales,
+          { jugador_id: armadorDelPunto ?? "", lineas: [] },
+        ],
+      };
+    });
+    setArmadoIdx(armadosDelPunto.length);
+  };
+
+  const setLineasArmadoActual = (lineas: ArmadoLinea[]) => {
+    setArmados((prev) => {
+      const actuales = [...(prev[keyPuntoActual] ?? [])];
+      if (actuales.length === 0) {
+        actuales.push({ jugador_id: armadorDelPunto ?? "", lineas });
+      } else {
+        actuales[armadoIdx] = { ...actuales[armadoIdx], lineas };
+      }
+      return { ...prev, [keyPuntoActual]: actuales };
+    });
+  };
+
+  const setJugadorArmadoActual = (jugador_id: string) => {
+    setArmados((prev) => {
+      const actuales = [...(prev[keyPuntoActual] ?? [])];
+      if (actuales.length === 0) {
+        actuales.push({ jugador_id, lineas: [] });
+      } else {
+        actuales[armadoIdx] = { ...actuales[armadoIdx], jugador_id };
+      }
+      return { ...prev, [keyPuntoActual]: actuales };
+    });
+  };
+
+  const borrarArmadoActual = () => {
+    setArmados((prev) => {
+      const actuales = [...(prev[keyPuntoActual] ?? [])];
+      actuales.splice(armadoIdx, 1);
+      return { ...prev, [keyPuntoActual]: actuales };
+    });
+    setArmadoIdx((prev) => Math.max(0, prev - 1));
+  };
 
   const agregarAtaque = (
     a: Omit<
@@ -497,7 +556,6 @@ export default function DataEntryPage() {
       "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero"
     >
   ) => {
-    // El que saca es siempre el jugador que está en zona 1
     const jugId =
       rotActual.posiciones[1]?.jugador_id ?? jugadoresDelEquipo[0]?.id;
     if (!jugId) return;
@@ -543,27 +601,28 @@ export default function DataEntryPage() {
     setMensaje("");
 
     const filasArmados: any[] = [];
-    for (const [k, lineas] of Object.entries(armados)) {
+    for (const [k, listaArmados] of Object.entries(armados)) {
       const [sStr, pStr] = k.split("-");
       const s = parseInt(sStr);
       const p = parseInt(pStr);
-      lineas.forEach((l) => {
-        const zona = calcularZonaTendencia(l.destino.celda);
-        filasArmados.push({
-          partido_id: partidoId,
-          jugador_id:
-            jugadorDeTipo(rotaciones[k] ?? rotacionVacia(1, s, p), "A") ??
-            jugadoresDelEquipo[0]?.id,
-          set_numero: s,
-          punto_numero: p,
-          origen_celda: l.origen.celda,
-          origen_mini: l.origen.mini,
-          destino_celda: l.destino.celda,
-          destino_mini: l.destino.mini,
-          zona_tendencia: zona,
-          calidad: l.calidad,
-          atacante_derecho: "arriba",
-          armador_numero: 1,
+      listaArmados.forEach((armado) => {
+        if (!armado.jugador_id) return;
+        armado.lineas.forEach((l) => {
+          const zona = calcularZonaTendencia(l.destino.celda);
+          filasArmados.push({
+            partido_id: partidoId,
+            jugador_id: armado.jugador_id,
+            set_numero: s,
+            punto_numero: p,
+            origen_celda: l.origen.celda,
+            origen_mini: l.origen.mini,
+            destino_celda: l.destino.celda,
+            destino_mini: l.destino.mini,
+            zona_tendencia: zona,
+            calidad: l.calidad,
+            atacante_derecho: "arriba",
+            armador_numero: 1,
+          });
         });
       });
     }
@@ -778,19 +837,82 @@ export default function DataEntryPage() {
 
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
               {pestana === "armado" && (
-                <TableroArmadorPunto
-                  punto={{
-                    numero: puntoActual,
-                    lineas: armados[keyPuntoActual] ?? [],
-                    armadorNumero: 1,
-                  }}
-                  onChange={(p) =>
-                    setArmados((prev) => ({
-                      ...prev,
-                      [keyPuntoActual]: p.lineas,
-                    }))
-                  }
-                />
+                <div>
+                  {/* Barra de armados del punto */}
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase">
+                      Armados del punto:
+                    </span>
+                    {armadosDelPunto.length === 0 && (
+                      <span className="text-[10px] text-slate-400 italic">
+                        (ninguno todavía)
+                      </span>
+                    )}
+                    {armadosDelPunto.map((a, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setArmadoIdx(i)}
+                        className={`px-2 py-0.5 text-[10px] rounded border ${
+                          armadoIdx === i
+                            ? "bg-emerald-500 text-white border-emerald-500"
+                            : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                        }`}
+                      >
+                        #{i + 1} {nombreDe(a.jugador_id) ?? "(sin dueño)"}
+                      </button>
+                    ))}
+                    <button
+                      onClick={agregarArmado}
+                      className="px-2 py-0.5 text-[10px] rounded border border-dashed border-slate-400 text-slate-600 hover:bg-slate-50"
+                    >
+                      + Nuevo armado
+                    </button>
+                    {armadosDelPunto.length > 0 && (
+                      <button
+                        onClick={borrarArmadoActual}
+                        className="px-2 py-0.5 text-[10px] rounded bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
+                      >
+                        🗑 Borrar armado #{armadoIdx + 1}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Selector de quién armó */}
+                  {armadosDelPunto.length > 0 && (
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-[10px] font-semibold text-slate-500 uppercase">
+                        Armó:
+                      </span>
+                      <select
+                        value={armadoActual.jugador_id}
+                        onChange={(e) => setJugadorArmadoActual(e.target.value)}
+                        className="px-2 py-1 text-xs border border-slate-300 rounded-lg"
+                      >
+                        <option value="">(sin asignar)</option>
+                        {jugadoresDelEquipo.map((j) => (
+                          <option key={j.id} value={j.id}>
+                            {j.nombre}
+                            {j.numero !== null ? ` #${j.numero}` : ""}
+                            {j.id === armadorDelPunto ? " · armador" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-[10px] text-slate-400">
+                        (cambialo para armado de emergencia)
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Tablero */}
+                  <TableroArmadorPunto
+                    punto={{
+                      numero: puntoActual,
+                      lineas: armadoActual.lineas,
+                      armadorNumero: 1,
+                    }}
+                    onChange={(p) => setLineasArmadoActual(p.lineas)}
+                  />
+                </div>
               )}
 
               {pestana === "ataque" && (

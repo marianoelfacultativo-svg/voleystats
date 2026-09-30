@@ -48,6 +48,7 @@ interface Props {
   ) => void;
   onBorrarUltimo: () => void;
   atacanteSugerido: string | null;
+  armadosPendientes?: number;
 }
 
 export default function CanchaAtaque({
@@ -55,6 +56,7 @@ export default function CanchaAtaque({
   onAgregar,
   onBorrarUltimo,
   atacanteSugerido,
+  armadosPendientes = 0,
 }: Props) {
   const [fase, setFase] = useState<Fase>("origen");
   const [origen, setOrigen] = useState<Punto | null>(null);
@@ -83,7 +85,6 @@ export default function CanchaAtaque({
     };
   }, []);
 
-  // Re-render forzado cuando cambian las líneas guardadas
   useLayoutEffect(() => {
     setTick((t) => t + 1);
   }, [ataquesDelPunto.length]);
@@ -278,6 +279,9 @@ export default function CanchaAtaque({
     ? posicion(keyPunto(destinoTemp.celda, destinoTemp.mini))
     : null;
 
+  // Indicador: si hay armados pendientes, el próximo ataque hereda
+  const hereda = armadosPendientes > 0;
+
   return (
     <div className="max-w-xl mx-auto">
       <div className="flex items-center justify-between mb-2 text-[10px] flex-wrap gap-2">
@@ -313,6 +317,19 @@ export default function CanchaAtaque({
             🗑 Borrar último
           </button>
         </div>
+      </div>
+
+      {/* Indicador de herencia de armado */}
+      <div
+        className={`mb-1 text-[10px] border rounded px-2 py-1 text-center ${
+          hereda
+            ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+            : "text-slate-500 bg-slate-50 border-slate-200"
+        }`}
+      >
+        {hereda
+          ? `Hereda del armado (${armadosPendientes} pendiente${armadosPendientes !== 1 ? "s" : ""})`
+          : "Libre (sin armado pendiente)"}
       </div>
 
       {atacanteSugerido && (

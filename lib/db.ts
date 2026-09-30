@@ -1,14 +1,11 @@
 // ============================================
 // ACCESO A DATOS — 7 tablas de detalle
-// + adaptador con puntaje contextual
+// Correlación: solo armado → ataque (pila FIFO)
 // ============================================
 
 import { supabase } from "./supabase";
 import type { RotacionPunto } from "./rotaciones";
-import {
-  puntajeBase,
-  ajustarPorContexto,
-} from "./estadisticas";
+import { puntajeBase, ajustarPorContexto } from "./estadisticas";
 
 export interface AtaqueRow {
   id?: string;
@@ -243,7 +240,7 @@ export async function borrarDetalles(partidoId: string) {
 
 // ============================================
 // ADAPTADOR: tablas nuevas → formato AccionDB
-// con puntaje 0-10 y ajuste contextual
+// Correlación: armado → ataque (uno a uno)
 // ============================================
 
 export interface AccionDB {
@@ -304,15 +301,6 @@ interface AccionIndividual {
   created_at: string;
 }
 
-/**
- * Lee las 7 tablas nuevas y las convierte al formato AccionDB.
- *
- * Aplica el sistema de puntaje:
- *  - Escala 0-10 (5 = neutro)
- *  - Ajuste contextual: final = base − 0.4 × (baseAnterior − 5)
- *  - Regla K1/K2 de armados: solo el primer armado del punto se ajusta
- *  - Cap final a [0, 10]
- */
 export async function cargarAccionesCompatibles(
   partidoId: string
 ): Promise<AccionDB[]> {
@@ -348,7 +336,6 @@ export async function cargarAccionesCompatibles(
         .eq("partido_id", partidoId),
     ]);
 
-  // ---- 1. Convertir todo a acciones individuales ----
   const acciones: AccionIndividual[] = [];
 
   (ataques.data ?? []).forEach((a: any) => {
@@ -426,7 +413,7 @@ export async function cargarAccionesCompatibles(
     });
   });
 
-  // ---- 2. Ordenar por (set, punto, created_at) ----
+  // Ordenar por (set, punto, created_at)
   acciones.sort((a, b) => {
     if (a.set_numero !== b.set_numero) return a.set_numero - b.set_numero;
     if (a.punto_numero !== b.punto_numero)
@@ -434,17 +421,16 @@ export async function cargarAccionesCompatibles(
     return a.created_at.localeCompare(b.created_at);
   });
 
-  // ---- 3. Aplicar ajuste contextual ----
-  const armadosPorPunto: Record<string, number> = {};
-  let puntoAnterior = "";
-  let puntajeAnterior: number | null = null;
-
+  // Procesar
   const procesadas: AccionDB[] = [];
+  let puntoAnterior = "";
+  // Pila de armados pendientes por punto
+  let pilaArmados: number[] = [];
 
   for (const acc of acciones) {
     const puntoKey = `${acc.set_numero}-${acc.punto_numero}`;
     if (puntoKey !== puntoAnterior) {
-      puntajeAnterior = null;
+      pilaArmados = [];
       puntoAnterior = puntoKey;
     }
 
@@ -454,18 +440,21 @@ export async function cargarAccionesCompatibles(
     let final = base;
 
     if (acc.fundamento === "armados") {
-      const count = armadosPorPunto[puntoKey] ?? 0;
-      armadosPorPunto[puntoKey] = count + 1;
-
-      if (count >= 1) {
-        // K2+ → sin ajuste (viene después de una defensa)
-        final = base;
+      // El armado entra a la pila. Su puntaje queda tal cual (base).
+      pilaArmados.push(base);
+      final = base;
+    } else if (acc.fundamento === "ataque") {
+      // El ataque saca el armado más reciente
+      if (pilaArmados.length > 0) {
+        const armadoReciente = pilaArmados.pop()!;
+        final = ajustarPorContexto(base, armadoReciente);
       } else {
-        // K1 → ajusta según la acción anterior
-        final = ajustarPorContexto(base, puntajeAnterior);
+        // Sin armado pendiente → libre
+        final = base;
       }
     } else {
-      final = ajustarPorContexto(base, puntajeAnterior);
+      // Resto: puntaje base, sin ajuste
+      final = base;
     }
 
     procesadas.push({
@@ -479,11 +468,9 @@ export async function cargarAccionesCompatibles(
       puntaje: final,
       puntajeBase: base,
     });
-
-    puntajeAnterior = final;
   }
 
-  // ---- 4. Agregar tendencia (sin ajuste, puntaje neutro 5) ----
+  // Tendencias (sin ajuste, siempre 5)
   (armados.data ?? []).forEach((a: any) => {
     if (a.zona_tendencia === null || a.zona_tendencia === undefined) return;
     procesadas.push({
@@ -499,7 +486,7 @@ export async function cargarAccionesCompatibles(
     });
   });
 
-  // ---- 5. Agrupar por (jugador, set, fundamento, valoración, puntaje) ----
+  // Agrupar por (jugador, set, fundamento, valoración, puntaje)
   const agrupado = new Map<string, AccionDB>();
   for (const r of procesadas) {
     const pRed = Math.round((r.puntaje ?? 5) * 10) / 10;

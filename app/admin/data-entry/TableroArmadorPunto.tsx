@@ -215,10 +215,6 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
     onChange({ ...punto, lineas: punto.lineas.slice(0, -1) });
   };
 
-  const cambiarArmador = (v: 1 | 2) => {
-    onChange({ ...punto, armadorNumero: v });
-  };
-
   const coordDe = (l: ArmadoLinea) =>
     `${l.origen.celda}${l.origen.mini ? `-${l.origen.mini}` : ""} → ${
       l.destino.celda
@@ -227,39 +223,12 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
   return (
     <div className="max-w-xl mx-auto">
       <div className="flex flex-wrap items-center gap-3 mb-2">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-semibold text-slate-500 uppercase">
-            Armador:
-          </span>
-          <div className="flex rounded overflow-hidden border border-slate-300">
-            <button
-              onClick={() => cambiarArmador(1)}
-              className={`px-2 py-0.5 text-[10px] font-medium transition ${
-                punto.armadorNumero === 1
-                  ? "bg-violet-500 text-white"
-                  : "bg-white text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              A1
-            </button>
-            <button
-              onClick={() => cambiarArmador(2)}
-              className={`px-2 py-0.5 text-[10px] font-medium transition ${
-                punto.armadorNumero === 2
-                  ? "bg-violet-500 text-white"
-                  : "bg-white text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              A2
-            </button>
-          </div>
-        </div>
         <button
           onClick={borrarLinea}
           disabled={punto.lineas.length === 0}
           className="px-2 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded text-[10px] hover:bg-red-100 disabled:opacity-40"
         >
-          🗑 Borrar línea
+          🗑 Borrar última línea
         </button>
       </div>
 
