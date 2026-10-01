@@ -73,43 +73,98 @@ const PESTANAS: { id: Pestana; nombre: string; icono: string }[] = [
   { id: "recepcion", nombre: "Recepción", icono: "🙌" },
 ];
 
-function resolverJugadorPorRol(
-  rol: "L" | "A" | "O" | "C" | "Pd" | "Pz",
+const ZONAS_DELANTERAS: Zona[] = [4, 3, 2];
+const ZONAS_TRASERAS: Zona[] = [5, 6, 1];
+
+function buscarCentral(
+  rot: RotacionPunto,
+  ubicacion: "delantera" | "trasera"
+): string | null {
+  const zonas = ubicacion === "delantera" ? ZONAS_DELANTERAS : ZONAS_TRASERAS;
+  for (const z of Object.values(rot.posiciones)) {
+    if (
+      (z.tipo === "C1" || z.tipo === "C2") &&
+      zonas.includes(z.zona) &&
+      z.jugador_id
+    ) {
+      return z.jugador_id;
+    }
+  }
+  return null;
+}
+
+function buscarCentralCualquiera(rot: RotacionPunto): string | null {
+  for (const z of Object.values(rot.posiciones)) {
+    if ((z.tipo === "C1" || z.tipo === "C2") && z.jugador_id) {
+      return z.jugador_id;
+    }
+  }
+  return null;
+}
+
+function buscarPunta(
+  rot: RotacionPunto,
+  ubicacion: "delantera" | "trasera"
+): string | null {
+  const zonas = ubicacion === "delantera" ? ZONAS_DELANTERAS : ZONAS_TRASERAS;
+  for (const z of Object.values(rot.posiciones)) {
+    if (
+      (z.tipo === "P1" || z.tipo === "P2") &&
+      zonas.includes(z.zona) &&
+      z.jugador_id
+    ) {
+      return z.jugador_id;
+    }
+  }
+  return null;
+}
+
+function buscarLibero(
   rot: RotacionPunto,
   liberos: Libero[]
 ): string | null {
-  if (rol === "L") {
-    const tipoEsperado =
-      rot.saque_equipo === "rival" ? "recepcion" : "defensa";
-    const lib = liberos.find((l) => l.tipo === tipoEsperado);
-    if (lib?.jugador_id) return lib.jugador_id;
-    return liberos[0]?.jugador_id ?? null;
-  }
+  const tipoEsperado =
+    rot.saque_equipo === "rival" ? "recepcion" : "defensa";
+  const lib = liberos.find((l) => l.tipo === tipoEsperado);
+  if (lib?.jugador_id) return lib.jugador_id;
+  const libAlt = liberos[0];
+  if (libAlt?.jugador_id) return libAlt.jugador_id;
+  return null;
+}
 
-  const zonasDelanteras: Zona[] = [4, 3, 2];
-  const zonasTraseras: Zona[] = [5, 6, 1];
+function resolverJugadorPorRol(
+  rol: "L" | "A" | "O" | "C" | "Pd" | "Pz",
+  rot: RotacionPunto,
+  liberos: Libero[],
+  celda?: string
+): string | null {
+  if (rol === "L") {
+    const lib = buscarLibero(rot, liberos);
+    if (lib) return lib;
+    // Fallback: central trasero (el que el líbero reemplazaría)
+    return buscarCentral(rot, "trasera");
+  }
 
   if (rol === "C") {
-    for (const z of Object.values(rot.posiciones)) {
-      if ((z.tipo === "C1" || z.tipo === "C2") && z.jugador_id) {
-        return z.jugador_id;
+    // Según la fila de la celda, elegir central delantero o trasero
+    if (celda) {
+      const fila = celda.split("-")[0];
+      if (fila === "F1") {
+        const c = buscarCentral(rot, "delantera");
+        if (c) return c;
+      } else if (fila === "F2" || fila === "F3") {
+        const c = buscarCentral(rot, "trasera");
+        if (c) return c;
       }
     }
-    return null;
+    return buscarCentralCualquiera(rot);
   }
 
-  if (rol === "Pd" || rol === "Pz") {
-    const zonasBuscadas = rol === "Pd" ? zonasDelanteras : zonasTraseras;
-    for (const z of Object.values(rot.posiciones)) {
-      if (
-        (z.tipo === "P1" || z.tipo === "P2") &&
-        zonasBuscadas.includes(z.zona) &&
-        z.jugador_id
-      ) {
-        return z.jugador_id;
-      }
-    }
-    return null;
+  if (rol === "Pd") {
+    return buscarPunta(rot, "delantera");
+  }
+  if (rol === "Pz") {
+    return buscarPunta(rot, "trasera");
   }
 
   const tipoBuscado = rol === "A" ? "A" : "O";
@@ -119,6 +174,87 @@ function resolverJugadorPorRol(
     }
   }
   return null;
+}
+
+// ------------------------------------------------------------
+// Recepción: mapeo por columna + zona del armador
+// C1,C2 → zona 5 | C3 → zona 6 | C4,C5 → zona 1
+// Excepción: F1-C3 → central delantero
+// Tabla (según zona del armador, qué rol ocupa cada zona de recepción):
+//   Arm 1 → z5=PZ z6=L  z1=PD
+//   Arm 6 → z5=PD z6=L  z1=PZ
+//   Arm 5 → z5=PD z6=PZ z1=L
+//   Arm 4 → z5=PD z6=PZ z1=L
+//   Arm 3 → z5=PD z6=L  z1=PZ
+//   Arm 2 → z5=PD z6=L  z1=PZ
+// ------------------------------------------------------------
+type RolRecep = "PD" | "PZ" | "L";
+
+function resolverJugadorRecepcion(
+  celda: string,
+  rot: RotacionPunto,
+  fallback?: string | null
+): string | null {
+  const partes = celda.split("-");
+  if (partes.length < 2) return fallback ?? null;
+  const fila = partes[0];
+  const col = partes[1];
+
+  const buscarCentralTraseroR = () => buscarCentral(rot, "trasera");
+  const buscarCentralDelanteroR = () => buscarCentral(rot, "delantera");
+
+  const buscarLiberoR = (): string | null => {
+    const lib = buscarLibero(rot, rot.liberos);
+    if (lib) return lib;
+    // Fallback: central trasero
+    return buscarCentralTraseroR();
+  };
+
+  // Excepción: F1-C3 → central delantero
+  if (fila === "F1" && col === "C3") {
+    return buscarCentralDelanteroR() ?? buscarLiberoR() ?? fallback ?? null;
+  }
+
+  // Mapeo columna → zona de recepción
+  let zonaRecepcion: 1 | 5 | 6;
+  if (col === "C1" || col === "C2") zonaRecepcion = 5;
+  else if (col === "C3") zonaRecepcion = 6;
+  else zonaRecepcion = 1; // C4, C5
+
+  // Zona del armador
+  let zonaArmador: Zona | null = null;
+  for (const z of Object.values(rot.posiciones)) {
+    if (z.tipo === "A" && z.jugador_id) {
+      zonaArmador = z.zona;
+      break;
+    }
+  }
+  if (!zonaArmador) return fallback ?? null;
+
+  const TABLA: Record<Zona, { z1: RolRecep; z6: RolRecep; z5: RolRecep }> = {
+    1: { z1: "PD", z6: "L", z5: "PZ" },
+    6: { z1: "PZ", z6: "L", z5: "PD" },
+    5: { z1: "L", z6: "PZ", z5: "PD" },
+    4: { z1: "L", z6: "PZ", z5: "PD" },
+    3: { z1: "PZ", z6: "L", z5: "PD" },
+    2: { z1: "PZ", z6: "L", z5: "PD" },
+  };
+
+  const filaTabla = TABLA[zonaArmador];
+  let rol: RolRecep;
+  if (zonaRecepcion === 1) rol = filaTabla.z1;
+  else if (zonaRecepcion === 6) rol = filaTabla.z6;
+  else rol = filaTabla.z5;
+
+  if (rol === "L") {
+    return buscarLiberoR() ?? fallback ?? null;
+  }
+  return (
+    buscarPunta(rot, rol === "PD" ? "delantera" : "trasera") ??
+    buscarLiberoR() ??
+    fallback ??
+    null
+  );
 }
 
 export default function DataEntryPage() {
@@ -595,7 +731,7 @@ export default function DataEntryPage() {
     >
   ) => {
     const jugId =
-      resolverJugadorPorRol(d.rol, rotActual, rotActual.liberos) ??
+      resolverJugadorPorRol(d.rol, rotActual, rotActual.liberos, d.celda) ??
       jugadoresDelEquipo[0]?.id;
     if (!jugId) return;
     const row: DefensaRow = {
@@ -646,13 +782,15 @@ export default function DataEntryPage() {
       "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero"
     >
   ) => {
-    const tipoEsperado =
-      rotActual.saque_equipo === "rival" ? "recepcion" : "defensa";
-    const lib = rotActual.liberos.find((l) => l.tipo === tipoEsperado);
-    const jugId =
-      lib?.jugador_id ??
+    const fallback =
       rotActual.liberos[0]?.jugador_id ??
-      jugadoresDelEquipo[0]?.id;
+      jugadoresDelEquipo[0]?.id ??
+      null;
+    const jugId = resolverJugadorRecepcion(
+      r.origen_celda,
+      rotActual,
+      fallback
+    );
     if (!jugId) return;
     const row: RecepcionRow = {
       ...r,
