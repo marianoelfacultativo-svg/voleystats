@@ -102,7 +102,7 @@ export default function RadarJugador({
             <PolarRadiusAxis
               angle={90}
               domain={[0, 100]}
-              ticks={[0, 25, 50, 75, 100]}
+              tickCount={5}
               tickFormatter={(v) => desTransformar(v as number).toFixed(1)}
               tick={{ fill: "#8FA398", fontSize: 10 }}
             />
