@@ -141,12 +141,10 @@ function resolverJugadorPorRol(
   if (rol === "L") {
     const lib = buscarLibero(rot, liberos);
     if (lib) return lib;
-    // Fallback: central trasero (el que el líbero reemplazaría)
     return buscarCentral(rot, "trasera");
   }
 
   if (rol === "C") {
-    // Según la fila de la celda, elegir central delantero o trasero
     if (celda) {
       const fila = celda.split("-")[0];
       if (fila === "F1") {
@@ -206,7 +204,6 @@ function resolverJugadorRecepcion(
   const buscarLiberoR = (): string | null => {
     const lib = buscarLibero(rot, rot.liberos);
     if (lib) return lib;
-    // Fallback: central trasero
     return buscarCentralTraseroR();
   };
 
@@ -1281,6 +1278,7 @@ export default function DataEntryPage() {
                     if (idx >= 0)
                       setRecepciones((prev) => prev.filter((_, i) => i !== idx));
                   }}
+                  nombreDe={nombreDe}
                 />
               )}
             </div>

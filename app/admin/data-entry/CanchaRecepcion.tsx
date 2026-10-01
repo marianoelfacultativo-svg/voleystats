@@ -47,12 +47,14 @@ interface Props {
     r: Omit<RecepcionRow, "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero">
   ) => void;
   onBorrarUltimo: () => void;
+  nombreDe?: (id: string) => string | null;
 }
 
 export default function CanchaRecepcion({
   recepcionesDelPunto,
   onAgregar,
   onBorrarUltimo,
+  nombreDe,
 }: Props) {
   const [fase, setFase] = useState<Fase>("origen");
   const [origen, setOrigen] = useState<Punto | null>(null);
@@ -333,6 +335,11 @@ export default function CanchaRecepcion({
                   {r.origen_mini ? `-${r.origen_mini}` : ""} → {r.destino_celda}
                   {r.destino_mini ? `-${r.destino_mini}` : ""}
                 </span>
+                {nombreDe && (
+                  <span className="text-emerald-700 font-semibold">
+                    · {nombreDe(r.jugador_id) ?? "?"}
+                  </span>
+                )}
               </div>
             ))}
           </div>
