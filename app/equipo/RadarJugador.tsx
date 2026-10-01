@@ -74,7 +74,7 @@ export default function RadarJugador({
     return fila;
   });
 
-  const minEje = -3;
+  const minEje = 0;
   const maxEje = 11;
 
   return (

@@ -59,7 +59,7 @@ export default function RadarEquipo({ equipo, series, titulo }: Props) {
     return fila;
   });
 
-  const minEje = -3;
+  const minEje = 0;
   const maxEje = 11;
 
   return (
