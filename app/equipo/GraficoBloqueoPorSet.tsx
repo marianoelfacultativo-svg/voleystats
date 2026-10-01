@@ -71,8 +71,7 @@ export default function GraficoBloqueoPorSet({ promedios, series }: Props) {
                   tick={{ fill: "#64748b", fontSize: 10 }}
                 />
                 <YAxis
-                  domain={[-2, 4]}
-                  ticks={[-2, -1, 0, 1, 2, 3, 4]}
+                  domain={[-2, 10]}
                   tick={{ fill: "#64748b", fontSize: 10 }}
                 />
                 <Tooltip
@@ -101,7 +100,7 @@ export default function GraficoBloqueoPorSet({ promedios, series }: Props) {
             </ResponsiveContainer>
           </div>
           <p className="text-xs text-slate-400 mt-2">
-            Escala: -2 (Red) a 4 (Punto).
+            Escala: -2 (Red) a 10 (Punto).
           </p>
         </>
       )}

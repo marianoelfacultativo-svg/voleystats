@@ -72,8 +72,7 @@ export default function GraficoArmadosPorSet({ promedios, series }: Props) {
                   tick={{ fill: "#64748b", fontSize: 10 }}
                 />
                 <YAxis
-                  domain={[1, 5]}
-                  ticks={[1, 2, 3, 4, 5]}
+                  domain={[0, 10]}
                   tick={{ fill: "#64748b", fontSize: 10 }}
                 />
                 <Tooltip
@@ -101,7 +100,7 @@ export default function GraficoArmadosPorSet({ promedios, series }: Props) {
             </ResponsiveContainer>
           </div>
           <p className="text-xs text-slate-400 mt-2">
-            Escala: 1 (Horrible) a 5 (Perfecto). Promedio de cada set.
+            Escala: 0 (Horrible) a 10 (Genial). Promedio de cada set.
           </p>
         </>
       )}

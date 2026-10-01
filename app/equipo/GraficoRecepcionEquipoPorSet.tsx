@@ -75,8 +75,7 @@ export default function GraficoRecepcionEquipoPorSet({
                   tick={{ fill: "#64748b", fontSize: 10 }}
                 />
                 <YAxis
-                  domain={[0, 5]}
-                  ticks={[0, 1, 2, 3, 4, 5]}
+                  domain={[0, 10]}
                   tick={{ fill: "#64748b", fontSize: 10 }}
                 />
                 <Tooltip
@@ -101,7 +100,7 @@ export default function GraficoRecepcionEquipoPorSet({
             </ResponsiveContainer>
           </div>
           <p className="text-xs text-slate-400 mt-2">
-            Escala: 0 (Ace en contra) a 5 (2x Positiva).
+            Escala: 0 (Ace en contra) a 10 (2x Positiva).
           </p>
         </>
       )}
