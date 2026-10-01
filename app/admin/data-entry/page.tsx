@@ -178,13 +178,6 @@ function resolverJugadorPorRol(
 // Recepción: mapeo por columna + zona del armador
 // C1,C2 → zona 5 | C3 → zona 6 | C4,C5 → zona 1
 // Excepción: F1-C3 → central delantero
-// Tabla (según zona del armador, qué rol ocupa cada zona de recepción):
-//   Arm 1 → z5=PZ z6=L  z1=PD
-//   Arm 6 → z5=PD z6=L  z1=PZ
-//   Arm 5 → z5=PD z6=PZ z1=L
-//   Arm 4 → z5=PD z6=PZ z1=L
-//   Arm 3 → z5=PD z6=L  z1=PZ
-//   Arm 2 → z5=PD z6=L  z1=PZ
 // ------------------------------------------------------------
 type RolRecep = "PD" | "PZ" | "L";
 
@@ -709,8 +702,14 @@ export default function DataEntryPage() {
       "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero"
     >
   ) => {
-    const jugId = jugadorDeTipo(rotActual, "O") ?? jugadoresDelEquipo[0]?.id;
+    // Sin zona reconocida → no se asigna a nadie
+    if (a.zona === null || a.zona === undefined) return;
+
+    // Buscar quién está parado en esa zona según la rotación actual
+    const asignacion = rotActual.posiciones[a.zona as Zona];
+    const jugId = asignacion?.jugador_id;
     if (!jugId) return;
+
     const row: AtaqueRow = {
       ...a,
       partido_id: partidoId,
