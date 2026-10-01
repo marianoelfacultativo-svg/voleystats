@@ -694,7 +694,8 @@ export function calcularEstadisticasJugador(
   acciones: AccionDB[],
   esArmador: boolean = false,
   maxAccionesPorFundamento?: Record<string, number>,
-  maxAccionesEquipo?: number
+  maxAccionesEquipo?: number,
+  minAccionesRadar: number = MIN_ACCIONES_RADAR
 ): EstadisticasJugador {
   const propias = acciones.filter((a) => a.jugador_id === jugadorId);
 
@@ -775,7 +776,7 @@ export function calcularEstadisticasJugador(
   for (const f of fundamentosValoracion) {
     const accFund = contarTotal(propias, f);
 
-    if (accFund < MIN_ACCIONES_RADAR) {
+    if (accFund < minAccionesRadar) {
       valoracionPonderadaPorFundamento[f] = 0;
       continue;
     }

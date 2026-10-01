@@ -232,13 +232,14 @@ function DetalleJugador({
     if (total > maxAccionesEquipo) maxAccionesEquipo = total;
   }
 
-  // Stats del jugador con contexto de volumen
+  // Stats del jugador con contexto de volumen (min 3 acciones para el radar)
   const est = calcularEstadisticasJugador(
     jugadorId,
     accionesEquipoFiltradas,
     esArmador,
     maxPorFund,
-    maxAccionesEquipo
+    maxAccionesEquipo,
+    3
   );
 
   const fundamentos = esArmador ? FUNDAMENTOS_ARMADOR : FUNDAMENTOS_NORMAL;
