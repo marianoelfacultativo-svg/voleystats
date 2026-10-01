@@ -344,7 +344,7 @@ export async function cargarAccionesCompatibles(
       supabase
         .from("armados_detalle")
         .select(
-          "jugador_id, set_numero, punto_numero, calidad, zona_tendencia, created_at"
+          "jugador_id, set_numero, punto_numero, calidad, zona_tendencia, tipo, valoracion_toque, created_at"
         )
         .eq("partido_id", partidoId),
     ]);
@@ -414,6 +414,20 @@ export async function cargarAccionesCompatibles(
   });
 
   (armados.data ?? []).forEach((a: any) => {
+    // Toques: se cargan como fundamento "toque", no generan tendencia
+    if (a.tipo === "toque") {
+      if (!a.valoracion_toque) return;
+      acciones.push({
+        jugador_id: a.jugador_id,
+        set_numero: a.set_numero,
+        punto_numero: a.punto_numero ?? 1,
+        fundamento: "toque",
+        valoracion: a.valoracion_toque,
+        created_at: a.created_at ?? "",
+      });
+      return;
+    }
+
     const val = CALIDAD_A_STR[a.calidad];
     if (!val) return;
     acciones.push({
@@ -477,6 +491,7 @@ export async function cargarAccionesCompatibles(
   }
 
   (armados.data ?? []).forEach((a: any) => {
+    if (a.tipo === "toque") return; // los toques no generan tendencia
     if (a.zona_tendencia === null || a.zona_tendencia === undefined) return;
     procesadas.push({
       jugador_id: a.jugador_id,

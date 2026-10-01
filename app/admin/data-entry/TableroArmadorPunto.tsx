@@ -14,9 +14,12 @@ export interface ArmadoLinea {
   calidad: number;
 }
 
+export type ValoracionToque = "punto" | "neutro" | "error";
+
 export interface PuntoArmador {
   numero: number;
   lineas: ArmadoLinea[];
+  toques: ValoracionToque[];
   armadorNumero: 1 | 2 | null;
 }
 
@@ -63,6 +66,20 @@ const COLORES_CALIDAD: Record<number, string> = {
   6: "#10b981",
 };
 
+const COLORES_TOQUE: Record<ValoracionToque, string> = {
+  punto: "#16a34a",
+  neutro: "#64748b",
+  error: "#dc2626",
+};
+
+const ETIQUETAS_TOQUE: Record<ValoracionToque, string> = {
+  punto: "Punto",
+  neutro: "Neutro",
+  error: "Error",
+};
+
+const ORDEN_TOQUES: ValoracionToque[] = ["punto", "neutro", "error"];
+
 export function calcularZonaTendencia(celda: string): number | null {
   switch (celda) {
     case "F1-C1":
@@ -104,6 +121,8 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const refs = useRef<Record<string, HTMLDivElement | null>>({});
 
+  const toques = punto.toques ?? [];
+
   const registrar = useCallback((key: string, el: HTMLDivElement | null) => {
     refs.current[key] = el;
   }, []);
@@ -122,7 +141,7 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
 
   useLayoutEffect(() => {
     setTick((t) => t + 1);
-  }, [punto.lineas.length, punto.numero]);
+  }, [punto.lineas.length, toques.length, punto.numero]);
 
   useLayoutEffect(() => {
     const t = setTimeout(() => setTick((x) => x + 1), 0);
@@ -210,6 +229,15 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [selector, punto]);
 
+  const agregarToque = (v: ValoracionToque) => {
+    onChange({ ...punto, toques: [...toques, v] });
+  };
+
+  const borrarUltimoToque = () => {
+    if (toques.length === 0) return;
+    onChange({ ...punto, toques: toques.slice(0, -1) });
+  };
+
   const borrarLinea = () => {
     if (punto.lineas.length === 0) return;
     onChange({ ...punto, lineas: punto.lineas.slice(0, -1) });
@@ -222,6 +250,61 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
 
   return (
     <div className="max-w-xl mx-auto">
+      {/* ======== PANEL DE TOQUES ======== */}
+      <div className="mb-3 p-2.5 bg-pink-50 border-2 border-pink-300 rounded-lg">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold text-pink-700 uppercase tracking-wide mr-1">
+            ✋ Toque
+          </span>
+
+          {ORDEN_TOQUES.map((v) => {
+            const cant = toques.filter((t) => t === v).length;
+            return (
+              <button
+                key={v}
+                onClick={() => agregarToque(v)}
+                className="px-3 py-1.5 rounded-lg text-white text-xs font-bold flex items-center gap-1.5 transition hover:scale-105 active:scale-95 shadow-sm"
+                style={{ backgroundColor: COLORES_TOQUE[v] }}
+                title={`Sumar 1 toque ${ETIQUETAS_TOQUE[v]}`}
+              >
+                <span>{ETIQUETAS_TOQUE[v]}</span>
+                <span className="bg-white/30 rounded px-1.5 text-[10px] font-mono">
+                  {cant}
+                </span>
+              </button>
+            );
+          })}
+
+          <button
+            onClick={borrarUltimoToque}
+            disabled={toques.length === 0}
+            className="ml-auto px-3 py-1.5 bg-white text-red-700 border border-red-300 rounded-lg text-xs font-medium hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Borra el último toque cargado"
+          >
+            🗑 Borrar último toque
+          </button>
+        </div>
+
+        {toques.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            <span className="text-[10px] text-pink-700 font-semibold self-center mr-1">
+              Secuencia:
+            </span>
+            {toques.map((t, i) => (
+              <span
+                key={i}
+                className="text-[9px] font-bold text-white rounded px-1.5 py-0.5"
+                style={{ backgroundColor: COLORES_TOQUE[t] }}
+                title={`Toque #${i + 1}: ${ETIQUETAS_TOQUE[t]}`}
+              >
+                {ETIQUETAS_TOQUE[t]}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ======== TABLERO DE ARMADO ======== */}
       <div className="flex flex-wrap items-center gap-3 mb-2">
         <button
           onClick={borrarLinea}
@@ -323,164 +406,4 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
           return (
             <div
               key={`${i}-${tick}`}
-              className="absolute pointer-events-none flex items-center justify-center text-white text-[9px] font-bold rounded-full"
-              style={{
-                left: d.x,
-                top: d.y,
-                transform: "translate(-50%, -50%)",
-                width: "14px",
-                height: "14px",
-                backgroundColor: color,
-                boxShadow: "0 0 0 1.5px white",
-                zIndex: 10,
-              }}
-            >
-              {l.calidad}
-            </div>
-          );
-        })}
-
-        {selector && (
-          <div
-            data-popup
-            className="absolute z-50 bg-white border-2 border-slate-300 rounded-lg shadow-lg p-1.5 flex gap-1"
-            style={{
-              left: selector.x,
-              top: selector.y,
-              transform: "translate(-50%, calc(-100% - 6px))",
-            }}
-          >
-            {[1, 2, 3, 4, 5, 6].map((n) => (
-              <button
-                key={n}
-                onClick={() => elegirCalidad(n)}
-                className="w-7 h-7 rounded text-white font-bold text-[11px] transition hover:scale-110"
-                style={{ backgroundColor: COLORES_CALIDAD[n] }}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <p className="text-[10px] text-slate-400 mt-2 text-center">
-        Clic origen → clic destino (o clic derecho). Elegí calidad con 1-6.
-      </p>
-
-      {punto.lineas.length > 0 && (
-        <div className="mt-2 pt-2 border-t border-slate-200">
-          <p className="text-[10px] text-slate-500 mb-1">
-            Armados del punto ({punto.lineas.length}):
-          </p>
-          <div className="flex flex-wrap gap-1">
-            {punto.lineas.map((l, i) => {
-              const color = COLORES_CALIDAD[l.calidad] ?? "#64748b";
-              return (
-                <div
-                  key={i}
-                  className="flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px]"
-                  style={{ borderColor: color, color }}
-                >
-                  <span className="font-semibold">C{l.calidad}</span>
-                  <span className="text-slate-500">{coordDe(l)}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface MiniTablaProps {
-  celdaId: string;
-  subs: string[];
-  cols: number;
-  registrar: (key: string, el: HTMLDivElement | null) => void;
-  origenPendiente: string | null;
-  zona: "afuera" | "medio";
-  onClick: (mini: string) => void;
-  onContextMenu: (e: React.MouseEvent, mini: string) => void;
-}
-
-function MiniTabla({
-  celdaId,
-  subs,
-  cols,
-  registrar,
-  origenPendiente,
-  zona,
-  onClick,
-  onContextMenu,
-}: MiniTablaProps) {
-  const bordeCelda =
-    zona === "medio" ? "border-emerald-600" : "border-slate-300";
-  const bgCelda = zona === "medio" ? "bg-emerald-200" : "bg-white";
-  const bgSub = zona === "medio" ? "bg-emerald-400" : "bg-slate-100";
-  const bgSubHover =
-    zona === "medio" ? "hover:bg-emerald-500" : "hover:bg-emerald-100";
-
-  return (
-    <div
-      className={`grid gap-[2px] p-0.5 ${bgCelda} border-2 ${bordeCelda} rounded-md w-full h-full`}
-      style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
-    >
-      {subs.map((sub) => {
-        const key = `${celdaId}-${sub}`;
-        const activa = origenPendiente === key;
-        return (
-          <div
-            key={sub}
-            ref={(el) => registrar(key, el)}
-            onClick={() => onClick(sub)}
-            onContextMenu={(e) => onContextMenu(e, sub)}
-            className={`rounded-sm cursor-pointer transition min-h-[14px] ${
-              activa
-                ? "bg-emerald-500 ring-2 ring-emerald-700"
-                : `${bgSub} ${bgSubHover}`
-            }`}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-interface CeldaSimpleProps {
-  celdaId: string;
-  registrar: (key: string, el: HTMLDivElement | null) => void;
-  activa: boolean;
-  zona: "afuera" | "medio";
-  onClick: () => void;
-  onContextMenu: (e: React.MouseEvent) => void;
-}
-
-function CeldaSimple({
-  celdaId,
-  registrar,
-  activa,
-  zona,
-  onClick,
-  onContextMenu,
-}: CeldaSimpleProps) {
-  const bordeBase =
-    zona === "medio" ? "border-emerald-600" : "border-slate-300";
-  const bgBase = zona === "medio" ? "bg-emerald-200" : "bg-white";
-  const bgHover =
-    zona === "medio" ? "hover:bg-emerald-300" : "hover:bg-emerald-50";
-
-  return (
-    <div
-      ref={(el) => registrar(celdaId, el)}
-      onClick={onClick}
-      onContextMenu={onContextMenu}
-      className={`w-full h-full rounded-md cursor-pointer transition border-2 ${
-        activa
-          ? "bg-emerald-500 border-emerald-700"
-          : `${bgBase} ${bordeBase} ${bgHover}`
-      }`}
-    />
-  );
-}
+              className="absolute pointer-events-none flex items-center justify-center text-white text-[9
