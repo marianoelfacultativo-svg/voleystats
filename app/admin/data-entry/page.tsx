@@ -22,6 +22,7 @@ import {
   type Libero,
   type Zona,
 } from "@/lib/rotaciones";
+import { zonaDeOrigenAtaque } from "@/lib/cancha";
 
 import PanelRotacion from "./PanelRotacion";
 import TableroArmadorPunto, {
@@ -76,6 +77,9 @@ const PESTANAS: { id: Pestana; nombre: string; icono: string }[] = [
 const ZONAS_DELANTERAS: Zona[] = [4, 3, 2];
 const ZONAS_TRASERAS: Zona[] = [5, 6, 1];
 
+// ------------------------------------------------------------
+// Helpers generales
+// ------------------------------------------------------------
 function buscarCentral(
   rot: RotacionPunto,
   ubicacion: "delantera" | "trasera"
@@ -119,6 +123,13 @@ function buscarPunta(
   return null;
 }
 
+function buscarOpuesto(rot: RotacionPunto): string | null {
+  for (const z of Object.values(rot.posiciones)) {
+    if (z.tipo === "O" && z.jugador_id) return z.jugador_id;
+  }
+  return null;
+}
+
 function buscarLibero(
   rot: RotacionPunto,
   liberos: Libero[]
@@ -132,6 +143,9 @@ function buscarLibero(
   return null;
 }
 
+// ------------------------------------------------------------
+// Defensa / recepción por rol
+// ------------------------------------------------------------
 function resolverJugadorPorRol(
   rol: "L" | "A" | "O" | "C" | "Pd" | "Pz",
   rot: RotacionPunto,
@@ -247,6 +261,73 @@ function resolverJugadorRecepcion(
   );
 }
 
+// ------------------------------------------------------------
+// Ataque: según celda origen + si es recepción con armador en 1
+// - C1, C2 → punta delantero (o opuesto si invertir)
+// - C3 F1  → central
+// - C3 F2/F3 → punta zaguero
+// - C4, C5 → opuesto (o punta delantero si invertir)
+// ------------------------------------------------------------
+function esRecepcionArmadorEn1(rot: RotacionPunto): boolean {
+  if (rot.saque_equipo !== "rival") return false;
+  for (const z of Object.values(rot.posiciones)) {
+    if (z.tipo === "A" && z.zona === 1) return true;
+  }
+  return false;
+}
+
+function resolverJugadorAtaque(
+  celda: string,
+  rot: RotacionPunto
+): string | null {
+  const zona = zonaDeOrigenAtaque(celda);
+  if (zona === null) return null;
+
+  const invertir = esRecepcionArmadorEn1(rot);
+
+  if (zona === 3) {
+    return buscarCentral(rot, "delantera");
+  }
+
+  if (zona === 6) {
+    return buscarPunta(rot, "trasera");
+  }
+
+  if (zona === 4) {
+    return invertir
+      ? buscarOpuesto(rot) ?? buscarPunta(rot, "delantera")
+      : buscarPunta(rot, "delantera");
+  }
+
+  if (zona === 2) {
+    return invertir
+      ? buscarPunta(rot, "delantera") ?? buscarOpuesto(rot)
+      : buscarOpuesto(rot);
+  }
+
+  return null;
+}
+
+// Ajuste de zona: si atacó el opuesto desde C4/C5 y está zaguero → zona 1 en vez de 2
+function ajustarZonaAtaque(
+  zonaOriginal: number | null,
+  celda: string,
+  rot: RotacionPunto
+): number | null {
+  if (zonaOriginal !== 2) return zonaOriginal;
+  if (esRecepcionArmadorEn1(rot)) return zonaOriginal; // invertido: atacó el punta → sigue siendo 2
+  // Atacó el opuesto. ¿Está delantero o zaguero?
+  for (const z of Object.values(rot.posiciones)) {
+    if (z.tipo === "O") {
+      return ZONAS_TRASERAS.includes(z.zona) ? 1 : 2;
+    }
+  }
+  return zonaOriginal;
+}
+
+// ============================================================
+// COMPONENTE
+// ============================================================
 export default function DataEntryPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
@@ -702,16 +783,14 @@ export default function DataEntryPage() {
       "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero"
     >
   ) => {
-    // Sin zona reconocida → no se asigna a nadie
-    if (a.zona === null || a.zona === undefined) return;
-
-    // Buscar quién está parado en esa zona según la rotación actual
-    const asignacion = rotActual.posiciones[a.zona as Zona];
-    const jugId = asignacion?.jugador_id;
+    const jugId = resolverJugadorAtaque(a.origen_celda, rotActual);
     if (!jugId) return;
+
+    const zonaAjustada = ajustarZonaAtaque(a.zona, a.origen_celda, rotActual);
 
     const row: AtaqueRow = {
       ...a,
+      zona: zonaAjustada,
       partido_id: partidoId,
       jugador_id: jugId,
       set_numero: setActivo,
