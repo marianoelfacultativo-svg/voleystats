@@ -406,4 +406,165 @@ export default function TableroArmadorPunto({ punto, onChange }: Props) {
           return (
             <div
               key={`${i}-${tick}`}
-              className="absolute pointer-events-none flex items-center justify-center text-white text-[9
+              className="absolute pointer-events-none flex items-center justify-center text-white text-[9px] font-bold rounded-full"
+              style={{
+                left: d.x,
+                top: d.y,
+                transform: "translate(-50%, -50%)",
+                width: "14px",
+                height: "14px",
+                backgroundColor: color,
+                boxShadow: "0 0 0 1.5px white",
+                zIndex: 10,
+              }}
+            >
+              {l.calidad}
+            </div>
+          );
+        })}
+
+        {selector && (
+          <div
+            data-popup
+            className="absolute z-50 bg-white border-2 border-slate-300 rounded-lg shadow-lg p-1.5 flex gap-1"
+            style={{
+              left: selector.x,
+              top: selector.y,
+              transform: "translate(-50%, calc(-100% - 6px))",
+            }}
+          >
+            {[1, 2, 3, 4, 5, 6].map((n) => (
+              <button
+                key={n}
+                onClick={() => elegirCalidad(n)}
+                className="w-7 h-7 rounded text-white font-bold text-[11px] transition hover:scale-110"
+                style={{ backgroundColor: COLORES_CALIDAD[n] }}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <p className="text-[10px] text-slate-400 mt-2 text-center">
+        Clic origen → clic destino (o clic derecho). Elegí calidad con 1-6.
+        Los toques se suman arriba con los botones.
+      </p>
+
+      {punto.lineas.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-slate-200">
+          <p className="text-[10px] text-slate-500 mb-1">
+            Armados del punto ({punto.lineas.length}):
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {punto.lineas.map((l, i) => {
+              const color = COLORES_CALIDAD[l.calidad] ?? "#64748b";
+              return (
+                <div
+                  key={i}
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px]"
+                  style={{ borderColor: color, color }}
+                >
+                  <span className="font-semibold">C{l.calidad}</span>
+                  <span className="text-slate-500">{coordDe(l)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface MiniTablaProps {
+  celdaId: string;
+  subs: string[];
+  cols: number;
+  registrar: (key: string, el: HTMLDivElement | null) => void;
+  origenPendiente: string | null;
+  zona: "afuera" | "medio";
+  onClick: (mini: string) => void;
+  onContextMenu: (e: React.MouseEvent, mini: string) => void;
+}
+
+function MiniTabla({
+  celdaId,
+  subs,
+  cols,
+  registrar,
+  origenPendiente,
+  zona,
+  onClick,
+  onContextMenu,
+}: MiniTablaProps) {
+  const bordeCelda =
+    zona === "medio" ? "border-emerald-600" : "border-slate-300";
+  const bgCelda = zona === "medio" ? "bg-emerald-200" : "bg-white";
+  const bgSub = zona === "medio" ? "bg-emerald-400" : "bg-slate-100";
+  const bgSubHover =
+    zona === "medio" ? "hover:bg-emerald-500" : "hover:bg-emerald-100";
+
+  return (
+    <div
+      className={`grid gap-[2px] p-0.5 ${bgCelda} border-2 ${bordeCelda} rounded-md w-full h-full`}
+      style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+    >
+      {subs.map((sub) => {
+        const key = `${celdaId}-${sub}`;
+        const activa = origenPendiente === key;
+        return (
+          <div
+            key={sub}
+            ref={(el) => registrar(key, el)}
+            onClick={() => onClick(sub)}
+            onContextMenu={(e) => onContextMenu(e, sub)}
+            className={`rounded-sm cursor-pointer transition min-h-[14px] ${
+              activa
+                ? "bg-emerald-500 ring-2 ring-emerald-700"
+                : `${bgSub} ${bgSubHover}`
+            }`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+interface CeldaSimpleProps {
+  celdaId: string;
+  registrar: (key: string, el: HTMLDivElement | null) => void;
+  activa: boolean;
+  zona: "afuera" | "medio";
+  onClick: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+}
+
+function CeldaSimple({
+  celdaId,
+  registrar,
+  activa,
+  zona,
+  onClick,
+  onContextMenu,
+}: CeldaSimpleProps) {
+  const bordeBase =
+    zona === "medio" ? "border-emerald-600" : "border-slate-300";
+  const bgBase = zona === "medio" ? "bg-emerald-200" : "bg-white";
+  const bgHover =
+    zona === "medio" ? "hover:bg-emerald-300" : "hover:bg-emerald-50";
+
+  return (
+    <div
+      ref={(el) => registrar(celdaId, el)}
+      onClick={onClick}
+      onContextMenu={onContextMenu}
+      className={`w-full h-full rounded-md cursor-pointer transition border-2 ${
+        activa
+          ? "bg-emerald-500 border-emerald-700"
+          : `${bgBase} ${bordeBase} ${bgHover}`
+      }`}
+    />
+  );
+}
