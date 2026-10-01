@@ -26,6 +26,7 @@ import {
 import PanelRotacion from "./PanelRotacion";
 import TableroArmadorPunto, {
   type ArmadoLinea,
+  type ValoracionToque,
   calcularZonaTendencia,
 } from "./TableroArmadorPunto";
 import CanchaAtaque from "./CanchaAtaque";
@@ -34,17 +35,42 @@ import CanchaBloqueo from "./CanchaBloqueo";
 import CanchaSaque from "./CanchaSaque";
 import CanchaRecepcion from "./CanchaRecepcion";
 
-interface Equipo { id: string; nombre: string }
-interface Jugador { id: string; nombre: string; numero: number | null; rol: string }
-interface Partido { id: string; equipo_id: string; rival: string; fecha: string }
-interface JugadorEquipo { id: string; jugador_id: string; equipo_id: string; activo: boolean }
+interface Equipo {
+  id: string;
+  nombre: string;
+}
+interface Jugador {
+  id: string;
+  nombre: string;
+  numero: number | null;
+  rol: string;
+}
+interface Partido {
+  id: string;
+  equipo_id: string;
+  rival: string;
+  fecha: string;
+}
+interface JugadorEquipo {
+  id: string;
+  jugador_id: string;
+  equipo_id: string;
+  activo: boolean;
+}
 
 interface ArmadoEntry {
   jugador_id: string;
   lineas: ArmadoLinea[];
+  toques: ValoracionToque[];
 }
 
-type Pestana = "armado" | "ataque" | "defensa" | "bloqueo" | "saque" | "recepcion";
+type Pestana =
+  | "armado"
+  | "ataque"
+  | "defensa"
+  | "bloqueo"
+  | "saque"
+  | "recepcion";
 
 interface EstadoLocal {
   ts: number;
@@ -134,7 +160,9 @@ export default function DataEntryPage() {
   const [puntoActual, setPuntoActual] = useState(1);
   const [pestana, setPestana] = useState<Pestana>("armado");
 
-  const [rotaciones, setRotaciones] = useState<Record<string, RotacionPunto>>({});
+  const [rotaciones, setRotaciones] = useState<Record<string, RotacionPunto>>(
+    {}
+  );
   const [armados, setArmados] = useState<Record<string, ArmadoEntry[]>>({});
   const [armadoIdx, setArmadoIdx] = useState(0);
   const [ataques, setAtaques] = useState<AtaqueRow[]>([]);
@@ -220,7 +248,9 @@ export default function DataEntryPage() {
       try {
         const data: EstadoLocal = JSON.parse(raw);
         if (Date.now() - data.ts < TTL_MS) {
-          if (confirm("Hay datos sin guardar de este partido. ¿Recuperarlos?")) {
+          if (
+            confirm("Hay datos sin guardar de este partido. ¿Recuperarlos?")
+          ) {
             setRotaciones(data.rotaciones ?? {});
             setArmados(data.armados ?? {});
             setAtaques(data.ataques ?? []);
@@ -269,16 +299,23 @@ export default function DataEntryPage() {
           data.forEach((a: any) => {
             const k = `${a.set_numero}-${a.punto_numero}`;
             if (!porPunto[k]) porPunto[k] = [];
-            let entry = porPunto[k].find((x) => x.jugador_id === a.jugador_id);
+            let entry = porPunto[k].find(
+              (x) => x.jugador_id === a.jugador_id
+            );
             if (!entry) {
-              entry = { jugador_id: a.jugador_id, lineas: [] };
+              entry = { jugador_id: a.jugador_id, lineas: [], toques: [] };
               porPunto[k].push(entry);
             }
-            entry.lineas.push({
-              origen: { celda: a.origen_celda, mini: a.origen_mini },
-              destino: { celda: a.destino_celda, mini: a.destino_mini },
-              calidad: a.calidad,
-            });
+            if (a.tipo === "toque") {
+              if (!a.valoracion_toque) return;
+              entry.toques.push(a.valoracion_toque as ValoracionToque);
+            } else {
+              entry.lineas.push({
+                origen: { celda: a.origen_celda, mini: a.origen_mini },
+                destino: { celda: a.destino_celda, mini: a.destino_mini },
+                calidad: a.calidad,
+              });
+            }
           });
           setArmados(porPunto);
         });
@@ -292,11 +329,15 @@ export default function DataEntryPage() {
       setCambios(d.cambios);
 
       const puntos = new Set<number>();
-      [...d.ataques, ...d.defensas, ...d.bloqueos, ...d.saques, ...d.recepciones].forEach(
-        (x: any) => {
-          if (x.set_numero === setActivo) puntos.add(x.punto_numero);
-        }
-      );
+      [
+        ...d.ataques,
+        ...d.defensas,
+        ...d.bloqueos,
+        ...d.saques,
+        ...d.recepciones,
+      ].forEach((x: any) => {
+        if (x.set_numero === setActivo) puntos.add(x.punto_numero);
+      });
       const maxP = puntos.size > 0 ? Math.max(...puntos) : 1;
       setPuntoActual(maxP);
     });
@@ -384,7 +425,10 @@ export default function DataEntryPage() {
       )
         return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (typeof document !== "undefined" && document.querySelector("[data-popup]"))
+      if (
+        typeof document !== "undefined" &&
+        document.querySelector("[data-popup]")
+      )
         return;
       const n = parseInt(e.key);
       if (n >= 1 && n <= 6) {
@@ -456,6 +500,7 @@ export default function DataEntryPage() {
   const armadoActual = armadosDelPunto[armadoIdx] ?? {
     jugador_id: armadorDelPunto ?? "",
     lineas: [],
+    toques: [],
   };
 
   useEffect(() => {
@@ -469,20 +514,23 @@ export default function DataEntryPage() {
         ...prev,
         [keyPuntoActual]: [
           ...actuales,
-          { jugador_id: armadorDelPunto ?? "", lineas: [] },
+          { jugador_id: armadorDelPunto ?? "", lineas: [], toques: [] },
         ],
       };
     });
     setArmadoIdx(armadosDelPunto.length);
   };
 
-  const setLineasArmadoActual = (lineas: ArmadoLinea[]) => {
+  const setContenidoArmadoActual = (
+    lineas: ArmadoLinea[],
+    toques: ValoracionToque[]
+  ) => {
     setArmados((prev) => {
       const actuales = [...(prev[keyPuntoActual] ?? [])];
       if (actuales.length === 0) {
-        actuales.push({ jugador_id: armadorDelPunto ?? "", lineas });
+        actuales.push({ jugador_id: armadorDelPunto ?? "", lineas, toques });
       } else {
-        actuales[armadoIdx] = { ...actuales[armadoIdx], lineas };
+        actuales[armadoIdx] = { ...actuales[armadoIdx], lineas, toques };
       }
       return { ...prev, [keyPuntoActual]: actuales };
     });
@@ -492,7 +540,7 @@ export default function DataEntryPage() {
     setArmados((prev) => {
       const actuales = [...(prev[keyPuntoActual] ?? [])];
       if (actuales.length === 0) {
-        actuales.push({ jugador_id, lineas: [] });
+        actuales.push({ jugador_id, lineas: [], toques: [] });
       } else {
         actuales[armadoIdx] = { ...actuales[armadoIdx], jugador_id };
       }
@@ -529,7 +577,9 @@ export default function DataEntryPage() {
     );
 
     const ultimoPunto =
-      puntosDelSet.size > 0 ? Math.max(...Array.from(puntosDelSet)) : puntoActual;
+      puntosDelSet.size > 0
+        ? Math.max(...Array.from(puntosDelSet))
+        : puntoActual;
 
     if (ultimoPunto <= puntoActual) {
       alert("No hay puntos siguientes en este set para re-propagar.");
@@ -537,7 +587,9 @@ export default function DataEntryPage() {
     }
 
     const ok = confirm(
-      `Esto va a sobreescribir la rotación de los puntos ${puntoActual + 1} al ${ultimoPunto} del set ${setActivo}. ¿Continuar?`
+      `Esto va a sobreescribir la rotación de los puntos ${
+        puntoActual + 1
+      } al ${ultimoPunto} del set ${setActivo}. ¿Continuar?`
     );
     if (!ok) return;
 
@@ -555,7 +607,9 @@ export default function DataEntryPage() {
     }
     setRotaciones(nuevasRots);
     setMensaje(
-      `✅ Rotación re-propagada al set ${setActivo} (puntos ${puntoActual + 1}-${ultimoPunto})`
+      `✅ Rotación re-propagada al set ${setActivo} (puntos ${
+        puntoActual + 1
+      }-${ultimoPunto})`
     );
   };
 
@@ -612,7 +666,12 @@ export default function DataEntryPage() {
   const agregarSaque = (
     s: Omit<
       SaqueRow,
-      "id" | "partido_id" | "jugador_id" | "set_numero" | "punto_numero" | "tipo"
+      | "id"
+      | "partido_id"
+      | "jugador_id"
+      | "set_numero"
+      | "punto_numero"
+      | "tipo"
     >
   ) => {
     const jugId =
@@ -667,6 +726,7 @@ export default function DataEntryPage() {
       const p = parseInt(pStr);
       listaArmados.forEach((armado) => {
         if (!armado.jugador_id) return;
+
         armado.lineas.forEach((l) => {
           const zona = calcularZonaTendencia(l.destino.celda);
           filasArmados.push({
@@ -682,6 +742,27 @@ export default function DataEntryPage() {
             calidad: l.calidad,
             atacante_derecho: "arriba",
             armador_numero: 1,
+            tipo: "armado",
+            valoracion_toque: null,
+          });
+        });
+
+        (armado.toques ?? []).forEach((v) => {
+          filasArmados.push({
+            partido_id: partidoId,
+            jugador_id: armado.jugador_id,
+            set_numero: s,
+            punto_numero: p,
+            origen_celda: "-",
+            origen_mini: null,
+            destino_celda: "-",
+            destino_mini: null,
+            zona_tendencia: null,
+            calidad: null,
+            atacante_derecho: "arriba",
+            armador_numero: 1,
+            tipo: "toque",
+            valoracion_toque: v,
           });
         });
       });
@@ -850,7 +931,9 @@ export default function DataEntryPage() {
                     type="number"
                     value={puntoActual}
                     onChange={(e) =>
-                      setPuntoActual(Math.max(1, parseInt(e.target.value) || 1))
+                      setPuntoActual(
+                        Math.max(1, parseInt(e.target.value) || 1)
+                      )
                     }
                     className="w-16 px-2 py-1.5 text-center border border-slate-300 rounded-lg text-sm"
                   />
@@ -885,250 +968,4 @@ export default function DataEntryPage() {
               {PESTANAS.map((p, i) => (
                 <button
                   key={p.id}
-                  onClick={() => setPestana(p.id)}
-                  className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px flex items-center gap-2 ${
-                    pestana === p.id
-                      ? "border-emerald-500 text-emerald-600"
-                      : "border-transparent text-slate-500 hover:text-slate-700"
-                  }`}
-                >
-                  <span className="w-5 h-5 rounded bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center">
-                    {i + 1}
-                  </span>
-                  <span>
-                    {p.icono} {p.nombre}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
-              {pestana === "armado" && (
-                <div>
-                  <div className="flex flex-wrap items-center gap-2 mb-3">
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase">
-                      Armados del punto:
-                    </span>
-                    {armadosDelPunto.length === 0 && (
-                      <span className="text-[10px] text-slate-400 italic">
-                        (ninguno todavía)
-                      </span>
-                    )}
-                    {armadosDelPunto.map((a, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setArmadoIdx(i)}
-                        className={`px-2 py-0.5 text-[10px] rounded border ${
-                          armadoIdx === i
-                            ? "bg-emerald-500 text-white border-emerald-500"
-                            : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
-                        }`}
-                      >
-                        #{i + 1} {nombreDe(a.jugador_id) ?? "(sin dueño)"}
-                      </button>
-                    ))}
-                    <button
-                      onClick={agregarArmado}
-                      className="px-2 py-0.5 text-[10px] rounded border border-dashed border-slate-400 text-slate-600 hover:bg-slate-50"
-                    >
-                      + Nuevo armado
-                    </button>
-                    {armadosDelPunto.length > 0 && (
-                      <button
-                        onClick={borrarArmadoActual}
-                        className="px-2 py-0.5 text-[10px] rounded bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
-                      >
-                        🗑 Borrar armado #{armadoIdx + 1}
-                      </button>
-                    )}
-                  </div>
-
-                  {armadosDelPunto.length > 0 && (
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-[10px] font-semibold text-slate-500 uppercase">
-                        Armó:
-                      </span>
-                      <select
-                        value={armadoActual.jugador_id}
-                        onChange={(e) => setJugadorArmadoActual(e.target.value)}
-                        className="px-2 py-1 text-xs border border-slate-300 rounded-lg"
-                      >
-                        <option value="">(sin asignar)</option>
-                        {jugadoresDelEquipo.map((j) => (
-                          <option key={j.id} value={j.id}>
-                            {j.nombre}
-                            {j.numero !== null ? ` #${j.numero}` : ""}
-                            {j.id === armadorDelPunto ? " · armador" : ""}
-                          </option>
-                        ))}
-                      </select>
-                      <span className="text-[10px] text-slate-400">
-                        (cambialo para armado de emergencia)
-                      </span>
-                    </div>
-                  )}
-
-                  <TableroArmadorPunto
-                    punto={{
-                      numero: puntoActual,
-                      lineas: armadoActual.lineas,
-                      armadorNumero: 1,
-                    }}
-                    onChange={(p) => setLineasArmadoActual(p.lineas)}
-                  />
-                </div>
-              )}
-
-              {pestana === "ataque" && (
-                <CanchaAtaque
-                  ataquesDelPunto={filtrar(ataques)}
-                  armadosPendientes={Math.max(
-                    0,
-                    armadosDelPunto.length - filtrar(ataques).length
-                  )}
-                  onAgregar={agregarAtaque}
-                  onBorrarUltimo={() => {
-                    const idx = ataques.findLastIndex(
-                      (x) =>
-                        x.set_numero === setActivo &&
-                        x.punto_numero === puntoActual
-                    );
-                    if (idx >= 0)
-                      setAtaques((prev) => prev.filter((_, i) => i !== idx));
-                  }}
-                  atacanteSugerido={atacanteSugerido}
-                />
-              )}
-
-              {pestana === "defensa" && (
-                <CanchaDefensa
-                  defensasDelPunto={filtrar(defensas)}
-                  onAgregar={agregarDefensa}
-                  onBorrarUltimo={() => {
-                    const idx = defensas.findLastIndex(
-                      (x) =>
-                        x.set_numero === setActivo &&
-                        x.punto_numero === puntoActual
-                    );
-                    if (idx >= 0)
-                      setDefensas((prev) => prev.filter((_, i) => i !== idx));
-                  }}
-                  onLimpiarPunto={() =>
-                    setDefensas((prev) =>
-                      prev.filter(
-                        (x) =>
-                          !(
-                            x.set_numero === setActivo &&
-                            x.punto_numero === puntoActual
-                          )
-                      )
-                    )
-                  }
-                />
-              )}
-
-              {pestana === "bloqueo" && (
-                <CanchaBloqueo
-                  bloqueosDelPunto={filtrar(bloqueos)}
-                  jugadoresRed={[
-                    {
-                      zona: 4 as const,
-                      jugador_id: rotActual.posiciones[4]?.jugador_id ?? "",
-                      nombre:
-                        nombreDe(rotActual.posiciones[4]?.jugador_id ?? null) ??
-                        "Z4",
-                    },
-                    {
-                      zona: 3 as const,
-                      jugador_id: rotActual.posiciones[3]?.jugador_id ?? "",
-                      nombre:
-                        nombreDe(rotActual.posiciones[3]?.jugador_id ?? null) ??
-                        "Z3",
-                    },
-                    {
-                      zona: 2 as const,
-                      jugador_id: rotActual.posiciones[2]?.jugador_id ?? "",
-                      nombre:
-                        nombreDe(rotActual.posiciones[2]?.jugador_id ?? null) ??
-                        "Z2",
-                    },
-                  ].filter((j) => j.jugador_id)}
-                  onAgregar={agregarBloqueo}
-                  onBorrarUltimo={() => {
-                    const idx = bloqueos.findLastIndex(
-                      (x) =>
-                        x.set_numero === setActivo &&
-                        x.punto_numero === puntoActual
-                    );
-                    if (idx >= 0)
-                      setBloqueos((prev) => prev.filter((_, i) => i !== idx));
-                  }}
-                />
-              )}
-
-              {pestana === "saque" && (
-                <>
-                  {sacadorActual && (
-                    <div className="mb-2 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 text-center">
-                      Sacador (zona 1): <strong>{nombreDe(sacadorActual)}</strong>
-                    </div>
-                  )}
-                  <CanchaSaque
-                    saquesDelPunto={filtrar(saques)}
-                    tipo={saquesTipo[keyPuntoActual] ?? "flotado"}
-                    onCambiarTipo={(t) =>
-                      setSaquesTipo((prev) => ({
-                        ...prev,
-                        [keyPuntoActual]: t,
-                      }))
-                    }
-                    onAgregar={agregarSaque}
-                    onBorrarUltimo={() => {
-                      const idx = saques.findLastIndex(
-                        (x) =>
-                          x.set_numero === setActivo &&
-                          x.punto_numero === puntoActual
-                      );
-                      if (idx >= 0)
-                        setSaques((prev) => prev.filter((_, i) => i !== idx));
-                    }}
-                  />
-                </>
-              )}
-
-              {pestana === "recepcion" && (
-                <CanchaRecepcion
-                  recepcionesDelPunto={filtrar(recepciones)}
-                  onAgregar={agregarRecepcion}
-                  onBorrarUltimo={() => {
-                    const idx = recepciones.findLastIndex(
-                      (x) =>
-                        x.set_numero === setActivo &&
-                        x.punto_numero === puntoActual
-                    );
-                    if (idx >= 0)
-                      setRecepciones((prev) => prev.filter((_, i) => i !== idx));
-                  }}
-                />
-              )}
-            </div>
-
-            <div className="sticky bottom-4 bg-white rounded-2xl shadow-lg border border-slate-200 p-4 flex items-center justify-between">
-              <p className="text-sm text-slate-600">
-                {mensaje ||
-                  "Ctrl+G para guardar. Teclas 1-6 cambian de pestaña. Autoguardado local."}
-              </p>
-              <button
-                onClick={guardarTodo}
-                disabled={guardando}
-                className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 text-white font-medium rounded-lg transition"
-              >
-                {guardando ? "Guardando..." : "💾 Guardar Datos (Ctrl+G)"}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </main>
-  );
-}
+                  onClick={() =>
