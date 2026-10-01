@@ -33,6 +33,19 @@ const ETIQUETAS: Record<string, string> = {
   defensa: "Defensa",
 };
 
+// Transforma valor (0-10) a posición (0-100) donde 5 → 25%
+function transformarParaRadar(valor: number): number {
+  const v = Math.max(0, valor);
+  if (v <= 5) return (v / 5) * 25;
+  return 25 + ((v - 5) / 5) * 75;
+}
+
+// Inversa: posición (0-100) → valor (0-10)
+function desTransformar(v: number): number {
+  if (v <= 25) return (v / 25) * 5;
+  return 5 + ((v - 25) / 75) * 5;
+}
+
 export default function RadarJugador({
   jugador,
   series,
@@ -69,13 +82,12 @@ export default function RadarJugador({
       fundamento: ETIQUETAS[f],
     };
     for (const s of seriesFinales) {
-      fila[s.id] = s.jugador.valoracionPonderadaPorFundamento[f] ?? 0;
+      const valorOriginal =
+        s.jugador.valoracionPonderadaPorFundamento[f] ?? 0;
+      fila[s.id] = transformarParaRadar(valorOriginal);
     }
     return fila;
   });
-
-  const minEje = 0;
-  const maxEje = 11;
 
   return (
     <div>
@@ -89,7 +101,9 @@ export default function RadarJugador({
             />
             <PolarRadiusAxis
               angle={90}
-              domain={[minEje, maxEje]}
+              domain={[0, 100]}
+              ticks={[0, 25, 50, 75, 100]}
+              tickFormatter={(v) => desTransformar(v as number).toFixed(1)}
               tick={{ fill: "#8FA398", fontSize: 10 }}
             />
             {seriesFinales.map((s) => (
