@@ -315,14 +315,30 @@ function ajustarZonaAtaque(
   rot: RotacionPunto
 ): number | null {
   if (zonaOriginal !== 2) return zonaOriginal;
-  if (esRecepcionArmadorEn1(rot)) return zonaOriginal; // invertido: atacó el punta → sigue siendo 2
-  // Atacó el opuesto. ¿Está delantero o zaguero?
+  if (esRecepcionArmadorEn1(rot)) return zonaOriginal;
   for (const z of Object.values(rot.posiciones)) {
     if (z.tipo === "O") {
       return ZONAS_TRASERAS.includes(z.zona) ? 1 : 2;
     }
   }
   return zonaOriginal;
+}
+
+// Ajuste de zona de tendencia (armado): mismo criterio que el ataque
+function calcularZonaTendenciaAjustada(
+  celda: string,
+  rot: RotacionPunto | undefined
+): number | null {
+  const zona = calcularZonaTendencia(celda);
+  if (zona !== 2) return zona;
+  if (!rot) return zona;
+  if (esRecepcionArmadorEn1(rot)) return zona;
+  for (const z of Object.values(rot.posiciones)) {
+    if (z.tipo === "O") {
+      return ZONAS_TRASERAS.includes(z.zona) ? 1 : 2;
+    }
+  }
+  return zona;
 }
 
 // ============================================================
@@ -889,11 +905,15 @@ export default function DataEntryPage() {
       const [sStr, pStr] = k.split("-");
       const s = parseInt(sStr);
       const p = parseInt(pStr);
+      const rotDelPunto = rotaciones[k];
       listaArmados.forEach((armado) => {
         if (!armado.jugador_id) return;
 
         armado.lineas.forEach((l) => {
-          const zona = calcularZonaTendencia(l.destino.celda);
+          const zona = calcularZonaTendenciaAjustada(
+            l.destino.celda,
+            rotDelPunto
+          );
           filasArmados.push({
             partido_id: partidoId,
             jugador_id: armado.jugador_id,
