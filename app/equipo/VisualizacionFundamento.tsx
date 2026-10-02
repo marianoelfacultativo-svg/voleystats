@@ -481,7 +481,6 @@ export default function VisualizacionFundamento({
               en la configuración de tu navegador.
             </div>
             <CanchaVisualizacionSVG
-              tipo={tipo}
               items={items}
               vista={vista as any}
               width={1000}
