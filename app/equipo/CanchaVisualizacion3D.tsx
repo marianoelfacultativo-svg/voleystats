@@ -22,6 +22,7 @@ export interface ItemVisual {
   color: string;
   calidad?: number | string;
   randomizar?: boolean;
+  esError?: boolean;
 }
 
 interface Props {
@@ -174,7 +175,6 @@ function getParametros(
       esRecto: false,
     };
   }
-  // recepción: origen bajo, destino a la altura de pase
   return {
     hOrigen: 0.3,
     hDestino: 2.2,
@@ -199,7 +199,6 @@ function generarSegmento(
 
   if (distH < 0.001) return [a, b];
 
-  // Potencia: línea recta
   if (esRecto) {
     const pasos = 40;
     const pts: [number, number, number][] = [];
@@ -287,10 +286,22 @@ function generarPuntos3D(
     };
   };
 
-  const origen = rand(origenBase, "-origen");
+  let origen = rand(origenBase, "-origen");
+
+  // Si es saque, forzar el origen a la línea de fondo propia
+  if (tipo === "saque") {
+    origen = { x: origen.x, z: 9.5 };
+    if (origen.x < 2 || origen.x > 11) {
+      origen = { x: 6.5, z: 9.5 };
+    }
+  }
+
   let destino = rand(destinoBase, "-destino");
 
-  const ext = extensionPorBorde(item.destino.celda, item.destino.mini);
+  // Solo sacamos la pelota afuera si es error
+  const ext = item.esError
+    ? extensionPorBorde(item.destino.celda, item.destino.mini)
+    : null;
   if (ext) {
     destino = { x: destino.x + ext.dx, z: destino.z + ext.dz };
   }
@@ -335,16 +346,12 @@ const Trajectory = React.memo(function Trajectory({
   const inicio = points[0];
   const fin = points[points.length - 1];
 
-  // Estrella SIEMPRE en el piso (y≈0), alineada con el (x, z) real del origen
-  const inicioGround: [number, number, number] = [
-    inicio[0],
-    0.05,
-    inicio[2],
+  const inicioGround: [number, number, number] = [inicio[0], 0.05, inicio[2]];
+  const finBall: [number, number, number] = [
+    fin[0],
+    Math.max(0.15, fin[1]),
+    fin[2],
   ];
-
-  // Pelota al final: si hDestino > 0 (recepción), se queda a esa altura,
-  // si no, apoyada en el piso
-  const finBall: [number, number, number] = [fin[0], Math.max(0.15, fin[1]), fin[2]];
 
   return (
     <group>
@@ -374,7 +381,6 @@ const Trajectory = React.memo(function Trajectory({
         </>
       )}
 
-      {/* Línea vertical punteada desde el piso hasta el inicio real */}
       {inicio[1] > 0.2 && (
         <Line
           points={[inicioGround, inicio]}
@@ -388,7 +394,6 @@ const Trajectory = React.memo(function Trajectory({
         />
       )}
 
-      {/* Estrella en el piso */}
       <mesh position={inicioGround}>
         <octahedronGeometry args={[0.18, 0]} />
         <meshStandardMaterial
@@ -398,7 +403,6 @@ const Trajectory = React.memo(function Trajectory({
         />
       </mesh>
 
-      {/* Pelota al final */}
       <mesh position={finBall}>
         <sphereGeometry args={[0.15, 20, 20]} />
         <meshStandardMaterial

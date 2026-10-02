@@ -1,16 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import type {
   ItemVisual,
   TipoFundamento,
   Vista,
 } from "./CanchaVisualizacion3D";
-import type { SaqueRow, RecepcionRow, AtaqueRow } from "@/lib/db";
+import type {
+  SaqueRow,
+  RecepcionRow,
+  AtaqueRow,
+} from "@/lib/db";
 
-const CanchaVisualizacion = dynamic(
+const CanchaVisualizacion3D = dynamic(
   () => import("./CanchaVisualizacion3D"),
+  { ssr: false }
+);
+
+const CanchaVisualizacionSVG = dynamic(
+  () => import("./CanchaVisualizacion"),
   { ssr: false }
 );
 
@@ -91,6 +100,7 @@ function accionToItem(
       color: COLORES_SAQUE[s.valoracion] ?? "#64748b",
       calidad: s.tipo ?? "flotado",
       randomizar: true,
+      esError: s.valoracion === "negativo",
     };
   }
 
@@ -105,6 +115,7 @@ function accionToItem(
       color: COLORES_RECEPCION[r.valoracion] ?? "#64748b",
       calidad: r.valoracion,
       randomizar: !esDoblePositiva,
+      esError: false,
     };
   }
 
@@ -117,7 +128,22 @@ function accionToItem(
     destino: { celda: at.destino_celda, mini: at.destino_mini },
     color: COLORES_ATAQUE[at.valoracion] ?? "#64748b",
     randomizar: true,
+    esError: at.valoracion === "error",
   };
+}
+
+function detectarWebGL(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const canvas = document.createElement("canvas");
+    const gl =
+      canvas.getContext("webgl2") ||
+      canvas.getContext("webgl") ||
+      canvas.getContext("experimental-webgl");
+    return !!gl;
+  } catch {
+    return false;
+  }
 }
 
 export default function VisualizacionFundamento({
@@ -136,6 +162,11 @@ export default function VisualizacionFundamento({
   const [filtroValoracion, setFiltroValoracion] = useState<
     string | number | "todas"
   >("todas");
+  const [webglOk, setWebglOk] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setWebglOk(detectarWebGL());
+  }, []);
 
   const setsDisponibles = useMemo(() => {
     const s = new Set<number>();
@@ -431,8 +462,10 @@ export default function VisualizacionFundamento({
           <p className="text-sm text-slate-500 py-12">
             No hay acciones que cumplan los filtros
           </p>
-        ) : (
-          <CanchaVisualizacion
+        ) : webglOk === null ? (
+          <p className="text-sm text-slate-500 py-12">Cargando cancha...</p>
+        ) : webglOk ? (
+          <CanchaVisualizacion3D
             tipo={tipo}
             items={items}
             vista={vista}
@@ -440,6 +473,22 @@ export default function VisualizacionFundamento({
             height={760}
             mostrarEstelas={mostrarEstelas}
           />
+        ) : (
+          <div className="w-full">
+            <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+              ⚠️ Tu navegador no soporta WebGL, mostrando versión 2D.
+              Para ver la versión 3D, activá la aceleración por hardware
+              en la configuración de tu navegador.
+            </div>
+            <CanchaVisualizacionSVG
+              tipo={tipo}
+              items={items}
+              vista={vista as any}
+              width={1000}
+              height={760}
+              mostrarEstelas={mostrarEstelas}
+            />
+          </div>
         )}
       </div>
     </div>
