@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import type {
   ArmadoDetalle,
   Vista,
-} from "./CanchaArmador";
+} from "./CanchaArmador3D";
 import VisualizacionFundamento from "./VisualizacionFundamento";
 import type { SaqueRow, RecepcionRow, AtaqueRow } from "@/lib/db";
 
@@ -99,7 +99,6 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
     setWebglOk(detectarWebGL());
   }, []);
 
-  // Cargar partidos y jugadores
   useEffect(() => {
     if (!equipoId) return;
 
@@ -137,7 +136,6 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
     })();
   }, [equipoId]);
 
-  // Cargar datos del partido seleccionado
   useEffect(() => {
     if (!partidoSeleccionado) {
       setArmados([]);
