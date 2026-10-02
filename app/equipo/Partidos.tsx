@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { cargarAccionesCompatibles, type AccionDB } from "@/lib/db";
+import {
+  cargarAccionesCompatibles,
+  cargarDetalles,
+  type AccionDB,
+  type SaqueRow,
+  type RecepcionRow,
+  type AtaqueRow,
+} from "@/lib/db";
 import {
   calcularEstadisticasEquipo,
   calcularEstadisticasJugador,
@@ -24,6 +31,7 @@ import GraficoBloqueoPorSet from "./GraficoBloqueoPorSet";
 import GraficoArmadosPorSet from "./GraficoArmadosPorSet";
 import TablaJugadoresPorSet from "./TablaJugadoresPorSet";
 import TablaEstadisticasCrudas from "./TablaEstadisticasCrudas";
+import VisualizacionFundamento from "./VisualizacionFundamento";
 
 interface Partido {
   id: string;
@@ -66,13 +74,27 @@ type ModoPrincipal =
   | "partido"
   | "comparar-partidos"
   | "jugador-por-partidos";
-type ModoDetalle = "analisis" | "comparar-jugadores" | "crudas";
+type ModoDetalle =
+  | "analisis"
+  | "comparar-jugadores"
+  | "crudas"
+  | "cancha";
+
+type FundamentoCancha = "saque" | "recepcion" | "ataque";
 
 export default function Partidos({ equipoId, nombreEquipo }: Props) {
   const [partidos, setPartidos] = useState<Partido[]>([]);
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
   const [acciones, setAcciones] = useState<AccionDB[]>([]);
   const [cargando, setCargando] = useState(true);
+
+  // Detalles crudos del partido seleccionado (para la vista cancha)
+  const [detallesPartido, setDetallesPartido] = useState<{
+    saques: SaqueRow[];
+    recepciones: RecepcionRow[];
+    ataques: AtaqueRow[];
+  }>({ saques: [], recepciones: [], ataques: [] });
+  const [cargandoDetalles, setCargandoDetalles] = useState(false);
 
   const [filtroRival, setFiltroRival] = useState("");
   const [filtroFechaDesde, setFiltroFechaDesde] = useState("");
@@ -95,6 +117,8 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
 
   const [modoDetalle, setModoDetalle] = useState<ModoDetalle>("analisis");
   const [jugadoresComparados, setJugadoresComparados] = useState<string[]>([]);
+  const [fundamentoCancha, setFundamentoCancha] =
+    useState<FundamentoCancha>("saque");
 
   useEffect(() => {
     if (!equipoId) return;
@@ -134,6 +158,25 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     });
   }, [equipoId]);
 
+  // Cargar detalles crudos del partido seleccionado cuando se necesita
+  useEffect(() => {
+    if (
+      !partidoSeleccionado ||
+      modoDetalle !== "cancha"
+    ) {
+      return;
+    }
+    setCargandoDetalles(true);
+    cargarDetalles(partidoSeleccionado).then((d) => {
+      setDetallesPartido({
+        saques: d.saques,
+        recepciones: d.recepciones,
+        ataques: d.ataques,
+      });
+      setCargandoDetalles(false);
+    });
+  }, [partidoSeleccionado, modoDetalle]);
+
   const limpiarFiltros = () => {
     setFiltroRival("");
     setFiltroFechaDesde("");
@@ -160,6 +203,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       setJugadorSeleccionadoJxP(null);
       setPartidosJxP([]);
     }
+    setModoDetalle("analisis");
   };
 
   const handleTogglePartidoComparado = (id: string) => {
@@ -525,6 +569,25 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         idsJugadores
       ),
     }));
+
+  // Nombres de jugadores para la vista cancha
+  const nombresJugadores = Object.fromEntries(
+    jugadores.map((j) => [j.id, nombreDe(j.id)])
+  );
+
+  // Acciones filtradas para la vista cancha según el fundamento
+  const accionesCancha =
+    fundamentoCancha === "saque"
+      ? detallesPartido.saques.filter(
+          (s) => filtroSet === "todos" || String(s.set_numero) === filtroSet
+        )
+      : fundamentoCancha === "recepcion"
+      ? detallesPartido.recepciones.filter(
+          (r) => filtroSet === "todos" || String(r.set_numero) === filtroSet
+        )
+      : detallesPartido.ataques.filter(
+          (a) => filtroSet === "todos" || String(a.set_numero) === filtroSet
+        );
 
   return (
     <div className="space-y-6">
@@ -1190,6 +1253,16 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 >
                   📋 Estadísticas crudas
                 </button>
+                <button
+                  onClick={() => setModoDetalle("cancha")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
+                    modoDetalle === "cancha"
+                      ? "bg-emerald-500 text-white border-emerald-500"
+                      : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                  }`}
+                >
+                  🔭 Ver en cancha
+                </button>
               </div>
 
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
@@ -1407,6 +1480,50 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     armadores={armadores}
                   />
                 </div>
+              )}
+
+              {modoDetalle === "cancha" && (
+                <>
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs font-medium text-slate-500">
+                        Fundamento:
+                      </span>
+                      {(["saque", "recepcion", "ataque"] as const).map((f) => (
+                        <button
+                          key={f}
+                          onClick={() => setFundamentoCancha(f)}
+                          className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition ${
+                            fundamentoCancha === f
+                              ? "bg-emerald-500 text-white border-emerald-500"
+                              : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                          }`}
+                        >
+                          {f === "saque"
+                            ? "🎯 Saque"
+                            : f === "recepcion"
+                            ? "🙌 Recepción"
+                            : "⚡ Ataque"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {cargandoDetalles ? (
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+                      <p className="text-sm text-slate-500">
+                        Cargando trayectorias...
+                      </p>
+                    </div>
+                  ) : (
+                    <VisualizacionFundamento
+                      tipo={fundamentoCancha}
+                      acciones={accionesCancha}
+                      jugadoresIds={idsJugadores}
+                      nombresJugadores={nombresJugadores}
+                    />
+                  )}
+                </>
               )}
 
               {modoDetalle === "analisis" && (
