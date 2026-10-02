@@ -10,12 +10,23 @@ import type {
 import VisualizacionFundamento from "./VisualizacionFundamento";
 import type { SaqueRow, RecepcionRow, AtaqueRow } from "@/lib/db";
 
-const CanchaArmador3D = dynamic(() => import("./CanchaArmador3D"), {
-  ssr: false,
-});
-const CanchaArmadorSVG = dynamic(() => import("./CanchaArmador"), {
-  ssr: false,
-});
+interface ArmadorProps {
+  armados: ArmadoDetalle[];
+  vista?: Vista;
+  width?: number;
+  height?: number;
+  mostrarEstelas?: boolean;
+}
+
+const CanchaArmador3D = dynamic<ArmadorProps>(
+  () => import("./CanchaArmador3D"),
+  { ssr: false }
+);
+
+const CanchaArmadorSVG = dynamic<ArmadorProps>(
+  () => import("./CanchaArmador"),
+  { ssr: false }
+);
 
 interface Props {
   equipoId: string;
