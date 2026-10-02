@@ -18,12 +18,11 @@ interface Props {
 }
 
 const VISTAS: { id: Vista; label: string }[] = [
-  { id: "iso", label: "Isométrica" },
-  { id: "iso-opuesta", label: "Isométrica opuesta" },
-  { id: "top", label: "Superior" },
   { id: "front", label: "Frontal" },
-  { id: "paralela-izq", label: "Paralela izq." },
-  { id: "paralela-der", label: "Paralela der." },
+  { id: "top", label: "Superior" },
+  { id: "front-rival", label: "Frontal (rival)" },
+  { id: "iso-izq", label: "Isométrica izq." },
+  { id: "iso-der", label: "Isométrica der." },
 ];
 
 // ============================================================
@@ -131,7 +130,7 @@ export default function VisualizacionFundamento({
   jugadoresIds,
   nombresJugadores,
 }: Props) {
-  const [vista, setVista] = useState<Vista>("iso");
+  const [vista, setVista] = useState<Vista>("front");
   const [mostrarEstelas, setMostrarEstelas] = useState(true);
   const [filtroSet, setFiltroSet] = useState<number | "todos">("todos");
   const [filtroPunto, setFiltroPunto] = useState<number | "todos">("todos");
