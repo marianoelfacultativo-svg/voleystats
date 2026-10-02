@@ -184,12 +184,25 @@ function getParametros(
 
 const ALTURA_RED = 2.43;
 const GRAVEDAD = 9.8;
+const ALTURA_MAX_ARCO = 3.4;
+
+function limitarAltura(
+  pts: [number, number, number][]
+): [number, number, number][] {
+  return pts.map((p) => {
+    if (p[1] > ALTURA_MAX_ARCO) {
+      return [p[0], ALTURA_MAX_ARCO, p[2]];
+    }
+    return p;
+  });
+}
 
 function generarSegmento(
   a: [number, number, number],
   b: [number, number, number],
   params: ParametrosTrayectoria,
-  necesitaPasarRed: boolean
+  necesitaPasarRed: boolean,
+  limitar: boolean
 ): [number, number, number][] {
   const { hOrigen, hDestino, esRecto } = params;
 
@@ -255,7 +268,125 @@ function generarSegmento(
     const z = a[2] + vz * t;
     pts.push([x, Math.max(0, y), z]);
   }
+
+  if (limitar) return limitarAltura(pts);
   return pts;
+}
+
+/**
+ * Curva de ataque: recta con curvatura leve.
+ * Si cruza la red, calcula el apex mínimo para pasar la red + margen.
+ */
+function generarCurvaAtaque(
+  a: [number, number, number],
+  b: [number, number, number]
+): [number, number, number][] {
+  const pasos = 40;
+  const pts: [number, number, number][] = [];
+  const hOrigen = a[1];
+  const hDestino = b[1];
+  const apexCentrado = (hOrigen + hDestino) / 2;
+
+  const zOrigen = a[2];
+  const zDestino = b[2];
+  const cruzaRed =
+    (zOrigen > 0 && zDestino < 0) || (zOrigen < 0 && zDestino > 0);
+
+  let hApex: number;
+  if (cruzaRed) {
+    const tRed = Math.abs(zOrigen) / Math.abs(zDestino - zOrigen);
+    const hBaseRed = hOrigen + tRed * (hDestino - hOrigen);
+    const target = ALTURA_RED + 0.15;
+    const denom = 4 * tRed * (1 - tRed);
+    const hApexMin =
+      denom > 0.001
+        ? apexCentrado + (target - hBaseRed) / denom
+        : apexCentrado + 0.5;
+    hApex = Math.max(hApexMin, apexCentrado + 0.3);
+  } else {
+    hApex = apexCentrado + 0.3;
+  }
+
+  for (let i = 0; i <= pasos; i++) {
+    const t = i / pasos;
+    const x = a[0] + t * (b[0] - a[0]);
+    const z = a[2] + t * (b[2] - a[2]);
+    const hBase = hOrigen + t * (hDestino - hOrigen);
+    const y = hBase + 4 * t * (1 - t) * (hApex - apexCentrado);
+    pts.push([x, Math.max(0, y), z]);
+  }
+  return pts;
+}
+
+/**
+ * Genera los puntos 3D para un ataque según las reglas especiales.
+ */
+function generarPuntosAtaque(
+  origen: { x: number; z: number },
+  destino: { x: number; z: number },
+  desvios: { x: number; z: number }[]
+): [number, number, number][] {
+  const origenPropio = origen.z >= 0;
+  const destinoPropio = destino.z >= 0;
+
+  // ----- CASO A: Ataque a la red (propio → propio, sin desvíos) -----
+  if (origenPropio && destinoPropio && desvios.length === 0) {
+    const puntoRed: [number, number, number] = [
+      origen.x,
+      ALTURA_RED - 0.1,
+      0,
+    ];
+    const puntoCaida: [number, number, number] = [
+      destino.x,
+      0,
+      Math.max(1.5, destino.z),
+    ];
+    return [
+      ...generarCurvaAtaque([origen.x, 2.8, origen.z], puntoRed),
+      ...generarCurvaAtaque(puntoRed, puntoCaida).slice(1),
+    ];
+  }
+
+  // ----- CASO B: Bloqueo rival (desvío en campo rival + destino propio) -----
+  const desvioRival = desvios.find((d) => d.z < 0);
+  if (desvioRival && destinoPropio) {
+    const puntoBloqueo: [number, number, number] = [
+      desvioRival.x,
+      2.5,
+      desvioRival.z,
+    ];
+    const puntoCaida: [number, number, number] = [
+      destino.x,
+      0,
+      Math.max(1.0, destino.z),
+    ];
+    return [
+      ...generarCurvaAtaque([origen.x, 2.8, origen.z], puntoBloqueo),
+      ...generarCurvaAtaque(puntoBloqueo, puntoCaida).slice(1),
+    ];
+  }
+
+  // ----- CASO C: Ataque normal (con o sin desvíos) -----
+  const waypoints: { x: number; z: number; y: number }[] = [
+    { x: origen.x, z: origen.z, y: 2.8 },
+    ...desvios.map((d) => ({
+      x: d.x,
+      z: d.z,
+      y: d.z > -3 && d.z <= 0 ? 2.5 : 0,
+    })),
+    { x: destino.x, z: destino.z, y: 0 },
+  ];
+
+  const puntos: [number, number, number][] = [];
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const segPts = generarCurvaAtaque(
+      [waypoints[i].x, waypoints[i].y, waypoints[i].z],
+      [waypoints[i + 1].x, waypoints[i + 1].y, waypoints[i + 1].z]
+    );
+    if (i > 0) segPts.shift();
+    puntos.push(...segPts);
+  }
+  return puntos;
 }
 
 function generarPuntos3D(
@@ -288,7 +419,6 @@ function generarPuntos3D(
 
   let origen = rand(origenBase, "-origen");
 
-  // Si es saque, forzar el origen a la línea de fondo propia
   if (tipo === "saque") {
     origen = { x: origen.x, z: 9.5 };
     if (origen.x < 2 || origen.x > 11) {
@@ -298,7 +428,6 @@ function generarPuntos3D(
 
   let destino = rand(destinoBase, "-destino");
 
-  // Solo sacamos la pelota afuera si es error
   const ext = item.esError
     ? extensionPorBorde(item.destino.celda, item.destino.mini)
     : null;
@@ -308,40 +437,50 @@ function generarPuntos3D(
 
   const desvios = desviosBase.map((d, i) => rand(d, `-desvio-${i}`));
 
-  const params = getParametros(tipo, item);
-  const necesitaPasarRed = tipo === "saque" || tipo === "ataque";
+  // ----- ATAQUES -----
+  if (tipo === "ataque") {
+    return generarPuntosAtaque(origen, destino, desvios);
+  }
 
-  // ----- CASO ESPECIAL: saque que queda en la red -----
-  // Si el destino NO cruzó bien la red (z > -0.5), la pelota choca
-  // contra la red y cae del lado propio.
+  // ----- SAQUES Y RECEPCIONES -----
+  const params = getParametros(tipo, item);
+  const necesitaPasarRed = tipo === "saque";
+  const limitarAlturaSaque = tipo === "saque";
+
   const quedoEnRed = tipo === "saque" && destino.z > -0.5;
 
   if (quedoEnRed) {
-    // Punto de choque contra la red
-    const puntoRed: [number, number, number] = [destino.x, 0, 0];
-    // Punto de caída: del lado propio, cerca de la red
-    const puntoCaida: [number, number, number] = [destino.x, 0, 0.8];
+    const puntoRed: [number, number, number] = [
+      destino.x,
+      ALTURA_RED - 0.3,
+      0,
+    ];
+    const puntoCaida: [number, number, number] = [destino.x, 0, 2.0];
 
-    // Segmento 1: origen → red (física normal)
     const seg1 = generarSegmento(
       [origen.x, 0, origen.z],
       puntoRed,
       params,
-      necesitaPasarRed
+      necesitaPasarRed,
+      limitarAlturaSaque
     );
 
-    // Segmento 2: red → caída (arco corto de rebote)
     const paramsRebote: ParametrosTrayectoria = {
-      hOrigen: 0.5,
+      hOrigen: ALTURA_RED - 0.3,
       hDestino: 0,
       esRecto: false,
     };
-    const seg2 = generarSegmento(puntoRed, puntoCaida, paramsRebote, false);
+    const seg2 = generarSegmento(
+      puntoRed,
+      puntoCaida,
+      paramsRebote,
+      false,
+      false
+    );
 
-    return [...seg1, ...seg2];
+    return [...seg1, ...seg2.slice(1)];
   }
 
-  // ----- CASO NORMAL -----
   const waypoints: [number, number, number][] = [
     [origen.x, 0, origen.z],
     ...desvios.map((d): [number, number, number] => [d.x, 0, d.z]),
@@ -354,7 +493,8 @@ function generarPuntos3D(
       waypoints[i],
       waypoints[i + 1],
       params,
-      necesitaPasarRed
+      necesitaPasarRed,
+      limitarAlturaSaque
     );
     if (i > 0) segPts.shift();
     puntos.push(...segPts);

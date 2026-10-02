@@ -163,6 +163,7 @@ function randomizar(
 const ALTURA_RED = 2.43;
 const GRAVEDAD = 9.8;
 const RADIO_PELOTA = 10;
+const ALTURA_MAX_ARCO = 3.4;
 
 const ISO_ANGLE_DEG = 22;
 const ISO_COS = Math.cos((ISO_ANGLE_DEG * Math.PI) / 180);
@@ -261,13 +262,25 @@ function getParametros(
   return { hOrigen: 0.3, hDestino: 2.2, esRecto: false };
 }
 
+function limitarAltura(
+  pts: [number, number, number][]
+): [number, number, number][] {
+  return pts.map((p) => {
+    if (p[1] > ALTURA_MAX_ARCO) {
+      return [p[0], ALTURA_MAX_ARCO, p[2]];
+    }
+    return p;
+  });
+}
+
 function generarSegmento(
   a: { x: number; z: number },
   b: { x: number; z: number },
   params: ParametrosTrayectoria,
   vista: Vista,
   escala: number,
-  necesitaPasarRed: boolean
+  necesitaPasarRed: boolean,
+  limitar: boolean
 ): { path: string; puntos3D: [number, number, number][] } {
   const { hOrigen, hDestino, esRecto } = params;
 
@@ -339,7 +352,162 @@ function generarSegmento(
     const p = proyectar(x, z, y, vista, escala);
     path += i === 0 ? `M ${p.sx} ${p.sy}` : ` L ${p.sx} ${p.sy}`;
   }
+
+  if (limitar) {
+    const limitados = limitarAltura(puntos3D);
+    let pathL = "";
+    limitados.forEach((p3, i) => {
+      const p = proyectar(p3[0], p3[2], p3[1], vista, escala);
+      pathL += i === 0 ? `M ${p.sx} ${p.sy}` : ` L ${p.sx} ${p.sy}`;
+    });
+    return { path: pathL, puntos3D: limitados };
+  }
+
   return { path, puntos3D };
+}
+
+/**
+ * Curva de ataque: recta con curvatura leve.
+ */
+function generarCurvaAtaque(
+  a: [number, number, number],
+  b: [number, number, number],
+  vista: Vista,
+  escala: number
+): { path: string; puntos3D: [number, number, number][] } {
+  const pasos = 40;
+  const pts: [number, number, number][] = [];
+  const hOrigen = a[1];
+  const hDestino = b[1];
+  const apexCentrado = (hOrigen + hDestino) / 2;
+
+  const zOrigen = a[2];
+  const zDestino = b[2];
+  const cruzaRed =
+    (zOrigen > 0 && zDestino < 0) || (zOrigen < 0 && zDestino > 0);
+
+  let hApex: number;
+  if (cruzaRed) {
+    const tRed = Math.abs(zOrigen) / Math.abs(zDestino - zOrigen);
+    const hBaseRed = hOrigen + tRed * (hDestino - hOrigen);
+    const target = ALTURA_RED + 0.15;
+    const denom = 4 * tRed * (1 - tRed);
+    const hApexMin =
+      denom > 0.001
+        ? apexCentrado + (target - hBaseRed) / denom
+        : apexCentrado + 0.5;
+    hApex = Math.max(hApexMin, apexCentrado + 0.3);
+  } else {
+    hApex = apexCentrado + 0.3;
+  }
+
+  let path = "";
+  for (let i = 0; i <= pasos; i++) {
+    const t = i / pasos;
+    const x = a[0] + t * (b[0] - a[0]);
+    const z = a[2] + t * (b[2] - a[2]);
+    const hBase = hOrigen + t * (hDestino - hOrigen);
+    const y = hBase + 4 * t * (1 - t) * (hApex - apexCentrado);
+    pts.push([x, Math.max(0, y), z]);
+    const p = proyectar(x, z, y, vista, escala);
+    path += i === 0 ? `M ${p.sx} ${p.sy}` : ` L ${p.sx} ${p.sy}`;
+  }
+  return { path, puntos3D: pts };
+}
+
+function generarPuntosAtaque(
+  origen: { x: number; z: number },
+  destino: { x: number; z: number },
+  desvios: { x: number; z: number }[],
+  vista: Vista,
+  escala: number
+): { paths: string[]; puntos3D: [number, number, number][] } {
+  const origenPropio = origen.z >= 0;
+  const destinoPropio = destino.z >= 0;
+
+  const paths: string[] = [];
+  const puntos3D: [number, number, number][] = [];
+
+  const agregarSegmento = (
+    seg: { path: string; puntos3D: [number, number, number][] }
+  ) => {
+    paths.push(seg.path);
+    if (puntos3D.length === 0) {
+      puntos3D.push(...seg.puntos3D);
+    } else {
+      puntos3D.push(...seg.puntos3D.slice(1));
+    }
+  };
+
+  // CASO A: ataque a la red
+  if (origenPropio && destinoPropio && desvios.length === 0) {
+    const puntoRed: [number, number, number] = [
+      origen.x,
+      ALTURA_RED - 0.1,
+      0,
+    ];
+    const puntoCaida: [number, number, number] = [
+      destino.x,
+      0,
+      Math.max(1.5, destino.z),
+    ];
+    agregarSegmento(
+      generarCurvaAtaque([origen.x, 2.8, origen.z], puntoRed, vista, escala)
+    );
+    agregarSegmento(
+      generarCurvaAtaque(puntoRed, puntoCaida, vista, escala)
+    );
+    return { paths, puntos3D };
+  }
+
+  // CASO B: bloqueo rival
+  const desvioRival = desvios.find((d) => d.z < 0);
+  if (desvioRival && destinoPropio) {
+    const puntoBloqueo: [number, number, number] = [
+      desvioRival.x,
+      2.5,
+      desvioRival.z,
+    ];
+    const puntoCaida: [number, number, number] = [
+      destino.x,
+      0,
+      Math.max(1.0, destino.z),
+    ];
+    agregarSegmento(
+      generarCurvaAtaque(
+        [origen.x, 2.8, origen.z],
+        puntoBloqueo,
+        vista,
+        escala
+      )
+    );
+    agregarSegmento(
+      generarCurvaAtaque(puntoBloqueo, puntoCaida, vista, escala)
+    );
+    return { paths, puntos3D };
+  }
+
+  // CASO C: ataque normal
+  const waypoints: { x: number; z: number; y: number }[] = [
+    { x: origen.x, z: origen.z, y: 2.8 },
+    ...desvios.map((d) => ({
+      x: d.x,
+      z: d.z,
+      y: d.z > -3 && d.z <= 0 ? 2.5 : 0,
+    })),
+    { x: destino.x, z: destino.z, y: 0 },
+  ];
+
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const seg = generarCurvaAtaque(
+      [waypoints[i].x, waypoints[i].y, waypoints[i].z],
+      [waypoints[i + 1].x, waypoints[i + 1].y, waypoints[i + 1].z],
+      vista,
+      escala
+    );
+    agregarSegmento(seg);
+  }
+  return { paths, puntos3D };
 }
 
 export default function CanchaVisualizacion({
@@ -394,10 +562,28 @@ export default function CanchaVisualizacion({
             )
           : desviosBase;
 
-        const params = getParametros(tipo, it);
-        const necesitaPasarRed = tipo === "saque" || tipo === "ataque";
+        // ATAQUES
+        if (tipo === "ataque") {
+          const res = generarPuntosAtaque(
+            origen,
+            destino,
+            desvios,
+            vista,
+            escala
+          );
+          return {
+            item: it,
+            paths: res.paths,
+            puntos3D: res.puntos3D,
+            color: it.color,
+          };
+        }
 
-        // Caso saque en red
+        // SAQUES Y RECEPCIONES
+        const params = getParametros(tipo, it);
+        const necesitaPasarRed = tipo === "saque";
+        const limitarAlturaSaque = tipo === "saque";
+
         const quedoEnRed = tipo === "saque" && destino.z > -0.5;
 
         const paths: string[] = [];
@@ -405,7 +591,7 @@ export default function CanchaVisualizacion({
 
         if (quedoEnRed) {
           const puntoRed = { x: destino.x, z: 0 };
-          const puntoCaida = { x: destino.x, z: 0.8 };
+          const puntoCaida = { x: destino.x, z: 2.0 };
 
           const seg1 = generarSegmento(
             origen,
@@ -413,13 +599,14 @@ export default function CanchaVisualizacion({
             params,
             vista,
             escala,
-            necesitaPasarRed
+            necesitaPasarRed,
+            limitarAlturaSaque
           );
           paths.push(seg1.path);
           puntos3D.push(...seg1.puntos3D);
 
           const paramsRebote: ParametrosTrayectoria = {
-            hOrigen: 0.5,
+            hOrigen: ALTURA_RED - 0.3,
             hDestino: 0,
             esRecto: false,
           };
@@ -429,11 +616,11 @@ export default function CanchaVisualizacion({
             paramsRebote,
             vista,
             escala,
+            false,
             false
           );
           paths.push(seg2.path);
-          const seg2SinInicio = seg2.puntos3D.slice(1);
-          puntos3D.push(...seg2SinInicio);
+          puntos3D.push(...seg2.puntos3D.slice(1));
         } else {
           const waypoints = [origen, ...desvios, destino];
           for (let i = 0; i < waypoints.length - 1; i++) {
@@ -443,7 +630,8 @@ export default function CanchaVisualizacion({
               params,
               vista,
               escala,
-              necesitaPasarRed
+              necesitaPasarRed,
+              limitarAlturaSaque
             );
             paths.push(seg.path);
             if (i > 0) {
