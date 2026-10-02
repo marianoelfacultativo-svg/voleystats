@@ -241,7 +241,7 @@ function resolverJugadorRecepcion(
     5: { z1: "L", z6: "PZ", z5: "PD" },
     4: { z1: "L", z6: "PZ", z5: "PD" },
     3: { z1: "PZ", z6: "L", z5: "PD" },
-    2: { z1: "PZ", z6: "L", z5: "PD" },
+    2: { z1: "L", z6: "PZ", z5: "PD" },
   };
 
   const filaTabla = TABLA[zonaArmador];
