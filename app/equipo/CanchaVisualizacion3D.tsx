@@ -285,10 +285,8 @@ function generarCurvaAtaque(
 
   if (cruzaRed) {
     tRef = Math.abs(zOrigen) / Math.abs(zDestino - zOrigen);
-    // Solo 5cm de margen por encima de la red
     hRef = ALTURA_RED + 0.05;
   } else {
-    // Sin red: curvatura mínima (5cm por encima de la recta en t=0.5)
     tRef = 0.5;
     hRef = hOrigen + 0.5 * (hDestino - hOrigen) + 0.05;
   }
@@ -320,7 +318,6 @@ function generarPuntosAtaque(
   const origenPropio = origen.z >= 0;
   const destinoPropio = destino.z >= 0;
 
-  // CASO A: ataque a la red
   if (origenPropio && destinoPropio && desvios.length === 0) {
     const puntoRed: [number, number, number] = [
       origen.x,
@@ -338,7 +335,6 @@ function generarPuntosAtaque(
     ];
   }
 
-  // CASO B: bloqueo rival
   const desvioRival = desvios.find((d) => d.z < 0);
   if (desvioRival && destinoPropio) {
     const puntoBloqueo: [number, number, number] = [
@@ -357,7 +353,6 @@ function generarPuntosAtaque(
     ];
   }
 
-  // CASO C: ataque normal
   const waypoints: { x: number; z: number; y: number }[] = [
     { x: origen.x, z: origen.z, y: 2.8 },
     ...desvios.map((d) => ({
@@ -436,7 +431,13 @@ function generarPuntos3D(
   const necesitaPasarRed = tipo === "saque";
   const limitarAlturaSaque = tipo === "saque";
 
-  const quedoEnRed = tipo === "saque" && destino.z > -0.5;
+  // Detección de saque que queda en la red
+  // - si el destino está del lado propio o sobre la línea (z > -0.5)
+  // - si es error y el destino está muy cerca de la red del lado rival (z >= -2.5)
+  const quedoEnRed =
+    tipo === "saque" &&
+    (destino.z > -0.5 ||
+      (destino.z >= -2.5 && item.esError === true));
 
   if (quedoEnRed) {
     const puntoRed: [number, number, number] = [

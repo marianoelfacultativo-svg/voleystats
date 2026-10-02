@@ -573,7 +573,11 @@ export default function CanchaVisualizacion({
         const necesitaPasarRed = tipo === "saque";
         const limitarAlturaSaque = tipo === "saque";
 
-        const quedoEnRed = tipo === "saque" && destino.z > -0.5;
+        // Detección de saque que queda en la red
+        const quedoEnRed =
+          tipo === "saque" &&
+          (destino.z > -0.5 ||
+            (destino.z >= -2.5 && it.esError === true));
 
         const paths: string[] = [];
         const puntos3D: [number, number, number][] = [];
