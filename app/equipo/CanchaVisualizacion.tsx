@@ -5,12 +5,11 @@ import { useMemo } from "react";
 export type TipoFundamento = "saque" | "recepcion" | "ataque";
 
 export type Vista =
-  | "top"
   | "front"
-  | "iso"
-  | "iso-opuesta"
-  | "paralela-izq"
-  | "paralela-der";
+  | "top"
+  | "front-rival"
+  | "iso-izq"
+  | "iso-der";
 
 export interface PuntoVisual {
   celda: string;
@@ -39,7 +38,7 @@ interface Props {
 }
 
 // ============================================================
-// Coordenadas de celdas (en "unidades" del grid, 1 unidad ≈ 1 metro)
+// Coordenadas
 // ============================================================
 const COL_X: Record<string, [number, number]> = {
   C1: [0, 2],
@@ -98,7 +97,6 @@ function obtenerCoords(
   const anchoCelda = (rangoX[1] - rangoX[0]) / numCols;
   const altoCelda = (rangoZ[1] - rangoZ[0]) / numFils;
 
-  // En cancha rival, invertimos la fila para que f1 esté cerca de la red
   const esRival = parseInt(fila.slice(1)) >= 4;
   const mfFinal = esRival ? numFils - 1 - mf : mf;
 
@@ -109,7 +107,43 @@ function obtenerCoords(
 }
 
 // ============================================================
-// Hash determinístico para randomización estable
+// ¿La mini está en el borde del court en la dirección de salida?
+// Devuelve el desplazamiento a aplicar si la pelota salió
+// ============================================================
+function extensionPorBorde(
+  celda: string,
+  mini: string | null
+): { dx: number; dz: number } | null {
+  if (!mini) return null;
+  const partes = celda.split("-");
+  if (partes.length !== 2) return null;
+  const [fila, col] = partes;
+  const m = mini.match(/^f(\d)c(\d)$/);
+  if (!m) return null;
+  const mf = parseInt(m[1]);
+  const mc = parseInt(m[2]);
+  const numCols = col === "C1" || col === "C5" ? 2 : 3;
+  const numFils = 3;
+  const numFila = parseInt(fila.slice(1));
+
+  let dx = 0;
+  let dz = 0;
+
+  // Laterales
+  if (col === "C1" && mc === 1) dx = -1.2;
+  else if (col === "C5" && mc === numCols) dx = 1.2;
+
+  // Fondo rival (F6 en la última fila de mini) → sale de largo
+  if (numFila === 6 && mf === numFils) dz = -1.2;
+  // Fondo propio (F3 en la última fila de mini) → sale de largo
+  else if (numFila === 3 && mf === numFils) dz = 1.2;
+
+  if (dx === 0 && dz === 0) return null;
+  return { dx, dz };
+}
+
+// ============================================================
+// Hash determinístico
 // ============================================================
 function hashSeed(str: string): number {
   let h = 5381;
@@ -125,7 +159,6 @@ function prand(seed: string, key: string): number {
   return (h % 100000) / 100000;
 }
 
-/** Randomiza ±0.3m (30cm) alrededor del centro de la celda */
 function randomizar(
   coords: { x: number; z: number },
   id: string,
@@ -174,10 +207,9 @@ const ESCALA = 45;
 const OFFSET = {
   top: { x: 150, y: 300 },
   front: { x: 150, y: 520 },
-  iso: { x: 400, y: 400 },
-  isoOpuesta: { x: 590, y: 400 },
-  paralelaIzq: { x: 80, y: 400 },
-  paralelaDer: { x: 920, y: 400 },
+  frontRival: { x: 150, y: 520 },
+  isoIzq: { x: 400, y: 400 },
+  isoDer: { x: 590, y: 400 },
 };
 
 function proyectar(
@@ -198,42 +230,32 @@ function proyectar(
         sx: x * escala + OFFSET.front.x,
         sy: -y * escala + z * escala * FRONT_Z_FACTOR + OFFSET.front.y,
       };
-    case "iso":
+    case "front-rival":
       return {
-        sx: (x - z) * ISO_COS * escala + OFFSET.iso.x,
-        sy: (x + z) * ISO_SIN * escala - y * escala + OFFSET.iso.y,
+        sx: (13 - x) * escala + OFFSET.frontRival.x,
+        sy:
+          -y * escala -
+          z * escala * FRONT_Z_FACTOR +
+          OFFSET.frontRival.y,
       };
-    case "iso-opuesta": {
+    case "iso-izq":
+      return {
+        sx: (x - z) * ISO_COS * escala + OFFSET.isoIzq.x,
+        sy: (x + z) * ISO_SIN * escala - y * escala + OFFSET.isoIzq.y,
+      };
+    case "iso-der": {
       const xr = 13 - x;
       const zr = 9 - z;
       return {
-        sx: (xr - zr) * ISO_COS * escala + OFFSET.isoOpuesta.x,
-        sy: (xr + zr) * ISO_SIN * escala - y * escala + OFFSET.isoOpuesta.y,
+        sx: (xr - zr) * ISO_COS * escala + OFFSET.isoDer.x,
+        sy: (xr + zr) * ISO_SIN * escala - y * escala + OFFSET.isoDer.y,
       };
     }
-    case "paralela-izq":
-      return {
-        sx:
-          z * escala +
-          x * escala * PARALELA_X_FACTOR +
-          OFFSET.paralelaIzq.x,
-        sy: -y * escala + OFFSET.paralelaIzq.y,
-      };
-    case "paralela-der":
-      return {
-        sx:
-          (9 - z) * escala +
-          (13 - x) * escala * PARALELA_X_FACTOR +
-          OFFSET.paralelaDer.x -
-          9 * escala -
-          13 * escala * PARALELA_X_FACTOR,
-        sy: -y * escala + OFFSET.paralelaDer.y,
-      };
   }
 }
 
 // ============================================================
-// Parámetros de trayectoria según tipo
+// Parámetros de trayectoria
 // ============================================================
 interface ParametrosTrayectoria {
   hOrigen: number;
@@ -260,7 +282,7 @@ function getParametros(
     return {
       hOrigen: 2.8,
       hDestino: 0,
-      hApex: esPotencia ? 2.9 : 3.2,
+      hApex: esPotencia ? 2.9 : 3.3,
       esRecto: esPotencia,
     };
   }
@@ -272,7 +294,6 @@ function getParametros(
       esRecto: false,
     };
   }
-  // recepción
   const cal = typeof item.calidad === "number" ? item.calidad : 4;
   return {
     hOrigen: 0.3,
@@ -283,21 +304,52 @@ function getParametros(
 }
 
 // ============================================================
-// Curva entre dos puntos 3D
+// Curva
 // ============================================================
 function generarCurvaSegmento(
   a: { x: number; z: number },
   b: { x: number; z: number },
   params: ParametrosTrayectoria,
   vista: Vista,
-  escala: number
+  escala: number,
+  forzarDentroDeRed: boolean
 ): string {
   const { hOrigen, hDestino, hApex, esRecto } = params;
-  const pasos = 24;
+
+  // Bend de x si cruza la red fuera de [2, 11]
+  let ctrlX: number | null = null;
+  if (forzarDentroDeRed) {
+    const cruzandoRed =
+      (a.z > 0 && b.z < 0) || (a.z < 0 && b.z > 0);
+    if (cruzandoRed) {
+      const t = -a.z / (b.z - a.z);
+      const xCross = a.x + t * (b.x - a.x);
+      const minX = 2.2;
+      const maxX = 10.8;
+      if (xCross < minX || xCross > maxX) {
+        const xTarget = xCross < minX ? minX : maxX;
+        const denom = 2 * (1 - t) * t;
+        if (denom !== 0) {
+          ctrlX =
+            (xTarget - (1 - t) ** 2 * a.x - t ** 2 * b.x) / denom;
+        }
+      }
+    }
+  }
+
+  const pasos = 30;
   let path = "";
   for (let i = 0; i <= pasos; i++) {
     const t = i / pasos;
-    const x = a.x + t * (b.x - a.x);
+    let x: number;
+    if (ctrlX !== null) {
+      x =
+        (1 - t) ** 2 * a.x +
+        2 * (1 - t) * t * ctrlX +
+        t ** 2 * b.x;
+    } else {
+      x = a.x + t * (b.x - a.x);
+    }
     const z = a.z + t * (b.z - a.z);
     const hBase = hOrigen + t * (hDestino - hOrigen);
     let altura = hBase;
@@ -306,8 +358,8 @@ function generarCurvaSegmento(
       altura =
         hBase + 4 * t * (1 - t) * (hApex - apexCentrado);
     }
-    // Si cruza la red y está por debajo, subimos a 2.43
-    const cruzandoRed = (a.z >= 0 && b.z < 0) || (a.z < 0 && b.z >= 0);
+    const cruzandoRed =
+      (a.z >= 0 && b.z < 0) || (a.z < 0 && b.z >= 0);
     if (cruzandoRed && altura < ALTURA_RED) {
       altura = ALTURA_RED + 0.05;
     }
@@ -323,7 +375,7 @@ function generarCurvaSegmento(
 export default function CanchaVisualizacion({
   tipo,
   items,
-  vista = "iso",
+  vista = "front",
   width = 1000,
   height = 800,
   mostrarEstelas = true,
@@ -343,14 +395,26 @@ export default function CanchaVisualizacion({
             ?.map((d) => obtenerCoords(d.celda, d.mini))
             .filter((p): p is { x: number; z: number } => p !== null) ?? [];
 
-        // ¿Randomizamos?
         const debeRandomizar = it.randomizar !== false;
         const origen = debeRandomizar
           ? randomizar(origenBase, it.id, "-origen")
           : origenBase;
-        const destino = debeRandomizar
+        let destino = debeRandomizar
           ? randomizar(destinoBase, it.id, "-destino")
           : destinoBase;
+
+        // Extender si la pelota salió de la cancha
+        const extension = extensionPorBorde(
+          it.destino.celda,
+          it.destino.mini
+        );
+        if (extension) {
+          destino = {
+            x: destino.x + extension.dx,
+            z: destino.z + extension.dz,
+          };
+        }
+
         const desvios = debeRandomizar
           ? desviosBase.map((d, i) =>
               randomizar(d, it.id, `-desvio-${i}`)
@@ -369,7 +433,8 @@ export default function CanchaVisualizacion({
               puntos[i + 1],
               params,
               vista,
-              escala
+              escala,
+              tipo === "saque" || tipo === "ataque"
             )
           );
         }
@@ -422,6 +487,14 @@ export default function CanchaVisualizacion({
     }),
     [vista, escala]
   );
+
+  const lineaAtaqueRival = useMemo(() => {
+    if (!mostrarRival) return null;
+    return {
+      p1: proyectar(2, -3, 0, vista, escala),
+      p2: proyectar(11, -3, 0, vista, escala),
+    };
+  }, [vista, escala, mostrarRival]);
 
   const red = useMemo(
     () => ({
@@ -503,10 +576,10 @@ export default function CanchaVisualizacion({
       {mostrarRival && (
         <polygon
           points={contornoRival}
-          fill="#f97316"
-          stroke="#c2410c"
-          strokeWidth={2}
-          opacity={0.35}
+          fill="#3b82f6"
+          stroke="#ffffff"
+          strokeWidth={3}
+          strokeLinejoin="round"
         />
       )}
 
@@ -518,6 +591,7 @@ export default function CanchaVisualizacion({
         strokeLinejoin="round"
       />
 
+      {/* Líneas propias */}
       <line
         x1={lineaMedio.p1.sx}
         y1={lineaMedio.p1.sy}
@@ -537,6 +611,20 @@ export default function CanchaVisualizacion({
         opacity={0.85}
       />
 
+      {/* Líneas rival */}
+      {lineaAtaqueRival && (
+        <line
+          x1={lineaAtaqueRival.p1.sx}
+          y1={lineaAtaqueRival.p1.sy}
+          x2={lineaAtaqueRival.p2.sx}
+          y2={lineaAtaqueRival.p2.sy}
+          stroke="#ffffff"
+          strokeWidth={2}
+          opacity={0.85}
+        />
+      )}
+
+      {/* Malla de red */}
       {redMalla.map((l, i) => (
         <line
           key={`malla-${i}`}
