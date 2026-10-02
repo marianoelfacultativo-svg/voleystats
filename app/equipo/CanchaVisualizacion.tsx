@@ -344,14 +344,14 @@ export default function CanchaVisualizacion({
             .filter((p): p is { x: number; z: number } => p !== null) ?? [];
 
         // ¿Randomizamos?
-        const randomizar = it.randomizar !== false;
-        const origen = randomizar
+        const debeRandomizar = it.randomizar !== false;
+        const origen = debeRandomizar
           ? randomizar(origenBase, it.id, "-origen")
           : origenBase;
-        const destino = randomizar
+        const destino = debeRandomizar
           ? randomizar(destinoBase, it.id, "-destino")
           : destinoBase;
-        const desvios = randomizar
+        const desvios = debeRandomizar
           ? desviosBase.map((d, i) =>
               randomizar(d, it.id, `-desvio-${i}`)
             )
@@ -500,7 +500,6 @@ export default function CanchaVisualizacion({
           "linear-gradient(180deg, #cfe4f7 0%, #b8d8f0 50%, #a8cbe8 100%)",
       }}
     >
-      {/* Cancha rival */}
       {mostrarRival && (
         <polygon
           points={contornoRival}
@@ -511,7 +510,6 @@ export default function CanchaVisualizacion({
         />
       )}
 
-      {/* Cancha propia */}
       <polygon
         points={contornoPropio}
         fill="#3b82f6"
@@ -520,7 +518,6 @@ export default function CanchaVisualizacion({
         strokeLinejoin="round"
       />
 
-      {/* Líneas de cancha */}
       <line
         x1={lineaMedio.p1.sx}
         y1={lineaMedio.p1.sy}
@@ -540,7 +537,6 @@ export default function CanchaVisualizacion({
         opacity={0.85}
       />
 
-      {/* Malla de red */}
       {redMalla.map((l, i) => (
         <line
           key={`malla-${i}`}
@@ -554,7 +550,6 @@ export default function CanchaVisualizacion({
         />
       ))}
 
-      {/* Red principal */}
       <line
         x1={red.p1.sx}
         y1={red.p1.sy}
@@ -564,7 +559,6 @@ export default function CanchaVisualizacion({
         strokeWidth={2.5}
       />
 
-      {/* Postes */}
       {redPostes.map((p, i) => (
         <line
           key={`poste-${i}`}
@@ -578,7 +572,6 @@ export default function CanchaVisualizacion({
         />
       ))}
 
-      {/* Varillas */}
       {redVarillas.map((v, i) => (
         <line
           key={`varilla-${i}`}
@@ -592,11 +585,9 @@ export default function CanchaVisualizacion({
         />
       ))}
 
-      {/* Trayectorias */}
       {trayectorias.map((t, i) => {
         return (
           <g key={i}>
-            {/* Desvíos como círculos */}
             {t.puntos.slice(1, -1).map((p, j) => {
               const pPos = proyectar(p.x, p.z, 0, vista, escala);
               return (
@@ -613,7 +604,6 @@ export default function CanchaVisualizacion({
               );
             })}
 
-            {/* Estelas */}
             {mostrarEstelas &&
               t.paths.map((path, j) => (
                 <path
@@ -627,7 +617,6 @@ export default function CanchaVisualizacion({
                 />
               ))}
 
-            {/* Estrella en el origen (a la altura del origen) */}
             {(() => {
               const p = t.puntos[0];
               const pos = proyectar(
@@ -647,7 +636,6 @@ export default function CanchaVisualizacion({
               );
             })()}
 
-            {/* Pelota en el destino (a la altura del destino) */}
             {(() => {
               const p = t.puntos[t.puntos.length - 1];
               const pos = proyectar(
