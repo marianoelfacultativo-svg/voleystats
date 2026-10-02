@@ -318,34 +318,59 @@ function generarPuntosAtaque(
   const origenPropio = origen.z >= 0;
   const destinoPropio = destino.z >= 0;
 
+  // CASO A: ataque a la red (origen y destino propio, sin desvíos)
+  // La red actúa como pared: la pelota va, choca y cae.
   if (origenPropio && destinoPropio && desvios.length === 0) {
     const puntoRed: [number, number, number] = [
       origen.x,
-      ALTURA_RED - 0.1,
+      ALTURA_RED - 0.3,
       0,
     ];
     const puntoCaida: [number, number, number] = [
       destino.x,
       0,
-      Math.max(1.5, destino.z),
+      Math.max(2.0, destino.z),
     ];
-    return [
-      ...generarCurvaAtaque([origen.x, 2.8, origen.z], puntoRed),
-      ...generarCurvaAtaque(puntoRed, puntoCaida).slice(1),
-    ];
+
+    const seg1: [number, number, number][] = [];
+    const pasos1 = 30;
+    for (let i = 0; i <= pasos1; i++) {
+      const t = i / pasos1;
+      const x = origen.x + t * (puntoRed[0] - origen.x);
+      const z = origen.z + t * (puntoRed[2] - origen.z);
+      const hBase = 2.8 + t * (puntoRed[1] - 2.8);
+      const y = Math.max(0, hBase + 4 * t * (1 - t) * 0.15);
+      seg1.push([x, y, z]);
+    }
+
+    const seg2: [number, number, number][] = [];
+    const pasos2 = 20;
+    for (let i = 0; i <= pasos2; i++) {
+      const t = i / pasos2;
+      const x = puntoRed[0] + t * (puntoCaida[0] - puntoRed[0]);
+      const z = puntoRed[2] + t * (puntoCaida[2] - puntoRed[2]);
+      const hBase = puntoRed[1] + t * (puntoCaida[1] - puntoRed[1]);
+      const y = Math.max(0, hBase - 4 * t * (1 - t) * 0.1);
+      seg2.push([x, y, z]);
+    }
+
+    return [...seg1, ...seg2.slice(1)];
   }
 
-  const desvioRival = desvios.find((d) => d.z < 0);
-  if (desvioRival && destinoPropio) {
+  // CASO B: bloqueo rival.
+  // Un desvío en la primer minicelda del campo rival (z entre -1.5 y 0)
+  // se considera toque de bloqueo. Se fuerza el punto a z = -0.3 (pegado a la red).
+  const desvioBloqueo = desvios.find((d) => d.z > -1.5 && d.z <= 0);
+  if (desvioBloqueo) {
     const puntoBloqueo: [number, number, number] = [
-      desvioRival.x,
+      desvioBloqueo.x,
       2.5,
-      desvioRival.z,
+      -0.3,
     ];
     const puntoCaida: [number, number, number] = [
       destino.x,
       0,
-      Math.max(1.0, destino.z),
+      destino.z,
     ];
     return [
       ...generarCurvaAtaque([origen.x, 2.8, origen.z], puntoBloqueo),
@@ -353,12 +378,13 @@ function generarPuntosAtaque(
     ];
   }
 
+  // CASO C: ataque normal
   const waypoints: { x: number; z: number; y: number }[] = [
     { x: origen.x, z: origen.z, y: 2.8 },
     ...desvios.map((d) => ({
       x: d.x,
       z: d.z,
-      y: d.z > -3 && d.z <= 0 ? 2.5 : 0,
+      y: d.z > -1.5 && d.z <= 0 ? 2.5 : 0,
     })),
     { x: destino.x, z: destino.z, y: 0 },
   ];
@@ -444,7 +470,6 @@ function generarPuntos3D(
     ];
     const puntoCaida: [number, number, number] = [destino.x, 0, 2.5];
 
-    // Segmento 1: origen → red, casi recto
     const seg1: [number, number, number][] = [];
     const pasos1 = 30;
     for (let i = 0; i <= pasos1; i++) {
@@ -456,7 +481,6 @@ function generarPuntos3D(
       seg1.push([x, y, z]);
     }
 
-    // Segmento 2: red → piso, casi recto
     const seg2: [number, number, number][] = [];
     const pasos2 = 20;
     for (let i = 0; i <= pasos2; i++) {

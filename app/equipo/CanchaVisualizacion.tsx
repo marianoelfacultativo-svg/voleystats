@@ -421,10 +421,9 @@ function generarPuntosAtaque(
   const paths: string[] = [];
   const puntos3D: [number, number, number][] = [];
 
-  const agregarSegmento = (seg: {
-    path: string;
-    puntos3D: [number, number, number][];
-  }) => {
+  const agregarSegmento = (
+    seg: { path: string; puntos3D: [number, number, number][] }
+  ) => {
     paths.push(seg.path);
     if (puntos3D.length === 0) {
       puntos3D.push(...seg.puntos3D);
@@ -433,37 +432,70 @@ function generarPuntosAtaque(
     }
   };
 
+  const proyectarSegmento = (pts: [number, number, number][]): string => {
+    let p = "";
+    pts.forEach((p3, i) => {
+      const pr = proyectar(p3[0], p3[2], p3[1], vista, escala);
+      p += i === 0 ? `M ${pr.sx} ${pr.sy}` : ` L ${pr.sx} ${pr.sy}`;
+    });
+    return p;
+  };
+
+  // CASO A: ataque a la red (origen y destino propio, sin desvíos)
   if (origenPropio && destinoPropio && desvios.length === 0) {
     const puntoRed: [number, number, number] = [
       origen.x,
-      ALTURA_RED - 0.1,
+      ALTURA_RED - 0.3,
       0,
     ];
     const puntoCaida: [number, number, number] = [
       destino.x,
       0,
-      Math.max(1.5, destino.z),
+      Math.max(2.0, destino.z),
     ];
-    agregarSegmento(
-      generarCurvaAtaque([origen.x, 2.8, origen.z], puntoRed, vista, escala)
-    );
-    agregarSegmento(
-      generarCurvaAtaque(puntoRed, puntoCaida, vista, escala)
-    );
+
+    const seg1: [number, number, number][] = [];
+    const pasos1 = 30;
+    for (let i = 0; i <= pasos1; i++) {
+      const t = i / pasos1;
+      const x = origen.x + t * (puntoRed[0] - origen.x);
+      const z = origen.z + t * (puntoRed[2] - origen.z);
+      const hBase = 2.8 + t * (puntoRed[1] - 2.8);
+      const y = Math.max(0, hBase + 4 * t * (1 - t) * 0.15);
+      seg1.push([x, y, z]);
+    }
+
+    const seg2: [number, number, number][] = [];
+    const pasos2 = 20;
+    for (let i = 0; i <= pasos2; i++) {
+      const t = i / pasos2;
+      const x = puntoRed[0] + t * (puntoCaida[0] - puntoRed[0]);
+      const z = puntoRed[2] + t * (puntoCaida[2] - puntoRed[2]);
+      const hBase = puntoRed[1] + t * (puntoCaida[1] - puntoRed[1]);
+      const y = Math.max(0, hBase - 4 * t * (1 - t) * 0.1);
+      seg2.push([x, y, z]);
+    }
+
+    paths.push(proyectarSegmento(seg1));
+    puntos3D.push(...seg1);
+    paths.push(proyectarSegmento(seg2));
+    puntos3D.push(...seg2.slice(1));
+
     return { paths, puntos3D };
   }
 
-  const desvioRival = desvios.find((d) => d.z < 0);
-  if (desvioRival && destinoPropio) {
+  // CASO B: bloqueo rival (desvío pegado a la red del lado rival)
+  const desvioBloqueo = desvios.find((d) => d.z > -1.5 && d.z <= 0);
+  if (desvioBloqueo) {
     const puntoBloqueo: [number, number, number] = [
-      desvioRival.x,
+      desvioBloqueo.x,
       2.5,
-      desvioRival.z,
+      -0.3,
     ];
     const puntoCaida: [number, number, number] = [
       destino.x,
       0,
-      Math.max(1.0, destino.z),
+      destino.z,
     ];
     agregarSegmento(
       generarCurvaAtaque(
@@ -479,12 +511,13 @@ function generarPuntosAtaque(
     return { paths, puntos3D };
   }
 
+  // CASO C: ataque normal
   const waypoints: { x: number; z: number; y: number }[] = [
     { x: origen.x, z: origen.z, y: 2.8 },
     ...desvios.map((d) => ({
       x: d.x,
       z: d.z,
-      y: d.z > -3 && d.z <= 0 ? 2.5 : 0,
+      y: d.z > -1.5 && d.z <= 0 ? 2.5 : 0,
     })),
     { x: destino.x, z: destino.z, y: 0 },
   ];
@@ -589,7 +622,6 @@ export default function CanchaVisualizacion({
           ];
           const puntoCaida: [number, number, number] = [destino.x, 0, 2.5];
 
-          // Segmento 1: origen → red, casi recto
           const seg1: [number, number, number][] = [];
           const pasos1 = 30;
           for (let i = 0; i <= pasos1; i++) {
@@ -601,7 +633,6 @@ export default function CanchaVisualizacion({
             seg1.push([x, y, z]);
           }
 
-          // Segmento 2: red → piso, casi recto
           const seg2: [number, number, number][] = [];
           const pasos2 = 20;
           for (let i = 0; i <= pasos2; i++) {
