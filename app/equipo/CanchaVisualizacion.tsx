@@ -23,6 +23,10 @@ export interface ItemVisual {
   desvios?: PuntoVisual[];
   destino: PuntoVisual;
   color: string;
+  /** calidad: 1-6 para recepción, "flotado"|"potencia" para saque */
+  calidad?: number | string;
+  /** si false, no randomiza (útil para recepción doble positiva) */
+  randomizar?: boolean;
 }
 
 interface Props {
@@ -35,7 +39,7 @@ interface Props {
 }
 
 // ============================================================
-// Coordenadas
+// Coordenadas de celdas (en "unidades" del grid, 1 unidad ≈ 1 metro)
 // ============================================================
 const COL_X: Record<string, [number, number]> = {
   C1: [0, 2],
@@ -45,8 +49,6 @@ const COL_X: Record<string, [number, number]> = {
   C5: [11, 13],
 };
 
-// Nuestro lado: z positivo. F1 cerca de la red, F3 al fondo.
-// Rival: z negativo. F4 cerca de la red, F6 al fondo.
 const FILA_Z: Record<string, [number, number]> = {
   F1: [0, 3],
   F2: [3, 6],
@@ -69,7 +71,6 @@ function obtenerCoords(
   celda: string,
   mini: string | null
 ): { x: number; z: number } | null {
-  // Servicio (S1-S9)
   if (celda.startsWith("S")) return servicioPos(celda);
 
   const partes = celda.split("-");
@@ -104,6 +105,37 @@ function obtenerCoords(
   return {
     x: rangoX[0] + (mc + 0.5) * anchoCelda,
     z: rangoZ[0] + (mfFinal + 0.5) * altoCelda,
+  };
+}
+
+// ============================================================
+// Hash determinístico para randomización estable
+// ============================================================
+function hashSeed(str: string): number {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = (h << 5) + h + str.charCodeAt(i);
+    h = h & h;
+  }
+  return Math.abs(h);
+}
+
+function prand(seed: string, key: string): number {
+  const h = hashSeed(seed + key);
+  return (h % 100000) / 100000;
+}
+
+/** Randomiza ±0.3m (30cm) alrededor del centro de la celda */
+function randomizar(
+  coords: { x: number; z: number },
+  id: string,
+  key: string
+): { x: number; z: number } {
+  const rx = prand(id, key + "-x");
+  const rz = prand(id, key + "-z");
+  return {
+    x: coords.x + (rx - 0.5) * 0.6,
+    z: coords.z + (rz - 0.5) * 0.6,
   };
 }
 
@@ -201,40 +233,79 @@ function proyectar(
 }
 
 // ============================================================
-// Altura del arco según tipo
+// Parámetros de trayectoria según tipo
 // ============================================================
-function calcularApex(
+interface ParametrosTrayectoria {
+  hOrigen: number;
+  hDestino: number;
+  hApex: number;
+  esRecto: boolean;
+}
+
+const APEX_RECEPCION: Record<number, number> = {
+  1: 1.5,
+  2: 2.0,
+  3: 2.4,
+  4: 2.8,
+  5: 3.5,
+  6: 4.0,
+};
+
+function getParametros(
   tipo: TipoFundamento,
-  origen: { x: number; z: number },
-  destino: { x: number; z: number }
-): number {
-  const dist = Math.sqrt(
-    (destino.x - origen.x) ** 2 + (destino.z - origen.z) ** 2
-  );
-  if (tipo === "saque") return Math.max(3.8, dist * 0.42);
-  if (tipo === "ataque") return Math.max(3.2, dist * 0.38);
-  // recepcion
-  return Math.max(1.8, dist * 0.22);
+  item: ItemVisual
+): ParametrosTrayectoria {
+  if (tipo === "saque") {
+    const esPotencia = item.calidad === "potencia";
+    return {
+      hOrigen: 2.8,
+      hDestino: 0,
+      hApex: esPotencia ? 2.9 : 3.2,
+      esRecto: esPotencia,
+    };
+  }
+  if (tipo === "ataque") {
+    return {
+      hOrigen: 2.8,
+      hDestino: 0,
+      hApex: 2.9,
+      esRecto: false,
+    };
+  }
+  // recepción
+  const cal = typeof item.calidad === "number" ? item.calidad : 4;
+  return {
+    hOrigen: 0.3,
+    hDestino: 2.2,
+    hApex: APEX_RECEPCION[cal] ?? 2.8,
+    esRecto: false,
+  };
 }
 
 // ============================================================
-// Curva entre dos puntos 3D (origen con altura 0, destino con altura 0)
+// Curva entre dos puntos 3D
 // ============================================================
 function generarCurvaSegmento(
-  tipo: TipoFundamento,
   a: { x: number; z: number },
   b: { x: number; z: number },
+  params: ParametrosTrayectoria,
   vista: Vista,
   escala: number
 ): string {
-  const hApex = calcularApex(tipo, a, b);
-  const pasos = 20;
+  const { hOrigen, hDestino, hApex, esRecto } = params;
+  const pasos = 24;
   let path = "";
   for (let i = 0; i <= pasos; i++) {
     const t = i / pasos;
     const x = a.x + t * (b.x - a.x);
     const z = a.z + t * (b.z - a.z);
-    let altura = 4 * t * (1 - t) * hApex;
+    const hBase = hOrigen + t * (hDestino - hOrigen);
+    let altura = hBase;
+    if (!esRecto) {
+      const apexCentrado = (hOrigen + hDestino) / 2;
+      altura =
+        hBase + 4 * t * (1 - t) * (hApex - apexCentrado);
+    }
     // Si cruza la red y está por debajo, subimos a 2.43
     const cruzandoRed = (a.z >= 0 && b.z < 0) || (a.z < 0 && b.z >= 0);
     if (cruzandoRed && altura < ALTURA_RED) {
@@ -258,28 +329,48 @@ export default function CanchaVisualizacion({
   mostrarEstelas = true,
 }: Props) {
   const escala = ESCALA;
-
-  // ¿Se muestra la cancha rival?
   const mostrarRival = tipo === "saque" || tipo === "ataque";
 
   const trayectorias = useMemo(() => {
     return items
       .map((it) => {
-        const origen = obtenerCoords(it.origen.celda, it.origen.mini);
-        const destino = obtenerCoords(it.destino.celda, it.destino.mini);
-        if (!origen || !destino) return null;
+        const origenBase = obtenerCoords(it.origen.celda, it.origen.mini);
+        const destinoBase = obtenerCoords(it.destino.celda, it.destino.mini);
+        if (!origenBase || !destinoBase) return null;
 
-        const desvios =
+        const desviosBase =
           it.desvios
             ?.map((d) => obtenerCoords(d.celda, d.mini))
             .filter((p): p is { x: number; z: number } => p !== null) ?? [];
 
+        // ¿Randomizamos?
+        const randomizar = it.randomizar !== false;
+        const origen = randomizar
+          ? randomizar(origenBase, it.id, "-origen")
+          : origenBase;
+        const destino = randomizar
+          ? randomizar(destinoBase, it.id, "-destino")
+          : destinoBase;
+        const desvios = randomizar
+          ? desviosBase.map((d, i) =>
+              randomizar(d, it.id, `-desvio-${i}`)
+            )
+          : desviosBase;
+
         const puntos = [origen, ...desvios, destino];
+
+        const params = getParametros(tipo, it);
 
         const paths: string[] = [];
         for (let i = 0; i < puntos.length - 1; i++) {
           paths.push(
-            generarCurvaSegmento(tipo, puntos[i], puntos[i + 1], vista, escala)
+            generarCurvaSegmento(
+              puntos[i],
+              puntos[i + 1],
+              params,
+              vista,
+              escala
+            )
           );
         }
 
@@ -288,6 +379,7 @@ export default function CanchaVisualizacion({
           puntos,
           paths,
           color: it.color,
+          params,
         };
       })
       .filter((t): t is NonNullable<typeof t> => t !== null);
@@ -504,7 +596,7 @@ export default function CanchaVisualizacion({
       {trayectorias.map((t, i) => {
         return (
           <g key={i}>
-            {/* Marcar desvíos como círculos */}
+            {/* Desvíos como círculos */}
             {t.puntos.slice(1, -1).map((p, j) => {
               const pPos = proyectar(p.x, p.z, 0, vista, escala);
               return (
@@ -535,18 +627,36 @@ export default function CanchaVisualizacion({
                 />
               ))}
 
-            {/* Estrella en el origen */}
-            <EstrellaOrigen
-              cx={proyectar(t.puntos[0].x, t.puntos[0].z, 0, vista, escala).sx}
-              cy={proyectar(t.puntos[0].x, t.puntos[0].z, 0, vista, escala).sy}
-              radio={10}
-              color={t.color}
-            />
+            {/* Estrella en el origen (a la altura del origen) */}
+            {(() => {
+              const p = t.puntos[0];
+              const pos = proyectar(
+                p.x,
+                p.z,
+                t.params.hOrigen,
+                vista,
+                escala
+              );
+              return (
+                <EstrellaOrigen
+                  cx={pos.sx}
+                  cy={pos.sy}
+                  radio={10}
+                  color={t.color}
+                />
+              );
+            })()}
 
-            {/* Pelota en el destino */}
+            {/* Pelota en el destino (a la altura del destino) */}
             {(() => {
               const p = t.puntos[t.puntos.length - 1];
-              const pos = proyectar(p.x, p.z, 0, vista, escala);
+              const pos = proyectar(
+                p.x,
+                p.z,
+                t.params.hDestino,
+                vista,
+                escala
+              );
               return (
                 <VolleyballPelota
                   cx={pos.sx}

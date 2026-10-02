@@ -9,7 +9,7 @@ import MiEquipo from "./MiEquipo";
 import Partidos from "./Partidos";
 import VisualizacionArmador from "./VisualizacionArmador";
 
-type Seccion = "dashboard" | "mi-equipo" | "partidos" | "armadores";
+type Seccion = "dashboard" | "mi-equipo" | "partidos" | "modelos";
 
 export default function EquipoPage() {
   const router = useRouter();
@@ -48,7 +48,7 @@ export default function EquipoPage() {
     { id: "dashboard", nombre: "Dashboard", icono: "📊" },
     { id: "mi-equipo", nombre: "Mi Equipo", icono: "👥" },
     { id: "partidos", nombre: "Partidos", icono: "📅" },
-    { id: "armadores", nombre: "Armadores", icono: "🎯" },
+    { id: "modelos", nombre: "Modelos", icono: "🔭" },
   ];
 
   return (
@@ -99,7 +99,7 @@ export default function EquipoPage() {
           <Partidos equipoId={sesion.equipo_id} nombreEquipo={nombreEquipo} />
         )}
 
-        {seccion === "armadores" && (
+        {seccion === "modelos" && (
           <VisualizacionArmador equipoId={sesion.equipo_id} />
         )}
       </div>

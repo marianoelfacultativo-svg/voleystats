@@ -6,11 +6,7 @@ import CanchaVisualizacion, {
   type TipoFundamento,
   type Vista,
 } from "./CanchaVisualizacion";
-import type {
-  SaqueRow,
-  RecepcionRow,
-  AtaqueRow,
-} from "@/lib/db";
+import type { SaqueRow, RecepcionRow, AtaqueRow } from "@/lib/db";
 
 type Accion = SaqueRow | RecepcionRow | AtaqueRow;
 
@@ -34,11 +30,11 @@ const VISTAS: { id: Vista; label: string }[] = [
 // Colores por valoración
 // ============================================================
 const COLORES_SAQUE: Record<string, string> = {
-  ace: "#2563eb",          // azul
-  positivo_mas: "#16a34a", // verde
-  positivo: "#eab308",     // amarillo
-  neutro: "#94a3b8",       // gris
-  negativo: "#dc2626",     // rojo
+  ace: "#2563eb",
+  positivo_mas: "#16a34a",
+  positivo: "#eab308",
+  neutro: "#94a3b8",
+  negativo: "#dc2626",
 };
 
 const ETIQUETAS_SAQUE: Record<string, string> = {
@@ -50,12 +46,12 @@ const ETIQUETAS_SAQUE: Record<string, string> = {
 };
 
 const COLORES_RECEPCION: Record<number, string> = {
-  6: "#2563eb", // azul
-  5: "#16a34a", // verde
-  4: "#eab308", // amarillo
-  3: "#f59e0b", // naranja
-  2: "#dc2626", // rojo
-  1: "#991b1b", // rojo oscuro
+  6: "#2563eb",
+  5: "#16a34a",
+  4: "#eab308",
+  3: "#f59e0b",
+  2: "#dc2626",
+  1: "#991b1b",
 };
 
 const ETIQUETAS_RECEPCION: Record<number, string> = {
@@ -68,9 +64,9 @@ const ETIQUETAS_RECEPCION: Record<number, string> = {
 };
 
 const COLORES_ATAQUE: Record<string, string> = {
-  punto: "#16a34a",  // verde
-  neutro: "#94a3b8", // gris
-  error: "#dc2626",  // rojo
+  punto: "#16a34a",
+  neutro: "#94a3b8",
+  error: "#dc2626",
 };
 
 const ETIQUETAS_ATAQUE: Record<string, string> = {
@@ -94,17 +90,22 @@ function accionToItem(
       origen: { celda: s.origen_celda, mini: null },
       destino: { celda: s.destino_celda, mini: s.destino_mini },
       color: COLORES_SAQUE[s.valoracion] ?? "#64748b",
+      calidad: s.tipo ?? "flotado",
+      randomizar: true,
     };
   }
 
   if (tipo === "recepcion") {
     const r = a as RecepcionRow;
     if (!r.origen_celda || !r.destino_celda) return null;
+    const esDoblePositiva = r.valoracion === 6;
     return {
       id: r.id ?? `${r.origen_celda}-${r.destino_celda}-${Math.random()}`,
       origen: { celda: r.origen_celda, mini: r.origen_mini },
       destino: { celda: r.destino_celda, mini: r.destino_mini },
       color: COLORES_RECEPCION[r.valoracion] ?? "#64748b",
+      calidad: r.valoracion,
+      randomizar: !esDoblePositiva,
     };
   }
 
@@ -117,6 +118,7 @@ function accionToItem(
     desvios: at.desvios.map((d) => ({ celda: d.celda, mini: d.mini })),
     destino: { celda: at.destino_celda, mini: at.destino_mini },
     color: COLORES_ATAQUE[at.valoracion] ?? "#64748b",
+    randomizar: true,
   };
 }
 
@@ -158,7 +160,8 @@ export default function VisualizacionFundamento({
     const vals = new Set<string | number>();
     acciones.forEach((a) => {
       if (tipo === "saque") vals.add((a as SaqueRow).valoracion);
-      else if (tipo === "recepcion") vals.add((a as RecepcionRow).valoracion);
+      else if (tipo === "recepcion")
+        vals.add((a as RecepcionRow).valoracion);
       else vals.add((a as AtaqueRow).valoracion);
     });
     return Array.from(vals);
@@ -179,12 +182,20 @@ export default function VisualizacionFundamento({
           if ((a as RecepcionRow).valoracion !== filtroValoracion)
             return false;
         } else {
-          if ((a as AtaqueRow).valoracion !== filtroValoracion) return false;
+          if ((a as AtaqueRow).valoracion !== filtroValoracion)
+            return false;
         }
       }
       return true;
     });
-  }, [acciones, filtroSet, filtroPunto, filtroJugador, filtroValoracion, tipo]);
+  }, [
+    acciones,
+    filtroSet,
+    filtroPunto,
+    filtroJugador,
+    filtroValoracion,
+    tipo,
+  ]);
 
   const items = useMemo(() => {
     return accionesFiltradas
@@ -198,17 +209,6 @@ export default function VisualizacionFundamento({
     );
   }, [jugadoresIds, acciones]);
 
-  if (acciones.length === 0) {
-    return (
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
-        <p className="text-4xl mb-3">🏐</p>
-        <p className="text-slate-600 font-medium">
-          Todavía no hay acciones de {tipo} cargadas
-        </p>
-      </div>
-    );
-  }
-
   const etiquetaTipo =
     tipo === "saque"
       ? "Saque"
@@ -216,12 +216,22 @@ export default function VisualizacionFundamento({
       ? "Recepción"
       : "Ataque";
 
+  if (acciones.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+        <p className="text-4xl mb-3">🏐</p>
+        <p className="text-slate-600 font-medium">
+          Todavía no hay acciones de {etiquetaTipo.toLowerCase()} cargadas
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Filtros */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-          {/* Set */}
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">
               Set
@@ -230,7 +240,9 @@ export default function VisualizacionFundamento({
               value={filtroSet === "todos" ? "todos" : String(filtroSet)}
               onChange={(e) => {
                 setFiltroSet(
-                  e.target.value === "todos" ? "todos" : parseInt(e.target.value)
+                  e.target.value === "todos"
+                    ? "todos"
+                    : parseInt(e.target.value)
                 );
                 setFiltroPunto("todos");
               }}
@@ -245,13 +257,14 @@ export default function VisualizacionFundamento({
             </select>
           </div>
 
-          {/* Punto */}
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">
               Punto
             </label>
             <select
-              value={filtroPunto === "todos" ? "todos" : String(filtroPunto)}
+              value={
+                filtroPunto === "todos" ? "todos" : String(filtroPunto)
+              }
               onChange={(e) =>
                 setFiltroPunto(
                   e.target.value === "todos"
@@ -270,7 +283,6 @@ export default function VisualizacionFundamento({
             </select>
           </div>
 
-          {/* Jugador */}
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">
               Jugador
@@ -289,7 +301,6 @@ export default function VisualizacionFundamento({
             </select>
           </div>
 
-          {/* Valoración */}
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">
               Valoración
@@ -299,7 +310,8 @@ export default function VisualizacionFundamento({
               onChange={(e) => {
                 const v = e.target.value;
                 if (v === "todas") setFiltroValoracion("todas");
-                else if (tipo === "recepcion") setFiltroValoracion(parseInt(v));
+                else if (tipo === "recepcion")
+                  setFiltroValoracion(parseInt(v));
                 else setFiltroValoracion(v);
               }}
               className="w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
@@ -360,7 +372,8 @@ export default function VisualizacionFundamento({
 
         <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
           <span>
-            Mostrando {items.length} de {acciones.length} {etiquetaTipo.toLowerCase()}
+            Mostrando {items.length} de {acciones.length}{" "}
+            {etiquetaTipo.toLowerCase()}
             {acciones.length !== 1 ? "s" : ""}
           </span>
           {(filtroSet !== "todos" ||
@@ -382,7 +395,7 @@ export default function VisualizacionFundamento({
         </div>
       </div>
 
-      {/* Leyenda de colores */}
+      {/* Leyenda */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3">
         <div className="flex flex-wrap gap-3 items-center justify-center text-xs">
           <span className="font-semibold text-slate-600">Colores:</span>
