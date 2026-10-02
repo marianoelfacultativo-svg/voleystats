@@ -573,7 +573,6 @@ export default function CanchaVisualizacion({
         const necesitaPasarRed = tipo === "saque";
         const limitarAlturaSaque = tipo === "saque";
 
-        // Detección de saque que queda en la red
         const quedoEnRed =
           tipo === "saque" &&
           (destino.z > -0.5 ||
@@ -583,37 +582,52 @@ export default function CanchaVisualizacion({
         const puntos3D: [number, number, number][] = [];
 
         if (quedoEnRed) {
-          const puntoRed = { x: destino.x, z: 0 };
-          const puntoCaida = { x: destino.x, z: 2.0 };
+          const puntoRed: [number, number, number] = [
+            destino.x,
+            ALTURA_RED - 0.5,
+            0,
+          ];
+          const puntoCaida: [number, number, number] = [destino.x, 0, 2.5];
 
-          const seg1 = generarSegmento(
-            origen,
-            puntoRed,
-            params,
-            vista,
-            escala,
-            necesitaPasarRed,
-            limitarAlturaSaque
-          );
-          paths.push(seg1.path);
-          puntos3D.push(...seg1.puntos3D);
+          // Segmento 1: origen → red, casi recto
+          const seg1: [number, number, number][] = [];
+          const pasos1 = 30;
+          for (let i = 0; i <= pasos1; i++) {
+            const t = i / pasos1;
+            const x = origen.x + t * (puntoRed[0] - origen.x);
+            const z = origen.z + t * (puntoRed[2] - origen.z);
+            const hBase = 2.8 + t * (puntoRed[1] - 2.8);
+            const y = Math.max(0, hBase + 4 * t * (1 - t) * 0.15);
+            seg1.push([x, y, z]);
+          }
 
-          const paramsRebote: ParametrosTrayectoria = {
-            hOrigen: ALTURA_RED - 0.3,
-            hDestino: 0,
-            esRecto: false,
-          };
-          const seg2 = generarSegmento(
-            puntoRed,
-            puntoCaida,
-            paramsRebote,
-            vista,
-            escala,
-            false,
-            false
-          );
-          paths.push(seg2.path);
-          puntos3D.push(...seg2.puntos3D.slice(1));
+          // Segmento 2: red → piso, casi recto
+          const seg2: [number, number, number][] = [];
+          const pasos2 = 20;
+          for (let i = 0; i <= pasos2; i++) {
+            const t = i / pasos2;
+            const x = puntoRed[0] + t * (puntoCaida[0] - puntoRed[0]);
+            const z = puntoRed[2] + t * (puntoCaida[2] - puntoRed[2]);
+            const hBase = puntoRed[1] + t * (puntoCaida[1] - puntoRed[1]);
+            const y = Math.max(0, hBase - 4 * t * (1 - t) * 0.1);
+            seg2.push([x, y, z]);
+          }
+
+          let path1 = "";
+          seg1.forEach((p3, i) => {
+            const p = proyectar(p3[0], p3[2], p3[1], vista, escala);
+            path1 += i === 0 ? `M ${p.sx} ${p.sy}` : ` L ${p.sx} ${p.sy}`;
+          });
+          paths.push(path1);
+          puntos3D.push(...seg1);
+
+          let path2 = "";
+          seg2.forEach((p3, i) => {
+            const p = proyectar(p3[0], p3[2], p3[1], vista, escala);
+            path2 += i === 0 ? `M ${p.sx} ${p.sy}` : ` L ${p.sx} ${p.sy}`;
+          });
+          paths.push(path2);
+          puntos3D.push(...seg2.slice(1));
         } else {
           const waypoints = [origen, ...desvios, destino];
           for (let i = 0; i < waypoints.length - 1; i++) {
