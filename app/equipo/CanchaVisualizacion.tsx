@@ -5,8 +5,8 @@ import { useMemo } from "react";
 export type TipoFundamento = "saque" | "recepcion" | "ataque";
 
 export type Vista =
-  | "front"
   | "top"
+  | "front"
   | "front-rival"
   | "iso-izq"
   | "iso-der";
@@ -22,9 +22,7 @@ export interface ItemVisual {
   desvios?: PuntoVisual[];
   destino: PuntoVisual;
   color: string;
-  /** calidad: 1-6 para recepción, "flotado"|"potencia" para saque */
   calidad?: number | string;
-  /** si false, no randomiza (útil para recepción doble positiva) */
   randomizar?: boolean;
 }
 
@@ -38,7 +36,7 @@ interface Props {
 }
 
 // ============================================================
-// Coordenadas
+// Coordenadas de celdas (1 unidad ≈ 1 metro)
 // ============================================================
 const COL_X: Record<string, [number, number]> = {
   C1: [0, 2],
@@ -66,11 +64,21 @@ function servicioPos(s: string): { x: number; z: number } | null {
   return { x, z: 9.5 };
 }
 
+function destinoSaquePos(d: string): { x: number; z: number } | null {
+  const m = d.match(/^D(\d)$/);
+  if (!m) return null;
+  const idx = parseInt(m[1]);
+  if (idx < 1 || idx > 9) return null;
+  const x = 2 + (idx - 1) * (9 / 8);
+  return { x, z: -1.5 };
+}
+
 function obtenerCoords(
   celda: string,
   mini: string | null
 ): { x: number; z: number } | null {
   if (celda.startsWith("S")) return servicioPos(celda);
+  if (celda.startsWith("D")) return destinoSaquePos(celda);
 
   const partes = celda.split("-");
   if (partes.length !== 2) return null;
@@ -107,8 +115,7 @@ function obtenerCoords(
 }
 
 // ============================================================
-// ¿La mini está en el borde del court en la dirección de salida?
-// Devuelve el desplazamiento a aplicar si la pelota salió
+// Extensión por borde (si la pelota salió del court)
 // ============================================================
 function extensionPorBorde(
   celda: string,
@@ -129,14 +136,11 @@ function extensionPorBorde(
   let dx = 0;
   let dz = 0;
 
-  // Laterales
-  if (col === "C1" && mc === 1) dx = -1.2;
-  else if (col === "C5" && mc === numCols) dx = 1.2;
+  if (col === "C1" && mc === 1) dx = -1.5;
+  else if (col === "C5" && mc === numCols) dx = 1.5;
 
-  // Fondo rival (F6 en la última fila de mini) → sale de largo
-  if (numFila === 6 && mf === numFils) dz = -1.2;
-  // Fondo propio (F3 en la última fila de mini) → sale de largo
-  else if (numFila === 3 && mf === numFils) dz = 1.2;
+  if (numFila === 6 && mf === numFils) dz = -1.5;
+  else if (numFila === 3 && mf === numFils) dz = 1.5;
 
   if (dx === 0 && dz === 0) return null;
   return { dx, dz };
@@ -173,85 +177,110 @@ function randomizar(
 }
 
 // ============================================================
-// Proyección
+// Parámetros de vista
 // ============================================================
-const ALTURA_RED = 2.43;
-const RADIO_PELOTA = 10;
-
-const ISO_ANGLE_DEG = 22;
-const ISO_COS = Math.cos((ISO_ANGLE_DEG * Math.PI) / 180);
-const ISO_SIN = Math.sin((ISO_ANGLE_DEG * Math.PI) / 180);
-
-const FRONT_Z_FACTOR = 0.12;
-const PARALELA_X_FACTOR = 0.15;
-
-const RED_X1 = 2;
-const RED_X2 = 11;
-const RED_Y_TOP = 2.43;
-const RED_Y_BOTTOM = 1.43;
-const ALTURA_VARILLA = 1.0;
-
-function mezclarConBlanco(hex: string, cantidad: number): string {
-  const h = hex.replace("#", "");
-  const r = parseInt(h.substring(0, 2), 16);
-  const g = parseInt(h.substring(2, 4), 16);
-  const b = parseInt(h.substring(4, 6), 16);
-  const nr = Math.round(r + (255 - r) * cantidad);
-  const ng = Math.round(g + (255 - g) * cantidad);
-  const nb = Math.round(b + (255 - b) * cantidad);
-  return `rgb(${nr}, ${ng}, ${nb})`;
+interface VistaParams {
+  mode: "ortho" | "iso";
+  // ortho
+  escalaX?: number;
+  escalaY?: number;
+  escalaZ?: number;
+  offsetX?: number;
+  offsetY?: number;
+  centerX?: number;
+  centerZ?: number;
+  invertX?: boolean;
+  invertZ?: boolean;
+  // iso
+  escala?: number;
+  isoOffsetX?: number;
+  isoOffsetY?: number;
+  altFactor?: number;
 }
 
-const ESCALA = 45;
-
-const OFFSET = {
-  top: { x: 150, y: 300 },
-  front: { x: 150, y: 520 },
-  frontRival: { x: 150, y: 520 },
-  isoIzq: { x: 400, y: 400 },
-  isoDer: { x: 590, y: 400 },
+const VISTA_PARAMS: Record<Vista, VistaParams> = {
+  top: {
+    mode: "ortho",
+    escalaX: 35,
+    escalaY: 0,
+    escalaZ: 35,
+    offsetX: 500,
+    offsetY: 425,
+    centerX: 6.5,
+    centerZ: 0,
+    invertX: false,
+    invertZ: false,
+  },
+  front: {
+    mode: "ortho",
+    escalaX: 50,
+    escalaY: 50,
+    escalaZ: 35,
+    offsetX: 500,
+    offsetY: 425,
+    centerX: 6.5,
+    centerZ: 0,
+    invertX: false,
+    invertZ: false,
+  },
+  "front-rival": {
+    mode: "ortho",
+    escalaX: 50,
+    escalaY: 50,
+    escalaZ: 35,
+    offsetX: 500,
+    offsetY: 425,
+    centerX: 6.5,
+    centerZ: 0,
+    invertX: true,
+    invertZ: true,
+  },
+  "iso-izq": {
+    mode: "iso",
+    escala: 20,
+    isoOffsetX: 500,
+    isoOffsetY: 400,
+    altFactor: 40,
+  },
+  "iso-der": {
+    mode: "iso",
+    escala: -20,
+    isoOffsetX: 500,
+    isoOffsetY: 400,
+    altFactor: 40,
+  },
 };
 
 function proyectar(
   x: number,
   z: number,
   y: number,
-  vista: Vista,
-  escala: number
+  vista: Vista
 ): { sx: number; sy: number } {
-  switch (vista) {
-    case "top":
-      return {
-        sx: x * escala + OFFSET.top.x,
-        sy: z * escala + OFFSET.top.y,
-      };
-    case "front":
-      return {
-        sx: x * escala + OFFSET.front.x,
-        sy: -y * escala + z * escala * FRONT_Z_FACTOR + OFFSET.front.y,
-      };
-    case "front-rival":
-      return {
-        sx: (13 - x) * escala + OFFSET.frontRival.x,
-        sy:
-          -y * escala -
-          z * escala * FRONT_Z_FACTOR +
-          OFFSET.frontRival.y,
-      };
-    case "iso-izq":
-      return {
-        sx: (x - z) * ISO_COS * escala + OFFSET.isoIzq.x,
-        sy: (x + z) * ISO_SIN * escala - y * escala + OFFSET.isoIzq.y,
-      };
-    case "iso-der": {
-      const xr = 13 - x;
-      const zr = 9 - z;
-      return {
-        sx: (xr - zr) * ISO_COS * escala + OFFSET.isoDer.x,
-        sy: (xr + zr) * ISO_SIN * escala - y * escala + OFFSET.isoDer.y,
-      };
-    }
+  const p = VISTA_PARAMS[vista];
+  const cx = p.centerX ?? 6.5;
+  const cz = p.centerZ ?? 0;
+  const dx = x - cx;
+  const dz = z - cz;
+
+  if (p.mode === "ortho") {
+    const sxDir = p.invertX ? -1 : 1;
+    const szDir = p.invertZ ? -1 : 1;
+    return {
+      sx: (p.offsetX ?? 500) + sxDir * dx * (p.escalaX ?? 35),
+      sy:
+        (p.offsetY ?? 425) -
+        y * (p.escalaY ?? 0) +
+        szDir * dz * (p.escalaZ ?? 0),
+    };
   }
+
+  // iso
+  const S = p.escala ?? 20;
+  return {
+    sx: (p.isoOffsetX ?? 500) + (dx - dz) * S,
+    sy: (p.isoOffsetY ?? 400) + (dx + dz) * Math.abs(S) * 0.75 - y * (p.altFactor ?? 40),
+  };
 }
 
 // ============================================================
@@ -306,12 +335,13 @@ function getParametros(
 // ============================================================
 // Curva
 // ============================================================
+const ALTURA_RED = 2.43;
+
 function generarCurvaSegmento(
   a: { x: number; z: number },
   b: { x: number; z: number },
   params: ParametrosTrayectoria,
   vista: Vista,
-  escala: number,
   forzarDentroDeRed: boolean
 ): string {
   const { hOrigen, hDestino, hApex, esRecto } = params;
@@ -319,8 +349,7 @@ function generarCurvaSegmento(
   // Bend de x si cruza la red fuera de [2, 11]
   let ctrlX: number | null = null;
   if (forzarDentroDeRed) {
-    const cruzandoRed =
-      (a.z > 0 && b.z < 0) || (a.z < 0 && b.z > 0);
+    const cruzandoRed = (a.z > 0 && b.z < 0) || (a.z < 0 && b.z > 0);
     if (cruzandoRed) {
       const t = -a.z / (b.z - a.z);
       const xCross = a.x + t * (b.x - a.x);
@@ -330,8 +359,7 @@ function generarCurvaSegmento(
         const xTarget = xCross < minX ? minX : maxX;
         const denom = 2 * (1 - t) * t;
         if (denom !== 0) {
-          ctrlX =
-            (xTarget - (1 - t) ** 2 * a.x - t ** 2 * b.x) / denom;
+          ctrlX = (xTarget - (1 - t) ** 2 * a.x - t ** 2 * b.x) / denom;
         }
       }
     }
@@ -343,10 +371,7 @@ function generarCurvaSegmento(
     const t = i / pasos;
     let x: number;
     if (ctrlX !== null) {
-      x =
-        (1 - t) ** 2 * a.x +
-        2 * (1 - t) * t * ctrlX +
-        t ** 2 * b.x;
+      x = (1 - t) ** 2 * a.x + 2 * (1 - t) * t * ctrlX + t ** 2 * b.x;
     } else {
       x = a.x + t * (b.x - a.x);
     }
@@ -355,18 +380,37 @@ function generarCurvaSegmento(
     let altura = hBase;
     if (!esRecto) {
       const apexCentrado = (hOrigen + hDestino) / 2;
-      altura =
-        hBase + 4 * t * (1 - t) * (hApex - apexCentrado);
+      altura = hBase + 4 * t * (1 - t) * (hApex - apexCentrado);
     }
-    const cruzandoRed =
-      (a.z >= 0 && b.z < 0) || (a.z < 0 && b.z >= 0);
+    const cruzandoRed = (a.z >= 0 && b.z < 0) || (a.z < 0 && b.z >= 0);
     if (cruzandoRed && altura < ALTURA_RED) {
       altura = ALTURA_RED + 0.05;
     }
-    const p = proyectar(x, z, altura, vista, escala);
+    const p = proyectar(x, z, altura, vista);
     path += i === 0 ? `M ${p.sx} ${p.sy}` : ` L ${p.sx} ${p.sy}`;
   }
   return path;
+}
+
+// ============================================================
+// Renderizado cancha / red
+// ============================================================
+const RED_X1 = 2;
+const RED_X2 = 11;
+const RED_Y_TOP = 2.43;
+const RED_Y_BOTTOM = 1.43;
+const ALTURA_VARILLA = 1.0;
+const RADIO_PELOTA = 10;
+
+function mezclarConBlanco(hex: string, cantidad: number): string {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  const nr = Math.round(r + (255 - r) * cantidad);
+  const ng = Math.round(g + (255 - g) * cantidad);
+  const nb = Math.round(b + (255 - b) * cantidad);
+  return `rgb(${nr}, ${ng}, ${nb})`;
 }
 
 // ============================================================
@@ -375,12 +419,11 @@ function generarCurvaSegmento(
 export default function CanchaVisualizacion({
   tipo,
   items,
-  vista = "front",
+  vista = "top",
   width = 1000,
-  height = 800,
+  height = 760,
   mostrarEstelas = true,
 }: Props) {
-  const escala = ESCALA;
   const mostrarRival = tipo === "saque" || tipo === "ataque";
 
   const trayectorias = useMemo(() => {
@@ -403,11 +446,7 @@ export default function CanchaVisualizacion({
           ? randomizar(destinoBase, it.id, "-destino")
           : destinoBase;
 
-        // Extender si la pelota salió de la cancha
-        const extension = extensionPorBorde(
-          it.destino.celda,
-          it.destino.mini
-        );
+        const extension = extensionPorBorde(it.destino.celda, it.destino.mini);
         if (extension) {
           destino = {
             x: destino.x + extension.dx,
@@ -416,13 +455,10 @@ export default function CanchaVisualizacion({
         }
 
         const desvios = debeRandomizar
-          ? desviosBase.map((d, i) =>
-              randomizar(d, it.id, `-desvio-${i}`)
-            )
+          ? desviosBase.map((d, i) => randomizar(d, it.id, `-desvio-${i}`))
           : desviosBase;
 
         const puntos = [origen, ...desvios, destino];
-
         const params = getParametros(tipo, it);
 
         const paths: string[] = [];
@@ -433,119 +469,104 @@ export default function CanchaVisualizacion({
               puntos[i + 1],
               params,
               vista,
-              escala,
               tipo === "saque" || tipo === "ataque"
             )
           );
         }
 
-        return {
-          item: it,
-          puntos,
-          paths,
-          color: it.color,
-          params,
-        };
+        return { item: it, puntos, paths, color: it.color, params };
       })
       .filter((t): t is NonNullable<typeof t> => t !== null);
-  }, [items, tipo, vista, escala]);
+  }, [items, tipo, vista]);
 
-  // Contornos
   const contornoPropio = useMemo(() => {
     const esquinas = [
-      proyectar(2, 0, 0, vista, escala),
-      proyectar(11, 0, 0, vista, escala),
-      proyectar(11, 9, 0, vista, escala),
-      proyectar(2, 9, 0, vista, escala),
+      proyectar(2, 0, 0, vista),
+      proyectar(11, 0, 0, vista),
+      proyectar(11, 9, 0, vista),
+      proyectar(2, 9, 0, vista),
     ];
     return esquinas.map((p) => `${p.sx},${p.sy}`).join(" ");
-  }, [vista, escala]);
+  }, [vista]);
 
   const contornoRival = useMemo(() => {
     if (!mostrarRival) return "";
     const esquinas = [
-      proyectar(2, 0, 0, vista, escala),
-      proyectar(11, 0, 0, vista, escala),
-      proyectar(11, -9, 0, vista, escala),
-      proyectar(2, -9, 0, vista, escala),
+      proyectar(2, 0, 0, vista),
+      proyectar(11, 0, 0, vista),
+      proyectar(11, -9, 0, vista),
+      proyectar(2, -9, 0, vista),
     ];
     return esquinas.map((p) => `${p.sx},${p.sy}`).join(" ");
-  }, [vista, escala, mostrarRival]);
+  }, [vista, mostrarRival]);
 
   const lineaMedio = useMemo(
     () => ({
-      p1: proyectar(2, 0, 0, vista, escala),
-      p2: proyectar(11, 0, 0, vista, escala),
+      p1: proyectar(2, 0, 0, vista),
+      p2: proyectar(11, 0, 0, vista),
     }),
-    [vista, escala]
+    [vista]
   );
 
   const lineaAtaquePropia = useMemo(
     () => ({
-      p1: proyectar(2, 3, 0, vista, escala),
-      p2: proyectar(11, 3, 0, vista, escala),
+      p1: proyectar(2, 3, 0, vista),
+      p2: proyectar(11, 3, 0, vista),
     }),
-    [vista, escala]
+    [vista]
   );
 
   const lineaAtaqueRival = useMemo(() => {
     if (!mostrarRival) return null;
     return {
-      p1: proyectar(2, -3, 0, vista, escala),
-      p2: proyectar(11, -3, 0, vista, escala),
+      p1: proyectar(2, -3, 0, vista),
+      p2: proyectar(11, -3, 0, vista),
     };
-  }, [vista, escala, mostrarRival]);
+  }, [vista, mostrarRival]);
 
   const red = useMemo(
     () => ({
-      p1: proyectar(RED_X1, 0, RED_Y_TOP, vista, escala),
-      p2: proyectar(RED_X2, 0, RED_Y_TOP, vista, escala),
+      p1: proyectar(RED_X1, 0, RED_Y_TOP, vista),
+      p2: proyectar(RED_X2, 0, RED_Y_TOP, vista),
     }),
-    [vista, escala]
+    [vista]
   );
 
   const redMalla = useMemo(() => {
-    const lineas: {
-      p1: { sx: number; sy: number };
-      p2: { sx: number; sy: number };
-    }[] = [];
+    const lineas: { p1: { sx: number; sy: number }; p2: { sx: number; sy: number } }[] = [];
     const pasos = 27;
     for (let i = 0; i <= pasos; i++) {
       const x = RED_X1 + ((RED_X2 - RED_X1) * i) / pasos;
-      const abajo = proyectar(x, 0, RED_Y_BOTTOM, vista, escala);
-      const arriba = proyectar(x, 0, RED_Y_TOP, vista, escala);
+      const abajo = proyectar(x, 0, RED_Y_BOTTOM, vista);
+      const arriba = proyectar(x, 0, RED_Y_TOP, vista);
       lineas.push({ p1: abajo, p2: arriba });
     }
     const filasRed = 6;
     for (let j = 0; j <= filasRed; j++) {
       const h = RED_Y_BOTTOM + ((RED_Y_TOP - RED_Y_BOTTOM) * j) / filasRed;
-      const izq = proyectar(RED_X1, 0, h, vista, escala);
-      const der = proyectar(RED_X2, 0, h, vista, escala);
+      const izq = proyectar(RED_X1, 0, h, vista);
+      const der = proyectar(RED_X2, 0, h, vista);
       lineas.push({ p1: izq, p2: der });
     }
     return lineas;
-  }, [vista, escala]);
+  }, [vista]);
 
   const redPostes = useMemo(
     () => [
       {
-        p1: proyectar(RED_X1, 0, 0, vista, escala),
-        p2: proyectar(RED_X1, 0, RED_Y_TOP, vista, escala),
+        p1: proyectar(RED_X1, 0, 0, vista),
+        p2: proyectar(RED_X1, 0, RED_Y_TOP, vista),
       },
       {
-        p1: proyectar(RED_X2, 0, 0, vista, escala),
-        p2: proyectar(RED_X2, 0, RED_Y_TOP, vista, escala),
+        p1: proyectar(RED_X2, 0, 0, vista),
+        p2: proyectar(RED_X2, 0, RED_Y_TOP, vista),
       },
     ],
-    [vista, escala]
+    [vista]
   );
 
   const redVarillas = useMemo(() => {
-    const varillas: {
-      p1: { sx: number; sy: number };
-      p2: { sx: number; sy: number };
-      color: string;
-    }[] = [];
+    const varillas: { p1: { sx: number; sy: number }; p2: { sx: number; sy: number }; color: string }[] = [];
     const segmentos = 4;
     const alturaSeg = ALTURA_VARILLA / segmentos;
     for (const x of [RED_X1, RED_X2]) {
@@ -553,14 +574,14 @@ export default function CanchaVisualizacion({
         const y1 = RED_Y_TOP + i * alturaSeg;
         const y2 = RED_Y_TOP + (i + 1) * alturaSeg;
         varillas.push({
-          p1: proyectar(x, 0, y1, vista, escala),
-          p2: proyectar(x, 0, y2, vista, escala),
+          p1: proyectar(x, 0, y1, vista),
+          p2: proyectar(x, 0, y2, vista),
           color: i % 2 === 0 ? "#dc2626" : "#ffffff",
         });
       }
     }
     return varillas;
-  }, [vista, escala]);
+  }, [vista]);
 
   return (
     <svg
@@ -591,7 +612,6 @@ export default function CanchaVisualizacion({
         strokeLinejoin="round"
       />
 
-      {/* Líneas propias */}
       <line
         x1={lineaMedio.p1.sx}
         y1={lineaMedio.p1.sy}
@@ -611,7 +631,6 @@ export default function CanchaVisualizacion({
         opacity={0.85}
       />
 
-      {/* Líneas rival */}
       {lineaAtaqueRival && (
         <line
           x1={lineaAtaqueRival.p1.sx}
@@ -624,7 +643,6 @@ export default function CanchaVisualizacion({
         />
       )}
 
-      {/* Malla de red */}
       {redMalla.map((l, i) => (
         <line
           key={`malla-${i}`}
@@ -677,7 +695,7 @@ export default function CanchaVisualizacion({
         return (
           <g key={i}>
             {t.puntos.slice(1, -1).map((p, j) => {
-              const pPos = proyectar(p.x, p.z, 0, vista, escala);
+              const pPos = proyectar(p.x, p.z, 0, vista);
               return (
                 <circle
                   key={`desvio-${j}`}
@@ -707,13 +725,7 @@ export default function CanchaVisualizacion({
 
             {(() => {
               const p = t.puntos[0];
-              const pos = proyectar(
-                p.x,
-                p.z,
-                t.params.hOrigen,
-                vista,
-                escala
-              );
+              const pos = proyectar(p.x, p.z, t.params.hOrigen, vista);
               return (
                 <EstrellaOrigen
                   cx={pos.sx}
@@ -726,13 +738,7 @@ export default function CanchaVisualizacion({
 
             {(() => {
               const p = t.puntos[t.puntos.length - 1];
-              const pos = proyectar(
-                p.x,
-                p.z,
-                t.params.hDestino,
-                vista,
-                escala
-              );
+              const pos = proyectar(p.x, p.z, t.params.hDestino, vista);
               return (
                 <VolleyballPelota
                   cx={pos.sx}
@@ -801,14 +807,8 @@ function VolleyballPelota({
       <defs>
         <radialGradient id={`${id}-base`} cx="35%" cy="30%">
           <stop offset="0%" stopColor="#ffffff" />
-          <stop
-            offset="55%"
-            stopColor={mezclarConBlanco(colorCalidad, 0.68)}
-          />
-          <stop
-            offset="100%"
-            stopColor={mezclarConBlanco(colorCalidad, 0.4)}
-          />
+          <stop offset="55%" stopColor={mezclarConBlanco(colorCalidad, 0.68)} />
+          <stop offset="100%" stopColor={mezclarConBlanco(colorCalidad, 0.4)} />
         </radialGradient>
         <clipPath id={`${id}-clip`}>
           <circle cx={cx} cy={cy} r={radio} />
