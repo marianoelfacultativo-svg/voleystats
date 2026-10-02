@@ -120,14 +120,10 @@ function extensionPorBorde(
   let dx = 0;
   let dz = 0;
 
-  // Fondo rival (F6) → bien afuera
   if (fila === "F6") dz = -3.0;
-  // Fondo propio (F3) → bien afuera
   else if (fila === "F3") dz = 3.0;
 
-  // Lateral izquierdo (C1) → bien afuera
   if (col === "C1") dx = -3.0;
-  // Lateral derecho (C5) → bien afuera
   else if (col === "C5") dx = 3.0;
 
   if (dx === 0 && dz === 0) return null;
@@ -279,35 +275,39 @@ function generarCurvaAtaque(
   const pts: [number, number, number][] = [];
   const hOrigen = a[1];
   const hDestino = b[1];
-  const apexCentrado = (hOrigen + hDestino) / 2;
-
   const zOrigen = a[2];
   const zDestino = b[2];
   const cruzaRed =
     (zOrigen > 0 && zDestino < 0) || (zOrigen < 0 && zDestino > 0);
 
-  let hApex: number;
+  let tRef: number;
+  let hRef: number;
+
   if (cruzaRed) {
-    const tRed = Math.abs(zOrigen) / Math.abs(zDestino - zOrigen);
-    const hBaseRed = hOrigen + tRed * (hDestino - hOrigen);
-    const target = ALTURA_RED + 0.15;
-    const denom = 4 * tRed * (1 - tRed);
-    const hApexMin =
-      denom > 0.001
-        ? apexCentrado + (target - hBaseRed) / denom
-        : apexCentrado + 0.5;
-    hApex = Math.max(hApexMin, apexCentrado + 0.3);
+    tRef = Math.abs(zOrigen) / Math.abs(zDestino - zOrigen);
+    // Solo 5cm de margen por encima de la red
+    hRef = ALTURA_RED + 0.05;
   } else {
-    hApex = apexCentrado + 0.3;
+    // Sin red: curvatura mínima (5cm por encima de la recta en t=0.5)
+    tRef = 0.5;
+    hRef = hOrigen + 0.5 * (hDestino - hOrigen) + 0.05;
   }
+
+  if (tRef < 0.05) tRef = 0.05;
+  if (tRef > 0.95) tRef = 0.95;
+
+  const D = hDestino - hOrigen;
+  const E = hRef - hOrigen;
+  const denom = tRef * (1 - tRef);
+  const c = denom > 0.0001 ? (D * tRef - E) / denom : 0;
+  const bCoef = D - c;
 
   for (let i = 0; i <= pasos; i++) {
     const t = i / pasos;
     const x = a[0] + t * (b[0] - a[0]);
     const z = a[2] + t * (b[2] - a[2]);
-    const hBase = hOrigen + t * (hDestino - hOrigen);
-    const y = hBase + 4 * t * (1 - t) * (hApex - apexCentrado);
-    pts.push([x, Math.max(0, y), z]);
+    const y = Math.max(0, hOrigen + bCoef * t + c * t * t);
+    pts.push([x, y, z]);
   }
   return pts;
 }

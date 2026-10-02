@@ -1,932 +1,586 @@
 "use client";
 
-import { useMemo } from "react";
-
-export type TipoFundamento = "saque" | "recepcion" | "ataque";
-
-export type Vista = "top" | "front" | "front-rival" | "iso-izq" | "iso-der";
-
-export interface PuntoVisual {
-  celda: string;
-  mini: string | null;
-}
-
-export interface ItemVisual {
-  id: string;
-  origen: PuntoVisual;
-  desvios?: PuntoVisual[];
-  destino: PuntoVisual;
-  color: string;
-  calidad?: number | string;
-  randomizar?: boolean;
-  esError?: boolean;
-}
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import CanchaArmador, {
+  type ArmadoDetalle,
+  type Vista,
+} from "./CanchaArmador";
+import VisualizacionFundamento from "./VisualizacionFundamento";
+import type { SaqueRow, RecepcionRow, AtaqueRow } from "@/lib/db";
 
 interface Props {
-  tipo: TipoFundamento;
-  items: ItemVisual[];
-  vista?: Vista;
-  width?: number;
-  height?: number;
-  mostrarEstelas?: boolean;
+  equipoId: string;
+  jugadorId?: string | null;
 }
 
-const COL_X: Record<string, [number, number]> = {
-  C1: [0, 2],
-  C2: [2, 5],
-  C3: [5, 8],
-  C4: [8, 11],
-  C5: [11, 13],
+interface Partido {
+  id: string;
+  rival: string;
+  fecha: string;
+}
+
+type Tab = "armados" | "saque" | "recepcion" | "ataque";
+
+const TABS: { id: Tab; label: string; icono: string }[] = [
+  { id: "armados", label: "Armados", icono: "🎯" },
+  { id: "saque", label: "Saque", icono: "🔥" },
+  { id: "recepcion", label: "Recepción", icono: "🙌" },
+  { id: "ataque", label: "Ataque", icono: "⚡" },
+];
+
+const VISTAS: { id: Vista; label: string }[] = [
+  { id: "iso", label: "Isométrica" },
+  { id: "iso-opuesta", label: "Isométrica opuesta" },
+  { id: "top", label: "Superior" },
+  { id: "front", label: "Frontal" },
+  { id: "paralela-izq", label: "Paralela izq." },
+  { id: "paralela-der", label: "Paralela der." },
+];
+
+const COLORES_CALIDAD: Record<number, string> = {
+  1: "#dc2626",
+  2: "#ea580c",
+  3: "#eab308",
+  4: "#84cc16",
+  5: "#16a34a",
+  6: "#059669",
 };
 
-const FILA_Z: Record<string, [number, number]> = {
-  F1: [0, 3],
-  F2: [3, 6],
-  F3: [6, 9],
-  F4: [-3, 0],
-  F5: [-6, -3],
-  F6: [-9, -6],
-};
+export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
+  const [tab, setTab] = useState<Tab>("armados");
+  const [cargando, setCargando] = useState(false);
 
-function servicioPos(s: string): { x: number; z: number } | null {
-  const m = s.match(/^S(\d)$/);
-  if (!m) return null;
-  const idx = parseInt(m[1]);
-  if (idx < 1 || idx > 9) return null;
-  const x = 2 + (idx - 1) * (9 / 8);
-  return { x, z: 9.5 };
-}
+  // Partidos disponibles y selector
+  const [partidos, setPartidos] = useState<Partido[]>([]);
+  const [partidoSeleccionado, setPartidoSeleccionado] = useState<string>("");
 
-function destinoSaquePos(d: string): { x: number; z: number } | null {
-  const m = d.match(/^D(\d)$/);
-  if (!m) return null;
-  const idx = parseInt(m[1]);
-  if (idx < 1 || idx > 9) return null;
-  const x = 2 + (idx - 1) * (9 / 8);
-  return { x, z: -1.5 };
-}
+  // Datos (todos los del partido seleccionado)
+  const [armados, setArmados] = useState<ArmadoDetalle[]>([]);
+  const [saques, setSaques] = useState<SaqueRow[]>([]);
+  const [recepciones, setRecepciones] = useState<RecepcionRow[]>([]);
+  const [ataques, setAtaques] = useState<AtaqueRow[]>([]);
 
-function obtenerCoords(
-  celda: string,
-  mini: string | null
-): { x: number; z: number } | null {
-  if (celda.startsWith("S")) return servicioPos(celda);
-  if (celda.startsWith("D")) return destinoSaquePos(celda);
+  // Jugadores
+  const [jugadoresEquipo, setJugadoresEquipo] = useState<string[]>([]);
+  const [nombresJugadores, setNombresJugadores] = useState<
+    Record<string, string>
+  >({});
 
-  const partes = celda.split("-");
-  if (partes.length !== 2) return null;
-  const [fila, col] = partes;
-  const rangoX = COL_X[col];
-  const rangoZ = FILA_Z[fila];
-  if (!rangoX || !rangoZ) return null;
+  // Filtros armados
+  const [vista, setVista] = useState<Vista>("iso");
+  const [mostrarEstelas, setMostrarEstelas] = useState(true);
+  const [filtroSet, setFiltroSet] = useState<number | "todos">("todos");
+  const [filtroZona, setFiltroZona] = useState<number | null>(null);
+  const [filtroPunto, setFiltroPunto] = useState<number | "todos">("todos");
+  const [filtrosCalidad, setFiltrosCalidad] = useState<number[]>([]);
+  const [puntoActual, setPuntoActual] = useState(1);
 
-  if (!mini) {
-    return {
-      x: (rangoX[0] + rangoX[1]) / 2,
-      z: (rangoZ[0] + rangoZ[1]) / 2,
-    };
-  }
+  // 1) Cargar lista de partidos + jugadores del equipo
+  useEffect(() => {
+    if (!equipoId) return;
 
-  const match = mini.match(/^f(\d)c(\d)$/);
-  if (!match) return null;
-  const mf = parseInt(match[1]) - 1;
-  const mc = parseInt(match[2]) - 1;
+    (async () => {
+      const { data: partRes } = await supabase
+        .from("partidos")
+        .select("id, rival, fecha")
+        .eq("equipo_id", equipoId)
+        .order("fecha", { ascending: false });
 
-  const numCols = col === "C1" || col === "C5" ? 2 : 3;
-  const numFils = 3;
-  const anchoCelda = (rangoX[1] - rangoX[0]) / numCols;
-  const altoCelda = (rangoZ[1] - rangoZ[0]) / numFils;
+      setPartidos(partRes ?? []);
 
-  const esRival = parseInt(fila.slice(1)) >= 4;
-  const mfFinal = esRival ? numFils - 1 - mf : mf;
+      const { data: jeRes } = await supabase
+        .from("jugador_equipo")
+        .select("jugador_id")
+        .eq("equipo_id", equipoId)
+        .eq("activo", true);
 
-  return {
-    x: rangoX[0] + (mc + 0.5) * anchoCelda,
-    z: rangoZ[0] + (mfFinal + 0.5) * altoCelda,
-  };
-}
+      const idsJugadores = (jeRes ?? []).map((x: any) => x.jugador_id);
+      setJugadoresEquipo(idsJugadores);
 
-function extensionPorBorde(
-  celda: string,
-  _mini: string | null
-): { dx: number; dz: number } | null {
-  const partes = celda.split("-");
-  if (partes.length !== 2) return null;
-  const [fila, col] = partes;
+      if (idsJugadores.length > 0) {
+        const { data: jugRes } = await supabase
+          .from("jugadores")
+          .select("id, nombre, numero")
+          .in("id", idsJugadores);
 
-  let dx = 0;
-  let dz = 0;
-
-  if (fila === "F6") dz = -3.0;
-  else if (fila === "F3") dz = 3.0;
-
-  if (col === "C1") dx = -3.0;
-  else if (col === "C5") dx = 3.0;
-
-  if (dx === 0 && dz === 0) return null;
-  return { dx, dz };
-}
-
-function hashSeed(str: string): number {
-  let h = 5381;
-  for (let i = 0; i < str.length; i++) {
-    h = (h << 5) + h + str.charCodeAt(i);
-    h = h & h;
-  }
-  return Math.abs(h);
-}
-
-function prand(seed: string, key: string): number {
-  const h = hashSeed(seed + key);
-  return (h % 100000) / 100000;
-}
-
-function randomizar(
-  coords: { x: number; z: number },
-  id: string,
-  key: string
-): { x: number; z: number } {
-  const rx = prand(id, key + "-x");
-  const rz = prand(id, key + "-z");
-  return {
-    x: coords.x + (rx - 0.5) * 0.6,
-    z: coords.z + (rz - 0.5) * 0.6,
-  };
-}
-
-const ALTURA_RED = 2.43;
-const GRAVEDAD = 9.8;
-const RADIO_PELOTA = 10;
-const ALTURA_MAX_ARCO = 3.4;
-
-const ISO_ANGLE_DEG = 22;
-const ISO_COS = Math.cos((ISO_ANGLE_DEG * Math.PI) / 180);
-const ISO_SIN = Math.sin((ISO_ANGLE_DEG * Math.PI) / 180);
-const FRONT_Z_FACTOR = 0.12;
-
-const RED_X1 = 2;
-const RED_X2 = 11;
-const RED_Y_TOP = 2.43;
-const RED_Y_BOTTOM = 1.43;
-
-function mezclarConBlanco(hex: string, cantidad: number): string {
-  const h = hex.replace("#", "");
-  const r = parseInt(h.substring(0, 2), 16);
-  const g = parseInt(h.substring(2, 4), 16);
-  const b = parseInt(h.substring(4, 6), 16);
-  const nr = Math.round(r + (255 - r) * cantidad);
-  const ng = Math.round(g + (255 - g) * cantidad);
-  const nb = Math.round(b + (255 - b) * cantidad);
-  return `rgb(${nr}, ${ng}, ${nb})`;
-}
-
-const ESCALA = 45;
-
-const OFFSET: Record<Vista, { x: number; y: number }> = {
-  top: { x: 150, y: 300 },
-  front: { x: 150, y: 520 },
-  "front-rival": { x: 150, y: 520 },
-  "iso-izq": { x: 400, y: 400 },
-  "iso-der": { x: 590, y: 400 },
-};
-
-function proyectar(
-  x: number,
-  z: number,
-  y: number,
-  vista: Vista,
-  escala: number
-): { sx: number; sy: number } {
-  switch (vista) {
-    case "top":
-      return {
-        sx: x * escala + OFFSET.top.x,
-        sy: z * escala + OFFSET.top.y,
-      };
-    case "front":
-      return {
-        sx: x * escala + OFFSET.front.x,
-        sy: -y * escala + z * escala * FRONT_Z_FACTOR + OFFSET.front.y,
-      };
-    case "front-rival":
-      return {
-        sx: (13 - x) * escala + OFFSET["front-rival"].x,
-        sy:
-          -y * escala -
-          z * escala * FRONT_Z_FACTOR +
-          OFFSET["front-rival"].y,
-      };
-    case "iso-izq":
-      return {
-        sx: (x - z) * ISO_COS * escala + OFFSET["iso-izq"].x,
-        sy: (x + z) * ISO_SIN * escala - y * escala + OFFSET["iso-izq"].y,
-      };
-    case "iso-der": {
-      const xr = 13 - x;
-      const zr = 9 - z;
-      return {
-        sx: (xr - zr) * ISO_COS * escala + OFFSET["iso-der"].x,
-        sy: (xr + zr) * ISO_SIN * escala - y * escala + OFFSET["iso-der"].y,
-      };
-    }
-  }
-}
-
-interface ParametrosTrayectoria {
-  hOrigen: number;
-  hDestino: number;
-  esRecto: boolean;
-}
-
-function getParametros(
-  tipo: TipoFundamento,
-  item: ItemVisual
-): ParametrosTrayectoria {
-  if (tipo === "saque") {
-    const esPotencia = item.calidad === "potencia";
-    return {
-      hOrigen: 2.8,
-      hDestino: 0,
-      esRecto: esPotencia,
-    };
-  }
-  if (tipo === "ataque") {
-    return { hOrigen: 2.8, hDestino: 0, esRecto: false };
-  }
-  return { hOrigen: 0.3, hDestino: 2.2, esRecto: false };
-}
-
-function limitarAltura(
-  pts: [number, number, number][]
-): [number, number, number][] {
-  return pts.map((p) => {
-    if (p[1] > ALTURA_MAX_ARCO) {
-      return [p[0], ALTURA_MAX_ARCO, p[2]];
-    }
-    return p;
-  });
-}
-
-function generarSegmento(
-  a: { x: number; z: number },
-  b: { x: number; z: number },
-  params: ParametrosTrayectoria,
-  vista: Vista,
-  escala: number,
-  necesitaPasarRed: boolean,
-  limitar: boolean
-): { path: string; puntos3D: [number, number, number][] } {
-  const { hOrigen, hDestino, esRecto } = params;
-
-  const dx = b.x - a.x;
-  const dz = b.z - a.z;
-  const distH = Math.sqrt(dx * dx + dz * dz);
-
-  if (distH < 0.001) {
-    return {
-      path: "",
-      puntos3D: [
-        [a.x, hOrigen, a.z],
-        [b.x, hDestino, b.z],
-      ],
-    };
-  }
-
-  if (esRecto) {
-    const pasos = 30;
-    let path = "";
-    const puntos3D: [number, number, number][] = [];
-    for (let i = 0; i <= pasos; i++) {
-      const t = i / pasos;
-      const x = a.x + t * dx;
-      const z = a.z + t * dz;
-      const y = Math.max(0, hOrigen + t * (hDestino - hOrigen));
-      puntos3D.push([x, y, z]);
-      const p = proyectar(x, z, y, vista, escala);
-      path += i === 0 ? `M ${p.sx} ${p.sy}` : ` L ${p.sx} ${p.sy}`;
-    }
-    return { path, puntos3D };
-  }
-
-  const cruzandoRed = (a.z >= 0 && b.z < 0) || (a.z < 0 && b.z >= 0);
-
-  let T: number;
-  if (necesitaPasarRed && cruzandoRed) {
-    const tRedRatio = -a.z / (b.z - a.z);
-    if (tRedRatio > 0.05 && tRedRatio < 0.95) {
-      const hRedMin = ALTURA_RED + 0.05;
-      const num = (hDestino - hOrigen) - (hRedMin - hOrigen) / tRedRatio;
-      const den = 0.5 * GRAVEDAD * (tRedRatio - 1);
-      if (Math.abs(den) > 0.001) {
-        const T2 = num / den;
-        T = T2 > 0 ? Math.sqrt(T2) : distH / 8;
-      } else {
-        T = distH / 8;
+        const mapa: Record<string, string> = {};
+        (jugRes ?? []).forEach((j: any) => {
+          mapa[j.id] =
+            j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
+        });
+        setNombresJugadores(mapa);
       }
-    } else {
-      T = distH / 8;
+    })();
+  }, [equipoId]);
+
+  // 2) Cargar datos cuando hay partido seleccionado
+  useEffect(() => {
+    if (!partidoSeleccionado) {
+      setArmados([]);
+      setSaques([]);
+      setRecepciones([]);
+      setAtaques([]);
+      return;
     }
-  } else {
-    T = distH / 8;
-  }
+    setCargando(true);
 
-  const vy = (hDestino - hOrigen + 0.5 * GRAVEDAD * T * T) / T;
-  const vx = dx / T;
-  const vz = dz / T;
+    (async () => {
+      const pid = partidoSeleccionado;
 
-  const pasos = 30;
-  let path = "";
-  const puntos3D: [number, number, number][] = [];
-  for (let i = 0; i <= pasos; i++) {
-    const t = (i / pasos) * T;
-    const x = a.x + vx * t;
-    const z = a.z + vz * t;
-    const y = Math.max(0, hOrigen + vy * t - 0.5 * GRAVEDAD * t * t);
-    puntos3D.push([x, y, z]);
-    const p = proyectar(x, z, y, vista, escala);
-    path += i === 0 ? `M ${p.sx} ${p.sy}` : ` L ${p.sx} ${p.sy}`;
-  }
+      // Armados
+      let qArmados = supabase
+        .from("armados_detalle")
+        .select("*")
+        .eq("partido_id", pid)
+        .eq("tipo", "armado")
+        .order("set_numero")
+        .order("punto_numero")
+        .order("created_at");
 
-  if (limitar) {
-    const limitados = limitarAltura(puntos3D);
-    let pathL = "";
-    limitados.forEach((p3, i) => {
-      const p = proyectar(p3[0], p3[2], p3[1], vista, escala);
-      pathL += i === 0 ? `M ${p.sx} ${p.sy}` : ` L ${p.sx} ${p.sy}`;
+      if (jugadorId) qArmados = qArmados.eq("jugador_id", jugadorId);
+
+      const { data: armRes } = await qArmados;
+      setArmados((armRes ?? []) as ArmadoDetalle[]);
+
+      // Saques
+      let qSaques = supabase
+        .from("saque_detalle")
+        .select("*")
+        .eq("partido_id", pid)
+        .order("set_numero")
+        .order("punto_numero")
+        .order("created_at");
+
+      if (jugadorId) qSaques = qSaques.eq("jugador_id", jugadorId);
+
+      const { data: saqRes } = await qSaques;
+      setSaques((saqRes ?? []) as SaqueRow[]);
+
+      // Recepciones
+      let qReceps = supabase
+        .from("recepcion_detalle")
+        .select("*")
+        .eq("partido_id", pid)
+        .order("set_numero")
+        .order("punto_numero")
+        .order("created_at");
+
+      if (jugadorId) qReceps = qReceps.eq("jugador_id", jugadorId);
+
+      const { data: recRes } = await qReceps;
+      setRecepciones((recRes ?? []) as RecepcionRow[]);
+
+      // Ataques
+      let qAtqs = supabase
+        .from("ataques_detalle")
+        .select("*")
+        .eq("partido_id", pid)
+        .order("set_numero")
+        .order("punto_numero")
+        .order("created_at");
+
+      if (jugadorId) qAtqs = qAtqs.eq("jugador_id", jugadorId);
+
+      const { data: atqRes } = await qAtqs;
+      setAtaques((atqRes ?? []) as AtaqueRow[]);
+
+      setCargando(false);
+    })();
+  }, [partidoSeleccionado, jugadorId]);
+
+  const setsDisponibles = useMemo(() => {
+    const sets = new Set<number>();
+    armados.forEach((a) => sets.add(a.set_numero));
+    return Array.from(sets).sort();
+  }, [armados]);
+
+  const puntosDelSet = useMemo(() => {
+    const pts = new Set<number>();
+    armados
+      .filter((a) => filtroSet === "todos" || a.set_numero === filtroSet)
+      .forEach((a) => pts.add(a.punto_numero));
+    return Array.from(pts).sort((x, y) => x - y);
+  }, [armados, filtroSet]);
+
+  useEffect(() => {
+    setPuntoActual(puntosDelSet[0] ?? 1);
+  }, [puntosDelSet]);
+
+  const armadosFiltrados = useMemo(() => {
+    return armados.filter((a) => {
+      if (filtroSet !== "todos" && a.set_numero !== filtroSet) return false;
+      if (filtroZona !== null && a.zona_tendencia !== filtroZona)
+        return false;
+      if (filtroPunto !== "todos" && a.punto_numero !== filtroPunto)
+        return false;
+      if (filtrosCalidad.length > 0 && !filtrosCalidad.includes(a.calidad))
+        return false;
+      return true;
     });
-    return { path: pathL, puntos3D: limitados };
-  }
-
-  return { path, puntos3D };
-}
-
-function generarCurvaAtaque(
-  a: [number, number, number],
-  b: [number, number, number],
-  vista: Vista,
-  escala: number
-): { path: string; puntos3D: [number, number, number][] } {
-  const pasos = 40;
-  const pts: [number, number, number][] = [];
-  const hOrigen = a[1];
-  const hDestino = b[1];
-  const apexCentrado = (hOrigen + hDestino) / 2;
-
-  const zOrigen = a[2];
-  const zDestino = b[2];
-  const cruzaRed =
-    (zOrigen > 0 && zDestino < 0) || (zOrigen < 0 && zDestino > 0);
-
-  let hApex: number;
-  if (cruzaRed) {
-    const tRed = Math.abs(zOrigen) / Math.abs(zDestino - zOrigen);
-    const hBaseRed = hOrigen + tRed * (hDestino - hOrigen);
-    const target = ALTURA_RED + 0.15;
-    const denom = 4 * tRed * (1 - tRed);
-    const hApexMin =
-      denom > 0.001
-        ? apexCentrado + (target - hBaseRed) / denom
-        : apexCentrado + 0.5;
-    hApex = Math.max(hApexMin, apexCentrado + 0.3);
-  } else {
-    hApex = apexCentrado + 0.3;
-  }
-
-  let path = "";
-  for (let i = 0; i <= pasos; i++) {
-    const t = i / pasos;
-    const x = a[0] + t * (b[0] - a[0]);
-    const z = a[2] + t * (b[2] - a[2]);
-    const hBase = hOrigen + t * (hDestino - hOrigen);
-    const y = hBase + 4 * t * (1 - t) * (hApex - apexCentrado);
-    pts.push([x, Math.max(0, y), z]);
-    const p = proyectar(x, z, y, vista, escala);
-    path += i === 0 ? `M ${p.sx} ${p.sy}` : ` L ${p.sx} ${p.sy}`;
-  }
-  return { path, puntos3D: pts };
-}
-
-function generarPuntosAtaque(
-  origen: { x: number; z: number },
-  destino: { x: number; z: number },
-  desvios: { x: number; z: number }[],
-  vista: Vista,
-  escala: number
-): { paths: string[]; puntos3D: [number, number, number][] } {
-  const origenPropio = origen.z >= 0;
-  const destinoPropio = destino.z >= 0;
-
-  const paths: string[] = [];
-  const puntos3D: [number, number, number][] = [];
-
-  const agregarSegmento = (seg: {
-    path: string;
-    puntos3D: [number, number, number][];
-  }) => {
-    paths.push(seg.path);
-    if (puntos3D.length === 0) {
-      puntos3D.push(...seg.puntos3D);
-    } else {
-      puntos3D.push(...seg.puntos3D.slice(1));
-    }
-  };
-
-  // CASO A: ataque a la red
-  if (origenPropio && destinoPropio && desvios.length === 0) {
-    const puntoRed: [number, number, number] = [
-      origen.x,
-      ALTURA_RED - 0.1,
-      0,
-    ];
-    const puntoCaida: [number, number, number] = [
-      destino.x,
-      0,
-      Math.max(1.5, destino.z),
-    ];
-    agregarSegmento(
-      generarCurvaAtaque([origen.x, 2.8, origen.z], puntoRed, vista, escala)
-    );
-    agregarSegmento(
-      generarCurvaAtaque(puntoRed, puntoCaida, vista, escala)
-    );
-    return { paths, puntos3D };
-  }
-
-  // CASO B: bloqueo rival
-  const desvioRival = desvios.find((d) => d.z < 0);
-  if (desvioRival && destinoPropio) {
-    const puntoBloqueo: [number, number, number] = [
-      desvioRival.x,
-      2.5,
-      desvioRival.z,
-    ];
-    const puntoCaida: [number, number, number] = [
-      destino.x,
-      0,
-      Math.max(1.0, destino.z),
-    ];
-    agregarSegmento(
-      generarCurvaAtaque(
-        [origen.x, 2.8, origen.z],
-        puntoBloqueo,
-        vista,
-        escala
-      )
-    );
-    agregarSegmento(
-      generarCurvaAtaque(puntoBloqueo, puntoCaida, vista, escala)
-    );
-    return { paths, puntos3D };
-  }
-
-  // CASO C: ataque normal
-  const waypoints: { x: number; z: number; y: number }[] = [
-    { x: origen.x, z: origen.z, y: 2.8 },
-    ...desvios.map((d) => ({
-      x: d.x,
-      z: d.z,
-      y: d.z > -3 && d.z <= 0 ? 2.5 : 0,
-    })),
-    { x: destino.x, z: destino.z, y: 0 },
-  ];
-
-  for (let i = 0; i < waypoints.length - 1; i++) {
-    const seg = generarCurvaAtaque(
-      [waypoints[i].x, waypoints[i].y, waypoints[i].z],
-      [waypoints[i + 1].x, waypoints[i + 1].y, waypoints[i + 1].z],
-      vista,
-      escala
-    );
-    agregarSegmento(seg);
-  }
-  return { paths, puntos3D };
-}
-
-export default function CanchaVisualizacion({
-  tipo,
-  items,
-  vista = "top",
-  width = 1000,
-  height = 760,
-  mostrarEstelas = true,
-}: Props) {
-  const escala = ESCALA;
-  const mostrarRival = tipo === "saque" || tipo === "ataque";
-
-  const trayectorias = useMemo(() => {
-    return items
-      .map((it) => {
-        const origenBase = obtenerCoords(it.origen.celda, it.origen.mini);
-        const destinoBase = obtenerCoords(it.destino.celda, it.destino.mini);
-        if (!origenBase || !destinoBase) return null;
-
-        const desviosBase =
-          it.desvios
-            ?.map((d) => obtenerCoords(d.celda, d.mini))
-            .filter((p): p is { x: number; z: number } => p !== null) ?? [];
-
-        const debeRandomizar = it.randomizar !== false;
-        let origen = debeRandomizar
-          ? randomizar(origenBase, it.id, "-origen")
-          : origenBase;
-
-        if (tipo === "saque") {
-          origen = { x: origen.x, z: 9.5 };
-          if (origen.x < 2 || origen.x > 11) {
-            origen = { x: 6.5, z: 9.5 };
-          }
-        }
-
-        let destino = debeRandomizar
-          ? randomizar(destinoBase, it.id, "-destino")
-          : destinoBase;
-
-        const ext = it.esError
-          ? extensionPorBorde(it.destino.celda, it.destino.mini)
-          : null;
-        if (ext) {
-          destino = { x: destino.x + ext.dx, z: destino.z + ext.dz };
-        }
-
-        const desvios = debeRandomizar
-          ? desviosBase.map((d, i) =>
-              randomizar(d, it.id, `-desvio-${i}`)
-            )
-          : desviosBase;
-
-        // ATAQUES
-        if (tipo === "ataque") {
-          const res = generarPuntosAtaque(
-            origen,
-            destino,
-            desvios,
-            vista,
-            escala
-          );
-          return {
-            item: it,
-            paths: res.paths,
-            puntos3D: res.puntos3D,
-            color: it.color,
-          };
-        }
-
-        // SAQUES Y RECEPCIONES
-        const params = getParametros(tipo, it);
-        const necesitaPasarRed = tipo === "saque";
-        const limitarAlturaSaque = tipo === "saque";
-
-        const quedoEnRed = tipo === "saque" && destino.z > -0.5;
-
-        const paths: string[] = [];
-        const puntos3D: [number, number, number][] = [];
-
-        if (quedoEnRed) {
-          const puntoRed = { x: destino.x, z: 0 };
-          const puntoCaida = { x: destino.x, z: 2.0 };
-
-          const seg1 = generarSegmento(
-            origen,
-            puntoRed,
-            params,
-            vista,
-            escala,
-            necesitaPasarRed,
-            limitarAlturaSaque
-          );
-          paths.push(seg1.path);
-          puntos3D.push(...seg1.puntos3D);
-
-          const paramsRebote: ParametrosTrayectoria = {
-            hOrigen: ALTURA_RED - 0.3,
-            hDestino: 0,
-            esRecto: false,
-          };
-          const seg2 = generarSegmento(
-            puntoRed,
-            puntoCaida,
-            paramsRebote,
-            vista,
-            escala,
-            false,
-            false
-          );
-          paths.push(seg2.path);
-          puntos3D.push(...seg2.puntos3D.slice(1));
-        } else {
-          const waypoints = [origen, ...desvios, destino];
-          for (let i = 0; i < waypoints.length - 1; i++) {
-            const seg = generarSegmento(
-              waypoints[i],
-              waypoints[i + 1],
-              params,
-              vista,
-              escala,
-              necesitaPasarRed,
-              limitarAlturaSaque
-            );
-            paths.push(seg.path);
-            if (i > 0) {
-              puntos3D.push(...seg.puntos3D.slice(1));
-            } else {
-              puntos3D.push(...seg.puntos3D);
-            }
-          }
-        }
-
-        return {
-          item: it,
-          paths,
-          puntos3D,
-          color: it.color,
-        };
-      })
-      .filter((t): t is NonNullable<typeof t> => t !== null);
-  }, [items, tipo, vista, escala]);
-
-  const contornoPropio = useMemo(() => {
-    const esquinas = [
-      proyectar(2, 0, 0, vista, escala),
-      proyectar(11, 0, 0, vista, escala),
-      proyectar(11, 9, 0, vista, escala),
-      proyectar(2, 9, 0, vista, escala),
-    ];
-    return esquinas.map((p) => `${p.sx},${p.sy}`).join(" ");
-  }, [vista, escala]);
-
-  const contornoRival = useMemo(() => {
-    if (!mostrarRival) return "";
-    const esquinas = [
-      proyectar(2, 0, 0, vista, escala),
-      proyectar(11, 0, 0, vista, escala),
-      proyectar(11, -9, 0, vista, escala),
-      proyectar(2, -9, 0, vista, escala),
-    ];
-    return esquinas.map((p) => `${p.sx},${p.sy}`).join(" ");
-  }, [vista, escala, mostrarRival]);
-
-  const lineaMedio = useMemo(
-    () => ({
-      p1: proyectar(2, 0, 0, vista, escala),
-      p2: proyectar(11, 0, 0, vista, escala),
-    }),
-    [vista, escala]
-  );
-
-  const lineaAtaquePropia = useMemo(
-    () => ({
-      p1: proyectar(2, 3, 0, vista, escala),
-      p2: proyectar(11, 3, 0, vista, escala),
-    }),
-    [vista, escala]
-  );
-
-  const lineaAtaqueRival = useMemo(() => {
-    if (!mostrarRival) return null;
-    return {
-      p1: proyectar(2, -3, 0, vista, escala),
-      p2: proyectar(11, -3, 0, vista, escala),
-    };
-  }, [vista, escala, mostrarRival]);
-
-  const red = useMemo(
-    () => ({
-      p1: proyectar(RED_X1, 0, RED_Y_TOP, vista, escala),
-      p2: proyectar(RED_X2, 0, RED_Y_TOP, vista, escala),
-    }),
-    [vista, escala]
-  );
-
-  const redMalla = useMemo(() => {
-    const lineas: {
-      p1: { sx: number; sy: number };
-      p2: { sx: number; sy: number };
-    }[] = [];
-    const pasos = 20;
-    for (let i = 0; i <= pasos; i++) {
-      const x = RED_X1 + ((RED_X2 - RED_X1) * i) / pasos;
-      const abajo = proyectar(x, 0, RED_Y_BOTTOM, vista, escala);
-      const arriba = proyectar(x, 0, RED_Y_TOP, vista, escala);
-      lineas.push({ p1: abajo, p2: arriba });
-    }
-    const filasRed = 4;
-    for (let j = 0; j <= filasRed; j++) {
-      const h = RED_Y_BOTTOM + ((RED_Y_TOP - RED_Y_BOTTOM) * j) / filasRed;
-      const izq = proyectar(RED_X1, 0, h, vista, escala);
-      const der = proyectar(RED_X2, 0, h, vista, escala);
-      lineas.push({ p1: izq, p2: der });
-    }
-    return lineas;
-  }, [vista, escala]);
-
-  const redPostes = useMemo(
-    () => [
-      {
-        p1: proyectar(RED_X1, 0, 0, vista, escala),
-        p2: proyectar(RED_X1, 0, RED_Y_TOP, vista, escala),
-      },
-      {
-        p1: proyectar(RED_X2, 0, 0, vista, escala),
-        p2: proyectar(RED_X2, 0, RED_Y_TOP, vista, escala),
-      },
-    ],
-    [vista, escala]
-  );
+  }, [armados, filtroSet, filtroZona, filtroPunto, filtrosCalidad]);
 
   return (
-    <svg
-      width={width}
-      height={height}
-      viewBox={`0 0 ${width} ${height}`}
-      className="rounded-xl"
-      style={{
-        background:
-          "linear-gradient(180deg, #cfe4f7 0%, #b8d8f0 50%, #a8cbe8 100%)",
-      }}
-    >
-      {mostrarRival && (
-        <polygon
-          points={contornoRival}
-          fill="#3b82f6"
-          stroke="#ffffff"
-          strokeWidth={3}
-          strokeLinejoin="round"
-        />
+    <div className="space-y-4">
+      {/* Selector de partido */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <label className="block text-sm font-medium text-slate-700 mb-2">
+          Elegí un partido
+        </label>
+        <select
+          value={partidoSeleccionado}
+          onChange={(e) => setPartidoSeleccionado(e.target.value)}
+          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
+        >
+          <option value="">— Elegí un partido —</option>
+          {partidos.map((p) => (
+            <option key={p.id} value={p.id}>
+              vs {p.rival} · {p.fecha}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Si no hay partido, mensaje */}
+      {!partidoSeleccionado && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+          <p className="text-4xl mb-3">📅</p>
+          <p className="text-slate-600 font-medium">
+            Elegí un partido para ver la visualización
+          </p>
+        </div>
       )}
 
-      <polygon
-        points={contornoPropio}
-        fill="#3b82f6"
-        stroke="#ffffff"
-        strokeWidth={3}
-        strokeLinejoin="round"
-      />
+      {/* Si hay partido, mostrar tabs y contenido */}
+      {partidoSeleccionado && (
+        <>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 flex flex-wrap gap-1">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
+                  tab === t.id
+                    ? "bg-emerald-500 text-white"
+                    : "text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {t.icono} {t.label}
+              </button>
+            ))}
+          </div>
 
-      <line
-        x1={lineaMedio.p1.sx}
-        y1={lineaMedio.p1.sy}
-        x2={lineaMedio.p2.sx}
-        y2={lineaMedio.p2.sy}
-        stroke="#ffffff"
-        strokeWidth={2}
-        opacity={0.9}
-      />
-      <line
-        x1={lineaAtaquePropia.p1.sx}
-        y1={lineaAtaquePropia.p1.sy}
-        x2={lineaAtaquePropia.p2.sx}
-        y2={lineaAtaquePropia.p2.sy}
-        stroke="#ffffff"
-        strokeWidth={2}
-        opacity={0.85}
-      />
+          {cargando && (
+            <p className="text-slate-500 text-center py-8">Cargando...</p>
+          )}
 
-      {lineaAtaqueRival && (
-        <line
-          x1={lineaAtaqueRival.p1.sx}
-          y1={lineaAtaqueRival.p1.sy}
-          x2={lineaAtaqueRival.p2.sx}
-          y2={lineaAtaqueRival.p2.sy}
-          stroke="#ffffff"
-          strokeWidth={2}
-          opacity={0.85}
-        />
-      )}
+          {!cargando && tab === "armados" && (
+            <>
+              {armados.length === 0 ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+                  <p className="text-4xl mb-3">🏐</p>
+                  <p className="text-slate-600 font-medium">
+                    Este partido no tiene armados cargados
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+                    <div className="grid grid-cols-2 gap-4 mb-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">
+                          Set
+                        </label>
+                        <div className="flex flex-wrap gap-1">
+                          <button
+                            onClick={() => setFiltroSet("todos")}
+                            className={`px-2.5 py-1 text-xs rounded-lg border transition ${
+                              filtroSet === "todos"
+                                ? "bg-emerald-500 text-white border-emerald-500"
+                                : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                            }`}
+                          >
+                            Todos
+                          </button>
+                          {setsDisponibles.map((s) => (
+                            <button
+                              key={s}
+                              onClick={() => setFiltroSet(s)}
+                              className={`px-2.5 py-1 text-xs rounded-lg border transition ${
+                                filtroSet === s
+                                  ? "bg-emerald-500 text-white border-emerald-500"
+                                  : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                              }`}
+                            >
+                              S{s}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
 
-      {redMalla.map((l, i) => (
-        <line
-          key={`malla-${i}`}
-          x1={l.p1.sx}
-          y1={l.p1.sy}
-          x2={l.p2.sx}
-          y2={l.p2.sy}
-          stroke="#ffffff"
-          strokeWidth={0.7}
-          opacity={0.5}
-        />
-      ))}
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">
+                          Punto
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setFiltroPunto("todos")}
+                            className={`px-2.5 py-1 text-xs rounded-lg border transition ${
+                              filtroPunto === "todos"
+                                ? "bg-emerald-500 text-white border-emerald-500"
+                                : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                            }`}
+                          >
+                            Todos
+                          </button>
+                          <button
+                            onClick={() => {
+                              const idx = puntosDelSet.indexOf(puntoActual);
+                              if (idx > 0) {
+                                setPuntoActual(puntosDelSet[idx - 1]);
+                                setFiltroPunto(puntosDelSet[idx - 1]);
+                              }
+                            }}
+                            className="px-2 py-1 text-xs bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+                          >
+                            ◀
+                          </button>
+                          <select
+                            value={
+                              typeof filtroPunto === "number" ? filtroPunto : ""
+                            }
+                            onChange={(e) =>
+                              setFiltroPunto(
+                                e.target.value === ""
+                                  ? "todos"
+                                  : parseInt(e.target.value)
+                              )
+                            }
+                            className="px-2 py-1 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
+                          >
+                            <option value="">Todos</option>
+                            {puntosDelSet.map((p) => (
+                              <option key={p} value={p}>
+                                Punto {p}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => {
+                              const idx = puntosDelSet.indexOf(puntoActual);
+                              if (idx < puntosDelSet.length - 1) {
+                                setPuntoActual(puntosDelSet[idx + 1]);
+                                setFiltroPunto(puntosDelSet[idx + 1]);
+                              }
+                            }}
+                            className="px-2 py-1 text-xs bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+                          >
+                            ▶
+                          </button>
+                        </div>
+                      </div>
+                    </div>
 
-      <line
-        x1={red.p1.sx}
-        y1={red.p1.sy}
-        x2={red.p2.sx}
-        y2={red.p2.sy}
-        stroke="#ffffff"
-        strokeWidth={2.5}
-      />
+                    <div className="mb-3">
+                      <label className="block text-xs font-medium text-slate-500 mb-1">
+                        Vista
+                      </label>
+                      <div className="flex flex-wrap gap-1">
+                        {VISTAS.map((v) => (
+                          <button
+                            key={v.id}
+                            onClick={() => setVista(v.id)}
+                            className={`px-2.5 py-1 text-xs rounded-lg border transition ${
+                              vista === v.id
+                                ? "bg-slate-800 text-white border-slate-800"
+                                : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                            }`}
+                          >
+                            {v.label}
+                          </button>
+                        ))}
+                        <span className="mx-2 border-l border-slate-300" />
+                        <button
+                          onClick={() => setMostrarEstelas(!mostrarEstelas)}
+                          className={`px-2.5 py-1 text-xs rounded-lg border transition ${
+                            mostrarEstelas
+                              ? "bg-emerald-500 text-white border-emerald-500"
+                              : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                          }`}
+                        >
+                          {mostrarEstelas ? "✓ Estelas" : "Estelas ocultas"}
+                        </button>
+                      </div>
+                    </div>
 
-      {redPostes.map((p, i) => (
-        <line
-          key={`poste-${i}`}
-          x1={p.p1.sx}
-          y1={p.p1.sy}
-          x2={p.p2.sx}
-          y2={p.p2.sy}
-          stroke="#ffffff"
-          strokeWidth={4}
-          strokeLinecap="round"
-        />
-      ))}
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 mb-1">
+                        Zona
+                      </label>
+                      <div className="flex flex-wrap gap-1">
+                        {[1, 2, 3, 4, 5, 6].map((z) => (
+                          <button
+                            key={z}
+                            onClick={() =>
+                              setFiltroZona(filtroZona === z ? null : z)
+                            }
+                            className={`px-3 py-1 text-xs rounded-lg border transition ${
+                              filtroZona === z
+                                ? "bg-cyan-500 text-white border-cyan-500"
+                                : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                            }`}
+                          >
+                            Zona {z}
+                          </button>
+                        ))}
+                        {filtroZona !== null && (
+                          <button
+                            onClick={() => setFiltroZona(null)}
+                            className="px-3 py-1 text-xs rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                          >
+                            ✕ Quitar zona
+                          </button>
+                        )}
+                      </div>
+                    </div>
 
-      {trayectorias.map((t, i) => {
-        const inicio = t.puntos3D[0];
-        const fin = t.puntos3D[t.puntos3D.length - 1];
+                    <div className="mt-3">
+                      <label className="block text-xs font-medium text-slate-500 mb-1">
+                        Calidad
+                      </label>
+                      <div className="flex flex-wrap gap-1">
+                        <button
+                          onClick={() => setFiltrosCalidad([])}
+                          className={`px-2.5 py-1 text-xs rounded-lg border transition ${
+                            filtrosCalidad.length === 0
+                              ? "bg-slate-800 text-white border-slate-800"
+                              : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                          }`}
+                        >
+                          Todas
+                        </button>
+                        <button
+                          onClick={() => setFiltrosCalidad([1, 2])}
+                          className={`px-2.5 py-1 text-xs rounded-lg border transition ${
+                            filtrosCalidad.length === 2 &&
+                            filtrosCalidad.includes(1) &&
+                            filtrosCalidad.includes(2)
+                              ? "bg-red-500 text-white border-red-500"
+                              : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                          }`}
+                        >
+                          Malas (1-2)
+                        </button>
+                        <button
+                          onClick={() => setFiltrosCalidad([3, 4])}
+                          className={`px-2.5 py-1 text-xs rounded-lg border transition ${
+                            filtrosCalidad.length === 2 &&
+                            filtrosCalidad.includes(3) &&
+                            filtrosCalidad.includes(4)
+                              ? "bg-yellow-500 text-white border-yellow-500"
+                              : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                          }`}
+                        >
+                          Medias (3-4)
+                        </button>
+                        <button
+                          onClick={() => setFiltrosCalidad([5, 6])}
+                          className={`px-2.5 py-1 text-xs rounded-lg border transition ${
+                            filtrosCalidad.length === 2 &&
+                            filtrosCalidad.includes(5) &&
+                            filtrosCalidad.includes(6)
+                              ? "bg-green-600 text-white border-green-600"
+                              : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                          }`}
+                        >
+                          Buenas (5-6)
+                        </button>
+                        {[1, 2, 3, 4, 5, 6].map((c) => {
+                          const color = COLORES_CALIDAD[c];
+                          const activo = filtrosCalidad.includes(c);
+                          return (
+                            <button
+                              key={c}
+                              onClick={() => {
+                                if (activo) {
+                                  setFiltrosCalidad(
+                                    filtrosCalidad.filter((x) => x !== c)
+                                  );
+                                } else {
+                                  setFiltrosCalidad([...filtrosCalidad, c]);
+                                }
+                              }}
+                              className={`w-8 h-7 text-xs rounded-lg border-2 font-bold transition ${
+                                activo
+                                  ? "text-white"
+                                  : "bg-white text-slate-600"
+                              }`}
+                              style={
+                                activo
+                                  ? {
+                                      backgroundColor: color,
+                                      borderColor: color,
+                                    }
+                                  : { borderColor: color }
+                              }
+                            >
+                              {c}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
 
-        const inicioGround: [number, number, number] = [
-          inicio[0],
-          0.05,
-          inicio[2],
-        ];
-        const finBall: [number, number, number] = [
-          fin[0],
-          Math.max(0.15, fin[1]),
-          fin[2],
-        ];
+                    <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+                      <span>
+                        Mostrando {armadosFiltrados.length} de {armados.length}{" "}
+                        armados
+                      </span>
+                    </div>
+                  </div>
 
-        const inicioGroundPos = proyectar(
-          inicioGround[0],
-          inicioGround[2],
-          inicioGround[1],
-          vista,
-          escala
-        );
-        const inicioPos = proyectar(
-          inicio[0],
-          inicio[2],
-          inicio[1],
-          vista,
-          escala
-        );
-        const finPos = proyectar(
-          finBall[0],
-          finBall[2],
-          finBall[1],
-          vista,
-          escala
-        );
-
-        return (
-          <g key={i}>
-            {mostrarEstelas &&
-              t.paths.map((path, j) => (
-                <path
-                  key={`path-${j}`}
-                  d={path}
-                  fill="none"
-                  stroke={t.color}
-                  strokeWidth={2}
-                  strokeOpacity={0.85}
-                  strokeLinecap="round"
-                />
-              ))}
-
-            {inicio[1] > 0.2 && (
-              <line
-                x1={inicioGroundPos.sx}
-                y1={inicioGroundPos.sy}
-                x2={inicioPos.sx}
-                y2={inicioPos.sy}
-                stroke={t.color}
-                strokeWidth={1}
-                opacity={0.45}
-                strokeDasharray="4 3"
-              />
-            )}
-
-            <polygon
-              points={estrella(
-                inicioGroundPos.sx,
-                inicioGroundPos.sy,
-                7,
-                3.5
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex items-center justify-center">
+                    <CanchaArmador
+                      armados={armadosFiltrados}
+                      vista={vista}
+                      width={1000}
+                      height={760}
+                      mostrarEstelas={mostrarEstelas}
+                    />
+                  </div>
+                </>
               )}
-              fill={t.color}
-              stroke="white"
-              strokeWidth={1.5}
-              strokeLinejoin="round"
-            />
+            </>
+          )}
 
-            <circle
-              cx={finPos.sx}
-              cy={finPos.sy}
-              r={RADIO_PELOTA}
-              fill={mezclarConBlanco(t.color, 0.6)}
-              stroke="white"
-              strokeWidth={1.5}
+          {!cargando && tab === "saque" && (
+            <VisualizacionFundamento
+              tipo="saque"
+              acciones={saques}
+              jugadoresIds={jugadoresEquipo}
+              nombresJugadores={nombresJugadores}
             />
-          </g>
-        );
-      })}
-    </svg>
+          )}
+
+          {!cargando && tab === "recepcion" && (
+            <VisualizacionFundamento
+              tipo="recepcion"
+              acciones={recepciones}
+              jugadoresIds={jugadoresEquipo}
+              nombresJugadores={nombresJugadores}
+            />
+          )}
+
+          {!cargando && tab === "ataque" && (
+            <VisualizacionFundamento
+              tipo="ataque"
+              acciones={ataques}
+              jugadoresIds={jugadoresEquipo}
+              nombresJugadores={nombresJugadores}
+            />
+          )}
+        </>
+      )}
+    </div>
   );
-}
-
-function estrella(cx: number, cy: number, rExt: number, rInt: number): string {
-  const pts: string[] = [];
-  for (let i = 0; i < 10; i++) {
-    const r = i % 2 === 0 ? rExt : rInt;
-    const ang = (Math.PI / 5) * i - Math.PI / 2;
-    pts.push(`${cx + r * Math.cos(ang)},${cy + r * Math.sin(ang)}`);
-  }
-  return pts.join(" ");
 }
