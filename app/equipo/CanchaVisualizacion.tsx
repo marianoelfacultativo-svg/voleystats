@@ -1,6 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
+import { Canvas, useThree } from "@react-three/fiber";
+import { Line, OrbitControls } from "@react-three/drei";
+import * as THREE from "three";
 
 export type TipoFundamento = "saque" | "recepcion" | "ataque";
 
@@ -147,100 +150,6 @@ function prand(seed: string, key: string): number {
   return (h % 100000) / 100000;
 }
 
-function randomizar(
-  coords: { x: number; z: number },
-  id: string,
-  key: string
-): { x: number; z: number } {
-  const rx = prand(id, key + "-x");
-  const rz = prand(id, key + "-z");
-  return {
-    x: coords.x + (rx - 0.5) * 0.6,
-    z: coords.z + (rz - 0.5) * 0.6,
-  };
-}
-
-const ALTURA_RED = 2.43;
-const GRAVEDAD = 9.8;
-const RADIO_PELOTA = 10;
-
-const ISO_ANGLE_DEG = 22;
-const ISO_COS = Math.cos((ISO_ANGLE_DEG * Math.PI) / 180);
-const ISO_SIN = Math.sin((ISO_ANGLE_DEG * Math.PI) / 180);
-const FRONT_Z_FACTOR = 0.12;
-const PARALELA_X_FACTOR = 0.15;
-
-const RED_X1 = 2;
-const RED_X2 = 11;
-const RED_Y_TOP = 2.43;
-const RED_Y_BOTTOM = 1.43;
-const ALTURA_VARILLA = 1.0;
-
-function mezclarConBlanco(hex: string, cantidad: number): string {
-  const h = hex.replace("#", "");
-  const r = parseInt(h.substring(0, 2), 16);
-  const g = parseInt(h.substring(2, 4), 16);
-  const b = parseInt(h.substring(4, 6), 16);
-  const nr = Math.round(r + (255 - r) * cantidad);
-  const ng = Math.round(g + (255 - g) * cantidad);
-  const nb = Math.round(b + (255 - b) * cantidad);
-  return `rgb(${nr}, ${ng}, ${nb})`;
-}
-
-const ESCALA = 45;
-
-const OFFSET: Record<Vista, { x: number; y: number }> = {
-  top: { x: 150, y: 300 },
-  front: { x: 150, y: 520 },
-  "front-rival": { x: 150, y: 520 },
-  "iso-izq": { x: 400, y: 400 },
-  "iso-der": { x: 590, y: 400 },
-};
-
-function proyectar(
-  x: number,
-  z: number,
-  y: number,
-  vista: Vista,
-  escala: number
-): { sx: number; sy: number } {
-  switch (vista) {
-    case "top":
-      return {
-        sx: x * escala + OFFSET.top.x,
-        sy: z * escala + OFFSET.top.y,
-      };
-    case "front":
-      return {
-        sx: x * escala + OFFSET.front.x,
-        sy: -y * escala + z * escala * FRONT_Z_FACTOR + OFFSET.front.y,
-      };
-    case "front-rival":
-      return {
-        sx:
-          (13 - x) * escala +
-          OFFSET["front-rival"].x,
-        sy:
-          -y * escala -
-          z * escala * FRONT_Z_FACTOR +
-          OFFSET["front-rival"].y,
-      };
-    case "iso-izq":
-      return {
-        sx: (x - z) * ISO_COS * escala + OFFSET["iso-izq"].x,
-        sy: (x + z) * ISO_SIN * escala - y * escala + OFFSET["iso-izq"].y,
-      };
-    case "iso-der": {
-      const xr = 13 - x;
-      const zr = 9 - z;
-      return {
-        sx: (xr - zr) * ISO_COS * escala + OFFSET["iso-der"].x,
-        sy: (xr + zr) * ISO_SIN * escala - y * escala + OFFSET["iso-der"].y,
-      };
-    }
-  }
-}
-
 interface ParametrosTrayectoria {
   hOrigen: number;
   hDestino: number;
@@ -260,63 +169,69 @@ function getParametros(
     };
   }
   if (tipo === "ataque") {
-    return { hOrigen: 2.8, hDestino: 0, esRecto: false };
-  }
-  return { hOrigen: 0.3, hDestino: 2.2, esRecto: false };
-}
-
-function generarSegmento(
-  a: { x: number; z: number },
-  b: { x: number; z: number },
-  params: ParametrosTrayectoria,
-  vista: Vista,
-  escala: number,
-  necesitaPasarRed: boolean
-): { path: string; puntos3D: [number, number, number][] } {
-  const { hOrigen, hDestino, esRecto } = params;
-
-  const dx = b.x - a.x;
-  const dz = b.z - a.z;
-  const distH = Math.sqrt(dx * dx + dz * dz);
-
-  if (distH < 0.001) {
     return {
-      path: "",
-      puntos3D: [
-        [a.x, hOrigen, a.z],
-        [b.x, hDestino, b.z],
-      ],
+      hOrigen: 2.8,
+      hDestino: 0,
+      esRecto: false,
     };
   }
+  return {
+    hOrigen: 0.3,
+    hDestino: 2.2,
+    esRecto: false,
+  };
+}
+
+const ALTURA_RED = 2.43;
+const GRAVEDAD = 9.8;
+
+function generarSegmento(
+  a: [number, number, number],
+  b: [number, number, number],
+  params: ParametrosTrayectoria,
+  necesitaPasarRed: boolean
+): [number, number, number][] {
+  const { hOrigen, hDestino, esRecto } = params;
+
+  const dx = b[0] - a[0];
+  const dz = b[2] - a[2];
+  const distH = Math.sqrt(dx * dx + dz * dz);
+
+  if (distH < 0.001) return [a, b];
 
   if (esRecto) {
-    const pasos = 30;
-    let path = "";
-    const puntos3D: [number, number, number][] = [];
+    const pasos = 40;
+    const pts: [number, number, number][] = [];
     for (let i = 0; i <= pasos; i++) {
       const t = i / pasos;
-      const x = a.x + t * dx;
-      const z = a.z + t * dz;
-      const y = Math.max(0, hOrigen + t * (hDestino - hOrigen));
-      puntos3D.push([x, y, z]);
-      const p = proyectar(x, z, y, vista, escala);
-      path += i === 0 ? `M ${p.sx} ${p.sy}` : ` L ${p.sx} ${p.sy}`;
+      pts.push([
+        a[0] + t * dx,
+        Math.max(0, hOrigen + t * (hDestino - hOrigen)),
+        a[2] + t * dz,
+      ]);
     }
-    return { path, puntos3D };
+    return pts;
   }
 
-  const cruzandoRed = (a.z >= 0 && b.z < 0) || (a.z < 0 && b.z >= 0);
+  const cruzandoRed = (a[2] >= 0 && b[2] < 0) || (a[2] < 0 && b[2] >= 0);
 
   let T: number;
+
   if (necesitaPasarRed && cruzandoRed) {
-    const tRedRatio = -a.z / (b.z - a.z);
+    const tRedRatio = -a[2] / (b[2] - a[2]);
+
     if (tRedRatio > 0.05 && tRedRatio < 0.95) {
       const hRedMin = ALTURA_RED + 0.05;
       const num = (hDestino - hOrigen) - (hRedMin - hOrigen) / tRedRatio;
       const den = 0.5 * GRAVEDAD * (tRedRatio - 1);
+
       if (Math.abs(den) > 0.001) {
         const T2 = num / den;
-        T = T2 > 0 ? Math.sqrt(T2) : distH / 8;
+        if (T2 > 0) {
+          T = Math.sqrt(T2);
+        } else {
+          T = distH / 8;
+        }
       } else {
         T = distH / 8;
       }
@@ -331,22 +246,366 @@ function generarSegmento(
   const vx = dx / T;
   const vz = dz / T;
 
-  const pasos = 30;
-  let path = "";
-  const puntos3D: [number, number, number][] = [];
+  const pasos = 40;
+  const pts: [number, number, number][] = [];
   for (let i = 0; i <= pasos; i++) {
     const t = (i / pasos) * T;
-    const x = a.x + vx * t;
-    const z = a.z + vz * t;
-    const y = Math.max(0, hOrigen + vy * t - 0.5 * GRAVEDAD * t * t);
-    puntos3D.push([x, y, z]);
-    const p = proyectar(x, z, y, vista, escala);
-    path += i === 0 ? `M ${p.sx} ${p.sy}` : ` L ${p.sx} ${p.sy}`;
+    const x = a[0] + vx * t;
+    const y = hOrigen + vy * t - 0.5 * GRAVEDAD * t * t;
+    const z = a[2] + vz * t;
+    pts.push([x, Math.max(0, y), z]);
   }
-  return { path, puntos3D };
+  return pts;
 }
 
-export default function CanchaVisualizacion({
+function generarPuntos3D(
+  tipo: TipoFundamento,
+  item: ItemVisual
+): [number, number, number][] {
+  const origenBase = obtenerCoords(item.origen.celda, item.origen.mini);
+  const destinoBase = obtenerCoords(item.destino.celda, item.destino.mini);
+  if (!origenBase || !destinoBase) return [];
+
+  const desviosBase =
+    item.desvios
+      ?.map((d) => obtenerCoords(d.celda, d.mini))
+      .filter((p): p is { x: number; z: number } => p !== null) ?? [];
+
+  const debeRandomizar = item.randomizar !== false;
+
+  const rand = (
+    c: { x: number; z: number },
+    key: string
+  ): { x: number; z: number } => {
+    if (!debeRandomizar) return c;
+    const rx = prand(item.id, key + "-x");
+    const rz = prand(item.id, key + "-z");
+    return {
+      x: c.x + (rx - 0.5) * 0.6,
+      z: c.z + (rz - 0.5) * 0.6,
+    };
+  };
+
+  let origen = rand(origenBase, "-origen");
+
+  // Si es saque, forzar el origen a la línea de fondo propia
+  if (tipo === "saque") {
+    origen = { x: origen.x, z: 9.5 };
+    if (origen.x < 2 || origen.x > 11) {
+      origen = { x: 6.5, z: 9.5 };
+    }
+  }
+
+  let destino = rand(destinoBase, "-destino");
+
+  // Solo sacamos la pelota afuera si es error
+  const ext = item.esError
+    ? extensionPorBorde(item.destino.celda, item.destino.mini)
+    : null;
+  if (ext) {
+    destino = { x: destino.x + ext.dx, z: destino.z + ext.dz };
+  }
+
+  const desvios = desviosBase.map((d, i) => rand(d, `-desvio-${i}`));
+
+  const params = getParametros(tipo, item);
+  const necesitaPasarRed = tipo === "saque" || tipo === "ataque";
+
+  // ----- CASO ESPECIAL: saque que queda en la red -----
+  // Si el destino NO cruzó bien la red (z > -0.5), la pelota choca
+  // contra la red y cae del lado propio.
+  const quedoEnRed = tipo === "saque" && destino.z > -0.5;
+
+  if (quedoEnRed) {
+    // Punto de choque contra la red
+    const puntoRed: [number, number, number] = [destino.x, 0, 0];
+    // Punto de caída: del lado propio, cerca de la red
+    const puntoCaida: [number, number, number] = [destino.x, 0, 0.8];
+
+    // Segmento 1: origen → red (física normal)
+    const seg1 = generarSegmento(
+      [origen.x, 0, origen.z],
+      puntoRed,
+      params,
+      necesitaPasarRed
+    );
+
+    // Segmento 2: red → caída (arco corto de rebote)
+    const paramsRebote: ParametrosTrayectoria = {
+      hOrigen: 0.5,
+      hDestino: 0,
+      esRecto: false,
+    };
+    const seg2 = generarSegmento(puntoRed, puntoCaida, paramsRebote, false);
+
+    return [...seg1, ...seg2];
+  }
+
+  // ----- CASO NORMAL -----
+  const waypoints: [number, number, number][] = [
+    [origen.x, 0, origen.z],
+    ...desvios.map((d): [number, number, number] => [d.x, 0, d.z]),
+    [destino.x, 0, destino.z],
+  ];
+
+  const puntos: [number, number, number][] = [];
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const segPts = generarSegmento(
+      waypoints[i],
+      waypoints[i + 1],
+      params,
+      necesitaPasarRed
+    );
+    if (i > 0) segPts.shift();
+    puntos.push(...segPts);
+  }
+  return puntos;
+}
+
+const Trajectory = React.memo(function Trajectory({
+  tipo,
+  item,
+  mostrarEstelas,
+}: {
+  tipo: TipoFundamento;
+  item: ItemVisual;
+  mostrarEstelas: boolean;
+}) {
+  const points = useMemo(() => generarPuntos3D(tipo, item), [tipo, item]);
+  if (points.length < 2) return null;
+
+  const inicio = points[0];
+  const fin = points[points.length - 1];
+
+  const inicioGround: [number, number, number] = [inicio[0], 0.05, inicio[2]];
+  const finBall: [number, number, number] = [
+    fin[0],
+    Math.max(0.15, fin[1]),
+    fin[2],
+  ];
+
+  return (
+    <group>
+      {mostrarEstelas && (
+        <>
+          <Line
+            points={points}
+            color={item.color}
+            lineWidth={10}
+            transparent
+            opacity={0.12}
+          />
+          <Line
+            points={points}
+            color={item.color}
+            lineWidth={4}
+            transparent
+            opacity={0.35}
+          />
+          <Line
+            points={points}
+            color={item.color}
+            lineWidth={2}
+            transparent
+            opacity={0.95}
+          />
+        </>
+      )}
+
+      {inicio[1] > 0.2 && (
+        <Line
+          points={[inicioGround, inicio]}
+          color={item.color}
+          lineWidth={1}
+          transparent
+          opacity={0.45}
+          dashed
+          dashSize={0.15}
+          gapSize={0.1}
+        />
+      )}
+
+      <mesh position={inicioGround}>
+        <octahedronGeometry args={[0.18, 0]} />
+        <meshStandardMaterial
+          color={item.color}
+          emissive={item.color}
+          emissiveIntensity={0.6}
+        />
+      </mesh>
+
+      <mesh position={finBall}>
+        <sphereGeometry args={[0.15, 20, 20]} />
+        <meshStandardMaterial
+          color="#f8fafc"
+          emissive={item.color}
+          emissiveIntensity={0.4}
+          metalness={0.1}
+          roughness={0.4}
+        />
+      </mesh>
+    </group>
+  );
+});
+
+const Court = React.memo(function Court() {
+  return (
+    <group>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[6.5, -0.02, 0]}>
+        <planeGeometry args={[40, 40]} />
+        <meshStandardMaterial color="#1e3a8a" />
+      </mesh>
+
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[6.5, 0, 4.5]}>
+        <planeGeometry args={[9, 9]} />
+        <meshStandardMaterial color="#2563eb" />
+      </mesh>
+
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[6.5, 0, -4.5]}>
+        <planeGeometry args={[9, 9]} />
+        <meshStandardMaterial color="#2563eb" />
+      </mesh>
+
+      <Line
+        points={[
+          [2, 0.01, -9],
+          [11, 0.01, -9],
+          [11, 0.01, 9],
+          [2, 0.01, 9],
+          [2, 0.01, -9],
+        ]}
+        color="white"
+        lineWidth={2}
+      />
+      <Line
+        points={[
+          [2, 0.01, 0],
+          [11, 0.01, 0],
+        ]}
+        color="white"
+        lineWidth={2}
+      />
+      <Line
+        points={[
+          [2, 0.01, 3],
+          [11, 0.01, 3],
+        ]}
+        color="white"
+        lineWidth={1.5}
+      />
+      <Line
+        points={[
+          [2, 0.01, -3],
+          [11, 0.01, -3],
+        ]}
+        color="white"
+        lineWidth={1.5}
+      />
+    </group>
+  );
+});
+
+const Net = React.memo(function Net() {
+  const postHeight = 2.43;
+  return (
+    <group>
+      <mesh position={[2, postHeight / 2, 0]}>
+        <cylinderGeometry args={[0.06, 0.06, postHeight, 12]} />
+        <meshStandardMaterial color="#f1f5f9" />
+      </mesh>
+      <mesh position={[11, postHeight / 2, 0]}>
+        <cylinderGeometry args={[0.06, 0.06, postHeight, 12]} />
+        <meshStandardMaterial color="#f1f5f9" />
+      </mesh>
+
+      <mesh position={[6.5, postHeight, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.03, 0.03, 9, 8]} />
+        <meshStandardMaterial color="#f1f5f9" />
+      </mesh>
+      <mesh position={[6.5, 1.43, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.03, 0.03, 9, 8]} />
+        <meshStandardMaterial color="#f1f5f9" />
+      </mesh>
+
+      {Array.from({ length: 25 }).map((_, i) => {
+        const x = 2 + (i / 24) * 9;
+        return (
+          <Line
+            key={`v-${i}`}
+            points={[
+              [x, 1.43, 0],
+              [x, 2.43, 0],
+            ]}
+            color="#e2e8f0"
+            lineWidth={0.6}
+            transparent
+            opacity={0.5}
+          />
+        );
+      })}
+      {Array.from({ length: 5 }).map((_, i) => {
+        const y = 1.43 + (i / 4) * 1;
+        return (
+          <Line
+            key={`h-${i}`}
+            points={[
+              [2, y, 0],
+              [11, y, 0],
+            ]}
+            color="#e2e8f0"
+            lineWidth={0.6}
+            transparent
+            opacity={0.5}
+          />
+        );
+      })}
+    </group>
+  );
+});
+
+const CameraController = React.memo(function CameraController({
+  vista,
+}: {
+  vista: Vista;
+}) {
+  const { camera } = useThree();
+  const controlsRef = useRef<any>(null);
+
+  useEffect(() => {
+    const positions: Record<Vista, [number, number, number]> = {
+      front: [6.5, 6, 20],
+      top: [6.5, 26, 0.01],
+      "front-rival": [6.5, 6, -20],
+      "iso-izq": [-10, 14, 14],
+      "iso-der": [23, 14, 14],
+    };
+    const pos = positions[vista];
+    camera.position.set(pos[0], pos[1], pos[2]);
+    camera.lookAt(6.5, 1.5, 0);
+    if (camera instanceof THREE.PerspectiveCamera) {
+      camera.updateProjectionMatrix();
+    }
+    if (controlsRef.current) {
+      controlsRef.current.target.set(6.5, 1.5, 0);
+      controlsRef.current.update();
+    }
+  }, [vista, camera]);
+
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      target={[6.5, 1.5, 0]}
+      enablePan
+      enableZoom
+      enableRotate
+      minDistance={5}
+      maxDistance={50}
+      maxPolarAngle={Math.PI / 2 - 0.02}
+    />
+  );
+});
+
+export default function CanchaVisualizacion3D({
   tipo,
   items,
   vista = "top",
@@ -354,363 +613,33 @@ export default function CanchaVisualizacion({
   height = 760,
   mostrarEstelas = true,
 }: Props) {
-  const escala = ESCALA;
-  const mostrarRival = tipo === "saque" || tipo === "ataque";
-
-  const trayectorias = useMemo(() => {
-    return items
-      .map((it) => {
-        const origenBase = obtenerCoords(it.origen.celda, it.origen.mini);
-        const destinoBase = obtenerCoords(it.destino.celda, it.destino.mini);
-        if (!origenBase || !destinoBase) return null;
-
-        const desviosBase =
-          it.desvios
-            ?.map((d) => obtenerCoords(d.celda, d.mini))
-            .filter((p): p is { x: number; z: number } => p !== null) ?? [];
-
-        const debeRandomizar = it.randomizar !== false;
-        let origen = debeRandomizar
-          ? randomizar(origenBase, it.id, "-origen")
-          : origenBase;
-
-        if (tipo === "saque") {
-          origen = { x: origen.x, z: 9.5 };
-          if (origen.x < 2 || origen.x > 11) {
-            origen = { x: 6.5, z: 9.5 };
-          }
-        }
-
-        let destino = debeRandomizar
-          ? randomizar(destinoBase, it.id, "-destino")
-          : destinoBase;
-
-        const ext = it.esError
-          ? extensionPorBorde(it.destino.celda, it.destino.mini)
-          : null;
-        if (ext) {
-          destino = { x: destino.x + ext.dx, z: destino.z + ext.dz };
-        }
-
-        const desvios = debeRandomizar
-          ? desviosBase.map((d, i) =>
-              randomizar(d, it.id, `-desvio-${i}`)
-            )
-          : desviosBase;
-
-        const waypoints = [origen, ...desvios, destino];
-        const params = getParametros(tipo, it);
-        const necesitaPasarRed = tipo === "saque" || tipo === "ataque";
-
-        const paths: string[] = [];
-        const puntos3D: [number, number, number][] = [];
-        for (let i = 0; i < waypoints.length - 1; i++) {
-          const seg = generarSegmento(
-            waypoints[i],
-            waypoints[i + 1],
-            params,
-            vista,
-            escala,
-            necesitaPasarRed
-          );
-          paths.push(seg.path);
-          if (i > 0) seg.puntos3D.shift();
-          puntos3D.push(...seg.puntos3D);
-        }
-
-        return {
-          item: it,
-          paths,
-          puntos3D,
-          color: it.color,
-        };
-      })
-      .filter((t): t is NonNullable<typeof t> => t !== null);
-  }, [items, tipo, vista, escala]);
-
-  const contornoPropio = useMemo(() => {
-    const esquinas = [
-      proyectar(2, 0, 0, vista, escala),
-      proyectar(11, 0, 0, vista, escala),
-      proyectar(11, 9, 0, vista, escala),
-      proyectar(2, 9, 0, vista, escala),
-    ];
-    return esquinas.map((p) => `${p.sx},${p.sy}`).join(" ");
-  }, [vista, escala]);
-
-  const contornoRival = useMemo(() => {
-    if (!mostrarRival) return "";
-    const esquinas = [
-      proyectar(2, 0, 0, vista, escala),
-      proyectar(11, 0, 0, vista, escala),
-      proyectar(11, -9, 0, vista, escala),
-      proyectar(2, -9, 0, vista, escala),
-    ];
-    return esquinas.map((p) => `${p.sx},${p.sy}`).join(" ");
-  }, [vista, escala, mostrarRival]);
-
-  const lineaMedio = useMemo(
-    () => ({
-      p1: proyectar(2, 0, 0, vista, escala),
-      p2: proyectar(11, 0, 0, vista, escala),
-    }),
-    [vista, escala]
-  );
-
-  const lineaAtaquePropia = useMemo(
-    () => ({
-      p1: proyectar(2, 3, 0, vista, escala),
-      p2: proyectar(11, 3, 0, vista, escala),
-    }),
-    [vista, escala]
-  );
-
-  const lineaAtaqueRival = useMemo(() => {
-    if (!mostrarRival) return null;
-    return {
-      p1: proyectar(2, -3, 0, vista, escala),
-      p2: proyectar(11, -3, 0, vista, escala),
-    };
-  }, [vista, escala, mostrarRival]);
-
-  const red = useMemo(
-    () => ({
-      p1: proyectar(RED_X1, 0, RED_Y_TOP, vista, escala),
-      p2: proyectar(RED_X2, 0, RED_Y_TOP, vista, escala),
-    }),
-    [vista, escala]
-  );
-
-  const redMalla = useMemo(() => {
-    const lineas: {
-      p1: { sx: number; sy: number };
-      p2: { sx: number; sy: number };
-    }[] = [];
-    const pasos = 20;
-    for (let i = 0; i <= pasos; i++) {
-      const x = RED_X1 + ((RED_X2 - RED_X1) * i) / pasos;
-      const abajo = proyectar(x, 0, RED_Y_BOTTOM, vista, escala);
-      const arriba = proyectar(x, 0, RED_Y_TOP, vista, escala);
-      lineas.push({ p1: abajo, p2: arriba });
-    }
-    const filasRed = 4;
-    for (let j = 0; j <= filasRed; j++) {
-      const h = RED_Y_BOTTOM + ((RED_Y_TOP - RED_Y_BOTTOM) * j) / filasRed;
-      const izq = proyectar(RED_X1, 0, h, vista, escala);
-      const der = proyectar(RED_X2, 0, h, vista, escala);
-      lineas.push({ p1: izq, p2: der });
-    }
-    return lineas;
-  }, [vista, escala]);
-
-  const redPostes = useMemo(
-    () => [
-      {
-        p1: proyectar(RED_X1, 0, 0, vista, escala),
-        p2: proyectar(RED_X1, 0, RED_Y_TOP, vista, escala),
-      },
-      {
-        p1: proyectar(RED_X2, 0, 0, vista, escala),
-        p2: proyectar(RED_X2, 0, RED_Y_TOP, vista, escala),
-      },
-    ],
-    [vista, escala]
-  );
-
   return (
-    <svg
-      width={width}
-      height={height}
-      viewBox={`0 0 ${width} ${height}`}
-      className="rounded-xl"
-      style={{
-        background:
-          "linear-gradient(180deg, #cfe4f7 0%, #b8d8f0 50%, #a8cbe8 100%)",
-      }}
+    <div
+      style={{ width: `${width}px`, height: `${height}px` }}
+      className="rounded-xl overflow-hidden bg-gradient-to-b from-sky-100 to-sky-200"
     >
-      {mostrarRival && (
-        <polygon
-          points={contornoRival}
-          fill="#3b82f6"
-          stroke="#ffffff"
-          strokeWidth={3}
-          strokeLinejoin="round"
-        />
-      )}
+      <Canvas
+        camera={{ position: [6.5, 26, 0.01], fov: 45, near: 0.1, far: 200 }}
+        dpr={[1, 2]}
+      >
+        <ambientLight intensity={0.9} />
+        <directionalLight position={[10, 15, 5]} intensity={0.8} />
+        <directionalLight position={[-10, 10, -5]} intensity={0.4} />
 
-      <polygon
-        points={contornoPropio}
-        fill="#3b82f6"
-        stroke="#ffffff"
-        strokeWidth={3}
-        strokeLinejoin="round"
-      />
+        <Court />
+        <Net />
 
-      <line
-        x1={lineaMedio.p1.sx}
-        y1={lineaMedio.p1.sy}
-        x2={lineaMedio.p2.sx}
-        y2={lineaMedio.p2.sy}
-        stroke="#ffffff"
-        strokeWidth={2}
-        opacity={0.9}
-      />
-      <line
-        x1={lineaAtaquePropia.p1.sx}
-        y1={lineaAtaquePropia.p1.sy}
-        x2={lineaAtaquePropia.p2.sx}
-        y2={lineaAtaquePropia.p2.sy}
-        stroke="#ffffff"
-        strokeWidth={2}
-        opacity={0.85}
-      />
+        {items.map((it) => (
+          <Trajectory
+            key={it.id}
+            tipo={tipo}
+            item={it}
+            mostrarEstelas={mostrarEstelas}
+          />
+        ))}
 
-      {lineaAtaqueRival && (
-        <line
-          x1={lineaAtaqueRival.p1.sx}
-          y1={lineaAtaqueRival.p1.sy}
-          x2={lineaAtaqueRival.p2.sx}
-          y2={lineaAtaqueRival.p2.sy}
-          stroke="#ffffff"
-          strokeWidth={2}
-          opacity={0.85}
-        />
-      )}
-
-      {redMalla.map((l, i) => (
-        <line
-          key={`malla-${i}`}
-          x1={l.p1.sx}
-          y1={l.p1.sy}
-          x2={l.p2.sx}
-          y2={l.p2.sy}
-          stroke="#ffffff"
-          strokeWidth={0.7}
-          opacity={0.5}
-        />
-      ))}
-
-      <line
-        x1={red.p1.sx}
-        y1={red.p1.sy}
-        x2={red.p2.sx}
-        y2={red.p2.sy}
-        stroke="#ffffff"
-        strokeWidth={2.5}
-      />
-
-      {redPostes.map((p, i) => (
-        <line
-          key={`poste-${i}`}
-          x1={p.p1.sx}
-          y1={p.p1.sy}
-          x2={p.p2.sx}
-          y2={p.p2.sy}
-          stroke="#ffffff"
-          strokeWidth={4}
-          strokeLinecap="round"
-        />
-      ))}
-
-      {trayectorias.map((t, i) => {
-        const inicio = t.puntos3D[0];
-        const fin = t.puntos3D[t.puntos3D.length - 1];
-
-        const inicioGround: [number, number, number] = [
-          inicio[0],
-          0.05,
-          inicio[2],
-        ];
-        const finBall: [number, number, number] = [
-          fin[0],
-          Math.max(0.15, fin[1]),
-          fin[2],
-        ];
-
-        const inicioGroundPos = proyectar(
-          inicioGround[0],
-          inicioGround[2],
-          inicioGround[1],
-          vista,
-          escala
-        );
-        const inicioPos = proyectar(
-          inicio[0],
-          inicio[2],
-          inicio[1],
-          vista,
-          escala
-        );
-        const finPos = proyectar(
-          finBall[0],
-          finBall[2],
-          finBall[1],
-          vista,
-          escala
-        );
-
-        return (
-          <g key={i}>
-            {mostrarEstelas &&
-              t.paths.map((path, j) => (
-                <path
-                  key={`path-${j}`}
-                  d={path}
-                  fill="none"
-                  stroke={t.color}
-                  strokeWidth={2}
-                  strokeOpacity={0.85}
-                  strokeLinecap="round"
-                />
-              ))}
-
-            {inicio[1] > 0.2 && (
-              <line
-                x1={inicioGroundPos.sx}
-                y1={inicioGroundPos.sy}
-                x2={inicioPos.sx}
-                y2={inicioPos.sy}
-                stroke={t.color}
-                strokeWidth={1}
-                opacity={0.45}
-                strokeDasharray="4 3"
-              />
-            )}
-
-            <polygon
-              points={estrella(
-                inicioGroundPos.sx,
-                inicioGroundPos.sy,
-                7,
-                3.5
-              )}
-              fill={t.color}
-              stroke="white"
-              strokeWidth={1.5}
-              strokeLinejoin="round"
-            />
-
-            <circle
-              cx={finPos.sx}
-              cy={finPos.sy}
-              r={RADIO_PELOTA}
-              fill={mezclarConBlanco(t.color, 0.6)}
-              stroke="white"
-              strokeWidth={1.5}
-            />
-          </g>
-        );
-      })}
-    </svg>
+        <CameraController vista={vista} />
+      </Canvas>
+    </div>
   );
-}
-
-function estrella(cx: number, cy: number, rExt: number, rInt: number): string {
-  const pts: string[] = [];
-  for (let i = 0; i < 10; i++) {
-    const r = i % 2 === 0 ? rExt : rInt;
-    const ang = (Math.PI / 5) * i - Math.PI / 2;
-    pts.push(`${cx + r * Math.cos(ang)},${cy + r * Math.sin(ang)}`);
-  }
-  return pts.join(" ");
 }
