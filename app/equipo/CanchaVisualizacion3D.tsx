@@ -33,9 +33,6 @@ interface Props {
   mostrarEstelas?: boolean;
 }
 
-// ============================================================
-// COORDENADAS
-// ============================================================
 const COL_X: Record<string, [number, number]> = {
   C1: [0, 2],
   C2: [2, 5],
@@ -199,55 +196,93 @@ function getParametros(
 }
 
 const ALTURA_RED = 2.43;
+const GRAVEDAD = 9.8;
 
+/**
+ * Genera una trayectoria física de proyectil entre dos puntos.
+ *
+ * Si `necesitaPasarRed` es true y la trayectoria cruza z=0, calcula el
+ * tiempo de vuelo T tal que la pelota pase por arriba de la red y llegue
+ * exactamente al destino con altura hDestino.
+ *
+ * Si no cruza la red, usa un tiempo T basado en una velocidad horizontal
+ * razonable.
+ *
+ * La potencia (esRecto) es una línea recta.
+ */
 function generarSegmento(
   a: [number, number, number],
   b: [number, number, number],
   params: ParametrosTrayectoria,
-  forzarDentroDeRed: boolean
+  necesitaPasarRed: boolean
 ): [number, number, number][] {
-  const { hOrigen, hDestino, hApex, esRecto } = params;
+  const { hOrigen, hDestino, esRecto } = params;
 
-  let ctrlX: number | null = null;
-  if (forzarDentroDeRed) {
-    const cruzandoRed = (a[2] > 0 && b[2] < 0) || (a[2] < 0 && b[2] > 0);
-    if (cruzandoRed) {
-      const t = -a[2] / (b[2] - a[2]);
-      const xCross = a[0] + t * (b[0] - a[0]);
-      const minX = 2.2;
-      const maxX = 10.8;
-      if (xCross < minX || xCross > maxX) {
-        const xTarget = xCross < minX ? minX : maxX;
-        const denom = 2 * (1 - t) * t;
-        if (denom !== 0) {
-          ctrlX = (xTarget - (1 - t) ** 2 * a[0] - t ** 2 * b[0]) / denom;
-        }
-      }
+  const dx = b[0] - a[0];
+  const dz = b[2] - a[2];
+  const distH = Math.sqrt(dx * dx + dz * dz);
+
+  if (distH < 0.001) return [a, b];
+
+  // --- Potencia: línea recta del origen al destino ---
+  if (esRecto) {
+    const pasos = 40;
+    const pts: [number, number, number][] = [];
+    for (let i = 0; i <= pasos; i++) {
+      const t = i / pasos;
+      pts.push([
+        a[0] + t * dx,
+        Math.max(0, hOrigen + t * (hDestino - hOrigen)),
+        a[2] + t * dz,
+      ]);
     }
+    return pts;
   }
+
+  // --- Trayectoria tipo proyectil ---
+  const cruzandoRed = (a[2] >= 0 && b[2] < 0) || (a[2] < 0 && b[2] >= 0);
+
+  let T: number;
+
+  if (necesitaPasarRed && cruzandoRed) {
+    const tRedRatio = -a[2] / (b[2] - a[2]);
+
+    if (tRedRatio > 0.05 && tRedRatio < 0.95) {
+      // Resolver T para pasar la red a ALTURA_RED + 0.05 y llegar a hDestino
+      const hRedMin = ALTURA_RED + 0.05;
+      const num = (hDestino - hOrigen) - (hRedMin - hOrigen) / tRedRatio;
+      const den = 0.5 * GRAVEDAD * (tRedRatio - 1);
+
+      if (Math.abs(den) > 0.001) {
+        const T2 = num / den;
+        if (T2 > 0) {
+          T = Math.sqrt(T2);
+        } else {
+          T = distH / 8;
+        }
+      } else {
+        T = distH / 8;
+      }
+    } else {
+      T = distH / 8;
+    }
+  } else {
+    T = distH / 8;
+  }
+
+  // Velocidades
+  const vy = (hDestino - hOrigen + 0.5 * GRAVEDAD * T * T) / T;
+  const vx = dx / T;
+  const vz = dz / T;
 
   const pasos = 40;
   const pts: [number, number, number][] = [];
   for (let i = 0; i <= pasos; i++) {
-    const t = i / pasos;
-    let x: number;
-    if (ctrlX !== null) {
-      x = (1 - t) ** 2 * a[0] + 2 * (1 - t) * t * ctrlX + t ** 2 * b[0];
-    } else {
-      x = a[0] + t * (b[0] - a[0]);
-    }
-    const z = a[2] + t * (b[2] - a[2]);
-    const hBase = hOrigen + t * (hDestino - hOrigen);
-    let altura = hBase;
-    if (!esRecto) {
-      const apexCentrado = (hOrigen + hDestino) / 2;
-      altura = hBase + 4 * t * (1 - t) * (hApex - apexCentrado);
-    }
-    const cruzandoRed = (a[2] >= 0 && b[2] < 0) || (a[2] < 0 && b[2] >= 0);
-    if (cruzandoRed && altura < ALTURA_RED) {
-      altura = ALTURA_RED + 0.05;
-    }
-    pts.push([x, Math.max(0, altura), z]);
+    const t = (i / pasos) * T;
+    const x = a[0] + vx * t;
+    const y = hOrigen + vy * t - 0.5 * GRAVEDAD * t * t;
+    const z = a[2] + vz * t;
+    pts.push([x, Math.max(0, y), z]);
   }
   return pts;
 }
@@ -297,7 +332,7 @@ function generarPuntos3D(
   ];
 
   const params = getParametros(tipo, item);
-  const forzarDentroRed = tipo === "saque" || tipo === "ataque";
+  const necesitaPasarRed = tipo === "saque" || tipo === "ataque";
 
   const puntos: [number, number, number][] = [];
   for (let i = 0; i < waypoints.length - 1; i++) {
@@ -305,7 +340,7 @@ function generarPuntos3D(
       waypoints[i],
       waypoints[i + 1],
       params,
-      forzarDentroRed
+      necesitaPasarRed
     );
     if (i > 0) segPts.shift();
     puntos.push(...segPts);
