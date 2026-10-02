@@ -308,14 +308,45 @@ function generarPuntos3D(
 
   const desvios = desviosBase.map((d, i) => rand(d, `-desvio-${i}`));
 
+  const params = getParametros(tipo, item);
+  const necesitaPasarRed = tipo === "saque" || tipo === "ataque";
+
+  // ----- CASO ESPECIAL: saque que queda en la red -----
+  // Si el destino NO cruzó bien la red (z > -0.5), la pelota choca
+  // contra la red y cae del lado propio.
+  const quedoEnRed = tipo === "saque" && destino.z > -0.5;
+
+  if (quedoEnRed) {
+    // Punto de choque contra la red
+    const puntoRed: [number, number, number] = [destino.x, 0, 0];
+    // Punto de caída: del lado propio, cerca de la red
+    const puntoCaida: [number, number, number] = [destino.x, 0, 0.8];
+
+    // Segmento 1: origen → red (física normal)
+    const seg1 = generarSegmento(
+      [origen.x, 0, origen.z],
+      puntoRed,
+      params,
+      necesitaPasarRed
+    );
+
+    // Segmento 2: red → caída (arco corto de rebote)
+    const paramsRebote: ParametrosTrayectoria = {
+      hOrigen: 0.5,
+      hDestino: 0,
+      esRecto: false,
+    };
+    const seg2 = generarSegmento(puntoRed, puntoCaida, paramsRebote, false);
+
+    return [...seg1, ...seg2];
+  }
+
+  // ----- CASO NORMAL -----
   const waypoints: [number, number, number][] = [
     [origen.x, 0, origen.z],
     ...desvios.map((d): [number, number, number] => [d.x, 0, d.z]),
     [destino.x, 0, destino.z],
   ];
-
-  const params = getParametros(tipo, item);
-  const necesitaPasarRed = tipo === "saque" || tipo === "ataque";
 
   const puntos: [number, number, number][] = [];
   for (let i = 0; i < waypoints.length - 1; i++) {
