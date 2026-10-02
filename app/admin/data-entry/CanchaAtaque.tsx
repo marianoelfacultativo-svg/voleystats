@@ -279,7 +279,6 @@ export default function CanchaAtaque({
     ? posicion(keyPunto(destinoTemp.celda, destinoTemp.mini))
     : null;
 
-  // Indicador: si hay armados pendientes, el próximo ataque hereda
   const hereda = armadosPendientes > 0;
 
   return (
@@ -319,7 +318,6 @@ export default function CanchaAtaque({
         </div>
       </div>
 
-      {/* Indicador de herencia de armado */}
       <div
         className={`mb-1 text-[10px] border rounded px-2 py-1 text-center ${
           hereda
@@ -364,16 +362,30 @@ export default function CanchaAtaque({
         </div>
 
         <svg className="absolute inset-0 pointer-events-none" style={{ width: "100%", height: "100%" }}>
-          {lineasGuardadas.map((l, i) => (
-            <g key={`${i}-${tick}`}>
-              <line x1={l.o.x} y1={l.o.y} x2={l.d.x} y2={l.d.y} stroke={l.color} strokeWidth={2} strokeLinecap="round" opacity={0.85} />
-              {l.desvios.map((dv, j) => (
-                <circle key={j} cx={dv.x} cy={dv.y} r={2.5} fill={l.color} />
-              ))}
-              <circle cx={l.o.x} cy={l.o.y} r={3.5} fill={l.color} stroke="white" strokeWidth={1} />
-              <circle cx={l.d.x} cy={l.d.y} r={5} fill={l.color} stroke="white" strokeWidth={1.5} />
-            </g>
-          ))}
+          {lineasGuardadas.map((l, i) => {
+            const puntos = [l.o, ...l.desvios, l.d];
+            const dAttr = puntos
+              .map((p, idx) => `${idx === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+              .join(" ");
+            return (
+              <g key={`${i}-${tick}`}>
+                <path
+                  d={dAttr}
+                  stroke={l.color}
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                  opacity={0.85}
+                />
+                {l.desvios.map((dv, j) => (
+                  <circle key={j} cx={dv.x} cy={dv.y} r={2.5} fill={l.color} />
+                ))}
+                <circle cx={l.o.x} cy={l.o.y} r={3.5} fill={l.color} stroke="white" strokeWidth={1} />
+                <circle cx={l.d.x} cy={l.d.y} r={5} fill={l.color} stroke="white" strokeWidth={1.5} />
+              </g>
+            );
+          })}
 
           {origenPos && (
             <>
@@ -451,7 +463,12 @@ export default function CanchaAtaque({
                 <span className="font-semibold">{a.valoracion.toUpperCase()}</span>
                 <span className="text-slate-500">
                   {a.origen_celda}
-                  {a.origen_mini ? `-${a.origen_mini}` : ""} → {a.destino_celda}
+                  {a.origen_mini ? `-${a.origen_mini}` : ""}
+                  {a.desvios && a.desvios.length > 0 && (
+                    <> → {a.desvios.map((d) => `${d.celda}${d.mini ? `-${d.mini}` : ""}`).join(" → ")}</>
+                  )}
+                  {" → "}
+                  {a.destino_celda}
                   {a.destino_mini ? `-${a.destino_mini}` : ""}
                 </span>
               </div>
