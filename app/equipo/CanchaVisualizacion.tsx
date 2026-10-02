@@ -372,31 +372,23 @@ function generarCurvaAtaque(
   const hDestino = b[1];
   const zOrigen = a[2];
   const zDestino = b[2];
+  const delta = hDestino - hOrigen;
   const cruzaRed =
     (zOrigen > 0 && zDestino < 0) || (zOrigen < 0 && zDestino > 0);
 
-  // Apex artificial: la pelota sube un poco desde el origen antes de caer.
-  // Apex en t=0.3 a ~60cm por encima del origen (o más si hace falta).
-  const tApex = 0.3;
+  // Curvatura: p > 1 da una curva que baja lento al principio y cae al final.
+  // p = 1 es recta. p grande = más curvada. Siempre monótona decreciente
+  // (siempre baja, nunca sube) si delta < 0.
+  let p = 1.8;
 
-  let cCalc = (hDestino - hOrigen) / (1 - 2 * tApex);
-  let bCalc = -2 * cCalc * tApex;
-
-  // Si cruza la red, verificar que la pelota pase por encima.
   if (cruzaRed) {
-    const tRedRatio = Math.abs(zOrigen) / Math.abs(zDestino - zOrigen);
-    if (tRedRatio > 0.05 && tRedRatio < 0.95) {
-      const hEnRed =
-        hOrigen + bCalc * tRedRatio + cCalc * tRedRatio * tRedRatio;
-      const hRedMin = ALTURA_RED + 0.05;
-      if (hEnRed < hRedMin) {
-        // Recalcular con 3 puntos: (0, hOrigen), (tRed, hRedMin), (1, hDestino)
-        const dy1 = hRedMin - hOrigen;
-        const dy2 = hDestino - hOrigen;
-        const det = tRedRatio - tRedRatio * tRedRatio;
-        cCalc = (dy1 - dy2 * tRedRatio) / det;
-        bCalc = dy2 - cCalc;
-      }
+    // Verificar que la pelota pase por encima de la red. Si no, reducir p.
+    const tRed = Math.abs(zOrigen) / Math.abs(zDestino - zOrigen);
+    const hRedMin = ALTURA_RED + 0.05;
+    while (p > 1.05) {
+      const yRed = hOrigen + delta * Math.pow(tRed, p);
+      if (yRed >= hRedMin) break;
+      p -= 0.05;
     }
   }
 
@@ -405,10 +397,10 @@ function generarCurvaAtaque(
     const t = i / pasos;
     const x = a[0] + t * (b[0] - a[0]);
     const z = a[2] + t * (b[2] - a[2]);
-    const y = Math.max(0, hOrigen + bCalc * t + cCalc * t * t);
+    const y = Math.max(0, hOrigen + delta * Math.pow(t, p));
     pts.push([x, y, z]);
-    const p = proyectar(x, z, y, vista, escala);
-    path += i === 0 ? `M ${p.sx} ${p.sy}` : ` L ${p.sx} ${p.sy}`;
+    const pr = proyectar(x, z, y, vista, escala);
+    path += i === 0 ? `M ${pr.sx} ${pr.sy}` : ` L ${pr.sx} ${pr.sy}`;
   }
   return { path, puntos3D: pts };
 }

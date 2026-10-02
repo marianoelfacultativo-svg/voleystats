@@ -277,63 +277,23 @@ function generarCurvaAtaque(
   const hDestino = b[1];
   const zOrigen = a[2];
   const zDestino = b[2];
+  const delta = hDestino - hOrigen;
   const cruzaRed =
     (zOrigen > 0 && zDestino < 0) || (zOrigen < 0 && zDestino > 0);
 
-  // Apex artificial: la pelota sube un poco desde el origen antes de caer.
-  // Apex en t=0.3 a ~60cm por encima del origen (o más si hace falta).
-  const tApex = 0.3;
-  const hApexIdeal = hOrigen + 0.6;
+  // Curvatura: p > 1 da una curva que baja lento al principio y cae al final.
+  // p = 1 es recta. p grande = más curvada. Siempre monótona decreciente
+  // (siempre baja, nunca sube) si delta < 0.
+  let p = 1.8;
 
-  // Coeficientes de y(t) = hOrigen + b*t + c*t² con apex en (tApex, hApex)
-  // y(1) = hDestino
-  // b + 2c*tApex = 0  →  b = -2c*tApex
-  // hOrigen + b + c = hDestino  →  hOrigen + c*(1 - 2*tApex) = hDestino
-  //   →  c = (hDestino - hOrigen) / (1 - 2*tApex)
-  // hApex = hOrigen + b*tApex + c*tApex²  →  hApex = hOrigen + c*tApex² - 2c*tApex²
-  //   →  hApex = hOrigen - c*tApex²
-  //   →  c = (hOrigen - hApex) / tApex²
-  //
-  // Igualando las dos expresiones de c:
-  //   (hDestino - hOrigen) / (1 - 2*tApex) = (hOrigen - hApex) / tApex²
-  //   hApex = hOrigen - (hDestino - hOrigen) * tApex² / (1 - 2*tApex)
-
-  let cCalc = (hDestino - hOrigen) / (1 - 2 * tApex);
-  let bCalc = -2 * cCalc * tApex;
-  let hApex = hOrigen + bCalc * tApex + cCalc * tApex * tApex;
-
-  // Si cruza la red, verificar que la pelota pase por encima.
   if (cruzaRed) {
-    const tRedRatio = Math.abs(zOrigen) / Math.abs(zDestino - zOrigen);
-    if (tRedRatio > 0.05 && tRedRatio < 0.95) {
-      const hEnRed = hOrigen + bCalc * tRedRatio + cCalc * tRedRatio * tRedRatio;
-      const hRedMin = ALTURA_RED + 0.05;
-      if (hEnRed < hRedMin) {
-        // Recalcular con 3 puntos: (0, hOrigen), (tRed, hRedMin), (1, hDestino)
-        // y(t) = hOrigen + b*t + c*t²
-        // dy1 = hRedMin - hOrigen = b*tRed + c*tRed²
-        // dy2 = hDestino - hOrigen = b + c
-        // Resolver
-        const dy1 = hRedMin - hOrigen;
-        const dy2 = hDestino - hOrigen;
-        const det = tRedRatio - tRedRatio * tRedRatio;
-        cCalc = (dy1 - dy2 * tRedRatio) / det;
-        bCalc = dy2 - cCalc;
-        hApex = hOrigen + bCalc * tApex + cCalc * tApex * tApex;
-      }
-    }
-  }
-
-  // Si no cruza la red y el origen está muy alto, igual forzamos un apex mínimo
-  if (!cruzaRed && hApex < hApexIdeal) {
-    const cApex = (hOrigen - hApexIdeal) / (tApex * tApex);
-    const bApex = -2 * cApex * tApex;
-    // Verificar que y(1) = hDestino
-    const y1 = hOrigen + bApex + cApex;
-    if (Math.abs(y1 - hDestino) < 0.5) {
-      cCalc = cApex;
-      bCalc = bApex;
-      hApex = hApexIdeal;
+    // Verificar que la pelota pase por encima de la red. Si no, reducir p.
+    const tRed = Math.abs(zOrigen) / Math.abs(zDestino - zOrigen);
+    const hRedMin = ALTURA_RED + 0.05;
+    while (p > 1.05) {
+      const yRed = hOrigen + delta * Math.pow(tRed, p);
+      if (yRed >= hRedMin) break;
+      p -= 0.05;
     }
   }
 
@@ -341,7 +301,7 @@ function generarCurvaAtaque(
     const t = i / pasos;
     const x = a[0] + t * (b[0] - a[0]);
     const z = a[2] + t * (b[2] - a[2]);
-    const y = Math.max(0, hOrigen + bCalc * t + cCalc * t * t);
+    const y = Math.max(0, hOrigen + delta * Math.pow(t, p));
     pts.push([x, y, z]);
   }
   return pts;
