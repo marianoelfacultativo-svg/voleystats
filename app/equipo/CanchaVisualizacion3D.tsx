@@ -152,18 +152,8 @@ function prand(seed: string, key: string): number {
 interface ParametrosTrayectoria {
   hOrigen: number;
   hDestino: number;
-  hApex: number;
   esRecto: boolean;
 }
-
-const APEX_RECEPCION: Record<number, number> = {
-  1: 1.5,
-  2: 2.0,
-  3: 2.4,
-  4: 2.8,
-  5: 3.5,
-  6: 4.0,
-};
 
 function getParametros(
   tipo: TipoFundamento,
@@ -174,7 +164,6 @@ function getParametros(
     return {
       hOrigen: 2.8,
       hDestino: 0,
-      hApex: esPotencia ? 2.9 : 3.3,
       esRecto: esPotencia,
     };
   }
@@ -182,15 +171,13 @@ function getParametros(
     return {
       hOrigen: 2.8,
       hDestino: 0,
-      hApex: 2.9,
       esRecto: false,
     };
   }
-  const cal = typeof item.calidad === "number" ? item.calidad : 4;
+  // recepción: origen bajo, destino a la altura de pase
   return {
     hOrigen: 0.3,
     hDestino: 2.2,
-    hApex: APEX_RECEPCION[cal] ?? 2.8,
     esRecto: false,
   };
 }
@@ -198,18 +185,6 @@ function getParametros(
 const ALTURA_RED = 2.43;
 const GRAVEDAD = 9.8;
 
-/**
- * Genera una trayectoria física de proyectil entre dos puntos.
- *
- * Si `necesitaPasarRed` es true y la trayectoria cruza z=0, calcula el
- * tiempo de vuelo T tal que la pelota pase por arriba de la red y llegue
- * exactamente al destino con altura hDestino.
- *
- * Si no cruza la red, usa un tiempo T basado en una velocidad horizontal
- * razonable.
- *
- * La potencia (esRecto) es una línea recta.
- */
 function generarSegmento(
   a: [number, number, number],
   b: [number, number, number],
@@ -224,7 +199,7 @@ function generarSegmento(
 
   if (distH < 0.001) return [a, b];
 
-  // --- Potencia: línea recta del origen al destino ---
+  // Potencia: línea recta
   if (esRecto) {
     const pasos = 40;
     const pts: [number, number, number][] = [];
@@ -239,7 +214,6 @@ function generarSegmento(
     return pts;
   }
 
-  // --- Trayectoria tipo proyectil ---
   const cruzandoRed = (a[2] >= 0 && b[2] < 0) || (a[2] < 0 && b[2] >= 0);
 
   let T: number;
@@ -248,7 +222,6 @@ function generarSegmento(
     const tRedRatio = -a[2] / (b[2] - a[2]);
 
     if (tRedRatio > 0.05 && tRedRatio < 0.95) {
-      // Resolver T para pasar la red a ALTURA_RED + 0.05 y llegar a hDestino
       const hRedMin = ALTURA_RED + 0.05;
       const num = (hDestino - hOrigen) - (hRedMin - hOrigen) / tRedRatio;
       const den = 0.5 * GRAVEDAD * (tRedRatio - 1);
@@ -270,7 +243,6 @@ function generarSegmento(
     T = distH / 8;
   }
 
-  // Velocidades
   const vy = (hDestino - hOrigen + 0.5 * GRAVEDAD * T * T) / T;
   const vx = dx / T;
   const vz = dz / T;
@@ -363,6 +335,17 @@ const Trajectory = React.memo(function Trajectory({
   const inicio = points[0];
   const fin = points[points.length - 1];
 
+  // Estrella SIEMPRE en el piso (y≈0), alineada con el (x, z) real del origen
+  const inicioGround: [number, number, number] = [
+    inicio[0],
+    0.05,
+    inicio[2],
+  ];
+
+  // Pelota al final: si hDestino > 0 (recepción), se queda a esa altura,
+  // si no, apoyada en el piso
+  const finBall: [number, number, number] = [fin[0], Math.max(0.15, fin[1]), fin[2]];
+
   return (
     <group>
       {mostrarEstelas && (
@@ -391,7 +374,22 @@ const Trajectory = React.memo(function Trajectory({
         </>
       )}
 
-      <mesh position={inicio}>
+      {/* Línea vertical punteada desde el piso hasta el inicio real */}
+      {inicio[1] > 0.2 && (
+        <Line
+          points={[inicioGround, inicio]}
+          color={item.color}
+          lineWidth={1}
+          transparent
+          opacity={0.45}
+          dashed
+          dashSize={0.15}
+          gapSize={0.1}
+        />
+      )}
+
+      {/* Estrella en el piso */}
+      <mesh position={inicioGround}>
         <octahedronGeometry args={[0.18, 0]} />
         <meshStandardMaterial
           color={item.color}
@@ -400,7 +398,8 @@ const Trajectory = React.memo(function Trajectory({
         />
       </mesh>
 
-      <mesh position={fin}>
+      {/* Pelota al final */}
+      <mesh position={finBall}>
         <sphereGeometry args={[0.15, 20, 20]} />
         <meshStandardMaterial
           color="#f8fafc"
