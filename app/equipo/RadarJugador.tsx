@@ -10,6 +10,11 @@ import {
   Legend,
 } from "recharts";
 import type { EstadisticasJugador } from "@/lib/estadisticas";
+import {
+  nivelDeValoracion,
+  COLORES_NIVEL_CLASES,
+} from "@/lib/estadisticas";
+import LeyendaColores from "./LeyendaColores";
 
 export interface SerieRadar {
   id: string;
@@ -127,38 +132,50 @@ export default function RadarJugador({
         </ResponsiveContainer>
       </div>
 
+      {/* Cuadros de valores con color por nivel */}
       <div
         className={`grid gap-2 mt-4 ${
           esArmador ? "grid-cols-3" : "grid-cols-5"
         }`}
       >
-        {fundamentos.map((f) => (
-          <div
-            key={f}
-            className="p-2 bg-slate-50 border border-slate-200 rounded text-center"
-          >
-            <p className="text-xs text-slate-500">{ETIQUETAS[f]}</p>
-            {seriesFinales.map((s) => (
-              <p
-                key={s.id}
-                className="font-semibold text-sm"
-                style={{ color: seriesFinales.length > 1 ? s.color : undefined }}
-              >
-                {seriesFinales.length === 1
-                  ? `${
-                      (s.jugador.valoracionPonderadaPorFundamento[f] ?? 0) > 0
-                        ? "+"
-                        : ""
-                    }${(
-                      s.jugador.valoracionPonderadaPorFundamento[f] ?? 0
-                    ).toFixed(2)}`
-                  : `${(s.jugador.valoracionPonderadaPorFundamento[f] ?? 0).toFixed(
-                      2
-                    )}`}
+        {fundamentos.map((f) => {
+          const primera = seriesFinales[0];
+          const valor =
+            primera?.jugador.valoracionPonderadaPorFundamento[f] ?? 0;
+          const nivel = nivelDeValoracion(f, valor);
+          const col = COLORES_NIVEL_CLASES[nivel];
+
+          return (
+            <div
+              key={f}
+              className={`p-2 rounded border-2 text-center ${col.bg} ${col.border}`}
+            >
+              <p className="text-xs text-slate-500 font-medium">
+                {ETIQUETAS[f]}
               </p>
-            ))}
-          </div>
-        ))}
+              {seriesFinales.map((s) => {
+                const val =
+                  s.jugador.valoracionPonderadaPorFundamento[f] ?? 0;
+                const nivelS = nivelDeValoracion(f, val);
+                const colS = COLORES_NIVEL_CLASES[nivelS];
+                return (
+                  <p
+                    key={s.id}
+                    className={`font-bold text-sm ${colS.text}`}
+                  >
+                    {val > 0 ? "+" : ""}
+                    {val.toFixed(2)}
+                  </p>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Leyenda de colores */}
+      <div className="mt-4">
+        <LeyendaColores />
       </div>
 
       <p className="text-xs text-slate-400 mt-3 text-center">

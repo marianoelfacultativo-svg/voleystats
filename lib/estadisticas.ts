@@ -1383,3 +1383,64 @@ export function top3(
     .sort((a, b) => b.valor - a.valor)
     .slice(0, 3);
 }
+
+// ============================================
+// NIVELES DE VALORACIÓN (para colorear)
+// ============================================
+
+export type NivelValoracion = "bajo" | "cumple" | "bien" | "destaca";
+
+const CORTES_NIVEL: Record<
+  string,
+  { cumple: number; bien: number; destaca: number }
+> = {
+  saque: { cumple: 4.0, bien: 6.0, destaca: 7.5 },
+  recepcion: { cumple: 4.0, bien: 6.5, destaca: 8.0 },
+  ataque: { cumple: 3.5, bien: 5.5, destaca: 7.5 },
+  bloqueo: { cumple: 3.5, bien: 5.5, destaca: 7.5 },
+  defensa: { cumple: 4.0, bien: 6.0, destaca: 7.5 },
+  armados: { cumple: 4.0, bien: 6.0, destaca: 7.5 },
+  toque: { cumple: 3.5, bien: 5.0, destaca: 7.0 },
+};
+
+export function nivelDeValoracion(
+  fundamento: string,
+  valor: number
+): NivelValoracion {
+  const corte = CORTES_NIVEL[fundamento];
+  if (!corte) return "bajo";
+  if (valor >= corte.destaca) return "destaca";
+  if (valor >= corte.bien) return "bien";
+  if (valor >= corte.cumple) return "cumple";
+  return "bajo";
+}
+
+export const COLORES_NIVEL_CLASES: Record<
+  NivelValoracion,
+  { bg: string; border: string; text: string; nombre: string }
+> = {
+  bajo: {
+    bg: "bg-red-50",
+    border: "border-red-300",
+    text: "text-red-700",
+    nombre: "Bajo",
+  },
+  cumple: {
+    bg: "bg-yellow-50",
+    border: "border-yellow-300",
+    text: "text-yellow-700",
+    nombre: "Cumple",
+  },
+  bien: {
+    bg: "bg-emerald-50",
+    border: "border-emerald-300",
+    text: "text-emerald-700",
+    nombre: "Bien",
+  },
+  destaca: {
+    bg: "bg-sky-50",
+    border: "border-sky-300",
+    text: "text-sky-700",
+    nombre: "Destaca",
+  },
+};

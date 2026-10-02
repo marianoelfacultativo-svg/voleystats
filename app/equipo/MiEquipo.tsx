@@ -12,6 +12,8 @@ import {
   VALORES_SAQUE,
   VALORES_RECEPCION,
   VALORES_BLOQUEO,
+  nivelDeValoracion,
+  COLORES_NIVEL_CLASES,
   type EstadisticasJugador,
 } from "@/lib/estadisticas";
 import RadarJugador from "./RadarJugador";
@@ -439,10 +441,12 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                       ).map(([fund, val]) => {
                         const puesto =
                           podios[jugadorActual.jugador_id]?.[fund];
+                        const nivel = nivelDeValoracion(fund, val);
+                        const col = COLORES_NIVEL_CLASES[nivel];
                         return (
                           <div
                             key={fund}
-                            className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center relative"
+                            className={`p-3 rounded-lg text-center relative border-2 ${col.bg} ${col.border}`}
                           >
                             {puesto !== undefined && (
                               <span
@@ -454,20 +458,17 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                                 ⭐{puesto}
                               </span>
                             )}
-                            <p className="text-xs text-slate-500">
+                            <p className="text-xs text-slate-600 font-medium">
                               {NOMBRES_FUNDAMENTO[fund] ?? fund}
                             </p>
-                            <p
-                              className={`text-lg font-bold ${
-                                val > 0
-                                  ? "text-green-700"
-                                  : val < 0
-                                  ? "text-red-700"
-                                  : "text-slate-700"
-                              }`}
-                            >
+                            <p className={`text-lg font-bold ${col.text}`}>
                               {val > 0 ? "+" : ""}
                               {val.toFixed(2)}
+                            </p>
+                            <p
+                              className={`text-[9px] uppercase font-semibold ${col.text} opacity-70`}
+                            >
+                              {col.nombre}
                             </p>
                           </div>
                         );
