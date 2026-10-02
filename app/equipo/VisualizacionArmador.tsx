@@ -1,13 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { supabase } from "@/lib/supabase";
-import CanchaArmador, {
-  type ArmadoDetalle,
-  type Vista,
+import type {
+  ArmadoDetalle,
+  Vista,
 } from "./CanchaArmador";
 import VisualizacionFundamento from "./VisualizacionFundamento";
 import type { SaqueRow, RecepcionRow, AtaqueRow } from "@/lib/db";
+
+const CanchaArmador3D = dynamic(() => import("./CanchaArmador3D"), {
+  ssr: false,
+});
+const CanchaArmadorSVG = dynamic(() => import("./CanchaArmador"), {
+  ssr: false,
+});
 
 interface Props {
   equipoId: string;
@@ -47,6 +55,20 @@ const COLORES_CALIDAD: Record<number, string> = {
   6: "#059669",
 };
 
+function detectarWebGL(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const canvas = document.createElement("canvas");
+    const gl =
+      canvas.getContext("webgl2") ||
+      canvas.getContext("webgl") ||
+      canvas.getContext("experimental-webgl");
+    return !!gl;
+  } catch {
+    return false;
+  }
+}
+
 export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
   const [tab, setTab] = useState<Tab>("armados");
   const [cargando, setCargando] = useState(false);
@@ -71,6 +93,11 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
   const [filtroPunto, setFiltroPunto] = useState<number | "todos">("todos");
   const [filtrosCalidad, setFiltrosCalidad] = useState<number[]>([]);
   const [puntoActual, setPuntoActual] = useState(1);
+  const [webglOk, setWebglOk] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setWebglOk(detectarWebGL());
+  }, []);
 
   // Cargar partidos y jugadores
   useEffect(() => {
@@ -550,13 +577,34 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
                   </div>
 
                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex items-center justify-center">
-                    <CanchaArmador
-                      armados={armadosFiltrados}
-                      vista={vista}
-                      width={1000}
-                      height={760}
-                      mostrarEstelas={mostrarEstelas}
-                    />
+                    {webglOk === null ? (
+                      <p className="text-sm text-slate-500 py-12">
+                        Cargando cancha...
+                      </p>
+                    ) : webglOk ? (
+                      <CanchaArmador3D
+                        armados={armadosFiltrados}
+                        vista={vista}
+                        width={1000}
+                        height={760}
+                        mostrarEstelas={mostrarEstelas}
+                      />
+                    ) : (
+                      <div className="w-full">
+                        <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                          ⚠️ Tu navegador no soporta WebGL, mostrando versión 2D.
+                          Para ver la versión 3D, activá la aceleración por
+                          hardware en la configuración de tu navegador.
+                        </div>
+                        <CanchaArmadorSVG
+                          armados={armadosFiltrados}
+                          vista={vista}
+                          width={1000}
+                          height={760}
+                          mostrarEstelas={mostrarEstelas}
+                        />
+                      </div>
+                    )}
                   </div>
                 </>
               )}
