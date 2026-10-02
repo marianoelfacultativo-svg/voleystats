@@ -1,12 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import CanchaVisualizacion, {
-  type ItemVisual,
-  type TipoFundamento,
-  type Vista,
-} from "./CanchaVisualizacion";
+import dynamic from "next/dynamic";
+import type {
+  ItemVisual,
+  TipoFundamento,
+  Vista,
+} from "./CanchaVisualizacion3D";
 import type { SaqueRow, RecepcionRow, AtaqueRow } from "@/lib/db";
+
+const CanchaVisualizacion = dynamic(
+  () => import("./CanchaVisualizacion3D"),
+  { ssr: false }
+);
 
 type Accion = SaqueRow | RecepcionRow | AtaqueRow;
 
@@ -18,16 +24,13 @@ interface Props {
 }
 
 const VISTAS: { id: Vista; label: string }[] = [
-  { id: "front", label: "Frontal" },
   { id: "top", label: "Superior" },
+  { id: "front", label: "Frontal" },
   { id: "front-rival", label: "Frontal (rival)" },
   { id: "iso-izq", label: "Isométrica izq." },
   { id: "iso-der", label: "Isométrica der." },
 ];
 
-// ============================================================
-// Colores por valoración
-// ============================================================
 const COLORES_SAQUE: Record<string, string> = {
   ace: "#2563eb",
   positivo_mas: "#16a34a",
@@ -74,9 +77,6 @@ const ETIQUETAS_ATAQUE: Record<string, string> = {
   error: "Error",
 };
 
-// ============================================================
-// Adaptador: Accion → ItemVisual
-// ============================================================
 function accionToItem(
   tipo: TipoFundamento,
   a: Accion
@@ -108,7 +108,6 @@ function accionToItem(
     };
   }
 
-  // ataque
   const at = a as AtaqueRow;
   if (!at.origen_celda || !at.destino_celda) return null;
   return {
@@ -121,16 +120,13 @@ function accionToItem(
   };
 }
 
-// ============================================================
-// Componente
-// ============================================================
 export default function VisualizacionFundamento({
   tipo,
   acciones,
   jugadoresIds,
   nombresJugadores,
 }: Props) {
-  const [vista, setVista] = useState<Vista>("front");
+  const [vista, setVista] = useState<Vista>("top");
   const [mostrarEstelas, setMostrarEstelas] = useState(true);
   const [filtroSet, setFiltroSet] = useState<number | "todos">("todos");
   const [filtroPunto, setFiltroPunto] = useState<number | "todos">("todos");
@@ -228,7 +224,6 @@ export default function VisualizacionFundamento({
 
   return (
     <div className="space-y-4">
-      {/* Filtros */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           <div>
@@ -338,7 +333,6 @@ export default function VisualizacionFundamento({
           </div>
         </div>
 
-        {/* Vista */}
         <div className="flex flex-wrap items-center gap-1 mb-2">
           <span className="text-xs font-medium text-slate-500 mr-1">
             Vista:
@@ -394,7 +388,6 @@ export default function VisualizacionFundamento({
         </div>
       </div>
 
-      {/* Leyenda */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3">
         <div className="flex flex-wrap gap-3 items-center justify-center text-xs">
           <span className="font-semibold text-slate-600">Colores:</span>
@@ -433,7 +426,6 @@ export default function VisualizacionFundamento({
         </div>
       </div>
 
-      {/* Cancha */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex items-center justify-center">
         {items.length === 0 ? (
           <p className="text-sm text-slate-500 py-12">
