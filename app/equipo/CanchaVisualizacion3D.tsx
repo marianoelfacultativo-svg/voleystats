@@ -357,14 +357,15 @@ function generarPuntosAtaque(
   }
 
   // CASO B: bloqueo rival.
-  // Desvío pegado a la red del lado rival (z entre -1.5 y 0).
-  // El punto de bloqueo queda a 20cm de la red (z=-0.2) a 2.5m de altura.
+  // Cualquier desvío en la fila pegada a la red del lado rival (F4, z entre -3 y 0)
+  // se considera toque de bloqueo. El punto de bloqueo queda pegado a la red
+  // (z=-0.2) y a la MISMA altura del origen del ataque (2.8m).
   // El tramo origen → bloqueo es RECTO y no toca el piso.
-  const desvioBloqueo = desvios.find((d) => d.z > -1.5 && d.z <= 0);
+  const desvioBloqueo = desvios.find((d) => d.z >= -3 && d.z <= 0);
   if (desvioBloqueo) {
     const puntoBloqueo: [number, number, number] = [
       desvioBloqueo.x,
-      2.5,
+      2.8,
       -0.2,
     ];
     const puntoCaida: [number, number, number] = [
@@ -396,7 +397,7 @@ function generarPuntosAtaque(
     ...desvios.map((d) => ({
       x: d.x,
       z: d.z,
-      y: d.z > -1.5 && d.z <= 0 ? 2.5 : 0,
+      y: d.z >= -3 && d.z <= 0 ? 2.8 : 0,
     })),
     { x: destino.x, z: destino.z, y: 0 },
   ];
