@@ -111,26 +111,24 @@ function obtenerCoords(
 
 function extensionPorBorde(
   celda: string,
-  mini: string | null
+  _mini: string | null
 ): { dx: number; dz: number } | null {
-  if (!mini) return null;
   const partes = celda.split("-");
   if (partes.length !== 2) return null;
   const [fila, col] = partes;
-  const m = mini.match(/^f(\d)c(\d)$/);
-  if (!m) return null;
-  const mf = parseInt(m[1]);
-  const mc = parseInt(m[2]);
-  const numCols = col === "C1" || col === "C5" ? 2 : 3;
-  const numFils = 3;
-  const numFila = parseInt(fila.slice(1));
 
   let dx = 0;
   let dz = 0;
-  if (col === "C1" && mc === 1) dx = -1.5;
-  else if (col === "C5" && mc === numCols) dx = 1.5;
-  if (numFila === 6 && mf === numFils) dz = -1.5;
-  else if (numFila === 3 && mf === numFils) dz = 1.5;
+
+  // Fondo rival (F6) → bien afuera
+  if (fila === "F6") dz = -3.0;
+  // Fondo propio (F3) → bien afuera
+  else if (fila === "F3") dz = 3.0;
+
+  // Lateral izquierdo (C1) → bien afuera
+  if (col === "C1") dx = -3.0;
+  // Lateral derecho (C5) → bien afuera
+  else if (col === "C5") dx = 3.0;
 
   if (dx === 0 && dz === 0) return null;
   return { dx, dz };
@@ -273,10 +271,6 @@ function generarSegmento(
   return pts;
 }
 
-/**
- * Curva de ataque: recta con curvatura leve.
- * Si cruza la red, calcula el apex mínimo para pasar la red + margen.
- */
 function generarCurvaAtaque(
   a: [number, number, number],
   b: [number, number, number]
@@ -318,9 +312,6 @@ function generarCurvaAtaque(
   return pts;
 }
 
-/**
- * Genera los puntos 3D para un ataque según las reglas especiales.
- */
 function generarPuntosAtaque(
   origen: { x: number; z: number },
   destino: { x: number; z: number },
@@ -329,7 +320,7 @@ function generarPuntosAtaque(
   const origenPropio = origen.z >= 0;
   const destinoPropio = destino.z >= 0;
 
-  // ----- CASO A: Ataque a la red (propio → propio, sin desvíos) -----
+  // CASO A: ataque a la red
   if (origenPropio && destinoPropio && desvios.length === 0) {
     const puntoRed: [number, number, number] = [
       origen.x,
@@ -347,7 +338,7 @@ function generarPuntosAtaque(
     ];
   }
 
-  // ----- CASO B: Bloqueo rival (desvío en campo rival + destino propio) -----
+  // CASO B: bloqueo rival
   const desvioRival = desvios.find((d) => d.z < 0);
   if (desvioRival && destinoPropio) {
     const puntoBloqueo: [number, number, number] = [
@@ -366,7 +357,7 @@ function generarPuntosAtaque(
     ];
   }
 
-  // ----- CASO C: Ataque normal (con o sin desvíos) -----
+  // CASO C: ataque normal
   const waypoints: { x: number; z: number; y: number }[] = [
     { x: origen.x, z: origen.z, y: 2.8 },
     ...desvios.map((d) => ({
@@ -437,12 +428,10 @@ function generarPuntos3D(
 
   const desvios = desviosBase.map((d, i) => rand(d, `-desvio-${i}`));
 
-  // ----- ATAQUES -----
   if (tipo === "ataque") {
     return generarPuntosAtaque(origen, destino, desvios);
   }
 
-  // ----- SAQUES Y RECEPCIONES -----
   const params = getParametros(tipo, item);
   const necesitaPasarRed = tipo === "saque";
   const limitarAlturaSaque = tipo === "saque";

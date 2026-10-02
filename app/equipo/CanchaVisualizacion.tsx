@@ -108,26 +108,20 @@ function obtenerCoords(
 
 function extensionPorBorde(
   celda: string,
-  mini: string | null
+  _mini: string | null
 ): { dx: number; dz: number } | null {
-  if (!mini) return null;
   const partes = celda.split("-");
   if (partes.length !== 2) return null;
   const [fila, col] = partes;
-  const m = mini.match(/^f(\d)c(\d)$/);
-  if (!m) return null;
-  const mf = parseInt(m[1]);
-  const mc = parseInt(m[2]);
-  const numCols = col === "C1" || col === "C5" ? 2 : 3;
-  const numFils = 3;
-  const numFila = parseInt(fila.slice(1));
 
   let dx = 0;
   let dz = 0;
-  if (col === "C1" && mc === 1) dx = -1.5;
-  else if (col === "C5" && mc === numCols) dx = 1.5;
-  if (numFila === 6 && mf === numFils) dz = -1.5;
-  else if (numFila === 3 && mf === numFils) dz = 1.5;
+
+  if (fila === "F6") dz = -3.0;
+  else if (fila === "F3") dz = 3.0;
+
+  if (col === "C1") dx = -3.0;
+  else if (col === "C5") dx = 3.0;
 
   if (dx === 0 && dz === 0) return null;
   return { dx, dz };
@@ -366,9 +360,6 @@ function generarSegmento(
   return { path, puntos3D };
 }
 
-/**
- * Curva de ataque: recta con curvatura leve.
- */
 function generarCurvaAtaque(
   a: [number, number, number],
   b: [number, number, number],
@@ -428,9 +419,10 @@ function generarPuntosAtaque(
   const paths: string[] = [];
   const puntos3D: [number, number, number][] = [];
 
-  const agregarSegmento = (
-    seg: { path: string; puntos3D: [number, number, number][] }
-  ) => {
+  const agregarSegmento = (seg: {
+    path: string;
+    puntos3D: [number, number, number][];
+  }) => {
     paths.push(seg.path);
     if (puntos3D.length === 0) {
       puntos3D.push(...seg.puntos3D);
