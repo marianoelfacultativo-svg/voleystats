@@ -319,7 +319,6 @@ function generarPuntosAtaque(
   const destinoPropio = destino.z >= 0;
 
   // CASO A: ataque a la red (origen y destino propio, sin desvíos)
-  // La red actúa como pared: la pelota va, choca y cae.
   if (origenPropio && destinoPropio && desvios.length === 0) {
     const puntoRed: [number, number, number] = [
       origen.x,
@@ -358,22 +357,35 @@ function generarPuntosAtaque(
   }
 
   // CASO B: bloqueo rival.
-  // Un desvío en la primer minicelda del campo rival (z entre -1.5 y 0)
-  // se considera toque de bloqueo. Se fuerza el punto a z = -0.3 (pegado a la red).
+  // Desvío pegado a la red del lado rival (z entre -1.5 y 0).
+  // El punto de bloqueo queda a 20cm de la red (z=-0.2) a 2.5m de altura.
+  // El tramo origen → bloqueo es RECTO y no toca el piso.
   const desvioBloqueo = desvios.find((d) => d.z > -1.5 && d.z <= 0);
   if (desvioBloqueo) {
     const puntoBloqueo: [number, number, number] = [
       desvioBloqueo.x,
       2.5,
-      -0.3,
+      -0.2,
     ];
     const puntoCaida: [number, number, number] = [
       destino.x,
       0,
       destino.z,
     ];
+
+    const seg1: [number, number, number][] = [];
+    const pasos1 = 30;
+    for (let i = 0; i <= pasos1; i++) {
+      const t = i / pasos1;
+      seg1.push([
+        origen.x + t * (puntoBloqueo[0] - origen.x),
+        2.8 + t * (puntoBloqueo[1] - 2.8),
+        origen.z + t * (puntoBloqueo[2] - origen.z),
+      ]);
+    }
+
     return [
-      ...generarCurvaAtaque([origen.x, 2.8, origen.z], puntoBloqueo),
+      ...seg1,
       ...generarCurvaAtaque(puntoBloqueo, puntoCaida).slice(1),
     ];
   }

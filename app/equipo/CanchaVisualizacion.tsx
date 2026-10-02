@@ -484,30 +484,46 @@ function generarPuntosAtaque(
     return { paths, puntos3D };
   }
 
-  // CASO B: bloqueo rival (desvío pegado a la red del lado rival)
+  // CASO B: bloqueo rival
+  // Desvío pegado a la red del lado rival (z entre -1.5 y 0).
+  // El punto de bloqueo queda a 20cm de la red (z=-0.2) a 2.5m.
+  // El tramo origen → bloqueo es RECTO y no toca el piso.
   const desvioBloqueo = desvios.find((d) => d.z > -1.5 && d.z <= 0);
   if (desvioBloqueo) {
     const puntoBloqueo: [number, number, number] = [
       desvioBloqueo.x,
       2.5,
-      -0.3,
+      -0.2,
     ];
     const puntoCaida: [number, number, number] = [
       destino.x,
       0,
       destino.z,
     ];
-    agregarSegmento(
-      generarCurvaAtaque(
-        [origen.x, 2.8, origen.z],
-        puntoBloqueo,
-        vista,
-        escala
-      )
+
+    const seg1: [number, number, number][] = [];
+    const pasos1 = 30;
+    for (let i = 0; i <= pasos1; i++) {
+      const t = i / pasos1;
+      seg1.push([
+        origen.x + t * (puntoBloqueo[0] - origen.x),
+        2.8 + t * (puntoBloqueo[1] - 2.8),
+        origen.z + t * (puntoBloqueo[2] - origen.z),
+      ]);
+    }
+
+    paths.push(proyectarSegmento(seg1));
+    puntos3D.push(...seg1);
+
+    const seg2 = generarCurvaAtaque(
+      puntoBloqueo,
+      puntoCaida,
+      vista,
+      escala
     );
-    agregarSegmento(
-      generarCurvaAtaque(puntoBloqueo, puntoCaida, vista, escala)
-    );
+    paths.push(seg2.path);
+    puntos3D.push(...seg2.puntos3D.slice(1));
+
     return { paths, puntos3D };
   }
 
