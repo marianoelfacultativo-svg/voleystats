@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import {
   Radar,
   RadarChart,
@@ -8,7 +9,6 @@ import {
   PolarRadiusAxis,
   ResponsiveContainer,
   Legend,
-  Customized,
 } from "recharts";
 import type { EstadisticasJugador } from "@/lib/estadisticas";
 import {
@@ -58,84 +58,26 @@ function desTransformar(v: number): number {
   return 5 + ((v - 25) / 75) * 5;
 }
 
-interface EjesColoreadosProps {
-  cx?: number | string;
-  cy?: number | string;
-  outerRadius?: number | string;
-  radius?: number | string;
-  fundamentos?: string[];
-  valoresPorFundamento?: Record<string, number>;
-  accionesPorFundamento?: Record<string, number>;
-}
-
-function EjesColoreados({
-  cx,
-  cy,
-  outerRadius,
-  radius,
-  fundamentos,
-  valoresPorFundamento,
-  accionesPorFundamento,
-}: EjesColoreadosProps) {
-  if (!fundamentos || fundamentos.length === 0) return null;
-
-  const cxNum = typeof cx === "number" ? cx : parseFloat(String(cx ?? ""));
-  const cyNum = typeof cy === "number" ? cy : parseFloat(String(cy ?? ""));
-  const rNum =
-    typeof outerRadius === "number"
-      ? outerRadius
-      : typeof radius === "number"
-      ? radius
-      : parseFloat(String(outerRadius ?? radius ?? ""));
-
-  if (
-    !isFinite(cxNum) ||
-    !isFinite(cyNum) ||
-    !isFinite(rNum) ||
-    rNum <= 0
-  )
-    return null;
-
-  const n = fundamentos.length;
-
-  return (
-    <g>
-      {fundamentos.map((f, i) => {
-        const count = accionesPorFundamento?.[f] ?? 0;
-        if (count === 0) return null;
-
-        const valor = valoresPorFundamento?.[f] ?? 0;
-        const nivel = nivelDeValoracion(f, valor);
-        const color = COLORES_NIVEL_HEX[nivel];
-
-        const angulo = -90 + (360 / n) * i;
-        const rad = (angulo * Math.PI) / 180;
-        const x2 = cxNum + rNum * Math.cos(rad);
-        const y2 = cyNum + rNum * Math.sin(rad);
-
-        return (
-          <line
-            key={`eje-${f}`}
-            x1={cxNum}
-            y1={cyNum}
-            x2={x2}
-            y2={y2}
-            stroke={color}
-            strokeWidth={4}
-            strokeLinecap="round"
-            opacity={0.9}
-          />
-        );
-      })}
-    </g>
-  );
-}
-
 export default function RadarJugador({
   jugador,
   series,
   esArmador,
 }: Props) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+
+  useEffect(() => {
+    if (!wrapperRef.current) return;
+    const update = () => {
+      const r = wrapperRef.current!.getBoundingClientRect();
+      setSize({ w: r.width, h: r.height });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(wrapperRef.current);
+    return () => ro.disconnect();
+  }, []);
+
   const fundamentosNormal = [
     "saque",
     "defensa",
@@ -183,9 +125,16 @@ export default function RadarJugador({
     accionesPorFundamento[f] = primera?.jugador.porFundamento[f]?.total ?? 0;
   }
 
+  // Centro y radio igual que recharts: 75% * min(cx, cy)
+  const cxPx = size.w / 2;
+  const cyPx = size.h / 2;
+  const radioPx = 0.75 * Math.min(cxPx, cyPx);
+
+  const n = fundamentos.length;
+
   return (
     <div>
-      <div className="w-full h-96">
+      <div ref={wrapperRef} className="relative w-full h-96">
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart data={datos} outerRadius="75%">
             <PolarGrid stroke="#C9DBC6" />
@@ -217,18 +166,46 @@ export default function RadarJugador({
                 iconType="line"
               />
             )}
-            <Customized
-              component={(props: any) => (
-                <EjesColoreados
-                  {...props}
-                  fundamentos={fundamentos}
-                  valoresPorFundamento={valoresPorFundamento}
-                  accionesPorFundamento={accionesPorFundamento}
-                />
-              )}
-            />
           </RadarChart>
         </ResponsiveContainer>
+
+        {size.w > 0 && size.h > 0 && (
+          <svg
+            className="absolute inset-0 pointer-events-none"
+            width={size.w}
+            height={size.h}
+            viewBox={`0 0 ${size.w} ${size.h}`}
+            style={{ width: "100%", height: "100%" }}
+          >
+            {fundamentos.map((f, i) => {
+              const count = accionesPorFundamento[f] ?? 0;
+              if (count === 0) return null;
+
+              const valor = valoresPorFundamento[f] ?? 0;
+              const nivel = nivelDeValoracion(f, valor);
+              const color = COLORES_NIVEL_HEX[nivel];
+
+              const angulo = -90 + (360 / n) * i;
+              const rad = (angulo * Math.PI) / 180;
+              const x2 = cxPx + radioPx * Math.cos(rad);
+              const y2 = cyPx + radioPx * Math.sin(rad);
+
+              return (
+                <line
+                  key={`eje-${f}`}
+                  x1={cxPx}
+                  y1={cyPx}
+                  x2={x2}
+                  y2={y2}
+                  stroke={color}
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  opacity={0.9}
+                />
+              );
+            })}
+          </svg>
+        )}
       </div>
 
       {/* Cuadros de valores con color por nivel */}

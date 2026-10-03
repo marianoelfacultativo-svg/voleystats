@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import {
   Radar,
   RadarChart,
@@ -8,13 +9,9 @@ import {
   PolarRadiusAxis,
   ResponsiveContainer,
   Legend,
-  Customized,
 } from "recharts";
 import type { EstadisticasJugador } from "@/lib/estadisticas";
-import {
-  nivelDeValoracion,
-  type NivelValoracion,
-} from "@/lib/estadisticas";
+import { nivelDeValoracion, type NivelValoracion } from "@/lib/estadisticas";
 
 export interface SerieRadarEquipo {
   id: string;
@@ -55,100 +52,29 @@ function desTransformar(v: number): number {
   return 5 + ((v - 25) / 75) * 5;
 }
 
-interface EjesColoreadosProps {
-  cx?: number;
-  cy?: number;
-  outerRadius?: number;
-  radius?: number;
-  fundamentos?: string[];
-  valoresPorFundamento?: Record<string, number>;
-  accionesPorFundamento?: Record<string, number>;
-}
-
-function EjesColoreados({
-  cx,
-  cy,
-  outerRadius,
-  radius,
-  fundamentos,
-  valoresPorFundamento,
-  accionesPorFundamento,
-}: EjesColoreadosProps) {
-  if (!cx || !cy || !fundamentos || fundamentos.length === 0) return null;
-
-  const rFinal = outerRadius ?? radius ?? 0;
-  if (rFinal === 0) return null;
-
-  const n = fundamentos.length;
-
-  return (
-    <g>
-      {fundamentos.map((f, i) => {
-        const count = accionesPorFundamento?.[f] ?? 0;
-        if (count === 0) return null;
-
-        const valor = valoresPorFundamento?.[f] ?? 0;
-        const nivel = nivelDeValoracion(f, valor);
-        const color = COLORES_NIVEL_HEX[nivel];
-
-        const angulo = -90 + (360 / n) * i;
-        const rad = (angulo * Math.PI) / 180;
-        const anchoMedia = (Math.PI / n) * 0.9;
-
-        const x1 = cx + rFinal * Math.cos(rad - anchoMedia);
-        const y1 = cy + rFinal * Math.sin(rad - anchoMedia);
-        const x2 = cx + rFinal * Math.cos(rad + anchoMedia);
-        const y2 = cy + rFinal * Math.sin(rad + anchoMedia);
-
-        return (
-          <path
-            key={`sector-${f}`}
-            d={`M ${cx} ${cy} L ${x1} ${y1} A ${rFinal} ${rFinal} 0 0 1 ${x2} ${y2} Z`}
-            fill={color}
-            opacity={0.12}
-          />
-        );
-      })}
-
-      {fundamentos.map((f, i) => {
-        const count = accionesPorFundamento?.[f] ?? 0;
-        if (count === 0) return null;
-
-        const valor = valoresPorFundamento?.[f] ?? 0;
-        const nivel = nivelDeValoracion(f, valor);
-        const color = COLORES_NIVEL_HEX[nivel];
-
-        const angulo = -90 + (360 / n) * i;
-        const rad = (angulo * Math.PI) / 180;
-        const x2 = cx + rFinal * Math.cos(rad);
-        const y2 = cy + rFinal * Math.sin(rad);
-
-        return (
-          <line
-            key={`eje-${f}`}
-            x1={cx}
-            y1={cy}
-            x2={x2}
-            y2={y2}
-            stroke={color}
-            strokeWidth={3}
-            strokeLinecap="round"
-            opacity={0.9}
-          />
-        );
-      })}
-    </g>
-  );
-}
+const FUNDAMENTOS_EQUIPO = [
+  "saque",
+  "defensa",
+  "recepcion",
+  "bloqueo",
+  "ataque",
+];
 
 export default function RadarEquipo({ equipo, series, titulo }: Props) {
-  const fundamentos = [
-    "saque",
-    "defensa",
-    "recepcion",
-    "bloqueo",
-    "ataque",
-  ];
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+
+  useEffect(() => {
+    if (!wrapperRef.current) return;
+    const update = () => {
+      const r = wrapperRef.current!.getBoundingClientRect();
+      setSize({ w: r.width, h: r.height });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(wrapperRef.current);
+    return () => ro.disconnect();
+  }, []);
 
   const seriesFinales: SerieRadarEquipo[] = series
     ? series
@@ -158,7 +84,7 @@ export default function RadarEquipo({ equipo, series, titulo }: Props) {
 
   const esMultiple = seriesFinales.length > 1;
 
-  const datos = fundamentos.map((f) => {
+  const datos = FUNDAMENTOS_EQUIPO.map((f) => {
     const fila: Record<string, string | number> = {
       fundamento: ETIQUETAS[f],
     };
@@ -169,22 +95,29 @@ export default function RadarEquipo({ equipo, series, titulo }: Props) {
     return fila;
   });
 
-  // Valores y acciones del primer equipo (para colorear los ejes)
   const primera = seriesFinales[0];
   const valoresPorFundamento: Record<string, number> = {};
   const accionesPorFundamento: Record<string, number> = {};
-  for (const f of fundamentos) {
+  for (const f of FUNDAMENTOS_EQUIPO) {
     valoresPorFundamento[f] =
       primera?.equipo.valoracionPromedioNormalizado[f] ?? 0;
     accionesPorFundamento[f] = primera?.equipo.porFundamento[f]?.total ?? 0;
   }
+
+  // Cálculo del centro y radio igual al que usa recharts internamente.
+  // Recharts: outerRadius (75%) * min(cx, cy) donde cx = w/2, cy = h/2.
+  const cxPx = size.w / 2;
+  const cyPx = size.h / 2;
+  const radioPx = 0.75 * Math.min(cxPx, cyPx);
+
+  const n = FUNDAMENTOS_EQUIPO.length;
 
   return (
     <div>
       <h4 className="font-semibold text-slate-800 mb-3">
         {titulo ?? "Perfil del equipo"}
       </h4>
-      <div className="w-full h-80">
+      <div ref={wrapperRef} className="relative w-full h-80">
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart data={datos} outerRadius="75%">
             <PolarGrid stroke="#C9DBC6" />
@@ -216,22 +149,50 @@ export default function RadarEquipo({ equipo, series, titulo }: Props) {
                 iconType="line"
               />
             )}
-            <Customized
-              component={(props: any) => (
-                <EjesColoreados
-                  {...props}
-                  fundamentos={fundamentos}
-                  valoresPorFundamento={valoresPorFundamento}
-                  accionesPorFundamento={accionesPorFundamento}
-                />
-              )}
-            />
           </RadarChart>
         </ResponsiveContainer>
+
+        {size.w > 0 && size.h > 0 && (
+          <svg
+            className="absolute inset-0 pointer-events-none"
+            width={size.w}
+            height={size.h}
+            viewBox={`0 0 ${size.w} ${size.h}`}
+            style={{ width: "100%", height: "100%" }}
+          >
+            {FUNDAMENTOS_EQUIPO.map((f, i) => {
+              const count = accionesPorFundamento[f] ?? 0;
+              if (count === 0) return null;
+
+              const valor = valoresPorFundamento[f] ?? 0;
+              const nivel = nivelDeValoracion(f, valor);
+              const color = COLORES_NIVEL_HEX[nivel];
+
+              const angulo = -90 + (360 / n) * i;
+              const rad = (angulo * Math.PI) / 180;
+              const x2 = cxPx + radioPx * Math.cos(rad);
+              const y2 = cyPx + radioPx * Math.sin(rad);
+
+              return (
+                <line
+                  key={`eje-${f}`}
+                  x1={cxPx}
+                  y1={cyPx}
+                  x2={x2}
+                  y2={y2}
+                  stroke={color}
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  opacity={0.9}
+                />
+              );
+            })}
+          </svg>
+        )}
       </div>
 
       <div className="grid grid-cols-5 gap-2 mt-4">
-        {fundamentos.map((f) => {
+        {FUNDAMENTOS_EQUIPO.map((f) => {
           const count = primera?.equipo.porFundamento[f]?.total ?? 0;
           return (
             <div
