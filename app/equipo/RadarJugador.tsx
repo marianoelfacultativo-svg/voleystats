@@ -14,6 +14,7 @@ import type { EstadisticasJugador } from "@/lib/estadisticas";
 import {
   nivelDeValoracion,
   COLORES_NIVEL_CLASES,
+  type NivelValoracion,
 } from "@/lib/estadisticas";
 import LeyendaColores from "./LeyendaColores";
 
@@ -39,36 +40,11 @@ const ETIQUETAS: Record<string, string> = {
   defensa: "Defensa",
 };
 
-// Cortes de nivel por fundamento (idénticos a CORTES_NIVEL en estadisticas.ts)
-const CORTES_POR_FUNDAMENTO: Record<
-  string,
-  { valor: number; color: string }[]
-> = {
-  saque: [
-    { valor: 7.5, color: "#0284c7" },
-    { valor: 6.0, color: "#16a34a" },
-    { valor: 4.0, color: "#eab308" },
-  ],
-  recepcion: [
-    { valor: 8.0, color: "#0284c7" },
-    { valor: 6.5, color: "#16a34a" },
-    { valor: 4.0, color: "#eab308" },
-  ],
-  ataque: [
-    { valor: 7.5, color: "#0284c7" },
-    { valor: 5.5, color: "#16a34a" },
-    { valor: 3.5, color: "#eab308" },
-  ],
-  bloqueo: [
-    { valor: 7.5, color: "#0284c7" },
-    { valor: 5.5, color: "#16a34a" },
-    { valor: 3.5, color: "#eab308" },
-  ],
-  defensa: [
-    { valor: 7.5, color: "#0284c7" },
-    { valor: 6.0, color: "#16a34a" },
-    { valor: 4.0, color: "#eab308" },
-  ],
+const COLORES_NIVEL_HEX: Record<NivelValoracion, string> = {
+  bajo: "#dc2626",
+  cumple: "#eab308",
+  bien: "#16a34a",
+  destaca: "#0284c7",
 };
 
 function transformarParaRadar(valor: number): number {
@@ -82,36 +58,31 @@ function desTransformar(v: number): number {
   return 5 + ((v - 25) / 75) * 5;
 }
 
-interface CortesProps {
+interface EjesColoreadosProps {
   cx?: number;
   cy?: number;
-  radius?: number;
   outerRadius?: number;
+  radius?: number;
   fundamentos?: string[];
+  valoresPorFundamento?: Record<string, number>;
   accionesPorFundamento?: Record<string, number>;
 }
 
-function CortesRadar({
+function EjesColoreados({
   cx,
   cy,
-  radius,
   outerRadius,
+  radius,
   fundamentos,
+  valoresPorFundamento,
   accionesPorFundamento,
-}: CortesProps) {
-  if (
-    !cx ||
-    !cy ||
-    !fundamentos ||
-    fundamentos.length === 0
-  )
-    return null;
+}: EjesColoreadosProps) {
+  if (!cx || !cy || !fundamentos || fundamentos.length === 0) return null;
 
   const rFinal = outerRadius ?? radius ?? 0;
   if (rFinal === 0) return null;
 
   const n = fundamentos.length;
-  const anchoAngulo = 0.16;
 
   return (
     <g>
@@ -119,29 +90,58 @@ function CortesRadar({
         const count = accionesPorFundamento?.[f] ?? 0;
         if (count === 0) return null;
 
-        const cortes = CORTES_POR_FUNDAMENTO[f] ?? [];
+        const valor = valoresPorFundamento?.[f] ?? 0;
+        const nivel = nivelDeValoracion(f, valor);
+        const color = COLORES_NIVEL_HEX[nivel];
+
         const angulo = -90 + (360 / n) * i;
         const rad = (angulo * Math.PI) / 180;
 
-        return cortes.map((c, j) => {
-          const posRadar = transformarParaRadar(c.valor);
-          const r = (rFinal * posRadar) / 100;
-          const x1 = cx + r * Math.cos(rad - anchoAngulo);
-          const y1 = cy + r * Math.sin(rad - anchoAngulo);
-          const x2 = cx + r * Math.cos(rad + anchoAngulo);
-          const y2 = cy + r * Math.sin(rad + anchoAngulo);
-          return (
-            <path
-              key={`corte-${i}-${j}`}
-              d={`M ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2}`}
-              stroke={c.color}
-              strokeWidth={3}
-              fill="none"
-              strokeLinecap="round"
-              opacity={0.85}
-            />
-          );
-        });
+        // Triángulo (rebanada) desde el centro hacia el vértice.
+        // Se dibuja como un sector amplio cubriendo el "costado" de cada eje.
+        const anchoMedia = (Math.PI / n) * 0.9;
+
+        const x1 = cx + rFinal * Math.cos(rad - anchoMedia);
+        const y1 = cy + rFinal * Math.sin(rad - anchoMedia);
+        const x2 = cx + rFinal * Math.cos(rad + anchoMedia);
+        const y2 = cy + rFinal * Math.sin(rad + anchoMedia);
+
+        return (
+          <path
+            key={`sector-${f}`}
+            d={`M ${cx} ${cy} L ${x1} ${y1} A ${rFinal} ${rFinal} 0 0 1 ${x2} ${y2} Z`}
+            fill={color}
+            opacity={0.12}
+          />
+        );
+      })}
+
+      {fundamentos.map((f, i) => {
+        const count = accionesPorFundamento?.[f] ?? 0;
+        if (count === 0) return null;
+
+        const valor = valoresPorFundamento?.[f] ?? 0;
+        const nivel = nivelDeValoracion(f, valor);
+        const color = COLORES_NIVEL_HEX[nivel];
+
+        const angulo = -90 + (360 / n) * i;
+        const rad = (angulo * Math.PI) / 180;
+        const x2 = cx + rFinal * Math.cos(rad);
+        const y2 = cy + rFinal * Math.sin(rad);
+
+        return (
+          <line
+            key={`eje-${f}`}
+            x1={cx}
+            y1={cy}
+            x2={x2}
+            y2={y2}
+            stroke={color}
+            strokeWidth={3}
+            strokeLinecap="round"
+            opacity={0.9}
+          />
+        );
       })}
     </g>
   );
@@ -190,13 +190,14 @@ export default function RadarJugador({
     return fila;
   });
 
-  // Cantidad de acciones por fundamento (del primer jugador, para los cortes)
-  const accionesPorFundamento: Record<string, number> = {};
+  // Valores y acciones del primer jugador (para colorear los ejes)
   const primera = seriesFinales[0];
-  if (primera) {
-    for (const f of fundamentos) {
-      accionesPorFundamento[f] = primera.jugador.porFundamento[f]?.total ?? 0;
-    }
+  const valoresPorFundamento: Record<string, number> = {};
+  const accionesPorFundamento: Record<string, number> = {};
+  for (const f of fundamentos) {
+    valoresPorFundamento[f] =
+      primera?.jugador.valoracionPonderadaPorFundamento[f] ?? 0;
+    accionesPorFundamento[f] = primera?.jugador.porFundamento[f]?.total ?? 0;
   }
 
   return (
@@ -235,9 +236,10 @@ export default function RadarJugador({
             )}
             <Customized
               component={(props: any) => (
-                <CortesRadar
+                <EjesColoreados
                   {...props}
                   fundamentos={fundamentos}
+                  valoresPorFundamento={valoresPorFundamento}
                   accionesPorFundamento={accionesPorFundamento}
                 />
               )}
@@ -266,9 +268,7 @@ export default function RadarJugador({
             >
               <p className="text-xs text-slate-500 font-medium">
                 {ETIQUETAS[f]}
-                <span className="text-slate-400 ml-1">
-                  ({count})
-                </span>
+                <span className="text-slate-400 ml-1">({count})</span>
               </p>
               {seriesFinales.map((s) => {
                 const val =
@@ -296,7 +296,8 @@ export default function RadarJugador({
       </div>
 
       <p className="text-xs text-slate-400 mt-3 text-center">
-        Valoración ponderada por volumen (por fundamento).
+        Cada eje del radar se colorea según el nivel del fundamento.
+        El sector translúcido también refleja el nivel.
       </p>
     </div>
   );
