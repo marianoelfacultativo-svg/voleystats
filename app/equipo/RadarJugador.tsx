@@ -8,6 +8,7 @@ import {
   PolarRadiusAxis,
   ResponsiveContainer,
   Legend,
+  Customized,
 } from "recharts";
 import type { EstadisticasJugador } from "@/lib/estadisticas";
 import {
@@ -38,17 +39,112 @@ const ETIQUETAS: Record<string, string> = {
   defensa: "Defensa",
 };
 
-// Transforma valor (0-10) a posición (0-100) donde 5 → 25%
+// Cortes de nivel por fundamento (idénticos a CORTES_NIVEL en estadisticas.ts)
+const CORTES_POR_FUNDAMENTO: Record<
+  string,
+  { valor: number; color: string }[]
+> = {
+  saque: [
+    { valor: 7.5, color: "#0284c7" },
+    { valor: 6.0, color: "#16a34a" },
+    { valor: 4.0, color: "#eab308" },
+  ],
+  recepcion: [
+    { valor: 8.0, color: "#0284c7" },
+    { valor: 6.5, color: "#16a34a" },
+    { valor: 4.0, color: "#eab308" },
+  ],
+  ataque: [
+    { valor: 7.5, color: "#0284c7" },
+    { valor: 5.5, color: "#16a34a" },
+    { valor: 3.5, color: "#eab308" },
+  ],
+  bloqueo: [
+    { valor: 7.5, color: "#0284c7" },
+    { valor: 5.5, color: "#16a34a" },
+    { valor: 3.5, color: "#eab308" },
+  ],
+  defensa: [
+    { valor: 7.5, color: "#0284c7" },
+    { valor: 6.0, color: "#16a34a" },
+    { valor: 4.0, color: "#eab308" },
+  ],
+};
+
 function transformarParaRadar(valor: number): number {
   const v = Math.max(0, valor);
   if (v <= 5) return (v / 5) * 25;
   return 25 + ((v - 5) / 5) * 75;
 }
 
-// Inversa: posición (0-100) → valor (0-10)
 function desTransformar(v: number): number {
   if (v <= 25) return (v / 25) * 5;
   return 5 + ((v - 25) / 75) * 5;
+}
+
+interface CortesProps {
+  cx?: number;
+  cy?: number;
+  radius?: number;
+  outerRadius?: number;
+  fundamentos?: string[];
+  accionesPorFundamento?: Record<string, number>;
+}
+
+function CortesRadar({
+  cx,
+  cy,
+  radius,
+  outerRadius,
+  fundamentos,
+  accionesPorFundamento,
+}: CortesProps) {
+  if (
+    !cx ||
+    !cy ||
+    !fundamentos ||
+    fundamentos.length === 0
+  )
+    return null;
+
+  const rFinal = outerRadius ?? radius ?? 0;
+  if (rFinal === 0) return null;
+
+  const n = fundamentos.length;
+  const anchoAngulo = 0.16;
+
+  return (
+    <g>
+      {fundamentos.map((f, i) => {
+        const count = accionesPorFundamento?.[f] ?? 0;
+        if (count === 0) return null;
+
+        const cortes = CORTES_POR_FUNDAMENTO[f] ?? [];
+        const angulo = -90 + (360 / n) * i;
+        const rad = (angulo * Math.PI) / 180;
+
+        return cortes.map((c, j) => {
+          const posRadar = transformarParaRadar(c.valor);
+          const r = (rFinal * posRadar) / 100;
+          const x1 = cx + r * Math.cos(rad - anchoAngulo);
+          const y1 = cy + r * Math.sin(rad - anchoAngulo);
+          const x2 = cx + r * Math.cos(rad + anchoAngulo);
+          const y2 = cy + r * Math.sin(rad + anchoAngulo);
+          return (
+            <path
+              key={`corte-${i}-${j}`}
+              d={`M ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2}`}
+              stroke={c.color}
+              strokeWidth={3}
+              fill="none"
+              strokeLinecap="round"
+              opacity={0.85}
+            />
+          );
+        });
+      })}
+    </g>
+  );
 }
 
 export default function RadarJugador({
@@ -94,6 +190,15 @@ export default function RadarJugador({
     return fila;
   });
 
+  // Cantidad de acciones por fundamento (del primer jugador, para los cortes)
+  const accionesPorFundamento: Record<string, number> = {};
+  const primera = seriesFinales[0];
+  if (primera) {
+    for (const f of fundamentos) {
+      accionesPorFundamento[f] = primera.jugador.porFundamento[f]?.total ?? 0;
+    }
+  }
+
   return (
     <div>
       <div className="w-full h-96">
@@ -128,6 +233,15 @@ export default function RadarJugador({
                 iconType="line"
               />
             )}
+            <Customized
+              component={(props: any) => (
+                <CortesRadar
+                  {...props}
+                  fundamentos={fundamentos}
+                  accionesPorFundamento={accionesPorFundamento}
+                />
+              )}
+            />
           </RadarChart>
         </ResponsiveContainer>
       </div>
@@ -139,11 +253,11 @@ export default function RadarJugador({
         }`}
       >
         {fundamentos.map((f) => {
-          const primera = seriesFinales[0];
           const valor =
             primera?.jugador.valoracionPonderadaPorFundamento[f] ?? 0;
           const nivel = nivelDeValoracion(f, valor);
           const col = COLORES_NIVEL_CLASES[nivel];
+          const count = primera?.jugador.porFundamento[f]?.total ?? 0;
 
           return (
             <div
@@ -152,6 +266,9 @@ export default function RadarJugador({
             >
               <p className="text-xs text-slate-500 font-medium">
                 {ETIQUETAS[f]}
+                <span className="text-slate-400 ml-1">
+                  ({count})
+                </span>
               </p>
               {seriesFinales.map((s) => {
                 const val =

@@ -1429,18 +1429,18 @@ export const COLORES_NIVEL_CLASES: Record<
     bg: "bg-yellow-50",
     border: "border-yellow-300",
     text: "text-yellow-700",
-    nombre: "Cumple",
+    nombre: "Regular",
   },
   bien: {
     bg: "bg-emerald-50",
     border: "border-emerald-300",
     text: "text-emerald-700",
-    nombre: "Bien",
+    nombre: "Bueno",
   },
   destaca: {
     bg: "bg-sky-50",
     border: "border-sky-300",
     text: "text-sky-700",
-    nombre: "Destaca",
+    nombre: "Destacado",
   },
 };

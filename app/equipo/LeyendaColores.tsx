@@ -7,7 +7,6 @@ interface NivelInfo {
   bg: string;
   border: string;
   text: string;
-  // Cortes por fundamento
   saque: string;
   recepcion: string;
   ataque: string;
@@ -18,7 +17,7 @@ interface NivelInfo {
 const NIVELES: NivelInfo[] = [
   {
     id: "destaca",
-    label: "Destaca",
+    label: "Destacado",
     ancho: "100%",
     bg: "bg-sky-100",
     border: "border-sky-400",
@@ -31,7 +30,7 @@ const NIVELES: NivelInfo[] = [
   },
   {
     id: "bien",
-    label: "Bien",
+    label: "Bueno",
     ancho: "100%",
     bg: "bg-emerald-100",
     border: "border-emerald-400",
@@ -44,7 +43,7 @@ const NIVELES: NivelInfo[] = [
   },
   {
     id: "cumple",
-    label: "Cumple",
+    label: "Regular",
     ancho: "100%",
     bg: "bg-yellow-100",
     border: "border-yellow-400",
@@ -85,7 +84,6 @@ export default function LeyendaColores() {
         🏐 Niveles de rendimiento
       </p>
 
-      {/* Tabla compacta: filas = niveles, columnas = fundamentos */}
       <div className="overflow-x-auto">
         <table className="w-full text-xs border-separate border-spacing-0">
           <thead>
