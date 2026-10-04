@@ -60,6 +60,8 @@ interface EstadoLocal {
   saquesTipo: Record<string, "flotado" | "potencia">;
   recepciones: RecepcionRow[];
   cambios: CambioRow[];
+  erroresRivales?: number;
+  buenasRivales?: number;
 }
 
 const CLAVE_LOCAL = "voleystats_dataentry_";
@@ -190,8 +192,6 @@ function resolverJugadorPorRol(
 
 // ------------------------------------------------------------
 // Recepción: mapeo por columna + zona del armador
-// C1,C2 → zona 5 | C3 → zona 6 | C4,C5 → zona 1
-// Excepción: F1-C3 → central delantero
 // ------------------------------------------------------------
 type RolRecep = "PD" | "PZ" | "L";
 
@@ -214,18 +214,15 @@ function resolverJugadorRecepcion(
     return buscarCentralTraseroR();
   };
 
-  // Excepción: F1-C3 → central delantero
   if (fila === "F1" && col === "C3") {
     return buscarCentralDelanteroR() ?? buscarLiberoR() ?? fallback ?? null;
   }
 
-  // Mapeo columna → zona de recepción
   let zonaRecepcion: 1 | 5 | 6;
   if (col === "C1" || col === "C2") zonaRecepcion = 5;
   else if (col === "C3") zonaRecepcion = 6;
-  else zonaRecepcion = 1; // C4, C5
+  else zonaRecepcion = 1;
 
-  // Zona del armador
   let zonaArmador: Zona | null = null;
   for (const z of Object.values(rot.posiciones)) {
     if (z.tipo === "A" && z.jugador_id) {
@@ -262,11 +259,7 @@ function resolverJugadorRecepcion(
 }
 
 // ------------------------------------------------------------
-// Ataque: según celda origen + si es recepción con armador en 1
-// - C1, C2 → punta delantero (o opuesto si invertir)
-// - C3 F1  → central
-// - C3 F2/F3 → punta zaguero
-// - C4, C5 → opuesto (o punta delantero si invertir)
+// Ataque
 // ------------------------------------------------------------
 function esRecepcionArmadorEn1(rot: RotacionPunto): boolean {
   if (rot.saque_equipo !== "rival") return false;
@@ -308,7 +301,6 @@ function resolverJugadorAtaque(
   return null;
 }
 
-// Ajuste de zona: si atacó el opuesto desde C4/C5 y está zaguero → zona 1 en vez de 2
 function ajustarZonaAtaque(
   zonaOriginal: number | null,
   celda: string,
@@ -324,7 +316,6 @@ function ajustarZonaAtaque(
   return zonaOriginal;
 }
 
-// Ajuste de zona de tendencia (armado): mismo criterio que el ataque
 function calcularZonaTendenciaAjustada(
   celda: string,
   rot: RotacionPunto | undefined
@@ -371,6 +362,10 @@ export default function DataEntryPage() {
   >({});
   const [recepciones, setRecepciones] = useState<RecepcionRow[]>([]);
   const [cambios, setCambios] = useState<CambioRow[]>([]);
+
+  // NUEVOS estados para rival
+  const [erroresRivales, setErroresRivales] = useState(0);
+  const [buenasRivales, setBuenasRivales] = useState(0);
 
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -455,6 +450,8 @@ export default function DataEntryPage() {
             setSaquesTipo(data.saquesTipo ?? {});
             setRecepciones(data.recepciones ?? []);
             setCambios(data.cambios ?? []);
+            setErroresRivales(data.erroresRivales ?? 0);
+            setBuenasRivales(data.buenasRivales ?? 0);
             setCargando(false);
             return;
           } else {
@@ -521,6 +518,19 @@ export default function DataEntryPage() {
       setRecepciones(d.recepciones);
       setCambios(d.cambios);
 
+      // NUEVO: cargar errores_rivales y buenas_rivales del partido
+      supabase
+        .from("partidos")
+        .select("errores_rivales, buenas_rivales")
+        .eq("id", partidoId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) {
+            setErroresRivales(data.errores_rivales ?? 0);
+            setBuenasRivales(data.buenas_rivales ?? 0);
+          }
+        });
+
       const puntos = new Set<number>();
       [...d.ataques, ...d.defensas, ...d.bloqueos, ...d.saques, ...d.recepciones].forEach(
         (x: any) => {
@@ -583,6 +593,8 @@ export default function DataEntryPage() {
         saquesTipo,
         recepciones,
         cambios,
+        erroresRivales,
+        buenasRivales,
       };
       try {
         localStorage.setItem(CLAVE_LOCAL + partidoId, JSON.stringify(data));
@@ -602,6 +614,8 @@ export default function DataEntryPage() {
     saquesTipo,
     recepciones,
     cambios,
+    erroresRivales,
+    buenasRivales,
   ]);
 
   useEffect(() => {
@@ -648,6 +662,8 @@ export default function DataEntryPage() {
     setSaquesTipo({});
     setRecepciones([]);
     setCambios([]);
+    setErroresRivales(0);
+    setBuenasRivales(0);
     setPuntoActual(1);
     setArmadoIdx(0);
   };
@@ -981,10 +997,25 @@ export default function DataEntryPage() {
       cambios,
     });
 
+    if (!res.ok) {
+      setGuardando(false);
+      setMensaje("❌ " + res.error);
+      return;
+    }
+
+    // NUEVO: guardar errores y buenas rivales en la tabla partidos
+    const { error: errPartido } = await supabase
+      .from("partidos")
+      .update({
+        errores_rivales: erroresRivales,
+        buenas_rivales: buenasRivales,
+      })
+      .eq("id", partidoId);
+
     setGuardando(false);
 
-    if (!res.ok) {
-      setMensaje("❌ " + res.error);
+    if (errPartido) {
+      setMensaje("❌ Error guardando rival: " + errPartido.message);
       return;
     }
 
@@ -1078,54 +1109,107 @@ export default function DataEntryPage() {
         {!noHayPartido && (
           <>
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-4">
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="flex items-center gap-1">
-                  <span className="text-xs font-semibold text-slate-500 uppercase mr-2">
-                    Set:
-                  </span>
-                  {([1, 2, 3, 4, 5] as const).map((s) => (
+              <div className="flex flex-wrap items-center gap-4 justify-between">
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-semibold text-slate-500 uppercase mr-2">
+                      Set:
+                    </span>
+                    {([1, 2, 3, 4, 5] as const).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => {
+                          setSetActivo(s);
+                          setPuntoActual(1);
+                        }}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-lg transition ${
+                          setActivo === s
+                            ? "bg-emerald-500 text-white"
+                            : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-semibold text-slate-500 uppercase mr-2">
+                      Punto:
+                    </span>
                     <button
-                      key={s}
-                      onClick={() => {
-                        setSetActivo(s);
-                        setPuntoActual(1);
-                      }}
-                      className={`px-3 py-1.5 text-sm font-medium rounded-lg transition ${
-                        setActivo === s
-                          ? "bg-emerald-500 text-white"
-                          : "bg-slate-100 hover:bg-slate-200 text-slate-700"
-                      }`}
+                      onClick={() => setPuntoActual((p) => Math.max(1, p - 1))}
+                      disabled={puntoActual === 1}
+                      className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm disabled:opacity-40"
                     >
-                      {s}
+                      ◀
                     </button>
-                  ))}
+                    <input
+                      type="number"
+                      value={puntoActual}
+                      onChange={(e) =>
+                        setPuntoActual(Math.max(1, parseInt(e.target.value) || 1))
+                      }
+                      className="w-16 px-2 py-1.5 text-center border border-slate-300 rounded-lg text-sm"
+                    />
+                    <button
+                      onClick={() => setPuntoActual((p) => p + 1)}
+                      className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm"
+                    >
+                      ▶
+                    </button>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-1">
-                  <span className="text-xs font-semibold text-slate-500 uppercase mr-2">
-                    Punto:
-                  </span>
-                  <button
-                    onClick={() => setPuntoActual((p) => Math.max(1, p - 1))}
-                    disabled={puntoActual === 1}
-                    className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm disabled:opacity-40"
-                  >
-                    ◀
-                  </button>
-                  <input
-                    type="number"
-                    value={puntoActual}
-                    onChange={(e) =>
-                      setPuntoActual(Math.max(1, parseInt(e.target.value) || 1))
-                    }
-                    className="w-16 px-2 py-1.5 text-center border border-slate-300 rounded-lg text-sm"
-                  />
-                  <button
-                    onClick={() => setPuntoActual((p) => p + 1)}
-                    className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm"
-                  >
-                    ▶
-                  </button>
+                {/* NUEVO: contadores de error/buena rival */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1 bg-red-50 border border-red-200 rounded-lg px-2 py-1">
+                    <span className="text-[10px] font-bold text-red-700 uppercase tracking-wide">
+                      Error rival
+                    </span>
+                    <button
+                      onClick={() =>
+                        setErroresRivales((v) => Math.max(0, v - 1))
+                      }
+                      disabled={erroresRivales === 0}
+                      className="w-6 h-6 flex items-center justify-center rounded bg-white border border-red-300 text-red-700 font-bold text-sm disabled:opacity-40"
+                    >
+                      −
+                    </button>
+                    <span className="w-8 text-center font-bold text-red-800">
+                      {erroresRivales}
+                    </span>
+                    <button
+                      onClick={() => setErroresRivales((v) => v + 1)}
+                      className="w-6 h-6 flex items-center justify-center rounded bg-red-500 text-white font-bold text-sm hover:bg-red-600"
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
+                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wide">
+                      Buena rival
+                    </span>
+                    <button
+                      onClick={() =>
+                        setBuenasRivales((v) => Math.max(0, v - 1))
+                      }
+                      disabled={buenasRivales === 0}
+                      className="w-6 h-6 flex items-center justify-center rounded bg-white border border-blue-300 text-blue-700 font-bold text-sm disabled:opacity-40"
+                    >
+                      −
+                    </button>
+                    <span className="w-8 text-center font-bold text-blue-800">
+                      {buenasRivales}
+                    </span>
+                    <button
+                      onClick={() => setBuenasRivales((v) => v + 1)}
+                      className="w-6 h-6 flex items-center justify-center rounded bg-blue-500 text-white font-bold text-sm hover:bg-blue-600"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
