@@ -364,6 +364,7 @@ export default function DataEntryPage() {
   const [recepciones, setRecepciones] = useState<RecepcionRow[]>([]);
   const [cambios, setCambios] = useState<CambioRow[]>([]);
 
+  // Estados para rival
   const [erroresRivales, setErroresRivales] = useState(0);
   const [buenasRivales, setBuenasRivales] = useState(0);
 
@@ -1506,7 +1507,7 @@ export default function DataEntryPage() {
             </div>
             <CanchaV2
               orientacion="vertical"
-              onClickMini={(c) => {
+              onMiniClick={(c) => {
                 console.log("Click:", c);
               }}
             />
