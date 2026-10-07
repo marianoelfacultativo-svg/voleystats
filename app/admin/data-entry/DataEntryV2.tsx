@@ -99,20 +99,15 @@ function posicionPopup(p: PuntoV2): PopupPos {
   return { x: c.x, y: c.y - 4 };
 }
 
-// Determinar el tipo de acción según el estado actual
 function detectarFase(
   lineas: LineaV2[],
   origen: PuntoV2,
   destino: PuntoV2
 ): Fase {
-  // Primera línea = saque
   if (lineas.length === 0) return "saque";
-  // Segunda línea = recepción
   if (lineas.length === 1) return "recepcion";
-  // Tercera y siguientes: miramos contexto básico
-  // Si origen está en bloqueo → defensa
   if (origen.celda.startsWith("BLOQ")) return "defensa";
-  // Si destino va a cancha rival desde propia → puede ser armado o ataque
+
   const ladoO = ladoDeZona(
     origen.celda.startsWith("F4") ||
       origen.celda.startsWith("F5") ||
@@ -127,9 +122,8 @@ function detectarFase(
       ? "cancha-rival"
       : "cancha-propia"
   );
-  // Si vamos al otro lado → ataque o libre
+
   if (ladoO !== ladoD) return "ataque";
-  // Mismo lado → armado (o recepción si es el 2do toque)
   return "armado";
 }
 
@@ -238,22 +232,17 @@ export default function DataEntryV2({
   // HANDLERS
   // ============================================================
 
-  // Click en una mini → abre círculo de origen
   const handleMiniClick = (coords: CoordsV2) => {
-    // Si hay un popup abierto, no hacemos nada
     if (popupArmado || popupDefensa || popupLibre || popupToqueRed) return;
 
-    // Zona de red → popup de toque de red
     if (coords.zona === "red") {
       setPopupToqueRed(posicionPopup({ celda: coords.celda, mini: coords.mini }));
       return;
     }
 
-    // Abrir círculo en esa mini
     setOrigenActivo({ celda: coords.celda, mini: coords.mini });
   };
 
-  // Crear línea desde el círculo activo al destino
   const handleCrearLinea = (destino: PuntoV2) => {
     if (!origenActivo) return;
 
@@ -267,28 +256,17 @@ export default function DataEntryV2({
     setContadorId((c) => c + 1);
     setOrigenActivo(destino);
 
-    // Detectar qué acción es y actuar en consecuencia
     const fase = detectarFase(lineas, origenActivo, destino);
     setFaseActual(fase);
 
-    // Si es armado → abrir popup
     if (fase === "armado") {
       setPopupArmado(posicionPopup(destino));
       return;
     }
-
-    // Si es ataque → no popup, se calcula al cerrar punto
-    if (fase === "ataque") {
-      return;
-    }
-
-    // Si es saque o recepción → no popup
-    if (fase === "saque" || fase === "recepcion") {
-      return;
-    }
+    if (fase === "ataque") return;
+    if (fase === "saque" || fase === "recepcion") return;
   };
 
-  // Borrar última acción: elimina última línea y abre el círculo anterior
   const handleBorrarUltima = () => {
     if (lineas.length === 0) {
       if (origenActivo) setOrigenActivo(null);
@@ -297,11 +275,9 @@ export default function DataEntryV2({
     const ultima = lineas[lineas.length - 1];
     setLineas((prev) => prev.slice(0, -1));
     setOrigenActivo(ultima.origen);
-    // Quitar la última acción cerrada si coincide
     setAccionesCerradas((prev) => prev.slice(0, -1));
   };
 
-  // Borrar punto entero
   const handleBorrarPunto = () => {
     if (
       lineas.length > 0 &&
@@ -328,13 +304,9 @@ export default function DataEntryV2({
     );
     if (!cerrar) return;
 
-    // Clasificación mínima: la primera línea define el saque
     const primera = lineas[0];
     const saqueDePropio = !primera.origen.celda.startsWith("FUERA-ARR");
 
-    // Ganador provisional (después refinamos con la lógica completa):
-    // Si el último destino cae en cancha rival y es ataque propio → propio
-    // Si cae en propia y es ataque rival → rival
     const ultima = lineas[lineas.length - 1];
     const destinoRival =
       ultima.destino.celda.startsWith("F4") ||
@@ -359,24 +331,67 @@ export default function DataEntryV2({
       ts: Date.now(),
     };
 
-    setPuntosCerrados((prev) => [...prev, punto]);
+    const idxExistente = puntosCerrados.findIndex(
+      (p) => p.setNumero === setActivo && p.puntoNumero === puntoActual
+    );
 
-    // Avanzar al siguiente punto
-    setPuntoActual((p) => p + 1);
-    // El saque del siguiente punto: si ganó el que sacaba, mantiene; si no, cambia
-    setSaqueEquipo(ganador === saqueEquipo ? saqueEquipo : (saqueEquipo === "propio" ? "rival" : "propio"));
+    if (idxExistente >= 0) {
+      setPuntosCerrados((prev) => {
+        const copia = [...prev];
+        copia[idxExistente] = punto;
+        return copia;
+      });
+    } else {
+      setPuntosCerrados((prev) => [...prev, punto]);
+      setPuntoActual((p) => p + 1);
+      setSaqueEquipo(
+        ganador === saqueEquipo
+          ? saqueEquipo
+          : saqueEquipo === "propio"
+          ? "rival"
+          : "propio"
+      );
+      setLineas([]);
+      setOrigenActivo(null);
+      setAccionesCerradas([]);
+      setFaseActual("saque");
+    }
 
-    // Limpiar punto actual
-    setLineas([]);
-    setOrigenActivo(null);
-    setAccionesCerradas([]);
-    setFaseActual("saque");
-
-    // Cerrar popups
     setPopupArmado(null);
     setPopupDefensa(null);
     setPopupLibre(null);
     setPopupToqueRed(null);
+  };
+
+  // Navegar a un punto específico (permite volver a editar cerrados)
+  const irAPunto = (n: number) => {
+    if (n < 1) return;
+
+    setPopupArmado(null);
+    setPopupDefensa(null);
+    setPopupLibre(null);
+    setPopupToqueRed(null);
+    setOrigenActivo(null);
+    setAccionesCerradas([]);
+    setFaseActual("saque");
+
+    const cerrado = puntosCerrados.find(
+      (p) => p.setNumero === setActivo && p.puntoNumero === n
+    );
+    if (cerrado) {
+      setLineas(
+        cerrado.acciones.map((a) => ({
+          id: a.id,
+          origen: a.origen,
+          destino: a.destino,
+          pendiente: false,
+        }))
+      );
+    } else {
+      setLineas([]);
+    }
+
+    setPuntoActual(n);
   };
 
   // ---------- Handlers de popups ----------
@@ -487,7 +502,6 @@ export default function DataEntryV2({
 
   const handleGuardarCambios = () => {
     if (!rotacion) return;
-    // Aplicar cambios pendientes a la rotación
     const nuevaRot = { ...rotacion };
     for (const c of cambiosPendientes) {
       if (nuevaRot.posiciones[c.zona]) {
@@ -508,6 +522,14 @@ export default function DataEntryV2({
   const puntoCerrado = useMemo(
     () => puntosCerrados.length,
     [puntosCerrados.length]
+  );
+
+  const esPuntoCerrado = useMemo(
+    () =>
+      puntosCerrados.some(
+        (p) => p.setNumero === setActivo && p.puntoNumero === puntoActual
+      ),
+    [puntosCerrados, setActivo, puntoActual]
   );
 
   return (
@@ -535,14 +557,36 @@ export default function DataEntryV2({
       </div>
 
       {/* ---------- INFO DEL PUNTO ---------- */}
-      <div className="flex items-center justify-between text-sm text-slate-600 bg-white border border-slate-200 rounded-xl px-4 py-2">
-        <span>
-          <strong>Set {setActivo}</strong> · Punto <strong>{puntoActual}</strong>{" "}
-          · Saca:{" "}
-          <strong>
-            {saqueEquipo === "propio" ? nombreMiEquipo : nombreRival}
-          </strong>
-        </span>
+      <div className="flex items-center justify-between text-sm text-slate-600 bg-white border border-slate-200 rounded-xl px-4 py-2 gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => irAPunto(puntoActual - 1)}
+            disabled={puntoActual === 1}
+            className="w-7 h-7 flex items-center justify-center rounded border border-slate-300 hover:bg-slate-50 text-slate-600 disabled:opacity-30"
+            title="Punto anterior"
+          >
+            ◀
+          </button>
+          <span>
+            <strong>Set {setActivo}</strong> · Punto{" "}
+            <strong>{puntoActual}</strong> · Saca:{" "}
+            <strong>
+              {saqueEquipo === "propio" ? nombreMiEquipo : nombreRival}
+            </strong>
+            {esPuntoCerrado && (
+              <span className="ml-2 text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-semibold">
+                EDITANDO PUNTO CERRADO
+              </span>
+            )}
+          </span>
+          <button
+            onClick={() => irAPunto(puntoActual + 1)}
+            className="w-7 h-7 flex items-center justify-center rounded border border-slate-300 hover:bg-slate-50 text-slate-600"
+            title="Punto siguiente"
+          >
+            ▶
+          </button>
+        </div>
         <span className="text-xs text-slate-400">
           {lineas.length} línea{lineas.length !== 1 ? "s" : ""} ·{" "}
           {accionesCerradas.length} acc.
@@ -551,7 +595,6 @@ export default function DataEntryV2({
 
       {/* ---------- LAYOUT PRINCIPAL ---------- */}
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-3">
-        {/* Columna izquierda: panel rotación */}
         <div className="space-y-2">
           {rotacion && (
             <PanelRotacionV2
@@ -572,7 +615,6 @@ export default function DataEntryV2({
             />
           )}
 
-          {/* Secuencia del punto */}
           <div className="bg-white border border-slate-200 rounded-lg p-2">
             <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">
               Secuencia
@@ -621,7 +663,6 @@ export default function DataEntryV2({
           </div>
         </div>
 
-        {/* Columna derecha: cancha + popups */}
         <div className="relative bg-white rounded-2xl shadow-sm border border-slate-200 p-3">
           <div className="flex items-center justify-between mb-2">
             <p className="text-[10px] font-bold text-slate-500 uppercase">
