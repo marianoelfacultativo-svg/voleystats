@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import CanchaV2, {
-  CANCHA_V2_DIMS,
   getRectMiniLayout,
   type CoordsV2,
   type Orientacion,
@@ -23,7 +22,7 @@ import {
   type JugadorEnCancha,
   type PopupPos,
 } from "./PopupValoracion";
-import type { Libero, RotacionPunto, Zona, SaqueEquipo } from "@/lib/rotaciones";
+import type { Libero, RotacionPunto, Zona } from "@/lib/rotaciones";
 
 // ============================================================
 // TIPOS
@@ -56,8 +55,6 @@ interface PuntoCerrado {
   saqueEquipo: Lado;
   ganador: Lado;
   acciones: AccionCerrada[];
-  marcadorPropio: number;
-  marcadorRival: number;
   ts: number;
 }
 
@@ -99,6 +96,22 @@ function posicionPopup(p: PuntoV2): PopupPos {
   return { x: c.x, y: c.y - 4 };
 }
 
+function celdaEnMiCancha(celda: string): boolean {
+  return (
+    celda.startsWith("F1") ||
+    celda.startsWith("F2") ||
+    celda.startsWith("F3")
+  );
+}
+
+function celdaEnCanchaRival(celda: string): boolean {
+  return (
+    celda.startsWith("F4") ||
+    celda.startsWith("F5") ||
+    celda.startsWith("F6")
+  );
+}
+
 function detectarFase(
   lineas: LineaV2[],
   origen: PuntoV2,
@@ -109,18 +122,10 @@ function detectarFase(
   if (origen.celda.startsWith("BLOQ")) return "defensa";
 
   const ladoO = ladoDeZona(
-    origen.celda.startsWith("F4") ||
-      origen.celda.startsWith("F5") ||
-      origen.celda.startsWith("F6")
-      ? "cancha-rival"
-      : "cancha-propia"
+    celdaEnCanchaRival(origen.celda) ? "cancha-rival" : "cancha-propia"
   );
   const ladoD = ladoDeZona(
-    destino.celda.startsWith("F4") ||
-      destino.celda.startsWith("F5") ||
-      destino.celda.startsWith("F6")
-      ? "cancha-rival"
-      : "cancha-propia"
+    celdaEnCanchaRival(destino.celda) ? "cancha-rival" : "cancha-propia"
   );
 
   if (ladoO !== ladoD) return "ataque";
@@ -155,9 +160,12 @@ export default function DataEntryV2({
   // ---------- Estado del partido ----------
   const [setActivo, setSetActivo] = useState<number>(1);
   const [puntoActual, setPuntoActual] = useState<number>(1);
-  const [saqueEquipo, setSaqueEquipo] = useState<Lado>("propio");
   const [orientacion, setOrientacion] = useState<Orientacion>("vertical");
   const [puntosCerrados, setPuntosCerrados] = useState<PuntoCerrado[]>([]);
+
+  // ---------- Setup inicial ----------
+  const [setupCompleto, setSetupCompleto] = useState(false);
+  const [saqueInicial, setSaqueInicial] = useState<Lado>("propio");
 
   // ---------- Panel rotación ----------
   const [rotacion, setRotacion] = useState<RotacionPunto | null>(
@@ -165,14 +173,7 @@ export default function DataEntryV2({
   );
   const [liberos, setLiberos] = useState<Libero[]>([]);
   const [posicionesPunto, setPosicionesPunto] = useState<Record<Zona, string>>(
-    () => ({
-      1: "",
-      2: "",
-      3: "",
-      4: "",
-      5: "",
-      6: "",
-    })
+    () => ({ 1: "", 2: "", 3: "", 4: "", 5: "", 6: "" })
   );
   const [cambiosPendientes, setCambiosPendientes] = useState<CambioPendiente[]>(
     []
@@ -187,6 +188,43 @@ export default function DataEntryV2({
     };
   }, [puntosCerrados, setActivo]);
 
+  // ---------- Derivados: ¿el punto actual está cerrado? ----------
+  const esPuntoCerrado = useMemo(
+    () =>
+      puntosCerrados.some(
+        (p) => p.setNumero === setActivo && p.puntoNumero === puntoActual
+      ),
+    [puntosCerrados, setActivo, puntoActual]
+  );
+
+  // ---------- Derivados: último punto cerrado + puede avanzar ----------
+  const ultimoPuntoCerrado = useMemo(() => {
+    const delSet = puntosCerrados.filter((p) => p.setNumero === setActivo);
+    if (delSet.length === 0) return 0;
+    return Math.max(...delSet.map((p) => p.puntoNumero));
+  }, [puntosCerrados, setActivo]);
+
+  const maxPuntoPermitido = ultimoPuntoCerrado + 1;
+
+  // ---------- Derivados: saque del punto actual ----------
+  const saqueDelPuntoActual: Lado = useMemo(() => {
+    const cerrado = puntosCerrados.find(
+      (p) => p.setNumero === setActivo && p.puntoNumero === puntoActual
+    );
+    if (cerrado) return cerrado.saqueEquipo;
+
+    // Punto no cerrado: derivar del anterior
+    const anterior = puntosCerrados.find(
+      (p) => p.setNumero === setActivo && p.puntoNumero === puntoActual - 1
+    );
+    if (!anterior) return saqueInicial;
+
+    if (anterior.ganador === anterior.saqueEquipo) {
+      return anterior.saqueEquipo;
+    }
+    return anterior.saqueEquipo === "propio" ? "rival" : "propio";
+  }, [puntosCerrados, setActivo, puntoActual, saqueInicial]);
+
   // ---------- Persistencia en localStorage ----------
   useEffect(() => {
     if (!partidoId) return;
@@ -195,14 +233,22 @@ export default function DataEntryV2({
       puntosCerrados,
       setActivo,
       puntoActual,
-      saqueEquipo,
+      saqueInicial,
+      setupCompleto,
     };
     try {
       localStorage.setItem(CLAVE_V2 + partidoId, JSON.stringify(data));
     } catch {
       /* noop */
     }
-  }, [partidoId, puntosCerrados, setActivo, puntoActual, saqueEquipo]);
+  }, [
+    partidoId,
+    puntosCerrados,
+    setActivo,
+    puntoActual,
+    saqueInicial,
+    setupCompleto,
+  ]);
 
   // ---------- Cargar desde localStorage al montar ----------
   useEffect(() => {
@@ -214,7 +260,8 @@ export default function DataEntryV2({
       if (data.puntosCerrados) setPuntosCerrados(data.puntosCerrados);
       if (data.setActivo) setSetActivo(data.setActivo);
       if (data.puntoActual) setPuntoActual(data.puntoActual);
-      if (data.saqueEquipo) setSaqueEquipo(data.saqueEquipo);
+      if (data.saqueInicial) setSaqueInicial(data.saqueInicial);
+      if (data.setupCompleto !== undefined) setSetupCompleto(data.setupCompleto);
     } catch {
       /* noop */
     }
@@ -233,13 +280,39 @@ export default function DataEntryV2({
   // ============================================================
 
   const handleMiniClick = (coords: CoordsV2) => {
-    if (popupArmado || popupDefensa || popupLibre || popupToqueRed) return;
+    // Si el setup no está completo, no dejar clickear
+    if (!setupCompleto) return;
 
+    // Popups obligatorios bloquean
+    if (popupArmado) return;
+    if (popupToqueRed) return;
+
+    // Click en la red → popup toque red
     if (coords.zona === "red") {
       setPopupToqueRed(posicionPopup({ celda: coords.celda, mini: coords.mini }));
       return;
     }
 
+    // Si hay popup defensa abierto:
+    if (popupDefensa) {
+      const esCirculoActivo =
+        origenActivo &&
+        origenActivo.celda === coords.celda &&
+        origenActivo.mini === coords.mini;
+
+      if (esCirculoActivo) {
+        // Sigue el flujo normal
+        setPopupDefensa(null);
+        return;
+      }
+
+      // Marca de posición de defensor: abrir nuevo círculo ahí
+      setPopupDefensa(null);
+      setOrigenActivo({ celda: coords.celda, mini: coords.mini });
+      return;
+    }
+
+    // Default: abrir círculo en esa mini
     setOrigenActivo({ celda: coords.celda, mini: coords.mini });
   };
 
@@ -259,12 +332,27 @@ export default function DataEntryV2({
     const fase = detectarFase(lineas, origenActivo, destino);
     setFaseActual(fase);
 
+    // Ataque rival que cae en mi cancha → popup defensa
+    const origenEnCanchaRival = celdaEnCanchaRival(origenActivo.celda);
+    const destinoEnMiCancha = celdaEnMiCancha(destino.celda);
+    if (
+      lineas.length >= 1 &&
+      origenEnCanchaRival &&
+      destinoEnMiCancha &&
+      fase !== "saque" &&
+      fase !== "recepcion"
+    ) {
+      setPopupDefensa(posicionPopup(destino));
+      return;
+    }
+
+    // Si es armado → popup armado
     if (fase === "armado") {
       setPopupArmado(posicionPopup(destino));
       return;
     }
-    if (fase === "ataque") return;
-    if (fase === "saque" || fase === "recepcion") return;
+
+    // Ataque / saque / recepción: sin popup por ahora
   };
 
   const handleBorrarUltima = () => {
@@ -294,7 +382,6 @@ export default function DataEntryV2({
     setPopupToqueRed(null);
   };
 
-  // Calcular punto: clasifica las líneas, decide ganador, guarda
   const handleCalcularPunto = () => {
     if (lineas.length === 0) return;
 
@@ -304,20 +391,14 @@ export default function DataEntryV2({
     );
     if (!cerrar) return;
 
-    const primera = lineas[0];
-    const saqueDePropio = !primera.origen.celda.startsWith("FUERA-ARR");
-
     const ultima = lineas[lineas.length - 1];
-    const destinoRival =
-      ultima.destino.celda.startsWith("F4") ||
-      ultima.destino.celda.startsWith("F5") ||
-      ultima.destino.celda.startsWith("F6");
+    const destinoRival = celdaEnCanchaRival(ultima.destino.celda);
     const ganador: Lado = destinoRival ? "propio" : "rival";
 
     const punto: PuntoCerrado = {
       setNumero: setActivo,
       puntoNumero: puntoActual,
-      saqueEquipo: saqueDePropio ? "propio" : "rival",
+      saqueEquipo: saqueDelPuntoActual,
       ganador,
       acciones: lineas.map((l, i) => ({
         id: l.id,
@@ -326,8 +407,6 @@ export default function DataEntryV2({
         destino: l.destino,
         lado: ladoDeZona("cancha-propia"),
       })),
-      marcadorPropio: marcador.propio + (ganador === "propio" ? 1 : 0),
-      marcadorRival: marcador.rival + (ganador === "rival" ? 1 : 0),
       ts: Date.now(),
     };
 
@@ -344,13 +423,6 @@ export default function DataEntryV2({
     } else {
       setPuntosCerrados((prev) => [...prev, punto]);
       setPuntoActual((p) => p + 1);
-      setSaqueEquipo(
-        ganador === saqueEquipo
-          ? saqueEquipo
-          : saqueEquipo === "propio"
-          ? "rival"
-          : "propio"
-      );
       setLineas([]);
       setOrigenActivo(null);
       setAccionesCerradas([]);
@@ -363,9 +435,9 @@ export default function DataEntryV2({
     setPopupToqueRed(null);
   };
 
-  // Navegar a un punto específico (permite volver a editar cerrados)
   const irAPunto = (n: number) => {
     if (n < 1) return;
+    if (n > maxPuntoPermitido) return;
 
     setPopupArmado(null);
     setPopupDefensa(null);
@@ -394,20 +466,24 @@ export default function DataEntryV2({
     setPuntoActual(n);
   };
 
+  const puedeAvanzar = useMemo(() => {
+    return esPuntoCerrado && puntoActual < maxPuntoPermitido;
+  }, [esPuntoCerrado, puntoActual, maxPuntoPermitido]);
+
   // ---------- Handlers de popups ----------
 
   const handleArmadoConfirmar = (v: ValorArmado) => {
     if (!popupArmado) return;
-    const destino = lineas[lineas.length - 1]?.destino;
-    if (!destino) return;
+    const ultima = lineas[lineas.length - 1];
+    if (!ultima) return;
     setAccionesCerradas((prev) => [
       ...prev,
       {
         id: `a-${contadorId}`,
         tipo: "armado",
         subtipo: v,
-        origen: lineas[lineas.length - 1].origen,
-        destino,
+        origen: ultima.origen,
+        destino: ultima.destino,
         lado: "propio",
       },
     ]);
@@ -416,9 +492,7 @@ export default function DataEntryV2({
     setFaseActual("ataque");
   };
 
-  const handleArmadoCancelar = () => {
-    setPopupArmado(null);
-  };
+  const handleArmadoCancelar = () => setPopupArmado(null);
 
   const handleDefensaConfirmar = (
     subtipo: TipoDefensa,
@@ -444,9 +518,7 @@ export default function DataEntryV2({
     setPopupDefensa(null);
   };
 
-  const handleDefensaCancelar = () => {
-    setPopupDefensa(null);
-  };
+  const handleDefensaCancelar = () => setPopupDefensa(null);
 
   const handleLibreConfirmar = (jugadorId: string | null) => {
     if (!popupLibre) return;
@@ -468,9 +540,7 @@ export default function DataEntryV2({
     setPopupLibre(null);
   };
 
-  const handleLibreCancelar = () => {
-    setPopupLibre(null);
-  };
+  const handleLibreCancelar = () => setPopupLibre(null);
 
   const handleToqueRedConfirmar = (
     resultado: ResultadoToqueRed,
@@ -492,9 +562,7 @@ export default function DataEntryV2({
     setPopupToqueRed(null);
   };
 
-  const handleToqueRedCancelar = () => {
-    setPopupToqueRed(null);
-  };
+  const handleToqueRedCancelar = () => setPopupToqueRed(null);
 
   // ============================================================
   // HANDLERS DE ROTACIÓN
@@ -516,21 +584,22 @@ export default function DataEntryV2({
   };
 
   // ============================================================
-  // RENDER
+  // SETUP INICIAL
   // ============================================================
 
-  const puntoCerrado = useMemo(
-    () => puntosCerrados.length,
-    [puntosCerrados.length]
-  );
+  const necesitaSetup = !setupCompleto && puntosCerrados.length === 0;
 
-  const esPuntoCerrado = useMemo(
-    () =>
-      puntosCerrados.some(
-        (p) => p.setNumero === setActivo && p.puntoNumero === puntoActual
-      ),
-    [puntosCerrados, setActivo, puntoActual]
-  );
+  const handleComenzarPartido = () => {
+    if (!rotacion) {
+      alert("Necesitás una rotación antes de comenzar.");
+      return;
+    }
+    setSetupCompleto(true);
+  };
+
+  // ============================================================
+  // RENDER
+  // ============================================================
 
   return (
     <div className="space-y-3">
@@ -556,208 +625,300 @@ export default function DataEntryV2({
         </div>
       </div>
 
-      {/* ---------- INFO DEL PUNTO ---------- */}
-      <div className="flex items-center justify-between text-sm text-slate-600 bg-white border border-slate-200 rounded-xl px-4 py-2 gap-2">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => irAPunto(puntoActual - 1)}
-            disabled={puntoActual === 1}
-            className="w-7 h-7 flex items-center justify-center rounded border border-slate-300 hover:bg-slate-50 text-slate-600 disabled:opacity-30"
-            title="Punto anterior"
-          >
-            ◀
-          </button>
-          <span>
-            <strong>Set {setActivo}</strong> · Punto{" "}
-            <strong>{puntoActual}</strong> · Saca:{" "}
-            <strong>
-              {saqueEquipo === "propio" ? nombreMiEquipo : nombreRival}
-            </strong>
-            {esPuntoCerrado && (
-              <span className="ml-2 text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-semibold">
-                EDITANDO PUNTO CERRADO
-              </span>
-            )}
-          </span>
-          <button
-            onClick={() => irAPunto(puntoActual + 1)}
-            className="w-7 h-7 flex items-center justify-center rounded border border-slate-300 hover:bg-slate-50 text-slate-600"
-            title="Punto siguiente"
-          >
-            ▶
-          </button>
-        </div>
-        <span className="text-xs text-slate-400">
-          {lineas.length} línea{lineas.length !== 1 ? "s" : ""} ·{" "}
-          {accionesCerradas.length} acc.
-        </span>
-      </div>
+      {/* ---------- SETUP OVERLAY ---------- */}
+      {necesitaSetup && (
+        <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 space-y-3">
+          <h2 className="text-lg font-bold text-amber-900">
+            🎬 Antes de empezar el partido
+          </h2>
 
-      {/* ---------- LAYOUT PRINCIPAL ---------- */}
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-3">
-        <div className="space-y-2">
-          {rotacion && (
-            <PanelRotacionV2
-              rotacion={rotacion}
-              jugadoresEnCancha={jugadores.map((j) => ({
-                id: j.id,
-                nombre: j.nombre,
-                numero: j.numero,
-              }))}
-              jugadoresDisponibles={[]}
-              liberos={liberos}
-              posicionesPunto={posicionesPunto}
-              cambiosPendientes={cambiosPendientes}
-              onSetLiberos={setLiberos}
-              onSetPosicionesPunto={setPosicionesPunto}
-              onSetCambiosPendientes={setCambiosPendientes}
-              onGuardarCambios={handleGuardarCambios}
-            />
-          )}
-
-          <div className="bg-white border border-slate-200 rounded-lg p-2">
-            <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">
-              Secuencia
-            </p>
-            <ol className="text-[11px] text-slate-700 space-y-0.5">
-              {lineas.map((l, i) => (
-                <li key={l.id} className="flex items-center gap-1">
-                  <span className="w-4 text-slate-400 font-mono">{i + 1}.</span>
-                  <span className="font-medium">
-                    {i === 0
-                      ? "Saque"
-                      : i === 1
-                      ? "Recepción"
-                      : "Acción"}
-                  </span>
-                  <span className="text-slate-400 text-[10px] truncate">
-                    {l.origen.celda} → {l.destino.celda}
-                  </span>
-                </li>
-              ))}
-              {lineas.length === 0 && (
-                <li className="text-slate-400 italic text-[10px]">
-                  (sin acciones)
-                </li>
+          <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4">
+            <div className="space-y-3">
+              {rotacion && (
+                <PanelRotacionV2
+                  rotacion={rotacion}
+                  jugadoresEnCancha={jugadores.map((j) => ({
+                    id: j.id,
+                    nombre: j.nombre,
+                    numero: j.numero,
+                  }))}
+                  jugadoresDisponibles={jugadores.map((j) => ({
+                    id: j.id,
+                    nombre: j.nombre,
+                    numero: j.numero,
+                  }))}
+                  liberos={liberos}
+                  posicionesPunto={posicionesPunto}
+                  cambiosPendientes={cambiosPendientes}
+                  onSetLiberos={setLiberos}
+                  onSetPosicionesPunto={setPosicionesPunto}
+                  onSetCambiosPendientes={setCambiosPendientes}
+                  onGuardarCambios={handleGuardarCambios}
+                />
               )}
-            </ol>
-            {accionesCerradas.length > 0 && (
-              <div className="mt-2 pt-2 border-t border-slate-100">
-                <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">
-                  Cerradas
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs font-bold text-amber-800 uppercase mb-1">
+                  ¿Quién saca el primer punto?
                 </p>
-                <ul className="text-[11px] text-slate-700 space-y-0.5">
-                  {accionesCerradas.map((a) => (
-                    <li key={a.id} className="flex items-center gap-1">
-                      <span className="font-medium">{a.tipo}</span>
-                      {a.subtipo !== undefined && a.subtipo !== null && (
-                        <span className="text-slate-400">
-                          ({String(a.subtipo)})
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSaqueInicial("propio")}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
+                      saqueInicial === "propio"
+                        ? "bg-emerald-500 text-white"
+                        : "bg-white text-slate-700 border border-slate-300"
+                    }`}
+                  >
+                    {nombreMiEquipo}
+                  </button>
+                  <button
+                    onClick={() => setSaqueInicial("rival")}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
+                      saqueInicial === "rival"
+                        ? "bg-orange-500 text-white"
+                        : "bg-white text-slate-700 border border-slate-300"
+                    }`}
+                  >
+                    {nombreRival}
+                  </button>
+                </div>
               </div>
-            )}
+
+              <button
+                onClick={handleComenzarPartido}
+                className="w-full px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-lg text-lg"
+              >
+                ✓ Comenzar partido
+              </button>
+            </div>
           </div>
         </div>
+      )}
 
-        <div className="relative bg-white rounded-2xl shadow-sm border border-slate-200 p-3">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[10px] font-bold text-slate-500 uppercase">
-              Punto {puntoActual} · Set {setActivo}
-            </p>
+      {/* ---------- INFO DEL PUNTO ---------- */}
+      {!necesitaSetup && (
+        <div className="flex items-center justify-between text-sm text-slate-600 bg-white border border-slate-200 rounded-xl px-4 py-2 gap-2">
+          <div className="flex items-center gap-2">
             <button
-              onClick={() =>
-                setOrientacion((o) =>
-                  o === "vertical" ? "horizontal" : "vertical"
-                )
-              }
-              className="px-2 py-0.5 text-[10px] rounded border border-slate-300 hover:bg-slate-50 text-slate-600"
+              onClick={() => irAPunto(puntoActual - 1)}
+              disabled={puntoActual === 1}
+              className="w-7 h-7 flex items-center justify-center rounded border border-slate-300 hover:bg-slate-50 text-slate-600 disabled:opacity-30"
+              title="Punto anterior"
             >
-              🔄 {orientacion === "vertical" ? "Horizontal" : "Vertical"}
+              ◀
+            </button>
+            <span>
+              <strong>Set {setActivo}</strong> · Punto{" "}
+              <strong>{puntoActual}</strong> · Saca:{" "}
+              <strong>
+                {saqueDelPuntoActual === "propio"
+                  ? nombreMiEquipo
+                  : nombreRival}
+              </strong>
+              {esPuntoCerrado && (
+                <span className="ml-2 text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-semibold">
+                  EDITANDO PUNTO CERRADO
+                </span>
+              )}
+            </span>
+            <button
+              onClick={() => irAPunto(puntoActual + 1)}
+              disabled={!puedeAvanzar}
+              className="w-7 h-7 flex items-center justify-center rounded border border-slate-300 hover:bg-slate-50 text-slate-600 disabled:opacity-30"
+              title={
+                puedeAvanzar
+                  ? "Punto siguiente"
+                  : "Tenés que cerrar este punto antes de avanzar"
+              }
+            >
+              ▶
+            </button>
+          </div>
+          <span className="text-xs text-slate-400">
+            {lineas.length} línea{lineas.length !== 1 ? "s" : ""} ·{" "}
+            {accionesCerradas.length} acc.
+          </span>
+        </div>
+      )}
+
+      {/* ---------- LAYOUT PRINCIPAL ---------- */}
+      {!necesitaSetup && (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-3">
+            <div className="space-y-2">
+              {rotacion && (
+                <PanelRotacionV2
+                  rotacion={rotacion}
+                  jugadoresEnCancha={jugadores.map((j) => ({
+                    id: j.id,
+                    nombre: j.nombre,
+                    numero: j.numero,
+                  }))}
+                  jugadoresDisponibles={jugadores.map((j) => ({
+                    id: j.id,
+                    nombre: j.nombre,
+                    numero: j.numero,
+                  }))}
+                  liberos={liberos}
+                  posicionesPunto={posicionesPunto}
+                  cambiosPendientes={cambiosPendientes}
+                  onSetLiberos={setLiberos}
+                  onSetPosicionesPunto={setPosicionesPunto}
+                  onSetCambiosPendientes={setCambiosPendientes}
+                  onGuardarCambios={handleGuardarCambios}
+                />
+              )}
+
+              <div className="bg-white border border-slate-200 rounded-lg p-2">
+                <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">
+                  Secuencia
+                </p>
+                <ol className="text-[11px] text-slate-700 space-y-0.5">
+                  {lineas.map((l, i) => (
+                    <li key={l.id} className="flex items-center gap-1">
+                      <span className="w-4 text-slate-400 font-mono">
+                        {i + 1}.
+                      </span>
+                      <span className="font-medium">
+                        {i === 0
+                          ? "Saque"
+                          : i === 1
+                          ? "Recepción"
+                          : "Acción"}
+                      </span>
+                      <span className="text-slate-400 text-[10px] truncate">
+                        {l.origen.celda} → {l.destino.celda}
+                      </span>
+                    </li>
+                  ))}
+                  {lineas.length === 0 && (
+                    <li className="text-slate-400 italic text-[10px]">
+                      (sin acciones)
+                    </li>
+                  )}
+                </ol>
+                {accionesCerradas.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-slate-100">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">
+                      Cerradas
+                    </p>
+                    <ul className="text-[11px] text-slate-700 space-y-0.5">
+                      {accionesCerradas.map((a) => (
+                        <li key={a.id} className="flex items-center gap-1">
+                          <span className="font-medium">{a.tipo}</span>
+                          {a.subtipo !== undefined && a.subtipo !== null && (
+                            <span className="text-slate-400">
+                              ({String(a.subtipo)})
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="relative bg-white rounded-2xl shadow-sm border border-slate-200 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-bold text-slate-500 uppercase">
+                  Punto {puntoActual} · Set {setActivo}
+                </p>
+                <button
+                  onClick={() =>
+                    setOrientacion((o) =>
+                      o === "vertical" ? "horizontal" : "vertical"
+                    )
+                  }
+                  className="px-2 py-0.5 text-[10px] rounded border border-slate-300 hover:bg-slate-50 text-slate-600"
+                >
+                  🔄 {orientacion === "vertical" ? "Horizontal" : "Vertical"}
+                </button>
+              </div>
+
+              <CanchaV2
+                orientacion={orientacion}
+                onMiniClick={handleMiniClick}
+              >
+                <LineasV2
+                  lineas={lineas}
+                  origenActivo={origenActivo}
+                  orientacion={orientacion}
+                  onCrearLinea={handleCrearLinea}
+                />
+
+                {popupArmado && (
+                  <PopupArmado
+                    pos={popupArmado}
+                    onConfirmar={handleArmadoConfirmar}
+                    onCancelar={handleArmadoCancelar}
+                  />
+                )}
+                {popupDefensa && (
+                  <PopupDefensa
+                    pos={popupDefensa}
+                    jugadores={jugadoresEnCancha}
+                    onConfirmar={handleDefensaConfirmar}
+                    onCancelar={handleDefensaCancelar}
+                  />
+                )}
+                {popupLibre && (
+                  <PopupLibre
+                    pos={popupLibre}
+                    jugadores={jugadoresEnCancha}
+                    onConfirmar={handleLibreConfirmar}
+                    onCancelar={handleLibreCancelar}
+                  />
+                )}
+                {popupToqueRed && (
+                  <PopupToqueRed
+                    pos={popupToqueRed}
+                    jugadores={jugadoresEnCancha}
+                    onConfirmar={handleToqueRedConfirmar}
+                    onCancelar={handleToqueRedCancelar}
+                  />
+                )}
+              </CanchaV2>
+            </div>
+          </div>
+
+          {/* ---------- BOTONES ---------- */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl p-3">
+            <div className="flex gap-2">
+              <button
+                onClick={handleBorrarUltima}
+                disabled={lineas.length === 0 && !origenActivo}
+                className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-sm font-medium disabled:opacity-40"
+              >
+                ↩ Borrar última acción
+              </button>
+              <button
+                onClick={handleBorrarPunto}
+                disabled={lineas.length === 0 && !origenActivo}
+                className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 rounded-lg text-sm font-medium disabled:opacity-40"
+              >
+                ✕ Borrar punto
+              </button>
+            </div>
+            <button
+              onClick={handleCalcularPunto}
+              disabled={lineas.length === 0}
+              className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg disabled:opacity-40"
+            >
+              ✓ Calcular punto
             </button>
           </div>
 
-          <CanchaV2
-            orientacion={orientacion}
-            onMiniClick={handleMiniClick}
-          >
-            <LineasV2
-              lineas={lineas}
-              origenActivo={origenActivo}
-              orientacion={orientacion}
-              onCrearLinea={handleCrearLinea}
-            />
-
-            {popupArmado && (
-              <PopupArmado
-                pos={popupArmado}
-                onConfirmar={handleArmadoConfirmar}
-                onCancelar={handleArmadoCancelar}
-              />
-            )}
-            {popupDefensa && (
-              <PopupDefensa
-                pos={popupDefensa}
-                jugadores={jugadoresEnCancha}
-                onConfirmar={handleDefensaConfirmar}
-                onCancelar={handleDefensaCancelar}
-              />
-            )}
-            {popupLibre && (
-              <PopupLibre
-                pos={popupLibre}
-                jugadores={jugadoresEnCancha}
-                onConfirmar={handleLibreConfirmar}
-                onCancelar={handleLibreCancelar}
-              />
-            )}
-            {popupToqueRed && (
-              <PopupToqueRed
-                pos={popupToqueRed}
-                jugadores={jugadoresEnCancha}
-                onConfirmar={handleToqueRedConfirmar}
-                onCancelar={handleToqueRedCancelar}
-              />
-            )}
-          </CanchaV2>
-        </div>
-      </div>
-
-      {/* ---------- BOTONES ---------- */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl p-3">
-        <div className="flex gap-2">
-          <button
-            onClick={handleBorrarUltima}
-            disabled={lineas.length === 0 && !origenActivo}
-            className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-sm font-medium disabled:opacity-40"
-          >
-            ↩ Borrar última acción
-          </button>
-          <button
-            onClick={handleBorrarPunto}
-            disabled={lineas.length === 0 && !origenActivo}
-            className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 rounded-lg text-sm font-medium disabled:opacity-40"
-          >
-            ✕ Borrar punto
-          </button>
-        </div>
-        <button
-          onClick={handleCalcularPunto}
-          disabled={lineas.length === 0}
-          className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg disabled:opacity-40"
-        >
-          ✓ Calcular punto
-        </button>
-      </div>
-
-      <p className="text-xs text-slate-400 text-center">
-        Click en una mini para abrir el círculo de origen. Desde ahí,
-        arrastrá hasta otra mini para trazar la línea. Repetí para encadenar
-        el punto. Al terminar, apretá "Calcular punto".
-      </p>
+          <p className="text-xs text-slate-400 text-center">
+            Click en una mini para abrir el círculo de origen. Desde ahí,
+            arrastrá hasta otra mini para trazar la línea. Repetí para
+            encadenar el punto. Al terminar, apretá "Calcular punto".
+          </p>
+        </>
+      )}
     </div>
   );
 }
