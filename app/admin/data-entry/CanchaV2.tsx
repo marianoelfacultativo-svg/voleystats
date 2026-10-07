@@ -7,40 +7,37 @@ import { useMemo, useRef, useState } from "react";
 // ============================================================
 
 export type ZonaCancha =
-  | "fuera-rival"
+  | "fuera"
   | "cancha-rival"
   | "bloqueo-rival"
   | "red"
   | "bloqueo-propio"
-  | "cancha-propia"
-  | "fuera-propio";
+  | "cancha-propia";
 
 export type Orientacion = "vertical" | "horizontal";
 
 export interface CoordsV2 {
   zona: ZonaCancha;
-  celda: string; // "F1-C2" | "FUERA-RIVAL-C3" | "BLOQ-RIVAL-C2" | "RED-C3"
-  mini: string; // "m5-3" (fila 5, col 3)
+  celda: string;
+  mini: string;
 }
 
 interface Props {
   orientacion?: Orientacion;
   onMiniClick?: (coords: CoordsV2) => void;
-  /** Celdas a atenuar (el usuario no puede clickearlas) */
   celdasAtenuadas?: Set<string>;
-  /** Celdas a resaltar (por ejemplo las que el flujo espera que se clickeen) */
   celdasResaltadas?: Set<string>;
-  /** Ancho máximo del contenedor. Si no entra, hace scroll. */
   maxAlto?: number;
 }
 
 // ============================================================
-// CONFIGURACIÓN DE TAMAÑOS
+// CONFIGURACIÓN
 // ============================================================
 
 const ANCHO_CELDA = 84;
+
+const ALTO_FUERA_ARRIBA = 42;
 const ALTO_CANCHA = 42;
-const ALTO_FUERA = 42;
 const ALTO_BLOQUEO = 28;
 const ALTO_RED = 28;
 
@@ -48,12 +45,12 @@ const COLS = ["C1", "C2", "C3", "C4", "C5"] as const;
 const COLS_MEDIO = ["C2", "C3", "C4"] as const;
 
 // ============================================================
-// DEFINICIÓN DE CELDAS (generadas una sola vez)
+// CELDAS
 // ============================================================
 
 interface CeldaDef {
+  id: string;
   zona: ZonaCancha;
-  celda: string;
   x: number;
   y: number;
   ancho: number;
@@ -66,27 +63,28 @@ function generarCeldas(): CeldaDef[] {
   const out: CeldaDef[] = [];
   let y = 0;
 
-  // FUERA RIVAL (5 celdas)
+  // --- FUERA ARRIBA (5 celdas) ---
   COLS.forEach((c, i) => {
     out.push({
-      zona: "fuera-rival",
-      celda: `FUERA-RIVAL-${c}`,
+      id: `FUERA-ARR-${c}`,
+      zona: "fuera",
       x: i * ANCHO_CELDA,
       y,
       ancho: ANCHO_CELDA,
-      alto: ALTO_FUERA,
+      alto: ALTO_FUERA_ARRIBA,
       miniCols: 9,
       miniFils: 9,
     });
   });
-  y += ALTO_FUERA;
+  y += ALTO_FUERA_ARRIBA;
 
-  // CANCHA RIVAL (F6, F5, F4 — de arriba hacia abajo)
+  // --- CANCHA RIVAL (F6, F5, F4) ---
   (["F6", "F5", "F4"] as const).forEach((f) => {
     COLS.forEach((c, i) => {
+      const esCancha = c === "C2" || c === "C3" || c === "C4";
       out.push({
-        zona: "cancha-rival",
-        celda: `${f}-${c}`,
+        id: `${f}-${c}`,
+        zona: esCancha ? "cancha-rival" : "fuera",
         x: i * ANCHO_CELDA,
         y,
         ancho: ANCHO_CELDA,
@@ -98,57 +96,61 @@ function generarCeldas(): CeldaDef[] {
     y += ALTO_CANCHA;
   });
 
-  // BLOQUEO RIVAL (3 celdas centrales)
-  COLS_MEDIO.forEach((c, i) => {
+  // --- BLOQUEO RIVAL ---
+  COLS.forEach((c, i) => {
+    const esBloqueo = c === "C2" || c === "C3" || c === "C4";
     out.push({
-      zona: "bloqueo-rival",
-      celda: `BLOQ-RIVAL-${c}`,
-      x: (i + 1) * ANCHO_CELDA,
+      id: `BLOQ-R-${c}`,
+      zona: esBloqueo ? "bloqueo-rival" : "fuera",
+      x: i * ANCHO_CELDA,
       y,
       ancho: ANCHO_CELDA,
       alto: ALTO_BLOQUEO,
       miniCols: 9,
-      miniFils: 3,
+      miniFils: 2,
     });
   });
   y += ALTO_BLOQUEO;
 
-  // RED (3 celdas centrales)
-  COLS_MEDIO.forEach((c, i) => {
+  // --- RED ---
+  COLS.forEach((c, i) => {
+    const esRed = c === "C2" || c === "C3" || c === "C4";
     out.push({
-      zona: "red",
-      celda: `RED-${c}`,
-      x: (i + 1) * ANCHO_CELDA,
+      id: `RED-${c}`,
+      zona: esRed ? "red" : "fuera",
+      x: i * ANCHO_CELDA,
       y,
       ancho: ANCHO_CELDA,
       alto: ALTO_RED,
       miniCols: 9,
-      miniFils: 3,
+      miniFils: 1,
     });
   });
   y += ALTO_RED;
 
-  // BLOQUEO PROPIO (3 celdas centrales)
-  COLS_MEDIO.forEach((c, i) => {
+  // --- BLOQUEO PROPIO ---
+  COLS.forEach((c, i) => {
+    const esBloqueo = c === "C2" || c === "C3" || c === "C4";
     out.push({
-      zona: "bloqueo-propio",
-      celda: `BLOQ-PROPIO-${c}`,
-      x: (i + 1) * ANCHO_CELDA,
+      id: `BLOQ-P-${c}`,
+      zona: esBloqueo ? "bloqueo-propio" : "fuera",
+      x: i * ANCHO_CELDA,
       y,
       ancho: ANCHO_CELDA,
       alto: ALTO_BLOQUEO,
       miniCols: 9,
-      miniFils: 3,
+      miniFils: 2,
     });
   });
   y += ALTO_BLOQUEO;
 
-  // CANCHA PROPIA (F1, F2, F3)
+  // --- CANCHA PROPIA (F1, F2, F3) ---
   (["F1", "F2", "F3"] as const).forEach((f) => {
     COLS.forEach((c, i) => {
+      const esCancha = c === "C2" || c === "C3" || c === "C4";
       out.push({
-        zona: "cancha-propia",
-        celda: `${f}-${c}`,
+        id: `${f}-${c}`,
+        zona: esCancha ? "cancha-propia" : "fuera",
         x: i * ANCHO_CELDA,
         y,
         ancho: ANCHO_CELDA,
@@ -160,15 +162,15 @@ function generarCeldas(): CeldaDef[] {
     y += ALTO_CANCHA;
   });
 
-  // FUERA PROPIO (5 celdas)
+  // --- FUERA ABAJO (5 celdas) ---
   COLS.forEach((c, i) => {
     out.push({
-      zona: "fuera-propio",
-      celda: `FUERA-PROPIO-${c}`,
+      id: `FUERA-ABA-${c}`,
+      zona: "fuera",
       x: i * ANCHO_CELDA,
       y,
       ancho: ANCHO_CELDA,
-      alto: ALTO_FUERA,
+      alto: ALTO_FUERA_ARRIBA,
       miniCols: 9,
       miniFils: 9,
     });
@@ -185,17 +187,17 @@ const TOTAL_ALTO = CELDAS.reduce(
 );
 
 // ============================================================
-// COLORES POR ZONA
+// COLORES
 // ============================================================
 
 const COLORES_ZONA: Record<
   ZonaCancha,
   { fondo: string; borde: string; texto: string }
 > = {
-  "fuera-rival": {
-    fondo: "#fff7ed",
-    borde: "#fdba74",
-    texto: "#9a3412",
+  fuera: {
+    fondo: "#f8fafc",
+    borde: "#cbd5e1",
+    texto: "#475569",
   },
   "cancha-rival": {
     fondo: "#fed7aa",
@@ -222,29 +224,10 @@ const COLORES_ZONA: Record<
     borde: "#22c55e",
     texto: "#14532d",
   },
-  "fuera-propio": {
-    fondo: "#ecfdf5",
-    borde: "#6ee7b7",
-    texto: "#064e3b",
-  },
 };
 
 // ============================================================
-// ETIQUETAS DE ZONA (para mostrar al costado de cada bloque)
-// ============================================================
-
-const ETIQUETAS_ZONA: { zona: ZonaCancha; texto: string }[] = [
-  { zona: "fuera-rival", texto: "FUERA RIVAL" },
-  { zona: "cancha-rival", texto: "CANCHA RIVAL" },
-  { zona: "bloqueo-rival", texto: "BLOQUEO RIVAL" },
-  { zona: "red", texto: "RED" },
-  { zona: "bloqueo-propio", texto: "BLOQUEO PROPIO" },
-  { zona: "cancha-propia", texto: "MI CANCHA" },
-  { zona: "fuera-propio", texto: "FUERA PROPIO" },
-];
-
-// ============================================================
-// HELPERS DE GEOMETRÍA
+// HELPERS
 // ============================================================
 
 function svgCoordsDesdeMouse(
@@ -334,7 +317,7 @@ export default function CanchaV2({
       setHover(null);
       return;
     }
-    setHover({ celda: celda.celda, mini });
+    setHover({ celda: celda.id, mini });
   };
 
   const handleLeave = () => setHover(null);
@@ -345,19 +328,18 @@ export default function CanchaV2({
     if (!p) return;
     const celda = buscarCelda(p.x, p.y);
     if (!celda) return;
-    if (celdasAtenuadas?.has(celda.celda)) return;
+    if (celdasAtenuadas?.has(celda.id)) return;
     const mini = miniDesdeCoords(celda, p.x, p.y);
     if (!mini) return;
-    onMiniClick({ zona: celda.zona, celda: celda.celda, mini });
+    onMiniClick({ zona: celda.zona, celda: celda.id, mini });
   };
 
   const rotacion = orientacion === "horizontal" ? 90 : 0;
   const anchoRender = orientacion === "vertical" ? TOTAL_ANCHO : TOTAL_ALTO;
   const altoRender = orientacion === "vertical" ? TOTAL_ALTO : TOTAL_ANCHO;
 
-  // Buscamos el hover activo para dibujar el highlight
   const hoverCelda = useMemo(
-    () => (hover ? CELDAS.find((c) => c.celda === hover.celda) : null),
+    () => (hover ? CELDAS.find((c) => c.id === hover.celda) : null),
     [hover]
   );
 
@@ -369,7 +351,6 @@ export default function CanchaV2({
     const col = parseInt(m[2]);
     const r = rectMini(hoverCelda, fil, col);
     if (rotacion === 0) return r;
-    // Para horizontal, aplicamos la misma rotación que al grupo
     return {
       x: TOTAL_ANCHO - r.y - r.h,
       y: r.x,
@@ -386,7 +367,7 @@ export default function CanchaV2({
         overflow: "auto",
         display: "flex",
         justifyContent: "center",
-        alignItems: "center",
+        alignItems: "flex-start",
       }}
     >
       <svg
@@ -415,15 +396,13 @@ export default function CanchaV2({
               : undefined
           }
         >
-          {/* ---------- Celdas + minis ---------- */}
           {CELDAS.map((c) => {
             const colores = COLORES_ZONA[c.zona];
-            const atenuada = celdasAtenuadas?.has(c.celda) ?? false;
-            const resaltada = celdasResaltadas?.has(c.celda) ?? false;
+            const atenuada = celdasAtenuadas?.has(c.id) ?? false;
+            const resaltada = celdasResaltadas?.has(c.id) ?? false;
 
             return (
-              <g key={c.celda} opacity={atenuada ? 0.35 : 1}>
-                {/* Fondo de la celda */}
+              <g key={c.id} opacity={atenuada ? 0.35 : 1}>
                 <rect
                   x={c.x}
                   y={c.y}
@@ -434,13 +413,12 @@ export default function CanchaV2({
                   strokeWidth={resaltada ? 2 : 1}
                 />
 
-                {/* Minis */}
                 {Array.from({ length: c.miniFils }).map((_, f) =>
                   Array.from({ length: c.miniCols }).map((_, col) => {
                     const r = rectMini(c, f + 1, col + 1);
                     return (
                       <rect
-                        key={`${c.celda}-${f}-${col}`}
+                        key={`${c.id}-${f}-${col}`}
                         x={r.x}
                         y={r.y}
                         width={r.w}
@@ -455,7 +433,6 @@ export default function CanchaV2({
                   })
                 )}
 
-                {/* Resaltado si viene por prop */}
                 {resaltada && (
                   <rect
                     x={c.x}
@@ -470,51 +447,25 @@ export default function CanchaV2({
                   />
                 )}
 
-                {/* Etiqueta de la celda (F1-C2, RED-C3, etc.) */}
-                <text
-                  x={c.x + c.ancho / 2}
-                  y={c.y + c.alto / 2 + 3}
-                  textAnchor="middle"
-                  fontSize={7}
-                  fontWeight={700}
-                  fill={colores.texto}
-                  opacity={0.55}
-                  pointerEvents="none"
-                >
-                  {c.celda}
-                </text>
+                {/* Etiqueta: solo si la celda es suficientemente grande */}
+                {c.alto >= 20 && (
+                  <text
+                    x={c.x + c.ancho / 2}
+                    y={c.y + c.alto / 2 + 3}
+                    textAnchor="middle"
+                    fontSize={7}
+                    fontWeight={700}
+                    fill={colores.texto}
+                    opacity={0.55}
+                    pointerEvents="none"
+                  >
+                    {c.id}
+                  </text>
+                )}
               </g>
             );
           })}
 
-          {/* ---------- Etiquetas de zona (al costado izquierdo) ---------- */}
-          {ETIQUETAS_ZONA.map((e) => {
-            // Buscamos la y promedio de las celdas de la zona
-            const celdas = CELDAS.filter((c) => c.zona === e.zona);
-            if (celdas.length === 0) return null;
-            const yMin = Math.min(...celdas.map((c) => c.y));
-            const yMax = Math.max(...celdas.map((c) => c.y + c.alto));
-            const yMid = (yMin + yMax) / 2;
-
-            return (
-              <text
-                key={e.zona}
-                x={-6}
-                y={yMid}
-                textAnchor="end"
-                dominantBaseline="middle"
-                fontSize={9}
-                fontWeight={800}
-                fill={COLORES_ZONA[e.zona].texto}
-                opacity={0.7}
-                pointerEvents="none"
-              >
-                {e.texto}
-              </text>
-            );
-          })}
-
-          {/* ---------- Highlight del hover ---------- */}
           {hoverMiniRect && (
             <rect
               x={hoverMiniRect.x}
