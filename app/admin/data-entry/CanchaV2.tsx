@@ -22,9 +22,20 @@ export interface CoordsV2 {
   mini: string;
 }
 
+export interface LineaV2 {
+  id: string;
+  origen: { celda: string; mini: string };
+  destino: { celda: string; mini: string };
+  color: string;
+  pendiente: boolean;
+  esRival: boolean;
+}
+
 interface Props {
   orientacion?: Orientacion;
-  onMiniClick?: (coords: CoordsV2) => void;
+  lineas?: LineaV2[];
+  origenActivo?: { celda: string; mini: string } | null;
+  onClickMini?: (coords: CoordsV2) => void;
   celdasAtenuadas?: Set<string>;
   celdasResaltadas?: Set<string>;
   maxAlto?: number;
@@ -35,13 +46,17 @@ interface Props {
 // ============================================================
 
 const ANCHO_CELDA = 84;
-
 const ALTO_FUERA = 42;
 const ALTO_CANCHA = 42;
 const ALTO_BLOQUEO = 14;
 const ALTO_RED = 14;
 
 const COLS = ["C1", "C2", "C3", "C4", "C5"] as const;
+
+const COLOR_PENDIENTE = "#475569";
+const COLOR_HOVER = "#0ea5e9";
+const COLOR_CIRCULO_BORDE = "#0f172a";
+const COLOR_CIRCULO_USADO = "#64748b";
 
 // ============================================================
 // CELDAS
@@ -62,7 +77,6 @@ function generarCeldas(): CeldaDef[] {
   const out: CeldaDef[] = [];
   let y = 0;
 
-  // --- FUERA ARRIBA (5 celdas, 9×9) ---
   COLS.forEach((c, i) => {
     out.push({
       id: `FUERA-ARR-${c}`,
@@ -77,7 +91,6 @@ function generarCeldas(): CeldaDef[] {
   });
   y += ALTO_FUERA;
 
-  // --- CANCHA RIVAL (F6, F5, F4) ---
   (["F6", "F5", "F4"] as const).forEach((f) => {
     COLS.forEach((c, i) => {
       const esCancha = c === "C2" || c === "C3" || c === "C4";
@@ -95,7 +108,6 @@ function generarCeldas(): CeldaDef[] {
     y += ALTO_CANCHA;
   });
 
-  // --- BLOQUEO RIVAL ---
   COLS.forEach((c, i) => {
     const esBloqueo = c === "C2" || c === "C3" || c === "C4";
     out.push({
@@ -106,12 +118,11 @@ function generarCeldas(): CeldaDef[] {
       ancho: ANCHO_CELDA,
       alto: ALTO_BLOQUEO,
       miniCols: 9,
-      miniFils: esBloqueo ? 2 : 3, // fuera de bloqueo: 9×3
+      miniFils: esBloqueo ? 2 : 3,
     });
   });
   y += ALTO_BLOQUEO;
 
-  // --- RED ---
   COLS.forEach((c, i) => {
     const esRed = c === "C2" || c === "C3" || c === "C4";
     out.push({
@@ -122,12 +133,11 @@ function generarCeldas(): CeldaDef[] {
       ancho: ANCHO_CELDA,
       alto: ALTO_RED,
       miniCols: 9,
-      miniFils: esRed ? 1 : 3, // fuera de red: 9×3
+      miniFils: esRed ? 1 : 3,
     });
   });
   y += ALTO_RED;
 
-  // --- BLOQUEO PROPIO ---
   COLS.forEach((c, i) => {
     const esBloqueo = c === "C2" || c === "C3" || c === "C4";
     out.push({
@@ -138,12 +148,11 @@ function generarCeldas(): CeldaDef[] {
       ancho: ANCHO_CELDA,
       alto: ALTO_BLOQUEO,
       miniCols: 9,
-      miniFils: esBloqueo ? 2 : 3, // fuera de bloqueo: 9×3
+      miniFils: esBloqueo ? 2 : 3,
     });
   });
   y += ALTO_BLOQUEO;
 
-  // --- CANCHA PROPIA (F1, F2, F3) ---
   (["F1", "F2", "F3"] as const).forEach((f) => {
     COLS.forEach((c, i) => {
       const esCancha = c === "C2" || c === "C3" || c === "C4";
@@ -161,7 +170,6 @@ function generarCeldas(): CeldaDef[] {
     y += ALTO_CANCHA;
   });
 
-  // --- FUERA ABAJO (5 celdas, 9×9) ---
   COLS.forEach((c, i) => {
     out.push({
       id: `FUERA-ABA-${c}`,
@@ -185,6 +193,8 @@ const TOTAL_ALTO = CELDAS.reduce(
   0
 );
 
+const CELDA_POR_ID = new Map(CELDAS.map((c) => [c.id, c]));
+
 // ============================================================
 // COLORES
 // ============================================================
@@ -194,7 +204,7 @@ const COLORES_ZONA: Record<
   { fondo: string; borde: string; texto: string }
 > = {
   fuera: {
-    fondo: "#f8fafc",
+    fondo: "#f1f5f9",
     borde: "#cbd5e1",
     texto: "#475569",
   },
@@ -283,13 +293,29 @@ function rectMini(
   };
 }
 
+function centroMini(
+  celdaId: string,
+  mini: string
+): { x: number; y: number } | null {
+  const celda = CELDA_POR_ID.get(celdaId);
+  if (!celda) return null;
+  const m = mini.match(/^m(\d+)-(\d+)$/);
+  if (!m) return null;
+  const fil = parseInt(m[1]);
+  const col = parseInt(m[2]);
+  const r = rectMini(celda, fil, col);
+  return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+}
+
 // ============================================================
 // COMPONENTE
 // ============================================================
 
 export default function CanchaV2({
   orientacion = "vertical",
-  onMiniClick,
+  lineas = [],
+  origenActivo = null,
+  onClickMini,
   celdasAtenuadas,
   celdasResaltadas,
   maxAlto = 720,
@@ -322,7 +348,7 @@ export default function CanchaV2({
   const handleLeave = () => setHover(null);
 
   const handleClick = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!onMiniClick) return;
+    if (!onClickMini) return;
     const p = svgCoordsDesdeMouse(e);
     if (!p) return;
     const celda = buscarCelda(p.x, p.y);
@@ -330,7 +356,7 @@ export default function CanchaV2({
     if (celdasAtenuadas?.has(celda.id)) return;
     const mini = miniDesdeCoords(celda, p.x, p.y);
     if (!mini) return;
-    onMiniClick({ zona: celda.zona, celda: celda.id, mini });
+    onClickMini({ zona: celda.zona, celda: celda.id, mini });
   };
 
   const rotacion = orientacion === "horizontal" ? 90 : 0;
@@ -358,6 +384,29 @@ export default function CanchaV2({
     };
   }, [hoverCelda, hover, rotacion]);
 
+  const origenPos = useMemo(() => {
+    if (!origenActivo) return null;
+    return centroMini(origenActivo.celda, origenActivo.mini);
+  }, [origenActivo]);
+
+  // Set de círculos usados (todos los destinos + orígenes que no son el activo)
+  const circulosUsados = useMemo(() => {
+    const out: { x: number; y: number; color: string; esRival: boolean }[] = [];
+    for (const l of lineas) {
+      // Solo el destino de cada línea es un círculo usado
+      const c = centroMini(l.destino.celda, l.destino.mini);
+      if (c) {
+        out.push({
+          x: c.x,
+          y: c.y,
+          color: l.color,
+          esRival: l.esRival,
+        });
+      }
+    }
+    return out;
+  }, [lineas]);
+
   return (
     <div
       style={{
@@ -381,7 +430,7 @@ export default function CanchaV2({
         style={{
           userSelect: "none",
           touchAction: "manipulation",
-          cursor: onMiniClick ? "crosshair" : "default",
+          cursor: onClickMini ? "crosshair" : "default",
           flexShrink: 0,
         }}
         onPointerMove={handleMove}
@@ -395,6 +444,7 @@ export default function CanchaV2({
               : undefined
           }
         >
+          {/* ---------- Celdas + minis ---------- */}
           {CELDAS.map((c) => {
             const colores = COLORES_ZONA[c.zona];
             const atenuada = celdasAtenuadas?.has(c.id) ?? false;
@@ -439,7 +489,7 @@ export default function CanchaV2({
                     width={c.ancho}
                     height={c.alto}
                     fill="none"
-                    stroke="#0ea5e9"
+                    stroke={COLOR_HOVER}
                     strokeWidth={2}
                     strokeDasharray="4 3"
                     pointerEvents="none"
@@ -464,15 +514,81 @@ export default function CanchaV2({
             );
           })}
 
+          {/* ---------- Líneas ---------- */}
+          {lineas.map((l) => {
+            const o = centroMini(l.origen.celda, l.origen.mini);
+            const d = centroMini(l.destino.celda, l.destino.mini);
+            if (!o || !d) return null;
+            const color = l.pendiente ? COLOR_PENDIENTE : l.color;
+            return (
+              <line
+                key={l.id}
+                x1={o.x}
+                y1={o.y}
+                x2={d.x}
+                y2={d.y}
+                stroke={color}
+                strokeWidth={3}
+                strokeLinecap="round"
+                strokeDasharray={l.esRival ? "7 4" : undefined}
+                opacity={0.95}
+                pointerEvents="none"
+              />
+            );
+          })}
+
+          {/* ---------- Círculos usados ---------- */}
+          {circulosUsados.map((c, i) => (
+            <circle
+              key={`circ-usado-${i}`}
+              cx={c.x}
+              cy={c.y}
+              r={5}
+              fill={c.color}
+              stroke="white"
+              strokeWidth={1}
+              opacity={0.85}
+              pointerEvents="none"
+            />
+          ))}
+
+          {/* ---------- Círculo origen activo ---------- */}
+          {origenPos && (
+            <g pointerEvents="none">
+              <circle
+                cx={origenPos.x}
+                cy={origenPos.y}
+                r={14}
+                fill={COLOR_HOVER}
+                opacity={0.15}
+              />
+              <circle
+                cx={origenPos.x}
+                cy={origenPos.y}
+                r={10}
+                fill="white"
+                stroke={COLOR_CIRCULO_BORDE}
+                strokeWidth={2}
+              />
+              <circle
+                cx={origenPos.x}
+                cy={origenPos.y}
+                r={4}
+                fill={COLOR_HOVER}
+              />
+            </g>
+          )}
+
+          {/* ---------- Highlight hover ---------- */}
           {hoverMiniRect && (
             <rect
               x={hoverMiniRect.x}
               y={hoverMiniRect.y}
               width={hoverMiniRect.w}
               height={hoverMiniRect.h}
-              fill="#0ea5e9"
+              fill={COLOR_HOVER}
               fillOpacity={0.35}
-              stroke="#0284c7"
+              stroke={COLOR_HOVER}
               strokeWidth={1}
               pointerEvents="none"
             />
