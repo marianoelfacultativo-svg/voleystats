@@ -1,188 +1,531 @@
 "use client";
 
-import { useState } from "react";
-import CanchaV2, { type CoordsV2, type LineaV2 } from "./CanchaV2";
+import React, { useMemo, useState } from "react";
 
-interface Props {
-  partidoId: string;
-  setActivo: number;
-  puntoActual: number;
-  marcadorPropio: number;
-  marcadorRival: number;
-  nombreMiEquipo?: string;
-  nombreRival?: string;
-  onPuntoCerrado?: (payload: {
-    lineas: LineaV2[];
-    ganador: "propio" | "rival";
-  }) => void;
-  onEstadoCambia?: (lineas: LineaV2[]) => void;
+// ============================================================
+// TIPOS
+// ============================================================
+
+export type ZonaCancha =
+  | "fuera"
+  | "cancha-rival"
+  | "bloqueo-rival"
+  | "red"
+  | "bloqueo-propio"
+  | "cancha-propia";
+
+export type Orientacion = "vertical" | "horizontal";
+
+export interface CoordsV2 {
+  zona: ZonaCancha;
+  celda: string;
+  mini: string;
 }
 
-export default function DataEntryV2({
-  setActivo,
-  puntoActual,
-  marcadorPropio,
-  marcadorRival,
-  nombreMiEquipo = "Mi equipo",
-  nombreRival = "Rival",
-  onPuntoCerrado,
-  onEstadoCambia,
-}: Props) {
-  const [lineas, setLineas] = useState<LineaV2[]>([]);
-  const [origenActivo, setOrigenActivo] = useState<{
-    celda: string;
-    mini: string;
-  } | null>(null);
-  const [contadorId, setContadorId] = useState(1);
+interface Props {
+  orientacion?: Orientacion;
+  onMiniClick?: (coords: CoordsV2) => void;
+  celdasAtenuadas?: Set<string>;
+  celdasResaltadas?: Set<string>;
+  maxAlto?: number;
+  children?: React.ReactNode;
+}
 
-  const handleClickMini = (coords: CoordsV2) => {
-    const punto = { celda: coords.celda, mini: coords.mini };
+// ============================================================
+// CONFIGURACIÓN
+// ============================================================
 
-    // Sin círculo abierto → abrir círculo acá
-    if (!origenActivo) {
-      setOrigenActivo(punto);
-      return;
-    }
+const ANCHO_CELDA = 84;
+const ALTO_FUERA = 42;
+const ALTO_CANCHA = 42;
+const ALTO_BLOQUEO = 14;
+const ALTO_RED = 14;
 
-    // Click en el mismo lugar → no hace nada
-    if (
-      origenActivo.celda === punto.celda &&
-      origenActivo.mini === punto.mini
-    ) {
-      return;
-    }
+const COLS = ["C1", "C2", "C3", "C4", "C5"] as const;
 
-    // Crear línea desde el círculo abierto al nuevo punto
-    const nueva: LineaV2 = {
-      id: `linea-${contadorId}`,
-      origen: origenActivo,
-      destino: punto,
-      color: "#475569",
-      pendiente: true,
-      esRival: false,
-    };
-    const nuevas = [...lineas, nueva];
-    setLineas(nuevas);
-    setOrigenActivo(punto);
-    setContadorId((c) => c + 1);
-    if (onEstadoCambia) onEstadoCambia(nuevas);
-  };
+// ============================================================
+// DEFINICIÓN DE CELDAS
+// ============================================================
 
-  const borrarUltimaLinea = () => {
-    if (lineas.length === 0) {
-      // No hay líneas: cerramos el círculo abierto
-      if (origenActivo) setOrigenActivo(null);
-      return;
-    }
-    const nuevas = lineas.slice(0, -1);
-    const ultima = lineas[lineas.length - 1];
-    setLineas(nuevas);
-    // El origen activo vuelve al destino de la última línea borrada
-    setOrigenActivo(ultima.destino);
-    if (onEstadoCambia) onEstadoCambia(nuevas);
-  };
+interface CeldaDef {
+  id: string;
+  zona: ZonaCancha;
+  x: number;
+  y: number;
+  ancho: number;
+  alto: number;
+  miniCols: number;
+  miniFils: number;
+}
 
-  const borrarPunto = () => {
-    if (
-      lineas.length > 0 &&
-      !confirm("¿Borrar todas las líneas de este punto?")
-    )
-      return;
-    setLineas([]);
-    setOrigenActivo(null);
-    if (onEstadoCambia) onEstadoCambia([]);
-  };
+function generarCeldas(): CeldaDef[] {
+  const out: CeldaDef[] = [];
+  let y = 0;
 
-  const calcularPunto = () => {
-    // Placeholder: en la próxima iteración clasificamos las acciones y
-    // decidimos quién ganó el punto automáticamente.
-    const confirmar = confirm(
-      "¿Cerrar el punto?\n\nEsto va a guardar las líneas y calcular el ganador (próximamente)."
-    );
-    if (!confirmar) return;
-    if (onPuntoCerrado) {
-      onPuntoCerrado({
-        lineas,
-        ganador: "propio", // provisional
+  // FUERA ARRIBA
+  COLS.forEach((c, i) => {
+    out.push({
+      id: `FUERA-ARR-${c}`,
+      zona: "fuera",
+      x: i * ANCHO_CELDA,
+      y,
+      ancho: ANCHO_CELDA,
+      alto: ALTO_FUERA,
+      miniCols: 9,
+      miniFils: 9,
+    });
+  });
+  y += ALTO_FUERA;
+
+  // CANCHA RIVAL (F6, F5, F4)
+  (["F6", "F5", "F4"] as const).forEach((f) => {
+    COLS.forEach((c, i) => {
+      const esCancha = c === "C2" || c === "C3" || c === "C4";
+      out.push({
+        id: `${f}-${c}`,
+        zona: esCancha ? "cancha-rival" : "fuera",
+        x: i * ANCHO_CELDA,
+        y,
+        ancho: ANCHO_CELDA,
+        alto: ALTO_CANCHA,
+        miniCols: 9,
+        miniFils: 9,
       });
+    });
+    y += ALTO_CANCHA;
+  });
+
+  // BLOQUEO RIVAL
+  COLS.forEach((c, i) => {
+    const esBloqueo = c === "C2" || c === "C3" || c === "C4";
+    out.push({
+      id: `BLOQ-R-${c}`,
+      zona: esBloqueo ? "bloqueo-rival" : "fuera",
+      x: i * ANCHO_CELDA,
+      y,
+      ancho: ANCHO_CELDA,
+      alto: ALTO_BLOQUEO,
+      miniCols: 9,
+      miniFils: esBloqueo ? 2 : 3,
+    });
+  });
+  y += ALTO_BLOQUEO;
+
+  // RED
+  COLS.forEach((c, i) => {
+    const esRed = c === "C2" || c === "C3" || c === "C4";
+    out.push({
+      id: `RED-${c}`,
+      zona: esRed ? "red" : "fuera",
+      x: i * ANCHO_CELDA,
+      y,
+      ancho: ANCHO_CELDA,
+      alto: ALTO_RED,
+      miniCols: 9,
+      miniFils: esRed ? 1 : 3,
+    });
+  });
+  y += ALTO_RED;
+
+  // BLOQUEO PROPIO
+  COLS.forEach((c, i) => {
+    const esBloqueo = c === "C2" || c === "C3" || c === "C4";
+    out.push({
+      id: `BLOQ-P-${c}`,
+      zona: esBloqueo ? "bloqueo-propio" : "fuera",
+      x: i * ANCHO_CELDA,
+      y,
+      ancho: ANCHO_CELDA,
+      alto: ALTO_BLOQUEO,
+      miniCols: 9,
+      miniFils: esBloqueo ? 2 : 3,
+    });
+  });
+  y += ALTO_BLOQUEO;
+
+  // CANCHA PROPIA (F1, F2, F3)
+  (["F1", "F2", "F3"] as const).forEach((f) => {
+    COLS.forEach((c, i) => {
+      const esCancha = c === "C2" || c === "C3" || c === "C4";
+      out.push({
+        id: `${f}-${c}`,
+        zona: esCancha ? "cancha-propia" : "fuera",
+        x: i * ANCHO_CELDA,
+        y,
+        ancho: ANCHO_CELDA,
+        alto: ALTO_CANCHA,
+        miniCols: 9,
+        miniFils: 9,
+      });
+    });
+    y += ALTO_CANCHA;
+  });
+
+  // FUERA ABAJO
+  COLS.forEach((c, i) => {
+    out.push({
+      id: `FUERA-ABA-${c}`,
+      zona: "fuera",
+      x: i * ANCHO_CELDA,
+      y,
+      ancho: ANCHO_CELDA,
+      alto: ALTO_FUERA,
+      miniCols: 9,
+      miniFils: 9,
+    });
+  });
+
+  return out;
+}
+
+const CELDAS = generarCeldas();
+const TOTAL_ANCHO = 5 * ANCHO_CELDA;
+const TOTAL_ALTO = CELDAS.reduce((max, c) => Math.max(max, c.y + c.alto), 0);
+
+export const CANCHA_V2_DIMS = {
+  ancho: TOTAL_ANCHO,
+  alto: TOTAL_ALTO,
+  anchoCelda: ANCHO_CELDA,
+};
+
+// ============================================================
+// COLORES POR ZONA
+// ============================================================
+
+const COLORES_ZONA: Record<
+  ZonaCancha,
+  { fondo: string; borde: string; texto: string }
+> = {
+  fuera: {
+    fondo: "#f8fafc",
+    borde: "#cbd5e1",
+    texto: "#475569",
+  },
+  "cancha-rival": {
+    fondo: "#fed7aa",
+    borde: "#fb923c",
+    texto: "#7c2d12",
+  },
+  "bloqueo-rival": {
+    fondo: "#fdba74",
+    borde: "#ea580c",
+    texto: "#7c2d12",
+  },
+  red: {
+    fondo: "#334155",
+    borde: "#1e293b",
+    texto: "#f1f5f9",
+  },
+  "bloqueo-propio": {
+    fondo: "#86efac",
+    borde: "#16a34a",
+    texto: "#14532d",
+  },
+  "cancha-propia": {
+    fondo: "#bbf7d0",
+    borde: "#22c55e",
+    texto: "#14532d",
+  },
+};
+
+// ============================================================
+// HELPERS GEOMÉTRICOS
+// ============================================================
+
+function svgCoordsDesdeMouse(
+  e: React.PointerEvent<SVGSVGElement>
+): { x: number; y: number } | null {
+  const svg = e.currentTarget;
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX;
+  pt.y = e.clientY;
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return null;
+  const inv = ctm.inverse();
+  const local = pt.matrixTransform(inv);
+  return { x: local.x, y: local.y };
+}
+
+function svgToLayoutCoords(
+  sx: number,
+  sy: number,
+  orientacion: Orientacion
+): { x: number; y: number } {
+  if (orientacion === "vertical") return { x: sx, y: sy };
+  return { x: sy, y: TOTAL_ALTO - sx };
+}
+
+function buscarCelda(x: number, y: number): CeldaDef | null {
+  for (const c of CELDAS) {
+    if (x >= c.x && x < c.x + c.ancho && y >= c.y && y < c.y + c.alto) {
+      return c;
     }
+  }
+  return null;
+}
+
+function miniDesdeCoords(
+  celda: CeldaDef,
+  x: number,
+  y: number
+): string | null {
+  const relX = x - celda.x;
+  const relY = y - celda.y;
+  const miniAncho = celda.ancho / celda.miniCols;
+  const miniAlto = celda.alto / celda.miniFils;
+  const col = Math.floor(relX / miniAncho) + 1;
+  const fil = Math.floor(relY / miniAlto) + 1;
+  if (col < 1 || col > celda.miniCols) return null;
+  if (fil < 1 || fil > celda.miniFils) return null;
+  return `m${fil}-${col}`;
+}
+
+function rectMini(
+  celda: CeldaDef,
+  fil: number,
+  col: number
+): { x: number; y: number; w: number; h: number } {
+  const miniAncho = celda.ancho / celda.miniCols;
+  const miniAlto = celda.alto / celda.miniFils;
+  return {
+    x: celda.x + (col - 1) * miniAncho,
+    y: celda.y + (fil - 1) * miniAlto,
+    w: miniAncho,
+    h: miniAlto,
   };
+}
+
+// ============================================================
+// EXPORTS PARA LA CAPA DE LÍNEAS
+// ============================================================
+
+/**
+ * Devuelve el rect de una mini en coordenadas del LAYOUT interno
+ * (siempre vertical, sin la rotación aplicada al <g>).
+ * Ideal para dibujar elementos como children dentro del <g>.
+ */
+export function getRectMiniLayout(
+  celdaId: string,
+  mini: string
+): { x: number; y: number; w: number; h: number } | null {
+  const c = CELDAS.find((x) => x.id === celdaId);
+  if (!c) return null;
+  const m = mini.match(/^m(\d+)-(\d+)$/);
+  if (!m) return null;
+  const fil = parseInt(m[1]);
+  const col = parseInt(m[2]);
+  return rectMini(c, fil, col);
+}
+
+/**
+ * Dado un punto en coordenadas del SVG raíz (post-CTM) y la orientación,
+ * devuelve la celda + mini que contiene ese punto, o null.
+ */
+export function hitTestV2(
+  sx: number,
+  sy: number,
+  orientacion: Orientacion
+): CoordsV2 | null {
+  const p = svgToLayoutCoords(sx, sy, orientacion);
+  const celda = buscarCelda(p.x, p.y);
+  if (!celda) return null;
+  const mini = miniDesdeCoords(celda, p.x, p.y);
+  if (!mini) return null;
+  return { zona: celda.zona, celda: celda.id, mini };
+}
+
+// ============================================================
+// COMPONENTE
+// ============================================================
+
+export default function CanchaV2({
+  orientacion = "vertical",
+  onMiniClick,
+  celdasAtenuadas,
+  celdasResaltadas,
+  maxAlto = 720,
+  children,
+}: Props) {
+  const [hover, setHover] = useState<{ celda: string; mini: string } | null>(
+    null
+  );
+
+  const handleMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    const sp = svgCoordsDesdeMouse(e);
+    if (!sp) {
+      setHover(null);
+      return;
+    }
+    const p = svgToLayoutCoords(sp.x, sp.y, orientacion);
+    const celda = buscarCelda(p.x, p.y);
+    if (!celda) {
+      setHover(null);
+      return;
+    }
+    const mini = miniDesdeCoords(celda, p.x, p.y);
+    if (!mini) {
+      setHover(null);
+      return;
+    }
+    setHover({ celda: celda.id, mini });
+  };
+
+  const handleLeave = () => setHover(null);
+
+  const handleClick = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!onMiniClick) return;
+    const sp = svgCoordsDesdeMouse(e);
+    if (!sp) return;
+    const p = svgToLayoutCoords(sp.x, sp.y, orientacion);
+    const celda = buscarCelda(p.x, p.y);
+    if (!celda) return;
+    if (celdasAtenuadas?.has(celda.id)) return;
+    const mini = miniDesdeCoords(celda, p.x, p.y);
+    if (!mini) return;
+    onMiniClick({ zona: celda.zona, celda: celda.id, mini });
+  };
+
+  const anchoRender = orientacion === "vertical" ? TOTAL_ANCHO : TOTAL_ALTO;
+  const altoRender = orientacion === "vertical" ? TOTAL_ALTO : TOTAL_ANCHO;
+
+  const hoverCelda = useMemo(
+    () => (hover ? CELDAS.find((c) => c.id === hover.celda) : null),
+    [hover]
+  );
+
+  const hoverMiniRect = useMemo(() => {
+    if (!hoverCelda || !hover) return null;
+    const m = hover.mini.match(/^m(\d+)-(\d+)$/);
+    if (!m) return null;
+    const fil = parseInt(m[1]);
+    const col = parseInt(m[2]);
+    return rectMini(hoverCelda, fil, col);
+  }, [hoverCelda, hover]);
 
   return (
-    <div className="space-y-3">
-      {/* Marcador */}
-      <div className="flex items-center justify-center gap-6 bg-slate-900 text-white rounded-2xl px-6 py-3">
-        <div className="text-center">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
-            {nombreMiEquipo}
-          </p>
-          <p className="text-3xl font-bold tabular-nums">
-            {marcadorPropio}
-          </p>
-        </div>
-        <div className="text-slate-500 text-2xl font-bold">—</div>
-        <div className="text-center">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
-            {nombreRival}
-          </p>
-          <p className="text-3xl font-bold tabular-nums">
-            {marcadorRival}
-          </p>
-        </div>
-      </div>
-
-      {/* Info del punto */}
-      <div className="flex items-center justify-between text-sm text-slate-600 bg-white border border-slate-200 rounded-xl px-4 py-2">
-        <span>
-          <strong>Set {setActivo}</strong> · Punto{" "}
-          <strong>{puntoActual}</strong>
-        </span>
-        <span className="text-xs text-slate-400">
-          {lineas.length} línea{lineas.length !== 1 ? "s" : ""}
-        </span>
-      </div>
-
-      {/* Cancha */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3">
-        <CanchaV2
-          orientacion="vertical"
-          lineas={lineas}
-          origenActivo={origenActivo}
-          onClickMini={handleClickMini}
-        />
-      </div>
-
-      {/* Botones */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-2">
-          <button
-            onClick={borrarUltimaLinea}
-            disabled={lineas.length === 0 && !origenActivo}
-            className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-sm font-medium disabled:opacity-40"
-          >
-            ↩ Borrar última
-          </button>
-          <button
-            onClick={borrarPunto}
-            disabled={lineas.length === 0 && !origenActivo}
-            className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 rounded-lg text-sm font-medium disabled:opacity-40"
-          >
-            ✕ Borrar punto
-          </button>
-        </div>
-        <button
-          onClick={calcularPunto}
-          disabled={lineas.length === 0}
-          className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg disabled:opacity-40"
+    <div
+      style={{
+        width: "100%",
+        maxHeight: maxAlto,
+        overflow: "auto",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "flex-start",
+      }}
+    >
+      <svg
+        width={anchoRender}
+        height={altoRender}
+        viewBox={
+          orientacion === "vertical"
+            ? `0 0 ${TOTAL_ANCHO} ${TOTAL_ALTO}`
+            : `0 0 ${TOTAL_ALTO} ${TOTAL_ANCHO}`
+        }
+        style={{
+          userSelect: "none",
+          touchAction: "manipulation",
+          cursor: onMiniClick ? "crosshair" : "default",
+          flexShrink: 0,
+        }}
+        onPointerMove={handleMove}
+        onPointerLeave={handleLeave}
+        onPointerDown={handleClick}
+      >
+        <g
+          transform={
+            orientacion === "horizontal"
+              ? `translate(${TOTAL_ALTO} 0) rotate(90)`
+              : undefined
+          }
         >
-          ✓ Calcular punto
-        </button>
-      </div>
+          {CELDAS.map((c) => {
+            const colores = COLORES_ZONA[c.zona];
+            const atenuada = celdasAtenuadas?.has(c.id) ?? false;
+            const resaltada = celdasResaltadas?.has(c.id) ?? false;
 
-      <p className="text-xs text-slate-400 text-center">
-        Click en una mini → abre círculo. Click en otra mini → traza línea.
-        Repetí para seguir el punto. Todavía sin clasificación automática.
-      </p>
+            return (
+              <g key={c.id} opacity={atenuada ? 0.35 : 1}>
+                <rect
+                  x={c.x}
+                  y={c.y}
+                  width={c.ancho}
+                  height={c.alto}
+                  fill={colores.fondo}
+                  stroke={colores.borde}
+                  strokeWidth={1}
+                />
+
+                {Array.from({ length: c.miniFils }).map((_, f) =>
+                  Array.from({ length: c.miniCols }).map((_, col) => {
+                    const r = rectMini(c, f + 1, col + 1);
+                    return (
+                      <rect
+                        key={`${c.id}-m-${f}-${col}`}
+                        x={r.x}
+                        y={r.y}
+                        width={r.w}
+                        height={r.h}
+                        fill="transparent"
+                        stroke={colores.borde}
+                        strokeWidth={0.25}
+                        opacity={0.4}
+                        pointerEvents="none"
+                      />
+                    );
+                  })
+                )}
+
+                {resaltada && (
+                  <rect
+                    x={c.x}
+                    y={c.y}
+                    width={c.ancho}
+                    height={c.alto}
+                    fill="none"
+                    stroke="#0ea5e9"
+                    strokeWidth={2}
+                    strokeDasharray="4 3"
+                    pointerEvents="none"
+                  />
+                )}
+
+                {c.alto >= 20 && (
+                  <text
+                    x={c.x + c.ancho / 2}
+                    y={c.y + c.alto / 2 + 3}
+                    textAnchor="middle"
+                    fontSize={7}
+                    fontWeight={700}
+                    fill={colores.texto}
+                    opacity={0.55}
+                    pointerEvents="none"
+                  >
+                    {c.id}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+
+          {/* Hover highlight */}
+          {hoverMiniRect && (
+            <rect
+              x={hoverMiniRect.x}
+              y={hoverMiniRect.y}
+              width={hoverMiniRect.w}
+              height={hoverMiniRect.h}
+              fill="#0ea5e9"
+              fillOpacity={0.4}
+              stroke="#0284c7"
+              strokeWidth={1}
+              pointerEvents="none"
+            />
+          )}
+
+          {/* Children: capa de líneas y círculos */}
+          {children}
+        </g>
+      </svg>
     </div>
   );
 }
