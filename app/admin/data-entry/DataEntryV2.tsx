@@ -568,8 +568,8 @@ export default function DataEntryV2({
               ◀
             </button>
             <span>
-              <strong>Set {setActivo}</strong> · Punto <strong>{puntoActual}</strong>{" "}
-              · Saca:{" "}
+              <strong>Set {setActivo}</strong> · Punto{" "}
+              <strong>{puntoActual}</strong> · Saca:{" "}
               <strong>
                 {saqueInicial === "propio" ? nombreMiEquipo : nombreRival}
               </strong>
