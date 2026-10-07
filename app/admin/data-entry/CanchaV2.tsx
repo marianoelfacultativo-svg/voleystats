@@ -38,8 +38,8 @@ const ANCHO_CELDA = 84;
 
 const ALTO_FUERA = 42;
 const ALTO_CANCHA = 42;
-const ALTO_BLOQUEO = 14; // mitad que antes
-const ALTO_RED = 14; // mitad que antes
+const ALTO_BLOQUEO = 14;
+const ALTO_RED = 14;
 
 const COLS = ["C1", "C2", "C3", "C4", "C5"] as const;
 
@@ -62,7 +62,7 @@ function generarCeldas(): CeldaDef[] {
   const out: CeldaDef[] = [];
   let y = 0;
 
-  // --- FUERA ARRIBA (5 celdas) ---
+  // --- FUERA ARRIBA (5 celdas, 9×9) ---
   COLS.forEach((c, i) => {
     out.push({
       id: `FUERA-ARR-${c}`,
@@ -106,7 +106,7 @@ function generarCeldas(): CeldaDef[] {
       ancho: ANCHO_CELDA,
       alto: ALTO_BLOQUEO,
       miniCols: 9,
-      miniFils: esBloqueo ? 2 : 9, // fuera siempre 9
+      miniFils: esBloqueo ? 2 : 3, // fuera de bloqueo: 9×3
     });
   });
   y += ALTO_BLOQUEO;
@@ -122,7 +122,7 @@ function generarCeldas(): CeldaDef[] {
       ancho: ANCHO_CELDA,
       alto: ALTO_RED,
       miniCols: 9,
-      miniFils: esRed ? 1 : 9, // fuera siempre 9
+      miniFils: esRed ? 1 : 3, // fuera de red: 9×3
     });
   });
   y += ALTO_RED;
@@ -138,7 +138,7 @@ function generarCeldas(): CeldaDef[] {
       ancho: ANCHO_CELDA,
       alto: ALTO_BLOQUEO,
       miniCols: 9,
-      miniFils: esBloqueo ? 2 : 9, // fuera siempre 9
+      miniFils: esBloqueo ? 2 : 3, // fuera de bloqueo: 9×3
     });
   });
   y += ALTO_BLOQUEO;
@@ -161,7 +161,7 @@ function generarCeldas(): CeldaDef[] {
     y += ALTO_CANCHA;
   });
 
-  // --- FUERA ABAJO (5 celdas) ---
+  // --- FUERA ABAJO (5 celdas, 9×9) ---
   COLS.forEach((c, i) => {
     out.push({
       id: `FUERA-ABA-${c}`,
