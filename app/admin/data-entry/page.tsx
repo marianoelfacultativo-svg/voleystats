@@ -35,7 +35,7 @@ import CanchaDefensa from "./CanchaDefensa";
 import CanchaBloqueo from "./CanchaBloqueo";
 import CanchaSaque from "./CanchaSaque";
 import CanchaRecepcion from "./CanchaRecepcion";
-import CanchaV2 from "./CanchaV2";
+import DataEntryV2 from "./DataEntryV2";
 
 interface Equipo { id: string; nombre: string }
 interface Jugador { id: string; nombre: string; numero: number | null; rol: string }
@@ -368,7 +368,7 @@ export default function DataEntryPage() {
   const [erroresRivales, setErroresRivales] = useState(0);
   const [buenasRivales, setBuenasRivales] = useState(0);
 
-  // TEST: toggle para mostrar CanchaV2
+  // Toggle para mostrar DataEntryV2
   const [mostrarPruebaCancha, setMostrarPruebaCancha] = useState(false);
 
   const [cargando, setCargando] = useState(false);
@@ -1058,7 +1058,7 @@ export default function DataEntryPage() {
                   : "bg-slate-200 hover:bg-slate-300 text-slate-700"
               }`}
             >
-              🧪 {mostrarPruebaCancha ? "Ocultar CanchaV2" : "Probar CanchaV2"}
+              🧪 {mostrarPruebaCancha ? "Ocultar DataEntryV2" : "Probar DataEntryV2"}
             </button>
             <button
               onClick={handleCerrar}
@@ -1491,27 +1491,38 @@ export default function DataEntryPage() {
                 {guardando ? "Guardando..." : "💾 Guardar Datos (Ctrl+G)"}
               </button>
             </div>
-          </>
-        )}
 
-        {/* Bloque de prueba de CanchaV2 */}
-        {mostrarPruebaCancha && (
-          <div className="mt-8 bg-white rounded-2xl shadow-sm border-2 border-fuchsia-300 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold text-fuchsia-800">
-                🧪 Prueba CanchaV2
-              </h2>
-              <p className="text-xs text-slate-500">
-                Clickeá cualquier mini y mirá la consola (F12 → Console)
-              </p>
-            </div>
-            <CanchaV2
-              orientacion="vertical"
-              onMiniClick={(c) => {
-                console.log("Click:", c);
-              }}
-            />
-          </div>
+            {/* Bloque de prueba de DataEntryV2 */}
+            {mostrarPruebaCancha && (
+              <div className="mt-8 bg-white rounded-2xl shadow-sm border-2 border-fuchsia-300 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-bold text-fuchsia-800">
+                    🧪 DataEntryV2
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Consola nueva unificada
+                  </p>
+                </div>
+                <DataEntryV2
+                  partidoId={partidoId}
+                  equipoId={equipoId}
+                  nombreMiEquipo={
+                    equipos.find((e) => e.id === equipoId)?.nombre ??
+                    "Mi equipo"
+                  }
+                  nombreRival={
+                    partidos.find((p) => p.id === partidoId)?.rival ?? "Rival"
+                  }
+                  jugadores={jugadoresDelEquipo.map((j) => ({
+                    id: j.id,
+                    nombre: j.nombre,
+                    numero: j.numero,
+                  }))}
+                  rotacionInicial={rotActual}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
     </main>
