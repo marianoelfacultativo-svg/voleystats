@@ -5,12 +5,9 @@ import CanchaV2, {
   getRectMiniLayout,
   type CoordsV2,
   type Orientacion,
-  type ZonaCancha,
 } from "./CanchaV2";
 import LineasV2, { type PuntoV2, type LineaV2 } from "./LineasV2";
-import PanelRotacionV2, {
-  type CambioPendiente,
-} from "./PanelRotacionV2";
+import PanelRotacionV2, { type CambioPendiente } from "./PanelRotacionV2";
 import {
   PopupArmado,
   PopupDefensa,
@@ -22,46 +19,38 @@ import {
   type JugadorEnCancha,
   type PopupPos,
 } from "./PopupValoracion";
+
 import type { Libero, RotacionPunto, Zona } from "@/lib/rotaciones";
+import {
+  clasificarLinea,
+  ganadorDelPunto,
+  type EstadoClasificacion,
+  type LineaClasificada,
+  type PopupRequerido,
+  type Situacion,
+} from "@/lib/clasificacionV2";
+import {
+  guardarPuntoV2,
+  type AccionV2Data,
+  type PuntoV2Data,
+} from "@/lib/dbV2";
 
 // ============================================================
-// TIPOS
+// TIPOS LOCALES
 // ============================================================
 
 type Lado = "propio" | "rival";
-
-type Fase =
-  | "saque"
-  | "recepcion"
-  | "armado"
-  | "ataque"
-  | "defensa"
-  | "libre"
-  | "toque-red";
-
-interface AccionCerrada {
-  id: string;
-  tipo: string;
-  subtipo?: string | number | null;
-  jugadorId?: string | null;
-  origen: PuntoV2;
-  destino: PuntoV2;
-  lado: Lado;
-}
-
-interface PuntoCerrado {
-  setNumero: number;
-  puntoNumero: number;
-  saqueEquipo: Lado;
-  ganador: Lado;
-  acciones: AccionCerrada[];
-  ts: number;
-}
 
 interface Jugador {
   id: string;
   nombre: string;
   numero: number | null;
+}
+
+interface PopupActivo {
+  tipo: Exclude<PopupRequerido, null>;
+  pos: PopupPos;
+  lineaId: string;
 }
 
 interface Props {
@@ -79,12 +68,6 @@ const CLAVE_V2 = "voleystats_dataentry_v2_";
 // HELPERS
 // ============================================================
 
-function ladoDeZona(zona: ZonaCancha): Lado {
-  if (zona === "cancha-rival" || zona === "bloqueo-rival") return "rival";
-  if (zona === "cancha-propia" || zona === "bloqueo-propio") return "propio";
-  return "propio";
-}
-
 function centroDePunto(p: PuntoV2): { x: number; y: number } {
   const r = getRectMiniLayout(p.celda, p.mini);
   if (!r) return { x: 0, y: 0 };
@@ -96,40 +79,32 @@ function posicionPopup(p: PuntoV2): PopupPos {
   return { x: c.x, y: c.y - 4 };
 }
 
-function celdaEnMiCancha(celda: string): boolean {
-  return (
-    celda.startsWith("F1") ||
-    celda.startsWith("F2") ||
-    celda.startsWith("F3")
-  );
+function aLineaV2(l: LineaClasificada): LineaV2 {
+  return {
+    id: l.id,
+    origen: l.origen,
+    destino: l.destino,
+    tipo: l.tipo,
+    esRival: l.esRival,
+    pendiente: false,
+  };
 }
 
-function celdaEnCanchaRival(celda: string): boolean {
-  return (
-    celda.startsWith("F4") ||
-    celda.startsWith("F5") ||
-    celda.startsWith("F6")
-  );
-}
-
-function detectarFase(
-  lineas: LineaV2[],
-  origen: PuntoV2,
-  destino: PuntoV2
-): Fase {
-  if (lineas.length === 0) return "saque";
-  if (lineas.length === 1) return "recepcion";
-  if (origen.celda.startsWith("BLOQ")) return "defensa";
-
-  const ladoO = ladoDeZona(
-    celdaEnCanchaRival(origen.celda) ? "cancha-rival" : "cancha-propia"
-  );
-  const ladoD = ladoDeZona(
-    celdaEnCanchaRival(destino.celda) ? "cancha-rival" : "cancha-propia"
-  );
-
-  if (ladoO !== ladoD) return "ataque";
-  return "armado";
+function aAccionV2(l: LineaClasificada, orden: number): AccionV2Data {
+  return {
+    orden,
+    tipo: l.tipo,
+    subtipo: l.subtipo ?? null,
+    es_rival: l.esRival,
+    jugador_id: l.jugadorId,
+    lado: l.esRival ? "rival" : "propio",
+    origen_celda: l.origen.celda,
+    origen_mini: l.origen.mini,
+    destino_celda: l.destino.celda,
+    destino_mini: l.destino.mini,
+    desvios: (l.desvios ?? []).map((d) => ({ celda: d.celda, mini: d.mini })),
+    zona: null,
+  };
 }
 
 // ============================================================
@@ -145,29 +120,22 @@ export default function DataEntryV2({
   rotacionInicial,
 }: Props) {
   // ---------- Estado del punto ----------
-  const [lineas, setLineas] = useState<LineaV2[]>([]);
+  const [lineas, setLineas] = useState<LineaClasificada[]>([]);
   const [origenActivo, setOrigenActivo] = useState<PuntoV2 | null>(null);
-  const [faseActual, setFaseActual] = useState<Fase>("saque");
-  const [accionesCerradas, setAccionesCerradas] = useState<AccionCerrada[]>([]);
+  const [popupActivo, setPopupActivo] = useState<PopupActivo | null>(null);
   const [contadorId, setContadorId] = useState(1);
-
-  // ---------- Popups ----------
-  const [popupArmado, setPopupArmado] = useState<PopupPos | null>(null);
-  const [popupDefensa, setPopupDefensa] = useState<PopupPos | null>(null);
-  const [popupLibre, setPopupLibre] = useState<PopupPos | null>(null);
-  const [popupToqueRed, setPopupToqueRed] = useState<PopupPos | null>(null);
 
   // ---------- Estado del partido ----------
   const [setActivo, setSetActivo] = useState<number>(1);
   const [puntoActual, setPuntoActual] = useState<number>(1);
   const [orientacion, setOrientacion] = useState<Orientacion>("vertical");
-  const [puntosCerrados, setPuntosCerrados] = useState<PuntoCerrado[]>([]);
+  const [guardando, setGuardando] = useState(false);
 
-  // ---------- Setup inicial ----------
+  // ---------- Setup ----------
   const [setupCompleto, setSetupCompleto] = useState(false);
   const [saqueInicial, setSaqueInicial] = useState<Lado>("propio");
 
-  // ---------- Panel rotación ----------
+  // ---------- Rotación ----------
   const [rotacion, setRotacion] = useState<RotacionPunto | null>(
     rotacionInicial ?? null
   );
@@ -180,179 +148,113 @@ export default function DataEntryV2({
   );
 
   // ---------- Marcador ----------
-  const marcador = useMemo(() => {
-    const delSet = puntosCerrados.filter((p) => p.setNumero === setActivo);
-    return {
-      propio: delSet.filter((p) => p.ganador === "propio").length,
-      rival: delSet.filter((p) => p.ganador === "rival").length,
-    };
-  }, [puntosCerrados, setActivo]);
+  const [marcador, setMarcador] = useState({ propio: 0, rival: 0 });
 
-  // ---------- Derivados: ¿el punto actual está cerrado? ----------
-  const esPuntoCerrado = useMemo(
+  // ---------- Derivados ----------
+  const situacion: Situacion =
+    saqueInicial === "propio" ? "saque" : "recepcion";
+
+  const jugadoresEnCancha: JugadorEnCancha[] = useMemo(
     () =>
-      puntosCerrados.some(
-        (p) => p.setNumero === setActivo && p.puntoNumero === puntoActual
-      ),
-    [puntosCerrados, setActivo, puntoActual]
+      jugadores.slice(0, 6).map((j) => ({
+        id: j.id,
+        nombre: j.nombre + (j.numero !== null ? ` #${j.numero}` : ""),
+      })),
+    [jugadores]
   );
 
-  // ---------- Derivados: último punto cerrado + puede avanzar ----------
-  const ultimoPuntoCerrado = useMemo(() => {
-    const delSet = puntosCerrados.filter((p) => p.setNumero === setActivo);
-    if (delSet.length === 0) return 0;
-    return Math.max(...delSet.map((p) => p.puntoNumero));
-  }, [puntosCerrados, setActivo]);
+  const lineasParaUI: LineaV2[] = useMemo(() => lineas.map(aLineaV2), [lineas]);
 
-  const maxPuntoPermitido = ultimoPuntoCerrado + 1;
-
-  // ---------- Derivados: saque del punto actual ----------
-  const saqueDelPuntoActual: Lado = useMemo(() => {
-    const cerrado = puntosCerrados.find(
-      (p) => p.setNumero === setActivo && p.puntoNumero === puntoActual
-    );
-    if (cerrado) return cerrado.saqueEquipo;
-
-    // Punto no cerrado: derivar del anterior
-    const anterior = puntosCerrados.find(
-      (p) => p.setNumero === setActivo && p.puntoNumero === puntoActual - 1
-    );
-    if (!anterior) return saqueInicial;
-
-    if (anterior.ganador === anterior.saqueEquipo) {
-      return anterior.saqueEquipo;
-    }
-    return anterior.saqueEquipo === "propio" ? "rival" : "propio";
-  }, [puntosCerrados, setActivo, puntoActual, saqueInicial]);
-
-  // ---------- Persistencia en localStorage ----------
+  // ---------- localStorage ----------
   useEffect(() => {
     if (!partidoId) return;
-    const data = {
-      ts: Date.now(),
-      puntosCerrados,
-      setActivo,
-      puntoActual,
-      saqueInicial,
-      setupCompleto,
-    };
     try {
-      localStorage.setItem(CLAVE_V2 + partidoId, JSON.stringify(data));
+      localStorage.setItem(
+        CLAVE_V2 + partidoId,
+        JSON.stringify({
+          ts: Date.now(),
+          setActivo,
+          puntoActual,
+          saqueInicial,
+          setupCompleto,
+          marcador,
+        })
+      );
     } catch {
       /* noop */
     }
-  }, [
-    partidoId,
-    puntosCerrados,
-    setActivo,
-    puntoActual,
-    saqueInicial,
-    setupCompleto,
-  ]);
+  }, [partidoId, setActivo, puntoActual, saqueInicial, setupCompleto, marcador]);
 
-  // ---------- Cargar desde localStorage al montar ----------
   useEffect(() => {
     if (!partidoId) return;
     const raw = localStorage.getItem(CLAVE_V2 + partidoId);
     if (!raw) return;
     try {
       const data = JSON.parse(raw);
-      if (data.puntosCerrados) setPuntosCerrados(data.puntosCerrados);
       if (data.setActivo) setSetActivo(data.setActivo);
       if (data.puntoActual) setPuntoActual(data.puntoActual);
       if (data.saqueInicial) setSaqueInicial(data.saqueInicial);
       if (data.setupCompleto !== undefined) setSetupCompleto(data.setupCompleto);
+      if (data.marcador) setMarcador(data.marcador);
     } catch {
       /* noop */
     }
   }, [partidoId]);
-
-  // ---------- Jugadores en cancha ----------
-  const jugadoresEnCancha: JugadorEnCancha[] = useMemo(() => {
-    return jugadores.slice(0, 6).map((j) => ({
-      id: j.id,
-      nombre: j.nombre + (j.numero !== null ? ` #${j.numero}` : ""),
-    }));
-  }, [jugadores]);
 
   // ============================================================
   // HANDLERS
   // ============================================================
 
   const handleMiniClick = (coords: CoordsV2) => {
-    // Si el setup no está completo, no dejar clickear
     if (!setupCompleto) return;
+    if (popupActivo) return;
 
-    // Popups obligatorios bloquean
-    if (popupArmado) return;
-    if (popupToqueRed) return;
-
-    // Click en la red → popup toque red
     if (coords.zona === "red") {
-      setPopupToqueRed(posicionPopup({ celda: coords.celda, mini: coords.mini }));
+      setPopupActivo({
+        tipo: "toque-red",
+        pos: posicionPopup({ celda: coords.celda, mini: coords.mini }),
+        lineaId: "",
+      });
       return;
     }
 
-    // Si hay popup defensa abierto:
-    if (popupDefensa) {
-      const esCirculoActivo =
-        origenActivo &&
-        origenActivo.celda === coords.celda &&
-        origenActivo.mini === coords.mini;
-
-      if (esCirculoActivo) {
-        // Sigue el flujo normal
-        setPopupDefensa(null);
-        return;
-      }
-
-      // Marca de posición de defensor: abrir nuevo círculo ahí
-      setPopupDefensa(null);
-      setOrigenActivo({ celda: coords.celda, mini: coords.mini });
-      return;
-    }
-
-    // Default: abrir círculo en esa mini
     setOrigenActivo({ celda: coords.celda, mini: coords.mini });
   };
 
   const handleCrearLinea = (destino: PuntoV2) => {
-    if (!origenActivo) return;
+    if (!origenActivo || !rotacion) return;
 
-    const nuevaLinea: LineaV2 = {
+    const estado: EstadoClasificacion = {
+      saqueInicial,
+      situacion,
+      rotacion,
+      lineas,
+    };
+
+    const res = clasificarLinea(estado, { origen: origenActivo, destino });
+
+    const nueva: LineaClasificada = {
       id: `l-${contadorId}`,
+      tipo: res.tipo,
+      esRival: res.esRival,
+      jugadorId: res.jugadorId,
       origen: origenActivo,
       destino,
-      pendiente: true,
+      desvios: res.desvios,
+      subtipo: null,
     };
-    setLineas((prev) => [...prev, nuevaLinea]);
+
+    setLineas((prev) => [...prev, nueva]);
     setContadorId((c) => c + 1);
     setOrigenActivo(destino);
 
-    const fase = detectarFase(lineas, origenActivo, destino);
-    setFaseActual(fase);
-
-    // Ataque rival que cae en mi cancha → popup defensa
-    const origenEnCanchaRival = celdaEnCanchaRival(origenActivo.celda);
-    const destinoEnMiCancha = celdaEnMiCancha(destino.celda);
-    if (
-      lineas.length >= 1 &&
-      origenEnCanchaRival &&
-      destinoEnMiCancha &&
-      fase !== "saque" &&
-      fase !== "recepcion"
-    ) {
-      setPopupDefensa(posicionPopup(destino));
-      return;
+    if (res.popup) {
+      setPopupActivo({
+        tipo: res.popup,
+        pos: posicionPopup(destino),
+        lineaId: nueva.id,
+      });
     }
-
-    // Si es armado → popup armado
-    if (fase === "armado") {
-      setPopupArmado(posicionPopup(destino));
-      return;
-    }
-
-    // Ataque / saque / recepción: sin popup por ahora
   };
 
   const handleBorrarUltima = () => {
@@ -363,233 +265,192 @@ export default function DataEntryV2({
     const ultima = lineas[lineas.length - 1];
     setLineas((prev) => prev.slice(0, -1));
     setOrigenActivo(ultima.origen);
-    setAccionesCerradas((prev) => prev.slice(0, -1));
+    if (popupActivo?.lineaId === ultima.id) setPopupActivo(null);
   };
 
   const handleBorrarPunto = () => {
-    if (
-      lineas.length > 0 &&
-      !confirm("¿Borrar todas las líneas de este punto?")
-    )
+    if (lineas.length > 0 && !confirm("¿Borrar todas las líneas de este punto?"))
       return;
     setLineas([]);
     setOrigenActivo(null);
-    setAccionesCerradas([]);
-    setFaseActual("saque");
-    setPopupArmado(null);
-    setPopupDefensa(null);
-    setPopupLibre(null);
-    setPopupToqueRed(null);
+    setPopupActivo(null);
   };
 
-  const handleCalcularPunto = () => {
+  const handleCerrarPunto = async () => {
     if (lineas.length === 0) return;
+    if (!rotacion) {
+      alert("Falta rotación.");
+      return;
+    }
 
-    const cerrar = confirm(
-      "¿Cerrar el punto con estas líneas?\n\n" +
-        `Líneas dibujadas: ${lineas.length}`
+    const ganador = ganadorDelPunto(lineas);
+    if (!ganador) {
+      alert(
+        "No se puede determinar el ganador todavía.\n" +
+          "Revisá que la última línea caiga en cancha rival/propia, fuera, o sea toque-red."
+      );
+      return;
+    }
+
+    const ok = confirm(
+      `¿Cerrar el punto? Gana ${
+        ganador === "propio" ? nombreMiEquipo : nombreRival
+      }`
     );
-    if (!cerrar) return;
+    if (!ok) return;
 
-    const ultima = lineas[lineas.length - 1];
-    const destinoRival = celdaEnCanchaRival(ultima.destino.celda);
-    const ganador: Lado = destinoRival ? "propio" : "rival";
-
-    const punto: PuntoCerrado = {
-      setNumero: setActivo,
-      puntoNumero: puntoActual,
-      saqueEquipo: saqueDelPuntoActual,
+    const punto: PuntoV2Data = {
+      set_numero: setActivo,
+      punto_numero: puntoActual,
+      saque_equipo: saqueInicial,
+      situacion,
       ganador,
-      acciones: lineas.map((l, i) => ({
-        id: l.id,
-        tipo: i === 0 ? "saque" : i === 1 ? "recepcion" : "sin-clasificar",
-        origen: l.origen,
-        destino: l.destino,
-        lado: ladoDeZona("cancha-propia"),
-      })),
-      ts: Date.now(),
+      rotacion: rotacion as unknown as Record<string, unknown>,
+      liberos: liberos as unknown as Record<string, unknown>[],
+      cambios: cambiosPendientes as unknown as Record<string, unknown>[],
+      posiciones_punto: posicionesPunto,
     };
 
-    const idxExistente = puntosCerrados.findIndex(
-      (p) => p.setNumero === setActivo && p.puntoNumero === puntoActual
+    const acciones: AccionV2Data[] = lineas.map((l, i) =>
+      aAccionV2(l, i + 1)
     );
 
-    if (idxExistente >= 0) {
-      setPuntosCerrados((prev) => {
-        const copia = [...prev];
-        copia[idxExistente] = punto;
-        return copia;
-      });
-    } else {
-      setPuntosCerrados((prev) => [...prev, punto]);
-      setPuntoActual((p) => p + 1);
-      setLineas([]);
-      setOrigenActivo(null);
-      setAccionesCerradas([]);
-      setFaseActual("saque");
+    setGuardando(true);
+    const res = await guardarPuntoV2(partidoId, punto, acciones);
+    setGuardando(false);
+
+    if (!res.ok) {
+      alert("Error guardando punto: " + (res.error ?? "desconocido"));
+      return;
     }
 
-    setPopupArmado(null);
-    setPopupDefensa(null);
-    setPopupLibre(null);
-    setPopupToqueRed(null);
-  };
-
-  const irAPunto = (n: number) => {
-    if (n < 1) return;
-    if (n > maxPuntoPermitido) return;
-
-    setPopupArmado(null);
-    setPopupDefensa(null);
-    setPopupLibre(null);
-    setPopupToqueRed(null);
+    setMarcador((m) => ({ ...m, [ganador]: m[ganador] + 1 }));
+    setPuntoActual((p) => p + 1);
+    setLineas([]);
     setOrigenActivo(null);
-    setAccionesCerradas([]);
-    setFaseActual("saque");
-
-    const cerrado = puntosCerrados.find(
-      (p) => p.setNumero === setActivo && p.puntoNumero === n
-    );
-    if (cerrado) {
-      setLineas(
-        cerrado.acciones.map((a) => ({
-          id: a.id,
-          origen: a.origen,
-          destino: a.destino,
-          pendiente: false,
-        }))
-      );
-    } else {
-      setLineas([]);
-    }
-
-    setPuntoActual(n);
+    setPopupActivo(null);
   };
 
-  const puedeAvanzar = useMemo(() => {
-    return esPuntoCerrado && puntoActual < maxPuntoPermitido;
-  }, [esPuntoCerrado, puntoActual, maxPuntoPermitido]);
+  // ============================================================
+  // POPUPS
+  // ============================================================
 
-  // ---------- Handlers de popups ----------
+  const actualizarLineaPopup = (cambios: Partial<LineaClasificada>) => {
+    if (!popupActivo?.lineaId) return;
+    setLineas((prev) =>
+      prev.map((l) => (l.id === popupActivo.lineaId ? { ...l, ...cambios } : l))
+    );
+  };
 
   const handleArmadoConfirmar = (v: ValorArmado) => {
-    if (!popupArmado) return;
-    const ultima = lineas[lineas.length - 1];
-    if (!ultima) return;
-    setAccionesCerradas((prev) => [
-      ...prev,
-      {
-        id: `a-${contadorId}`,
-        tipo: "armado",
-        subtipo: v,
-        origen: ultima.origen,
-        destino: ultima.destino,
-        lado: "propio",
-      },
-    ]);
-    setContadorId((c) => c + 1);
-    setPopupArmado(null);
-    setFaseActual("ataque");
+    actualizarLineaPopup({ subtipo: v });
+    setPopupActivo(null);
   };
-
-  const handleArmadoCancelar = () => setPopupArmado(null);
 
   const handleDefensaConfirmar = (
     subtipo: TipoDefensa,
     jugadorId: string | null
   ) => {
-    if (!popupDefensa) return;
-    const ultima = lineas[lineas.length - 1];
-    if (ultima) {
-      setAccionesCerradas((prev) => [
-        ...prev,
-        {
-          id: `d-${contadorId}`,
-          tipo: "defensa",
-          subtipo,
-          jugadorId,
-          origen: ultima.origen,
-          destino: ultima.destino,
-          lado: "propio",
-        },
-      ]);
-      setContadorId((c) => c + 1);
-    }
-    setPopupDefensa(null);
+    actualizarLineaPopup({ subtipo, jugadorId });
+    setPopupActivo(null);
   };
-
-  const handleDefensaCancelar = () => setPopupDefensa(null);
 
   const handleLibreConfirmar = (jugadorId: string | null) => {
-    if (!popupLibre) return;
-    const ultima = lineas[lineas.length - 1];
-    if (ultima) {
-      setAccionesCerradas((prev) => [
-        ...prev,
-        {
-          id: `l-${contadorId}`,
-          tipo: "libre",
-          jugadorId,
-          origen: ultima.origen,
-          destino: ultima.destino,
-          lado: "propio",
-        },
-      ]);
-      setContadorId((c) => c + 1);
-    }
-    setPopupLibre(null);
+    actualizarLineaPopup({ jugadorId });
+    setPopupActivo(null);
   };
-
-  const handleLibreCancelar = () => setPopupLibre(null);
 
   const handleToqueRedConfirmar = (
     resultado: ResultadoToqueRed,
     jugadorId: string | null
   ) => {
-    setAccionesCerradas((prev) => [
-      ...prev,
-      {
+    if (!popupActivo) return;
+
+    if (!popupActivo.lineaId) {
+      // Toque-red sin línea previa: crear línea ficticia en la red
+      const ficticia: LineaClasificada = {
         id: `tr-${contadorId}`,
         tipo: "toque-red",
-        subtipo: resultado,
+        esRival: false,
         jugadorId,
-        origen: { celda: "", mini: "" },
-        destino: { celda: "", mini: "" },
-        lado: "propio",
-      },
-    ]);
-    setContadorId((c) => c + 1);
-    setPopupToqueRed(null);
+        origen: { celda: "RED-C3", mini: "m1-5" },
+        destino: { celda: "RED-C3", mini: "m1-5" },
+        subtipo: resultado,
+      };
+      setLineas((prev) => [...prev, ficticia]);
+      setContadorId((c) => c + 1);
+    } else {
+      actualizarLineaPopup({ subtipo: resultado, jugadorId });
+    }
+    setPopupActivo(null);
   };
 
-  const handleToqueRedCancelar = () => setPopupToqueRed(null);
+  const cerrarPopup = () => setPopupActivo(null);
 
   // ============================================================
-  // HANDLERS DE ROTACIÓN
+  // ROTACIÓN
   // ============================================================
 
   const handleGuardarCambios = () => {
     if (!rotacion) return;
-    const nuevaRot = { ...rotacion };
+    const nueva = { ...rotacion };
     for (const c of cambiosPendientes) {
-      if (nuevaRot.posiciones[c.zona]) {
-        nuevaRot.posiciones[c.zona] = {
-          ...nuevaRot.posiciones[c.zona],
+      if (nueva.posiciones[c.zona]) {
+        nueva.posiciones[c.zona] = {
+          ...nueva.posiciones[c.zona],
           jugador_id: c.jugadorEntra,
         };
       }
     }
-    setRotacion(nuevaRot);
+    setRotacion(nueva);
     setCambiosPendientes([]);
   };
 
   // ============================================================
-  // SETUP INICIAL
+  // ATAJOS
   // ============================================================
 
-  const necesitaSetup = !setupCompleto && puntosCerrados.length === 0;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (
+        t.tagName === "INPUT" ||
+        t.tagName === "TEXTAREA" ||
+        t.tagName === "SELECT"
+      )
+        return;
 
-  const handleComenzarPartido = () => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
+        e.preventDefault();
+        void handleCerrarPunto();
+        return;
+      }
+      if (e.key === "Escape") {
+        if (popupActivo) setPopupActivo(null);
+        else setOrigenActivo(null);
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        void handleCerrarPunto();
+        return;
+      }
+      if (e.key.toLowerCase() === "d" && !e.ctrlKey && !e.metaKey) {
+        handleBorrarUltima();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [popupActivo, lineas, rotacion, puntoActual, setActivo]);
+
+  // ============================================================
+  // SETUP
+  // ============================================================
+
+  const necesitaSetup = !setupCompleto;
+
+  const handleComenzar = () => {
     if (!rotacion) {
       alert("Necesitás una rotación antes de comenzar.");
       return;
@@ -603,37 +464,36 @@ export default function DataEntryV2({
 
   return (
     <div className="space-y-3">
-      {/* ---------- MARCADOR ---------- */}
+      {/* MARCADOR */}
       <div className="flex items-center justify-center gap-6 bg-slate-900 text-white rounded-2xl px-6 py-3">
         <div className="text-center">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase">
             {nombreMiEquipo}
           </p>
           <p className="text-3xl font-bold tabular-nums">{marcador.propio}</p>
         </div>
         <div className="text-center">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase">
             SET
           </p>
           <p className="text-xl font-bold tabular-nums">{setActivo}</p>
         </div>
         <div className="text-center">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase">
             {nombreRival}
           </p>
           <p className="text-3xl font-bold tabular-nums">{marcador.rival}</p>
         </div>
       </div>
 
-      {/* ---------- SETUP OVERLAY ---------- */}
+      {/* SETUP */}
       {necesitaSetup && (
         <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 space-y-3">
           <h2 className="text-lg font-bold text-amber-900">
             🎬 Antes de empezar el partido
           </h2>
-
           <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4">
-            <div className="space-y-3">
+            <div>
               {rotacion && (
                 <PanelRotacionV2
                   rotacion={rotacion}
@@ -657,7 +517,6 @@ export default function DataEntryV2({
                 />
               )}
             </div>
-
             <div className="space-y-3">
               <div>
                 <p className="text-xs font-bold text-amber-800 uppercase mb-1">
@@ -686,9 +545,8 @@ export default function DataEntryV2({
                   </button>
                 </div>
               </div>
-
               <button
-                onClick={handleComenzarPartido}
+                onClick={handleComenzar}
                 className="w-full px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-lg text-lg"
               >
                 ✓ Comenzar partido
@@ -698,53 +556,38 @@ export default function DataEntryV2({
         </div>
       )}
 
-      {/* ---------- INFO DEL PUNTO ---------- */}
+      {/* INFO DEL PUNTO */}
       {!necesitaSetup && (
-        <div className="flex items-center justify-between text-sm text-slate-600 bg-white border border-slate-200 rounded-xl px-4 py-2 gap-2">
+        <div className="flex items-center justify-between text-sm text-slate-600 bg-white border border-slate-200 rounded-xl px-4 py-2">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => irAPunto(puntoActual - 1)}
+              onClick={() => setPuntoActual((p) => Math.max(1, p - 1))}
               disabled={puntoActual === 1}
-              className="w-7 h-7 flex items-center justify-center rounded border border-slate-300 hover:bg-slate-50 text-slate-600 disabled:opacity-30"
-              title="Punto anterior"
+              className="w-7 h-7 flex items-center justify-center rounded border border-slate-300 hover:bg-slate-50 disabled:opacity-30"
             >
               ◀
             </button>
             <span>
-              <strong>Set {setActivo}</strong> · Punto{" "}
-              <strong>{puntoActual}</strong> · Saca:{" "}
+              <strong>Set {setActivo}</strong> · Punto <strong>{puntoActual}</strong>{" "}
+              · Saca:{" "}
               <strong>
-                {saqueDelPuntoActual === "propio"
-                  ? nombreMiEquipo
-                  : nombreRival}
+                {saqueInicial === "propio" ? nombreMiEquipo : nombreRival}
               </strong>
-              {esPuntoCerrado && (
-                <span className="ml-2 text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-semibold">
-                  EDITANDO PUNTO CERRADO
-                </span>
-              )}
             </span>
             <button
-              onClick={() => irAPunto(puntoActual + 1)}
-              disabled={!puedeAvanzar}
-              className="w-7 h-7 flex items-center justify-center rounded border border-slate-300 hover:bg-slate-50 text-slate-600 disabled:opacity-30"
-              title={
-                puedeAvanzar
-                  ? "Punto siguiente"
-                  : "Tenés que cerrar este punto antes de avanzar"
-              }
+              onClick={() => setPuntoActual((p) => p + 1)}
+              className="w-7 h-7 flex items-center justify-center rounded border border-slate-300 hover:bg-slate-50"
             >
               ▶
             </button>
           </div>
           <span className="text-xs text-slate-400">
-            {lineas.length} línea{lineas.length !== 1 ? "s" : ""} ·{" "}
-            {accionesCerradas.length} acc.
+            {lineas.length} línea{lineas.length !== 1 ? "s" : ""}
           </span>
         </div>
       )}
 
-      {/* ---------- LAYOUT PRINCIPAL ---------- */}
+      {/* LAYOUT */}
       {!necesitaSetup && (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-3">
@@ -771,7 +614,6 @@ export default function DataEntryV2({
                   onGuardarCambios={handleGuardarCambios}
                 />
               )}
-
               <div className="bg-white border border-slate-200 rounded-lg p-2">
                 <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">
                   Secuencia
@@ -782,16 +624,12 @@ export default function DataEntryV2({
                       <span className="w-4 text-slate-400 font-mono">
                         {i + 1}.
                       </span>
-                      <span className="font-medium">
-                        {i === 0
-                          ? "Saque"
-                          : i === 1
-                          ? "Recepción"
-                          : "Acción"}
-                      </span>
-                      <span className="text-slate-400 text-[10px] truncate">
-                        {l.origen.celda} → {l.destino.celda}
-                      </span>
+                      <span className="font-medium">{l.tipo}</span>
+                      {l.subtipo !== undefined && l.subtipo !== null && (
+                        <span className="text-slate-400">
+                          ({String(l.subtipo)})
+                        </span>
+                      )}
                     </li>
                   ))}
                   {lineas.length === 0 && (
@@ -800,25 +638,6 @@ export default function DataEntryV2({
                     </li>
                   )}
                 </ol>
-                {accionesCerradas.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-slate-100">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">
-                      Cerradas
-                    </p>
-                    <ul className="text-[11px] text-slate-700 space-y-0.5">
-                      {accionesCerradas.map((a) => (
-                        <li key={a.id} className="flex items-center gap-1">
-                          <span className="font-medium">{a.tipo}</span>
-                          {a.subtipo !== undefined && a.subtipo !== null && (
-                            <span className="text-slate-400">
-                              ({String(a.subtipo)})
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -844,48 +663,48 @@ export default function DataEntryV2({
                 onMiniClick={handleMiniClick}
               >
                 <LineasV2
-                  lineas={lineas}
+                  lineas={lineasParaUI}
                   origenActivo={origenActivo}
                   orientacion={orientacion}
                   onCrearLinea={handleCrearLinea}
                 />
 
-                {popupArmado && (
+                {popupActivo?.tipo === "armado" && (
                   <PopupArmado
-                    pos={popupArmado}
+                    pos={popupActivo.pos}
                     onConfirmar={handleArmadoConfirmar}
-                    onCancelar={handleArmadoCancelar}
+                    onCancelar={cerrarPopup}
                   />
                 )}
-                {popupDefensa && (
+                {popupActivo?.tipo === "defensa" && (
                   <PopupDefensa
-                    pos={popupDefensa}
+                    pos={popupActivo.pos}
                     jugadores={jugadoresEnCancha}
                     onConfirmar={handleDefensaConfirmar}
-                    onCancelar={handleDefensaCancelar}
+                    onCancelar={cerrarPopup}
                   />
                 )}
-                {popupLibre && (
+                {popupActivo?.tipo === "libre" && (
                   <PopupLibre
-                    pos={popupLibre}
+                    pos={popupActivo.pos}
                     jugadores={jugadoresEnCancha}
                     onConfirmar={handleLibreConfirmar}
-                    onCancelar={handleLibreCancelar}
+                    onCancelar={cerrarPopup}
                   />
                 )}
-                {popupToqueRed && (
+                {popupActivo?.tipo === "toque-red" && (
                   <PopupToqueRed
-                    pos={popupToqueRed}
+                    pos={popupActivo.pos}
                     jugadores={jugadoresEnCancha}
                     onConfirmar={handleToqueRedConfirmar}
-                    onCancelar={handleToqueRedCancelar}
+                    onCancelar={cerrarPopup}
                   />
                 )}
               </CanchaV2>
             </div>
           </div>
 
-          {/* ---------- BOTONES ---------- */}
+          {/* BOTONES */}
           <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl p-3">
             <div className="flex gap-2">
               <button
@@ -893,29 +712,30 @@ export default function DataEntryV2({
                 disabled={lineas.length === 0 && !origenActivo}
                 className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-sm font-medium disabled:opacity-40"
               >
-                ↩ Borrar última acción
+                ↩ Borrar última (D)
               </button>
               <button
                 onClick={handleBorrarPunto}
-                disabled={lineas.length === 0 && !origenActivo}
+                disabled={lineas.length === 0}
                 className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 rounded-lg text-sm font-medium disabled:opacity-40"
               >
                 ✕ Borrar punto
               </button>
             </div>
             <button
-              onClick={handleCalcularPunto}
-              disabled={lineas.length === 0}
+              onClick={handleCerrarPunto}
+              disabled={lineas.length === 0 || guardando}
               className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg disabled:opacity-40"
             >
-              ✓ Calcular punto
+              {guardando ? "Guardando..." : "✓ Cerrar punto (Enter)"}
             </button>
           </div>
 
           <p className="text-xs text-slate-400 text-center">
-            Click en una mini para abrir el círculo de origen. Desde ahí,
-            arrastrá hasta otra mini para trazar la línea. Repetí para
-            encadenar el punto. Al terminar, apretá "Calcular punto".
+            Click en mini → círculo. Drag → línea. Popups aparecen solos.
+            <br />
+            <strong>Atajos:</strong> Esc · Enter (cerrar) · D (borrar última) ·
+            Ctrl+G (guardar)
           </p>
         </>
       )}
