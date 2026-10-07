@@ -36,13 +36,12 @@ interface Props {
 
 const ANCHO_CELDA = 84;
 
-const ALTO_FUERA_ARRIBA = 42;
+const ALTO_FUERA = 42;
 const ALTO_CANCHA = 42;
-const ALTO_BLOQUEO = 28;
-const ALTO_RED = 28;
+const ALTO_BLOQUEO = 14; // mitad que antes
+const ALTO_RED = 14; // mitad que antes
 
 const COLS = ["C1", "C2", "C3", "C4", "C5"] as const;
-const COLS_MEDIO = ["C2", "C3", "C4"] as const;
 
 // ============================================================
 // CELDAS
@@ -71,12 +70,12 @@ function generarCeldas(): CeldaDef[] {
       x: i * ANCHO_CELDA,
       y,
       ancho: ANCHO_CELDA,
-      alto: ALTO_FUERA_ARRIBA,
+      alto: ALTO_FUERA,
       miniCols: 9,
       miniFils: 9,
     });
   });
-  y += ALTO_FUERA_ARRIBA;
+  y += ALTO_FUERA;
 
   // --- CANCHA RIVAL (F6, F5, F4) ---
   (["F6", "F5", "F4"] as const).forEach((f) => {
@@ -107,7 +106,7 @@ function generarCeldas(): CeldaDef[] {
       ancho: ANCHO_CELDA,
       alto: ALTO_BLOQUEO,
       miniCols: 9,
-      miniFils: 2,
+      miniFils: esBloqueo ? 2 : 9, // fuera siempre 9
     });
   });
   y += ALTO_BLOQUEO;
@@ -123,7 +122,7 @@ function generarCeldas(): CeldaDef[] {
       ancho: ANCHO_CELDA,
       alto: ALTO_RED,
       miniCols: 9,
-      miniFils: 1,
+      miniFils: esRed ? 1 : 9, // fuera siempre 9
     });
   });
   y += ALTO_RED;
@@ -139,7 +138,7 @@ function generarCeldas(): CeldaDef[] {
       ancho: ANCHO_CELDA,
       alto: ALTO_BLOQUEO,
       miniCols: 9,
-      miniFils: 2,
+      miniFils: esBloqueo ? 2 : 9, // fuera siempre 9
     });
   });
   y += ALTO_BLOQUEO;
@@ -170,7 +169,7 @@ function generarCeldas(): CeldaDef[] {
       x: i * ANCHO_CELDA,
       y,
       ancho: ANCHO_CELDA,
-      alto: ALTO_FUERA_ARRIBA,
+      alto: ALTO_FUERA,
       miniCols: 9,
       miniFils: 9,
     });
@@ -447,7 +446,6 @@ export default function CanchaV2({
                   />
                 )}
 
-                {/* Etiqueta: solo si la celda es suficientemente grande */}
                 {c.alto >= 20 && (
                   <text
                     x={c.x + c.ancho / 2}
