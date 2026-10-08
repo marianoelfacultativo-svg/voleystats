@@ -30,8 +30,8 @@ export interface JugadorEnCancha {
 }
 
 export interface PopupPos {
-  x: number; // centro-x en coords layout (sin rotar)
-  y: number; // borde inferior del popup (coords layout)
+  x: number;
+  y: number;
 }
 
 // ============================================================
@@ -96,7 +96,7 @@ const OPCIONES_TOQUE_RED: {
 ];
 
 // ============================================================
-// WRAPPER (shell común de todos los popups)
+// WRAPPER
 // ============================================================
 
 interface WrapperProps {
@@ -110,19 +110,16 @@ interface WrapperProps {
 function PopupWrapper({ pos, ancho, alto, titulo, children }: WrapperProps) {
   const { ancho: W, alto: H } = CANCHA_V2_DIMS;
 
-  // Ajuste horizontal: centrado en pos.x, sin salirse del ancho de la cancha
   let x = pos.x - ancho / 2;
   if (x < 2) x = 2;
   if (x + ancho > W - 2) x = W - ancho - 2;
 
-  // Ajuste vertical: por defecto arriba del anclaje
   let y = pos.y - alto - 6;
   if (y < 2) y = pos.y + 6;
   if (y + alto > H - 2) y = H - alto - 2;
 
   return (
     <g style={{ pointerEvents: "auto" }}>
-      {/* Sombra */}
       <rect
         x={x + 2}
         y={y + 3}
@@ -133,7 +130,6 @@ function PopupWrapper({ pos, ancho, alto, titulo, children }: WrapperProps) {
         opacity={0.22}
         pointerEvents="none"
       />
-      {/* Fondo */}
       <rect
         x={x}
         y={y}
@@ -145,7 +141,6 @@ function PopupWrapper({ pos, ancho, alto, titulo, children }: WrapperProps) {
         strokeWidth={1.5}
         pointerEvents="none"
       />
-      {/* Título */}
       <text
         x={x + ancho / 2}
         y={y + 14}
@@ -163,7 +158,7 @@ function PopupWrapper({ pos, ancho, alto, titulo, children }: WrapperProps) {
 }
 
 // ============================================================
-// BOTÓN SVG REUTILIZABLE
+// BOTÓN SVG
 // ============================================================
 
 interface BotonProps {
@@ -215,7 +210,7 @@ function BotonSvg({
 }
 
 // ============================================================
-// POPUP SAQUE (ace / pos+ / pos / neutro / neg)
+// POPUP SAQUE
 // ============================================================
 
 interface PopupSaqueProps {
@@ -224,24 +219,16 @@ interface PopupSaqueProps {
   onCancelar: () => void;
 }
 
-export function PopupSaque({
-  pos,
-  onConfirmar,
-  onCancelar,
-}: PopupSaqueProps) {
+export function PopupSaque({ pos, onConfirmar, onCancelar }: PopupSaqueProps) {
   const btnW = 34;
   const gap = 4;
   const pad = 8;
-  const ancho = ORDEN_SAQUE.length * btnW + (ORDEN_SAQUE.length - 1) * gap + pad * 2;
+  const ancho =
+    ORDEN_SAQUE.length * btnW + (ORDEN_SAQUE.length - 1) * gap + pad * 2;
   const alto = 70;
 
   return (
-    <PopupWrapper
-      pos={pos}
-      ancho={ancho}
-      alto={alto}
-      titulo="SAQUE — Calidad"
-    >
+    <PopupWrapper pos={pos} ancho={ancho} alto={alto} titulo="SAQUE — Calidad">
       <g>
         {ORDEN_SAQUE.map((v, i) => (
           <BotonSvg
@@ -273,7 +260,7 @@ export function PopupSaque({
 }
 
 // ============================================================
-// POPUP ARMADO (1,2,3,4,5,6,T)
+// POPUP ARMADO
 // ============================================================
 
 interface PopupArmadoProps {
@@ -282,11 +269,7 @@ interface PopupArmadoProps {
   onCancelar: () => void;
 }
 
-export function PopupArmado({
-  pos,
-  onConfirmar,
-  onCancelar,
-}: PopupArmadoProps) {
+export function PopupArmado({ pos, onConfirmar, onCancelar }: PopupArmadoProps) {
   const botones: ValorArmado[] = [1, 2, 3, 4, 5, 6, "T"];
   const btnW = 24;
   const gap = 4;
@@ -332,7 +315,7 @@ export function PopupArmado({
 }
 
 // ============================================================
-// POPUP DEFENSA (Toque / Gran def. / Libre + quién)
+// POPUP DEFENSA
 // ============================================================
 
 interface PopupDefensaProps {
@@ -429,7 +412,7 @@ export function PopupDefensa({
 }
 
 // ============================================================
-// POPUP LIBRE (quién pasó la pelota)
+// POPUP LIBRE
 // ============================================================
 
 interface PopupLibreProps {
@@ -474,6 +457,87 @@ export function PopupLibre({
                 texto={j.nombre}
                 color="#fef3c7"
                 colorTexto="#78350f"
+                fontSize={9}
+                onClick={() => onConfirmar(j.id)}
+              />
+            );
+          })}
+        </g>
+
+        <BotonSvg
+          x={pad}
+          y={filasJugadores * 18 + 6}
+          w={ancho - pad * 2}
+          h={14}
+          texto="Sin asignar"
+          color="#f1f5f9"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={() => onConfirmar(null)}
+        />
+
+        <BotonSvg
+          x={pad}
+          y={filasJugadores * 18 + 24}
+          w={ancho - pad * 2}
+          h={14}
+          texto="Cancelar (Esc)"
+          color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP JUGADOR (solo lista, sin tipo)
+// ============================================================
+
+interface PopupJugadorProps {
+  pos: PopupPos;
+  jugadores: JugadorEnCancha[];
+  onConfirmar: (jugadorId: string | null) => void;
+  onCancelar: () => void;
+}
+
+export function PopupJugador({
+  pos,
+  jugadores,
+  onConfirmar,
+  onCancelar,
+}: PopupJugadorProps) {
+  const pad = 8;
+  const ancho = 220;
+  const maxJugadores = Math.min(jugadores.length, 6);
+  const filasJugadores = Math.ceil(maxJugadores / 2);
+  const alto = 20 + 12 + filasJugadores * 18 + 6 + 14 + 4 + 14 + 8;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="¿QUIÉN HIZO LA ACCIÓN?"
+    >
+      <g>
+        <g transform="translate(0, 0)">
+          {jugadores.slice(0, maxJugadores).map((j, i) => {
+            const col = i % 2;
+            const row = Math.floor(i / 2);
+            const wCol = (ancho - pad * 2 - 4) / 2;
+            return (
+              <BotonSvg
+                key={j.id}
+                x={pad + col * (wCol + 4)}
+                y={row * 18}
+                w={wCol}
+                h={16}
+                texto={j.nombre}
+                color="#dbeafe"
+                colorTexto="#1e3a8a"
                 fontSize={9}
                 onClick={() => onConfirmar(j.id)}
               />

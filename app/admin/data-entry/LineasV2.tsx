@@ -20,13 +20,21 @@ export interface LineaV2 {
   tipo?: string;
   esRival?: boolean;
   color?: string;
+  oculta?: boolean;
 }
 
 interface Props {
   lineas: LineaV2[];
+  /** Círculo activo (sin armar) o armado. En ambos casos se dibuja igual. */
   origenActivo: PuntoV2 | null;
+  /** Desvíos cargados para el tramo en curso (todavía sin materializar). */
+  desviosPendientes?: PuntoV2[];
+  /** Estrella de jugador marcada (auxiliar, no cierra línea). */
+  estrella?: PuntoV2 | null;
   circulosAbandonados?: PuntoV2[];
   orientacion: Orientacion;
+  /** Click sobre el círculo activo. */
+  onClickCirculo?: () => void;
   radioCirculoActivo?: number;
   radioCirculoUsado?: number;
 }
@@ -73,16 +81,20 @@ function colorPorTipo(tipo?: string, esRival?: boolean): string {
 export default function LineasV2({
   lineas,
   origenActivo,
+  desviosPendientes = [],
+  estrella = null,
   circulosAbandonados = [],
   orientacion,
-  radioCirculoActivo = 10,
+  onClickCirculo,
+  radioCirculoActivo = 12,
   radioCirculoUsado = 5,
 }: Props) {
   // Círculos usados (chicos): todos los orígenes, destinos y desvíos
-  // de líneas + abandonados, menos el origen activo.
+  // de líneas visibles + abandonados, menos el origen activo.
   const circulos = useMemo(() => {
     const map = new Map<string, PuntoV2>();
     for (const l of lineas) {
+      if (l.oculta) continue;
       const k1 = `${l.origen.celda}|${l.origen.mini}`;
       if (!map.has(k1)) map.set(k1, l.origen);
       const k2 = `${l.destino.celda}|${l.destino.mini}`;
@@ -106,15 +118,18 @@ export default function LineasV2({
     ? centroLayout(origenActivo.celda, origenActivo.mini)
     : null;
 
-  // Silenciamos el prop `orientacion` para no romper la firma; los
-  // paths se construyen en coords layout y el <g> padre se encarga
-  // de la rotación.
+  const posEstrella = estrella
+    ? centroLayout(estrella.celda, estrella.mini)
+    : null;
+
+  // Silenciamos el prop orientacion (los paths van en coords layout)
   void orientacion;
 
   return (
     <g>
-      {/* ---------- LÍNEAS YA CREADAS (con desvíos como polyline) ---------- */}
+      {/* ---------- LÍNEAS YA CREADAS (con desvíos) ---------- */}
       {lineas.map((l) => {
+        if (l.oculta) return null;
         const puntos: PuntoV2[] = [
           l.origen,
           ...(l.desvios ?? []),
@@ -145,6 +160,35 @@ export default function LineasV2({
         );
       })}
 
+      {/* ---------- DESVÍOS PENDIENTES (tramo en curso) ---------- */}
+      {origenActivo &&
+        desviosPendientes.map((d, i) => {
+          const o = centroLayout(origenActivo.celda, origenActivo.mini);
+          const p = centroLayout(d.celda, d.mini);
+          if (!o || !p) return null;
+          const prev =
+            i === 0
+              ? o
+              : centroLayout(
+                  desviosPendientes[i - 1].celda,
+                  desviosPendientes[i - 1].mini
+                );
+          if (!prev) return null;
+          return (
+            <path
+              key={`dp-${i}`}
+              d={`M ${prev.x} ${prev.y} L ${p.x} ${p.y}`}
+              stroke="#ea580c"
+              strokeWidth={3}
+              strokeLinecap="round"
+              strokeDasharray="6 4"
+              fill="none"
+              opacity={0.85}
+              pointerEvents="none"
+            />
+          );
+        })}
+
       {/* ---------- CÍRCULOS USADOS (chicos) ---------- */}
       {circulos.map((c, i) => {
         const p = centroLayout(c.celda, c.mini);
@@ -164,13 +208,34 @@ export default function LineasV2({
         );
       })}
 
-      {/* ---------- CÍRCULO ACTIVO (visual, no clickeable acá) ---------- */}
-      {posOrigen && (
+      {/* ---------- ESTRELLA (posición de jugador marcada) ---------- */}
+      {posEstrella && (
         <g pointerEvents="none">
+          <polygon
+            points={estrellaPts(posEstrella.x, posEstrella.y, 9, 4)}
+            fill="#fbbf24"
+            stroke="#78350f"
+            strokeWidth={1.2}
+            opacity={0.9}
+          />
+        </g>
+      )}
+
+      {/* ---------- CÍRCULO ACTIVO (clickeable para armar) ---------- */}
+      {posOrigen && (
+        <g
+          style={{ cursor: onClickCirculo ? "pointer" : "default" }}
+          onPointerDown={(e) => {
+            if (!onClickCirculo) return;
+            e.stopPropagation();
+            onClickCirculo();
+          }}
+          pointerEvents={onClickCirculo ? "auto" : "none"}
+        >
           <circle
             cx={posOrigen.x}
             cy={posOrigen.y}
-            r={radioCirculoActivo + 5}
+            r={radioCirculoActivo + 4}
             fill="none"
             stroke="#0ea5e9"
             strokeWidth={1.5}
@@ -178,7 +243,7 @@ export default function LineasV2({
           >
             <animate
               attributeName="r"
-              values={`${radioCirculoActivo + 3};${radioCirculoActivo + 8};${radioCirculoActivo + 3}`}
+              values={`${radioCirculoActivo + 2};${radioCirculoActivo + 7};${radioCirculoActivo + 2}`}
               dur="1.4s"
               repeatCount="indefinite"
             />
@@ -202,4 +267,19 @@ export default function LineasV2({
       )}
     </g>
   );
+}
+
+function estrellaPts(
+  cx: number,
+  cy: number,
+  rExt: number,
+  rInt: number
+): string {
+  const pts: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 === 0 ? rExt : rInt;
+    const ang = (Math.PI / 5) * i - Math.PI / 2;
+    pts.push(`${cx + r * Math.cos(ang)},${cy + r * Math.sin(ang)}`);
+  }
+  return pts.join(" ");
 }

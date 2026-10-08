@@ -11,6 +11,7 @@ import PanelRotacionV2, { type CambioPendiente } from "./PanelRotacionV2";
 import {
   PopupArmado,
   PopupDefensa,
+  PopupJugador,
   PopupLibre,
   PopupSaque,
   PopupToqueRed,
@@ -31,6 +32,8 @@ import {
 } from "@/lib/rotaciones";
 import {
   clasificarLinea,
+  esCanchaPropia,
+  esCanchaRival,
   ganadorDelPunto,
   type EstadoClasificacion,
   type LineaClasificada,
@@ -55,7 +58,7 @@ interface Jugador {
   numero: number | null;
 }
 
-interface PopupActivo {
+interface PopupEnCola {
   tipo: Exclude<PopupRequerido, null>;
   pos: PopupPos;
   lineaId: string;
@@ -95,6 +98,7 @@ function aLineaV2(l: LineaClasificada): LineaV2 {
     desvios: l.desvios,
     tipo: l.tipo,
     esRival: l.esRival,
+    oculta: l.oculta,
   };
 }
 
@@ -119,6 +123,10 @@ function esCeldaBloqueo(celda: string): boolean {
   return celda.startsWith("BLOQ-P-") || celda.startsWith("BLOQ-R-");
 }
 
+function mismaMini(a: PuntoV2, b: PuntoV2): boolean {
+  return a.celda === b.celda && a.mini === b.mini;
+}
+
 // ============================================================
 // COMPONENTE
 // ============================================================
@@ -133,8 +141,11 @@ export default function DataEntryV2({
 }: Props) {
   // ---------- Estado del punto ----------
   const [lineas, setLineas] = useState<LineaClasificada[]>([]);
-  const [origenActivo, setOrigenActivo] = useState<PuntoV2 | null>(null);
-  const [popupActivo, setPopupActivo] = useState<PopupActivo | null>(null);
+  const [circuloSinArmar, setCirculoSinArmar] = useState<PuntoV2 | null>(null);
+  const [circuloArmado, setCirculoArmado] = useState<PuntoV2 | null>(null);
+  const [desviosPendientes, setDesviosPendientes] = useState<PuntoV2[]>([]);
+  const [estrella, setEstrella] = useState<PuntoV2 | null>(null);
+  const [colaPopups, setColaPopups] = useState<PopupEnCola[]>([]);
   const [contadorId, setContadorId] = useState(1);
 
   // ---------- Estado del partido ----------
@@ -166,7 +177,8 @@ export default function DataEntryV2({
   const situacion: Situacion =
     saqueInicial === "propio" ? "saque" : "recepcion";
 
-  // B7: jugadores reales en cancha (rotación + override posición + cambios)
+  const popupActivo = colaPopups[0] ?? null;
+
   const jugadoresEnCancha: JugadorEnCancha[] = useMemo(() => {
     if (!rotacion) return [];
     const ids = new Set<string>();
@@ -189,6 +201,9 @@ export default function DataEntryV2({
   }, [rotacion, posicionesPunto, cambiosPendientes, jugadores]);
 
   const lineasParaUI: LineaV2[] = useMemo(() => lineas.map(aLineaV2), [lineas]);
+
+  const origenActivoParaUI: PuntoV2 | null =
+    circuloSinArmar ?? circuloArmado;
 
   // ---------- localStorage ----------
   useEffect(() => {
@@ -227,91 +242,148 @@ export default function DataEntryV2({
   }, [partidoId]);
 
   // ============================================================
-  // HANDLERS
+  // CÁLCULO DE LA COLA DE POPUPS AL CREAR UNA LÍNEA
+  // ============================================================
+
+  const encolarPopups = (
+    popupAccion: PopupRequerido,
+    lineaId: string,
+    pos: PopupPos,
+    hayEstrella: boolean
+  ): PopupEnCola[] => {
+    const cola: PopupEnCola[] = [];
+    if (popupAccion) {
+      cola.push({ tipo: popupAccion, pos, lineaId });
+    }
+    if (hayEstrella) {
+      cola.push({ tipo: "jugador", pos, lineaId });
+    }
+    return cola;
+  };
+
+  // ============================================================
+  // HANDLERS DE CLICK
   // ============================================================
 
   const handleMiniClick = (coords: CoordsV2) => {
     if (!setupCompleto) return;
 
-    // C1: si hay popup activo, se cierra sin valorar y seguimos.
-    if (popupActivo) setPopupActivo(null);
+    // C1: si hay popup activo, se cierra toda la cola sin valorar
+    if (colaPopups.length > 0) setColaPopups([]);
 
     const punto: PuntoV2 = { celda: coords.celda, mini: coords.mini };
 
-    // Click en red → popup toque-red directo
+    // Red → popup toque-red directo
     if (coords.zona === "red") {
-      setPopupActivo({
-        tipo: "toque-red",
-        pos: posicionPopup(punto),
-        lineaId: "",
-      });
+      setColaPopups([
+        {
+          tipo: "toque-red",
+          pos: posicionPopup(punto),
+          lineaId: "",
+        },
+      ]);
       return;
     }
 
-    // Bloqueo como desvío (no crea acción nueva)
-    if (esCeldaBloqueo(coords.celda) && lineas.length > 0) {
-      setLineas((prev) => {
-        const nuevas = [...prev];
-        const ult = { ...nuevas[nuevas.length - 1] };
-        ult.desvios = [...(ult.desvios ?? []), punto];
-        // El destino se actualiza al bloqueo mientras esperamos el final real
-        ult.destino = punto;
-        nuevas[nuevas.length - 1] = ult;
-        return nuevas;
-      });
-      setOrigenActivo(punto);
+    const esBloqueo = esCeldaBloqueo(punto.celda);
+    const esPropia = esCanchaPropia(punto.celda);
+    const esRival = esCanchaRival(punto.celda);
+
+    // ---------- Caso 1: círculo ARMADO ----------
+    if (circuloArmado) {
+      // Click sobre el propio círculo armado → desarmar
+      if (mismaMini(circuloArmado, punto)) {
+        setCirculoSinArmar(circuloArmado);
+        setCirculoArmado(null);
+        return;
+      }
+
+      // Bloqueo → desvío o acción nueva según última línea
+      if (esBloqueo) {
+        const ultima = lineas[lineas.length - 1];
+        if (ultima?.tipo === "libre") {
+          // Acción nueva tipo libre con destino bloqueo
+          crearLinea(circuloArmado, punto);
+          return;
+        }
+        // Desvío: agregar a pendientes, círculo sigue armado
+        setDesviosPendientes((prev) => [...prev, punto]);
+        return;
+      }
+
+      // Click en cancha propia → marcar ⭐ (sigue armado)
+      if (esPropia) {
+        setEstrella(punto);
+        return;
+      }
+
+      // Click en cancha rival → crear línea
+      if (esRival) {
+        crearLinea(circuloArmado, punto);
+        return;
+      }
+
       return;
     }
 
-    // Sin origen → marcarlo
-    if (!origenActivo) {
-      setOrigenActivo(punto);
-      return;
-    }
+    // ---------- Caso 2: círculo SIN ARMAR ----------
+    if (circuloSinArmar) {
+      // Click sobre el propio círculo → armar
+      if (mismaMini(circuloSinArmar, punto)) {
+        setCirculoArmado(circuloSinArmar);
+        setCirculoSinArmar(null);
+        return;
+      }
 
-    // Mismo punto → deseleccionar
-    if (
-      origenActivo.celda === punto.celda &&
-      origenActivo.mini === punto.mini
-    ) {
-      setOrigenActivo(null);
-      return;
-    }
+      // Click en cancha propia → marcar ⭐ (sigue sin armar)
+      if (esPropia) {
+        setEstrella(punto);
+        return;
+      }
 
-    // Si el origen activo es un bloqueo (venimos de un desvío):
-    // en vez de crear una acción nueva, actualizamos el destino de la
-    // última línea y reclasificamos.
-    if (esCeldaBloqueo(origenActivo.celda) && lineas.length > 0 && rotacion) {
-      setLineas((prev) => {
-        const nuevas = [...prev];
-        const ult = { ...nuevas[nuevas.length - 1] };
-        const estado: EstadoClasificacion = {
-          saqueInicial,
-          situacion,
-          rotacion,
-          lineas: nuevas.slice(0, -1),
-        };
-        const res = clasificarLinea(estado, {
-          origen: ult.origen,
+      // Click en cancha rival o bloqueo → "rompe línea" como libre
+      if (esRival || esBloqueo) {
+        // Acción libre oculta (se registra pero no se dibuja)
+        const oculta: LineaClasificada = {
+          id: `l-${contadorId}`,
+          tipo: "libre",
+          esRival: false,
+          jugadorId: null,
+          origen: circuloSinArmar,
           destino: punto,
-        });
-        ult.destino = punto;
-        ult.tipo = res.tipo;
-        ult.esRival = res.esRival;
-        ult.jugadorId = res.jugadorId;
-        nuevas[nuevas.length - 1] = ult;
-        return nuevas;
-      });
-      setOrigenActivo(punto);
+          oculta: true,
+          subtipo: null,
+        };
+        setLineas((prev) => [...prev, oculta]);
+        setContadorId((c) => c + 1);
+        setCirculoSinArmar(punto);
+        setCirculoArmado(null);
+        setEstrella(null);
+        setDesviosPendientes([]);
+        return;
+      }
+
       return;
     }
 
-    // Click normal → crear línea y encadenar
-    handleCrearLinea(punto);
+    // ---------- Caso 3: no hay ningún círculo → crear el primero ----------
+    setCirculoSinArmar(punto);
   };
 
-  const handleCrearLinea = (destino: PuntoV2) => {
-    if (!origenActivo || !rotacion) return;
+  const handleClickCirculo = () => {
+    if (circuloSinArmar) {
+      setCirculoArmado(circuloSinArmar);
+      setCirculoSinArmar(null);
+      return;
+    }
+    if (circuloArmado) {
+      setCirculoSinArmar(circuloArmado);
+      setCirculoArmado(null);
+    }
+  };
+
+  const crearLinea = (origen: PuntoV2, destino: PuntoV2) => {
+    if (!rotacion) return;
 
     const estado: EstadoClasificacion = {
       saqueInicial,
@@ -320,51 +392,78 @@ export default function DataEntryV2({
       lineas,
     };
 
-    const res = clasificarLinea(estado, { origen: origenActivo, destino });
+    const res = clasificarLinea(estado, { origen, destino });
 
     const nueva: LineaClasificada = {
       id: `l-${contadorId}`,
       tipo: res.tipo,
       esRival: res.esRival,
       jugadorId: res.jugadorId,
-      origen: origenActivo,
+      origen,
       destino,
-      desvios: res.desvios,
+      desvios: desviosPendientes.length > 0 ? [...desviosPendientes] : undefined,
       subtipo: null,
     };
 
     setLineas((prev) => [...prev, nueva]);
     setContadorId((c) => c + 1);
-    // Cadena continua: el destino se transforma en el nuevo origen
-    setOrigenActivo(destino);
+    setDesviosPendientes([]);
 
-    if (res.popup) {
-      setPopupActivo({
-        tipo: res.popup,
-        pos: posicionPopup(destino),
-        lineaId: nueva.id,
-      });
-    }
+    // Cadena continua: el nuevo círculo queda sin armar en el destino
+    setCirculoSinArmar(destino);
+    setCirculoArmado(null);
+
+    // Cola de popups: acción + jugador si hay ⭐
+    const hayEstrella = estrella !== null;
+    const cola = encolarPopups(
+      res.popup,
+      nueva.id,
+      posicionPopup(destino),
+      hayEstrella
+    );
+    setColaPopups(cola);
+
+    // La ⭐ se consume con esta línea
+    setEstrella(null);
   };
+
+  // ============================================================
+  // BORRAR
+  // ============================================================
 
   const handleBorrarUltima = () => {
     if (lineas.length === 0) {
-      if (origenActivo) setOrigenActivo(null);
+      if (circuloArmado || circuloSinArmar) {
+        setCirculoArmado(null);
+        setCirculoSinArmar(null);
+        setDesviosPendientes([]);
+        setEstrella(null);
+      }
       return;
     }
     const ultima = lineas[lineas.length - 1];
     setLineas((prev) => prev.slice(0, -1));
-    setOrigenActivo(ultima.origen);
-    if (popupActivo?.lineaId === ultima.id) setPopupActivo(null);
+    setCirculoSinArmar(ultima.origen);
+    setCirculoArmado(null);
+    setDesviosPendientes([]);
+    setEstrella(null);
+    setColaPopups([]);
   };
 
   const handleBorrarPunto = () => {
     if (lineas.length > 0 && !confirm("¿Borrar todas las líneas de este punto?"))
       return;
     setLineas([]);
-    setOrigenActivo(null);
-    setPopupActivo(null);
+    setCirculoSinArmar(null);
+    setCirculoArmado(null);
+    setDesviosPendientes([]);
+    setEstrella(null);
+    setColaPopups([]);
   };
+
+  // ============================================================
+  // CERRAR PUNTO
+  // ============================================================
 
   const handleCerrarPunto = async () => {
     if (lineas.length === 0) return;
@@ -401,9 +500,7 @@ export default function DataEntryV2({
       posiciones_punto: posicionesPunto,
     };
 
-    const acciones: AccionV2Data[] = lineas.map((l, i) =>
-      aAccionV2(l, i + 1)
-    );
+    const acciones: AccionV2Data[] = lineas.map((l, i) => aAccionV2(l, i + 1));
 
     setGuardando(true);
     const res = await guardarPuntoV2(partidoId, punto, acciones);
@@ -417,13 +514,18 @@ export default function DataEntryV2({
     setMarcador((m) => ({ ...m, [ganador]: m[ganador] + 1 }));
     setPuntoActual((p) => p + 1);
     setLineas([]);
-    setOrigenActivo(null);
-    setPopupActivo(null);
+    setCirculoSinArmar(null);
+    setCirculoArmado(null);
+    setDesviosPendientes([]);
+    setEstrella(null);
+    setColaPopups([]);
   };
 
   // ============================================================
   // POPUPS
   // ============================================================
+
+  const popupSiguiente = () => setColaPopups((prev) => prev.slice(1));
 
   const actualizarLineaPopup = (cambios: Partial<LineaClasificada>) => {
     if (!popupActivo?.lineaId) return;
@@ -434,12 +536,12 @@ export default function DataEntryV2({
 
   const handleSaqueConfirmar = (v: ValorSaque) => {
     actualizarLineaPopup({ subtipo: v });
-    setPopupActivo(null);
+    popupSiguiente();
   };
 
   const handleArmadoConfirmar = (v: ValorArmado) => {
     actualizarLineaPopup({ subtipo: v });
-    setPopupActivo(null);
+    popupSiguiente();
   };
 
   const handleDefensaConfirmar = (
@@ -447,12 +549,17 @@ export default function DataEntryV2({
     jugadorId: string | null
   ) => {
     actualizarLineaPopup({ subtipo, jugadorId });
-    setPopupActivo(null);
+    popupSiguiente();
   };
 
   const handleLibreConfirmar = (jugadorId: string | null) => {
     actualizarLineaPopup({ jugadorId });
-    setPopupActivo(null);
+    popupSiguiente();
+  };
+
+  const handleJugadorConfirmar = (jugadorId: string | null) => {
+    actualizarLineaPopup({ jugadorId });
+    popupSiguiente();
   };
 
   const handleToqueRedConfirmar = (
@@ -461,7 +568,6 @@ export default function DataEntryV2({
   ) => {
     if (!popupActivo) return;
 
-    // B4: el esRival depende del tipo de toque-red
     const esRival = resultado === "toque-red-rival";
 
     if (!popupActivo.lineaId) {
@@ -480,10 +586,13 @@ export default function DataEntryV2({
     } else {
       actualizarLineaPopup({ subtipo: resultado, jugadorId, esRival });
     }
-    setPopupActivo(null);
+    popupSiguiente();
   };
 
-  const cerrarPopup = () => setPopupActivo(null);
+  const cerrarPopup = () => {
+    // Cerrar toda la cola
+    setColaPopups([]);
+  };
 
   // ============================================================
   // ROTACIÓN
@@ -535,8 +644,17 @@ export default function DataEntryV2({
         return;
       }
       if (e.key === "Escape") {
-        if (popupActivo) setPopupActivo(null);
-        else setOrigenActivo(null);
+        if (colaPopups.length > 0) setColaPopups([]);
+        else if (circuloArmado) {
+          // Desarmar: volver a "sin armar"
+          setCirculoSinArmar(circuloArmado);
+          setCirculoArmado(null);
+        } else if (circuloSinArmar) {
+          // Sin armar → deseleccionar todo
+          setCirculoSinArmar(null);
+          setDesviosPendientes([]);
+          setEstrella(null);
+        }
         return;
       }
       if (e.key === "Enter") {
@@ -551,7 +669,7 @@ export default function DataEntryV2({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [popupActivo, lineas, rotacion, puntoActual, setActivo]);
+  }, [colaPopups, lineas, rotacion, puntoActual, setActivo, circuloArmado, circuloSinArmar]);
 
   // ============================================================
   // SETUP
@@ -693,7 +811,13 @@ export default function DataEntryV2({
             </button>
           </div>
           <span className="text-xs text-slate-400">
-            {lineas.length} línea{lineas.length !== 1 ? "s" : ""}
+            {lineas.filter((l) => !l.oculta).length} línea
+            {lineas.filter((l) => !l.oculta).length !== 1 ? "s" : ""}
+            {circuloArmado
+              ? " · armado"
+              : circuloSinArmar
+              ? " · click en el círculo"
+              : ""}
           </span>
         </div>
       )}
@@ -732,26 +856,28 @@ export default function DataEntryV2({
                   Secuencia
                 </p>
                 <ol className="text-[11px] text-slate-700 space-y-0.5">
-                  {lineas.map((l, i) => (
-                    <li key={l.id} className="flex items-center gap-1">
-                      <span className="w-4 text-slate-400 font-mono">
-                        {i + 1}.
-                      </span>
-                      <span className="font-medium">{l.tipo}</span>
-                      {l.desvios && l.desvios.length > 0 && (
-                        <span className="text-orange-600 text-[10px]">
-                          ({l.desvios.length} desvío
-                          {l.desvios.length !== 1 ? "s" : ""})
+                  {lineas
+                    .filter((l) => !l.oculta)
+                    .map((l, i) => (
+                      <li key={l.id} className="flex items-center gap-1">
+                        <span className="w-4 text-slate-400 font-mono">
+                          {i + 1}.
                         </span>
-                      )}
-                      {l.subtipo !== undefined && l.subtipo !== null && (
-                        <span className="text-slate-400">
-                          ({String(l.subtipo)})
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                  {lineas.length === 0 && (
+                        <span className="font-medium">{l.tipo}</span>
+                        {l.desvios && l.desvios.length > 0 && (
+                          <span className="text-orange-600 text-[10px]">
+                            ({l.desvios.length} desvío
+                            {l.desvios.length !== 1 ? "s" : ""})
+                          </span>
+                        )}
+                        {l.subtipo !== undefined && l.subtipo !== null && (
+                          <span className="text-slate-400">
+                            ({String(l.subtipo)})
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  {lineas.filter((l) => !l.oculta).length === 0 && (
                     <li className="text-slate-400 italic text-[10px]">
                       (sin acciones)
                     </li>
@@ -783,8 +909,11 @@ export default function DataEntryV2({
               >
                 <LineasV2
                   lineas={lineasParaUI}
-                  origenActivo={origenActivo}
+                  origenActivo={origenActivoParaUI}
+                  desviosPendientes={desviosPendientes}
+                  estrella={estrella}
                   orientacion={orientacion}
+                  onClickCirculo={handleClickCirculo}
                 />
 
                 {popupActivo?.tipo === "saque" && (
@@ -817,6 +946,14 @@ export default function DataEntryV2({
                     onCancelar={cerrarPopup}
                   />
                 )}
+                {popupActivo?.tipo === "jugador" && (
+                  <PopupJugador
+                    pos={popupActivo.pos}
+                    jugadores={jugadoresEnCancha}
+                    onConfirmar={handleJugadorConfirmar}
+                    onCancelar={cerrarPopup}
+                  />
+                )}
                 {popupActivo?.tipo === "toque-red" && (
                   <PopupToqueRed
                     pos={popupActivo.pos}
@@ -834,7 +971,9 @@ export default function DataEntryV2({
             <div className="flex gap-2">
               <button
                 onClick={handleBorrarUltima}
-                disabled={lineas.length === 0 && !origenActivo}
+                disabled={
+                  lineas.length === 0 && !circuloArmado && !circuloSinArmar
+                }
                 className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-sm font-medium disabled:opacity-40"
               >
                 ↩ Borrar última (D)
@@ -857,11 +996,13 @@ export default function DataEntryV2({
           </div>
 
           <p className="text-xs text-slate-400 text-center">
-            Click en mini → origen. Click en otra mini → línea y nuevo origen.
-            Click en bloqueo → desvío de la línea en curso.
+            Click en mini → círculo. Click en el círculo → armado. Click en mini
+            → línea y círculo nuevo.
             <br />
-            <strong>Atajos:</strong> Esc · Enter (cerrar) · D (borrar última) ·
-            Ctrl+G (guardar)
+            Click en mini propia → marca ⭐. Click en bloqueo → desvío.
+            <br />
+            <strong>Atajos:</strong> Esc (desarmar/borrar) · Enter (cerrar) · D
+            (borrar última) · Ctrl+G (guardar)
           </p>
         </>
       )}

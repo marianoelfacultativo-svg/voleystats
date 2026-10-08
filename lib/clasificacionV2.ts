@@ -26,6 +26,7 @@ export type PopupRequerido =
   | "armado"
   | "defensa"
   | "libre"
+  | "jugador"
   | "toque-red"
   | null;
 
@@ -49,6 +50,7 @@ export interface LineaClasificada {
   destino: PuntoV2;
   desvios?: PuntoV2[];
   subtipo?: string | number | null;
+  oculta?: boolean;
 }
 
 export interface EstadoClasificacion {
@@ -325,8 +327,6 @@ export function clasificarLinea(
   const ladoD = ladoDeCelda(linea.destino.celda);
 
   // ---------- CASO: origen en zona de bloqueo → DEFENSA ----------
-  // (fallback: en el flujo normal el bloqueo se maneja como desvío
-  //  desde DataEntryV2 y nunca llega acá como origen)
   if (esBloqueo(linea.origen.celda)) {
     return {
       tipo: "defensa",
@@ -374,7 +374,7 @@ export function clasificarLinea(
     };
   }
 
-  // Última fue ATAQUE → BLOQUEO, DEFENSA o LIBRE
+  // Última fue ATAQUE → DEFENSA o LIBRE
   if (ultima!.tipo === "ataque") {
     // Si viene del lado opuesto y cae en mi cancha → DEFENSA mía
     if (
