@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type {
   RotacionPunto,
   Zona,
@@ -87,19 +87,20 @@ export default function PanelRotacionV2({
 
   const nombreDe = (id: string | null | undefined) => {
     if (!id) return "—";
-    const j = jugadoresEnCancha.find((x) => x.id === id) ??
+    const j =
+      jugadoresEnCancha.find((x) => x.id === id) ??
       jugadoresDisponibles.find((x) => x.id === id);
     if (!j) return "?";
     const partes = j.nombre.split(" ");
     return partes.length > 1 ? partes[0] : j.nombre.slice(0, 8);
   };
 
-  // Jugadores efectivos por zona (aplicando cambios pendientes)
+  // Jugadores efectivos por zona (aplicando cambios pendientes).
+  // Primero mira los cambios pendientes, después la rotación base.
   const jugadorEnZona = (zona: Zona): string | null => {
-    const base = rotacion.posiciones[zona]?.jugador_id ?? null;
-    if (!base) return null;
     const pend = cambiosPendientes.find((c) => c.zona === zona);
-    return pend ? pend.jugadorEntra : base;
+    if (pend) return pend.jugadorEntra;
+    return rotacion.posiciones[zona]?.jugador_id ?? null;
   };
 
   const rolEnZona = (zona: Zona): string => {
@@ -113,10 +114,9 @@ export default function PanelRotacionV2({
   const handleAplicarCambio = (jugadorNuevo: Jugador) => {
     if (modalCambio === null) return;
     const zona = modalCambio;
-    const jugadorViejo = jugadorEnZona(zona);
-    if (!jugadorViejo) return;
+    const jugadorViejo = jugadorEnZona(zona) ?? "";
 
-    // Sacar cualquier cambio previo para esa zona
+    // Sacar cualquier cambio previo para esa zona y reemplazarlo
     const sinPrev = cambiosPendientes.filter((c) => c.zona !== zona);
     onSetCambiosPendientes([
       ...sinPrev,
@@ -135,10 +135,6 @@ export default function PanelRotacionV2({
 
   const frente = LAYOUT.filter((l) => l.fila === "frente");
   const fondo = LAYOUT.filter((l) => l.fila === "fondo");
-
-  // ============================================================
-  // RENDER
-  // ============================================================
 
   return (
     <div className="bg-white border border-slate-200 rounded-lg p-2 inline-block relative">
@@ -165,7 +161,7 @@ export default function PanelRotacionV2({
         </div>
       </div>
 
-      {/* Saque + Líberos */}
+      {/* Saque + Líberos + Posición */}
       <div className="flex items-center gap-1 mb-1.5">
         <div className="flex rounded overflow-hidden border border-slate-300 text-[9px]">
           <button
@@ -386,7 +382,8 @@ function ModalCambio({
 }) {
   const nombreDe = (id: string | null) => {
     if (!id) return "—";
-    const j = jugadoresEnCancha.find((x) => x.id === id) ??
+    const j =
+      jugadoresEnCancha.find((x) => x.id === id) ??
       jugadoresDisponibles.find((x) => x.id === id);
     return j ? `${j.nombre}${j.numero !== null ? ` #${j.numero}` : ""}` : "?";
   };
@@ -395,10 +392,7 @@ function ModalCambio({
 
   return (
     <>
-      <div
-        className="fixed inset-0 z-40 bg-black/40"
-        onClick={onCancelar}
-      />
+      <div className="fixed inset-0 z-40 bg-black/40" onClick={onCancelar} />
       <div className="absolute z-50 top-full mt-1 left-0 bg-white border-2 border-slate-300 rounded-lg shadow-lg p-2 w-64 max-h-80 overflow-y-auto">
         <div className="flex items-center justify-between mb-2">
           <p className="text-[10px] font-bold text-slate-600 uppercase">
@@ -413,7 +407,13 @@ function ModalCambio({
         </div>
 
         <div className="mb-2 p-1.5 bg-slate-100 rounded text-[10px] text-slate-700">
-          En cancha: <strong>{nombreDe(jugadorActualId)}</strong>
+          {jugadorActualId ? (
+            <>
+              En cancha: <strong>{nombreDe(jugadorActualId)}</strong>
+            </>
+          ) : (
+            <span className="text-slate-400 italic">Zona vacía</span>
+          )}
         </div>
 
         {tieneCambioPendiente && (
@@ -426,7 +426,7 @@ function ModalCambio({
         )}
 
         <p className="text-[9px] text-slate-500 uppercase mb-1">
-          Disponibles
+          Elegí jugador
         </p>
 
         {jugadoresDisponibles.length === 0 && (
@@ -477,7 +477,6 @@ function ModalPosicion({
   onCerrar: () => void;
 }) {
   const [seleccionado, setSeleccionado] = useState<Zona | null>(null);
-  // Copia local para editar antes de confirmar
   const [local, setLocal] = useState<Record<Zona, string>>(() => ({
     1: jugadorEnZona(1) ?? "",
     2: jugadorEnZona(2) ?? "",
@@ -504,7 +503,6 @@ function ModalPosicion({
       setSeleccionado(null);
       return;
     }
-    // Intercambiar
     const copia = { ...local };
     const temp = copia[seleccionado];
     copia[seleccionado] = copia[zona];
@@ -530,7 +528,7 @@ function ModalPosicion({
     setSeleccionado(null);
   };
 
-  const zonaBtn = (zona: Zona, esFrente: boolean) => {
+  const zonaBtn = (zona: Zona) => {
     const id = local[zona];
     const sel = seleccionado === zona;
     return (
@@ -576,14 +574,14 @@ function ModalPosicion({
           ── RED ──
         </div>
         <div className="grid grid-cols-3 gap-1 mb-1">
-          {zonaBtn(4, true)}
-          {zonaBtn(3, true)}
-          {zonaBtn(2, true)}
+          {zonaBtn(4)}
+          {zonaBtn(3)}
+          {zonaBtn(2)}
         </div>
         <div className="grid grid-cols-3 gap-1 mb-3">
-          {zonaBtn(5, false)}
-          {zonaBtn(6, false)}
-          {zonaBtn(1, false)}
+          {zonaBtn(5)}
+          {zonaBtn(6)}
+          {zonaBtn(1)}
         </div>
 
         <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-200">
@@ -642,9 +640,7 @@ function ModalLibero({
 
   const cambiarTipo = (jugador_id: string, tipo: Libero["tipo"]) => {
     onSetLiberos(
-      liberos.map((l) =>
-        l.jugador_id === jugador_id ? { ...l, tipo } : l
-      )
+      liberos.map((l) => (l.jugador_id === jugador_id ? { ...l, tipo } : l))
     );
   };
 
