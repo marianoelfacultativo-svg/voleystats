@@ -1,11 +1,7 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  getRectMiniLayout,
-  hitTestV2,
-  type Orientacion,
-} from "./CanchaV2";
+import { useMemo } from "react";
+import { getRectMiniLayout, type Orientacion } from "./CanchaV2";
 
 // ============================================================
 // TIPOS
@@ -20,10 +16,10 @@ export interface LineaV2 {
   id: string;
   origen: PuntoV2;
   destino: PuntoV2;
+  desvios?: PuntoV2[];
   tipo?: string;
   esRival?: boolean;
   color?: string;
-  pendiente?: boolean;
 }
 
 interface Props {
@@ -31,7 +27,6 @@ interface Props {
   origenActivo: PuntoV2 | null;
   circulosAbandonados?: PuntoV2[];
   orientacion: Orientacion;
-  onCrearLinea: (destino: PuntoV2) => void;
   radioCirculoActivo?: number;
   radioCirculoUsado?: number;
 }
@@ -40,7 +35,10 @@ interface Props {
 // HELPERS
 // ============================================================
 
-function centroLayout(celda: string, mini: string): { x: number; y: number } | null {
+function centroLayout(
+  celda: string,
+  mini: string
+): { x: number; y: number } | null {
   const r = getRectMiniLayout(celda, mini);
   if (!r) return null;
   return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
@@ -77,18 +75,11 @@ export default function LineasV2({
   origenActivo,
   circulosAbandonados = [],
   orientacion,
-  onCrearLinea,
   radioCirculoActivo = 10,
   radioCirculoUsado = 5,
 }: Props) {
-  const [arrastrando, setArrastrando] = useState(false);
-  const [posCursor, setPosCursor] = useState<{ x: number; y: number } | null>(
-    null
-  );
-  const svgRef = useRef<SVGSVGElement | null>(null);
-
-  // Círculos usados (chicos): todos los orígenes y destinos de líneas +
-  // abandonados, menos el origen activo.
+  // Círculos usados (chicos): todos los orígenes, destinos y desvíos
+  // de líneas + abandonados, menos el origen activo.
   const circulos = useMemo(() => {
     const map = new Map<string, PuntoV2>();
     for (const l of lineas) {
@@ -96,6 +87,10 @@ export default function LineasV2({
       if (!map.has(k1)) map.set(k1, l.origen);
       const k2 = `${l.destino.celda}|${l.destino.mini}`;
       if (!map.has(k2)) map.set(k2, l.destino);
+      for (const d of l.desvios ?? []) {
+        const kd = `${d.celda}|${d.mini}`;
+        if (!map.has(kd)) map.set(kd, d);
+      }
     }
     for (const a of circulosAbandonados) {
       const k = `${a.celda}|${a.mini}`;
@@ -111,107 +106,44 @@ export default function LineasV2({
     ? centroLayout(origenActivo.celda, origenActivo.mini)
     : null;
 
-  // Pointer down sobre el círculo activo: empieza el drag
-  const handlePointerDownCirculo = (e: React.PointerEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const svg = (e.currentTarget as Element).closest("svg") as SVGSVGElement | null;
-    if (!svg) return;
-    svgRef.current = svg;
-    setArrastrando(true);
-    setPosCursor(null);
-  };
-
-  // Durante el drag: capturar pointermove/up globales
-  useEffect(() => {
-    if (!arrastrando) return;
-
-    const onMove = (e: PointerEvent) => {
-      const svg = svgRef.current;
-      if (!svg) return;
-      const pt = svg.createSVGPoint();
-      pt.x = e.clientX;
-      pt.y = e.clientY;
-      const ctm = svg.getScreenCTM();
-      if (!ctm) return;
-      const inv = ctm.inverse();
-      const local = pt.matrixTransform(inv);
-      setPosCursor({ x: local.x, y: local.y });
-    };
-
-    const onUp = (e: PointerEvent) => {
-      setArrastrando(false);
-      const svg = svgRef.current;
-      if (!svg) {
-        setPosCursor(null);
-        return;
-      }
-      const pt = svg.createSVGPoint();
-      pt.x = e.clientX;
-      pt.y = e.clientY;
-      const ctm = svg.getScreenCTM();
-      if (!ctm) {
-        setPosCursor(null);
-        return;
-      }
-      const inv = ctm.inverse();
-      const local = pt.matrixTransform(inv);
-      const hit = hitTestV2(local.x, local.y, orientacion);
-      if (hit) {
-        onCrearLinea({ celda: hit.celda, mini: hit.mini });
-      }
-      setPosCursor(null);
-    };
-
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-  }, [arrastrando, orientacion, onCrearLinea]);
+  // Silenciamos el prop `orientacion` para no romper la firma; los
+  // paths se construyen en coords layout y el <g> padre se encarga
+  // de la rotación.
+  void orientacion;
 
   return (
     <g>
-      {/* ---------- LÍNEAS YA CREADAS ---------- */}
+      {/* ---------- LÍNEAS YA CREADAS (con desvíos como polyline) ---------- */}
       {lineas.map((l) => {
-        const o = centroLayout(l.origen.celda, l.origen.mini);
-        const d = centroLayout(l.destino.celda, l.destino.mini);
-        if (!o || !d) return null;
+        const puntos: PuntoV2[] = [
+          l.origen,
+          ...(l.desvios ?? []),
+          l.destino,
+        ];
+        const coords = puntos
+          .map((p) => centroLayout(p.celda, p.mini))
+          .filter((c): c is { x: number; y: number } => c !== null);
+        if (coords.length < 2) return null;
+
         const color = l.color ?? colorPorTipo(l.tipo, l.esRival);
-        const esPendiente = l.pendiente;
+        const dAttr = coords
+          .map((c, i) => `${i === 0 ? "M" : "L"} ${c.x} ${c.y}`)
+          .join(" ");
+
         return (
-          <line
+          <path
             key={l.id}
-            x1={o.x}
-            y1={o.y}
-            x2={d.x}
-            y2={d.y}
+            d={dAttr}
             stroke={color}
-            strokeWidth={esPendiente ? 2 : 3}
+            strokeWidth={3}
             strokeLinecap="round"
-            strokeDasharray={esPendiente ? "5 4" : undefined}
-            opacity={esPendiente ? 0.75 : 1}
+            strokeLinejoin="round"
+            fill="none"
+            opacity={1}
             pointerEvents="none"
           />
         );
       })}
-
-      {/* ---------- LÍNEA PROVISIONAL DURANTE EL DRAG ---------- */}
-      {arrastrando && posOrigen && posCursor && (
-        <line
-          x1={posOrigen.x}
-          y1={posOrigen.y}
-          x2={posCursor.x}
-          y2={posCursor.y}
-          stroke="#0ea5e9"
-          strokeWidth={2}
-          strokeDasharray="6 4"
-          strokeLinecap="round"
-          opacity={0.85}
-          pointerEvents="none"
-        />
-      )}
 
       {/* ---------- CÍRCULOS USADOS (chicos) ---------- */}
       {circulos.map((c, i) => {
@@ -232,13 +164,9 @@ export default function LineasV2({
         );
       })}
 
-      {/* ---------- CÍRCULO ACTIVO (grande, clickeable) ---------- */}
+      {/* ---------- CÍRCULO ACTIVO (visual, no clickeable acá) ---------- */}
       {posOrigen && (
-        <g
-          onPointerDown={handlePointerDownCirculo}
-          style={{ cursor: "grab", pointerEvents: "auto" }}
-        >
-          {/* Anillo pulsante */}
+        <g pointerEvents="none">
           <circle
             cx={posOrigen.x}
             cy={posOrigen.y}
@@ -247,7 +175,6 @@ export default function LineasV2({
             stroke="#0ea5e9"
             strokeWidth={1.5}
             opacity={0.6}
-            pointerEvents="none"
           >
             <animate
               attributeName="r"
@@ -263,7 +190,6 @@ export default function LineasV2({
             />
           </circle>
 
-          {/* Círculo principal */}
           <circle
             cx={posOrigen.x}
             cy={posOrigen.y}

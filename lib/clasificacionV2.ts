@@ -22,6 +22,7 @@ export type TipoAccion =
 export type Lado = "propio" | "rival";
 export type Situacion = "saque" | "recepcion";
 export type PopupRequerido =
+  | "saque"
   | "armado"
   | "defensa"
   | "libre"
@@ -217,16 +218,7 @@ const TABLA_RECEPCION: Record<
   6: { z1: "PZ", z6: "L", z5: "PD" },
 };
 
-/** Devuelve el jugador_id que recibe según la celda + rotación.
- *
- *  Reglas:
- *   - F1-C3 → central delantero (excepción fija)
- *   - C1+C2 → zona recepción 5
- *   - C3    → zona recepción 6
- *   - C4+C5 → zona recepción 1
- *   - Tabla según zona del armador → rol (PD/PZ/L)
- *   - Rol → jugador concreto (con fallback al líbero)
- */
+/** Devuelve el jugador_id que recibe según la celda + rotación. */
 function jugadorQueRecibe(
   origen: PuntoV2,
   rotacion: RotacionPunto,
@@ -308,7 +300,7 @@ export function clasificarLinea(
       tipo: "saque",
       esRival,
       jugadorId: esRival ? null : jugadorQueSaca(estado.rotacion),
-      popup: null,
+      popup: "saque",
     };
   }
 
@@ -333,16 +325,16 @@ export function clasificarLinea(
   const ladoD = ladoDeCelda(linea.destino.celda);
 
   // ---------- CASO: origen en zona de bloqueo → DEFENSA ----------
+  // (fallback: en el flujo normal el bloqueo se maneja como desvío
+  //  desde DataEntryV2 y nunca llega acá como origen)
   if (esBloqueo(linea.origen.celda)) {
     return {
       tipo: "defensa",
       esRival: ultima!.esRival,
-      jugadorId: null, // lo elige el popup
+      jugadorId: null,
       popup: "defensa",
     };
   }
-
-  // ---------- CASO: viene de la última acción ----------
 
   // Última fue ARMADO → ATAQUE
   if (ultima!.tipo === "armado") {
@@ -384,19 +376,6 @@ export function clasificarLinea(
 
   // Última fue ATAQUE → BLOQUEO, DEFENSA o LIBRE
   if (ultima!.tipo === "ataque") {
-    // Si el destino es bloqueo (propio o rival) → BLOQUEO
-    if (esBloqueo(linea.destino.celda)) {
-      const esRival = esBloqueoPropio(linea.destino.celda)
-        ? ultima!.esRival // bloquea el que atacó (raro, no pasa)
-        : !ultima!.esRival; // bloquea el contrario
-      return {
-        tipo: "bloqueo",
-        esRival,
-        jugadorId: null,
-        popup: null,
-      };
-    }
-
     // Si viene del lado opuesto y cae en mi cancha → DEFENSA mía
     if (
       ultima!.esRival &&
@@ -440,7 +419,6 @@ export function clasificarLinea(
       };
     }
     if (ladoD === "rival") {
-      // Bloqueo mío mandó la pelota al rival → sigue el juego
       return {
         tipo: "libre",
         esRival: true,
@@ -494,14 +472,6 @@ export function clasificarLinea(
 // RESOLVER GANADOR DEL PUNTO
 // ============================================================
 
-/**
- * Devuelve quién ganó el punto, según la última acción.
- * Regla:
- *   - Si la última pelota cayó en cancha rival → ganó propio
- *   - Si cayó en cancha propia o fuera propia → ganó rival
- *   - Si fue toque-red propio → ganó rival
- *   - Si fue toque-red rival → ganó propio
- */
 export function ganadorDelPunto(
   lineas: LineaClasificada[]
 ): Lado | null {

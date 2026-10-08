@@ -3,7 +3,11 @@
 // Sistema 5-1 con rotación dinámica
 // ============================================================
 
-import type { RotacionPunto, TipoLogico } from "./rotaciones";
+import {
+  numeroRotacionDesdePosiciones,
+  type RotacionPunto,
+  type TipoLogico,
+} from "./rotaciones";
 
 // ------------------------------------------------------------
 // 1. MAPEO FIJO: celda → zona de ataque (crudo)
@@ -130,18 +134,22 @@ export function jugadorQueAtacaDesdeCelda(
     return null;
   }
 
-  // Caso 2: zona 4 → el punta que está adelante
+  // Caso 2: zona 4
+  // Excepción R1 recepción: ataca el opuesto (chequeo PRIMERO)
   if (zona === 4) {
-    for (const asig of Object.values(rotacion.posiciones)) {
-      if ((asig.tipo === "P1" || asig.tipo === "P2") &&
-          (asig.zona === 4 || asig.zona === 3 || asig.zona === 2)) {
-        return asig.jugador_id;
-      }
-    }
-    // Excepción R1 recepción: ataca el opuesto por 4
     if (excepcionR1) {
       for (const asig of Object.values(rotacion.posiciones)) {
         if (asig.tipo === "O") return asig.jugador_id;
+      }
+      return null;
+    }
+    // Normal: el punta que está adelante
+    for (const asig of Object.values(rotacion.posiciones)) {
+      if (
+        (asig.tipo === "P1" || asig.tipo === "P2") &&
+        (asig.zona === 4 || asig.zona === 3 || asig.zona === 2)
+      ) {
+        return asig.jugador_id;
       }
     }
     return null;
@@ -150,8 +158,10 @@ export function jugadorQueAtacaDesdeCelda(
   // Caso 3: zona 3 → el central que está adelante
   if (zona === 3) {
     for (const asig of Object.values(rotacion.posiciones)) {
-      if ((asig.tipo === "C1" || asig.tipo === "C2") &&
-          (asig.zona === 4 || asig.zona === 3 || asig.zona === 2)) {
+      if (
+        (asig.tipo === "C1" || asig.tipo === "C2") &&
+        (asig.zona === 4 || asig.zona === 3 || asig.zona === 2)
+      ) {
         return asig.jugador_id;
       }
     }
@@ -161,8 +171,10 @@ export function jugadorQueAtacaDesdeCelda(
   // Caso 4: zona 6 → el punta que está atrás (o el opuesto si R1 saque)
   if (zona === 6) {
     for (const asig of Object.values(rotacion.posiciones)) {
-      if ((asig.tipo === "P1" || asig.tipo === "P2") &&
-          (asig.zona === 1 || asig.zona === 6 || asig.zona === 5)) {
+      if (
+        (asig.tipo === "P1" || asig.tipo === "P2") &&
+        (asig.zona === 1 || asig.zona === 6 || asig.zona === 5)
+      ) {
         return asig.jugador_id;
       }
     }
@@ -173,16 +185,17 @@ export function jugadorQueAtacaDesdeCelda(
 }
 
 // ------------------------------------------------------------
-// 5. HELPER: número de rotación desde la posición del armador
+// 5. HELPER: número de rotación (1-6) desde las posiciones
 // ------------------------------------------------------------
+// Delegamos en la implementación correcta de rotaciones.ts.
+// La versión anterior devolvía la ZONA del armador, que solo
+// coincide con el número de rotación cuando el armador está en
+// zona 1. Delegar acá evita el bug silencioso.
 
 export function numeroRotacionDesdeArmador(
   rotacion: RotacionPunto
 ): number | null {
-  for (const asig of Object.values(rotacion.posiciones)) {
-    if (asig.tipo === "A") return asig.zona;
-  }
-  return null;
+  return numeroRotacionDesdePosiciones(rotacion);
 }
 
 // ------------------------------------------------------------

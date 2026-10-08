@@ -12,15 +12,23 @@ import {
   PopupArmado,
   PopupDefensa,
   PopupLibre,
+  PopupSaque,
   PopupToqueRed,
   type ValorArmado,
+  type ValorSaque,
   type TipoDefensa,
   type ResultadoToqueRed,
   type JugadorEnCancha,
   type PopupPos,
 } from "./PopupValoracion";
 
-import type { Libero, RotacionPunto, Zona } from "@/lib/rotaciones";
+import {
+  girarRotacionPunto,
+  type Libero,
+  type RotacionPunto,
+  type SaqueEquipo,
+  type Zona,
+} from "@/lib/rotaciones";
 import {
   clasificarLinea,
   ganadorDelPunto,
@@ -84,9 +92,9 @@ function aLineaV2(l: LineaClasificada): LineaV2 {
     id: l.id,
     origen: l.origen,
     destino: l.destino,
+    desvios: l.desvios,
     tipo: l.tipo,
     esRival: l.esRival,
-    pendiente: false,
   };
 }
 
@@ -105,6 +113,10 @@ function aAccionV2(l: LineaClasificada, orden: number): AccionV2Data {
     desvios: (l.desvios ?? []).map((d) => ({ celda: d.celda, mini: d.mini })),
     zona: null,
   };
+}
+
+function esCeldaBloqueo(celda: string): boolean {
+  return celda.startsWith("BLOQ-P-") || celda.startsWith("BLOQ-R-");
 }
 
 // ============================================================
@@ -154,14 +166,27 @@ export default function DataEntryV2({
   const situacion: Situacion =
     saqueInicial === "propio" ? "saque" : "recepcion";
 
-  const jugadoresEnCancha: JugadorEnCancha[] = useMemo(
-    () =>
-      jugadores.slice(0, 6).map((j) => ({
-        id: j.id,
+  // B7: jugadores reales en cancha (rotación + override posición + cambios)
+  const jugadoresEnCancha: JugadorEnCancha[] = useMemo(() => {
+    if (!rotacion) return [];
+    const ids = new Set<string>();
+    const zonasOrden: Zona[] = [1, 2, 3, 4, 5, 6];
+    for (const z of zonasOrden) {
+      const pend = cambiosPendientes.find((c) => c.zona === z);
+      const override = posicionesPunto[z];
+      const rot = rotacion.posiciones[z];
+      const id = pend?.jugadorEntra || override || rot?.jugador_id;
+      if (id) ids.add(id);
+    }
+    return Array.from(ids).map((id) => {
+      const j = jugadores.find((x) => x.id === id);
+      if (!j) return { id, nombre: "?" };
+      return {
+        id,
         nombre: j.nombre + (j.numero !== null ? ` #${j.numero}` : ""),
-      })),
-    [jugadores]
-  );
+      };
+    });
+  }, [rotacion, posicionesPunto, cambiosPendientes, jugadores]);
 
   const lineasParaUI: LineaV2[] = useMemo(() => lineas.map(aLineaV2), [lineas]);
 
@@ -207,18 +232,82 @@ export default function DataEntryV2({
 
   const handleMiniClick = (coords: CoordsV2) => {
     if (!setupCompleto) return;
-    if (popupActivo) return;
 
+    // C1: si hay popup activo, se cierra sin valorar y seguimos.
+    if (popupActivo) setPopupActivo(null);
+
+    const punto: PuntoV2 = { celda: coords.celda, mini: coords.mini };
+
+    // Click en red → popup toque-red directo
     if (coords.zona === "red") {
       setPopupActivo({
         tipo: "toque-red",
-        pos: posicionPopup({ celda: coords.celda, mini: coords.mini }),
+        pos: posicionPopup(punto),
         lineaId: "",
       });
       return;
     }
 
-    setOrigenActivo({ celda: coords.celda, mini: coords.mini });
+    // Bloqueo como desvío (no crea acción nueva)
+    if (esCeldaBloqueo(coords.celda) && lineas.length > 0) {
+      setLineas((prev) => {
+        const nuevas = [...prev];
+        const ult = { ...nuevas[nuevas.length - 1] };
+        ult.desvios = [...(ult.desvios ?? []), punto];
+        // El destino se actualiza al bloqueo mientras esperamos el final real
+        ult.destino = punto;
+        nuevas[nuevas.length - 1] = ult;
+        return nuevas;
+      });
+      setOrigenActivo(punto);
+      return;
+    }
+
+    // Sin origen → marcarlo
+    if (!origenActivo) {
+      setOrigenActivo(punto);
+      return;
+    }
+
+    // Mismo punto → deseleccionar
+    if (
+      origenActivo.celda === punto.celda &&
+      origenActivo.mini === punto.mini
+    ) {
+      setOrigenActivo(null);
+      return;
+    }
+
+    // Si el origen activo es un bloqueo (venimos de un desvío):
+    // en vez de crear una acción nueva, actualizamos el destino de la
+    // última línea y reclasificamos.
+    if (esCeldaBloqueo(origenActivo.celda) && lineas.length > 0 && rotacion) {
+      setLineas((prev) => {
+        const nuevas = [...prev];
+        const ult = { ...nuevas[nuevas.length - 1] };
+        const estado: EstadoClasificacion = {
+          saqueInicial,
+          situacion,
+          rotacion,
+          lineas: nuevas.slice(0, -1),
+        };
+        const res = clasificarLinea(estado, {
+          origen: ult.origen,
+          destino: punto,
+        });
+        ult.destino = punto;
+        ult.tipo = res.tipo;
+        ult.esRival = res.esRival;
+        ult.jugadorId = res.jugadorId;
+        nuevas[nuevas.length - 1] = ult;
+        return nuevas;
+      });
+      setOrigenActivo(punto);
+      return;
+    }
+
+    // Click normal → crear línea y encadenar
+    handleCrearLinea(punto);
   };
 
   const handleCrearLinea = (destino: PuntoV2) => {
@@ -246,6 +335,7 @@ export default function DataEntryV2({
 
     setLineas((prev) => [...prev, nueva]);
     setContadorId((c) => c + 1);
+    // Cadena continua: el destino se transforma en el nuevo origen
     setOrigenActivo(destino);
 
     if (res.popup) {
@@ -342,6 +432,11 @@ export default function DataEntryV2({
     );
   };
 
+  const handleSaqueConfirmar = (v: ValorSaque) => {
+    actualizarLineaPopup({ subtipo: v });
+    setPopupActivo(null);
+  };
+
   const handleArmadoConfirmar = (v: ValorArmado) => {
     actualizarLineaPopup({ subtipo: v });
     setPopupActivo(null);
@@ -366,12 +461,15 @@ export default function DataEntryV2({
   ) => {
     if (!popupActivo) return;
 
+    // B4: el esRival depende del tipo de toque-red
+    const esRival = resultado === "toque-red-rival";
+
     if (!popupActivo.lineaId) {
       // Toque-red sin línea previa: crear línea ficticia en la red
       const ficticia: LineaClasificada = {
         id: `tr-${contadorId}`,
         tipo: "toque-red",
-        esRival: false,
+        esRival,
         jugadorId,
         origen: { celda: "RED-C3", mini: "m1-5" },
         destino: { celda: "RED-C3", mini: "m1-5" },
@@ -380,7 +478,7 @@ export default function DataEntryV2({
       setLineas((prev) => [...prev, ficticia]);
       setContadorId((c) => c + 1);
     } else {
-      actualizarLineaPopup({ subtipo: resultado, jugadorId });
+      actualizarLineaPopup({ subtipo: resultado, jugadorId, esRival });
     }
     setPopupActivo(null);
   };
@@ -404,6 +502,17 @@ export default function DataEntryV2({
     }
     setRotacion(nueva);
     setCambiosPendientes([]);
+  };
+
+  const handleCambioRotacion = (dir: 1 | -1) => {
+    if (!rotacion) return;
+    const { rotacion: nueva } = girarRotacionPunto(rotacion, dir);
+    setRotacion(nueva);
+  };
+
+  const handleCambioSaque = (equipo: SaqueEquipo) => {
+    setSaqueInicial(equipo);
+    if (rotacion) setRotacion({ ...rotacion, saque_equipo: equipo });
   };
 
   // ============================================================
@@ -514,6 +623,8 @@ export default function DataEntryV2({
                   onSetPosicionesPunto={setPosicionesPunto}
                   onSetCambiosPendientes={setCambiosPendientes}
                   onGuardarCambios={handleGuardarCambios}
+                  onCambioRotacion={handleCambioRotacion}
+                  onCambioSaque={handleCambioSaque}
                 />
               )}
             </div>
@@ -524,7 +635,7 @@ export default function DataEntryV2({
                 </p>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => setSaqueInicial("propio")}
+                    onClick={() => handleCambioSaque("propio")}
                     className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
                       saqueInicial === "propio"
                         ? "bg-emerald-500 text-white"
@@ -534,7 +645,7 @@ export default function DataEntryV2({
                     {nombreMiEquipo}
                   </button>
                   <button
-                    onClick={() => setSaqueInicial("rival")}
+                    onClick={() => handleCambioSaque("rival")}
                     className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
                       saqueInicial === "rival"
                         ? "bg-orange-500 text-white"
@@ -612,6 +723,8 @@ export default function DataEntryV2({
                   onSetPosicionesPunto={setPosicionesPunto}
                   onSetCambiosPendientes={setCambiosPendientes}
                   onGuardarCambios={handleGuardarCambios}
+                  onCambioRotacion={handleCambioRotacion}
+                  onCambioSaque={handleCambioSaque}
                 />
               )}
               <div className="bg-white border border-slate-200 rounded-lg p-2">
@@ -625,6 +738,12 @@ export default function DataEntryV2({
                         {i + 1}.
                       </span>
                       <span className="font-medium">{l.tipo}</span>
+                      {l.desvios && l.desvios.length > 0 && (
+                        <span className="text-orange-600 text-[10px]">
+                          ({l.desvios.length} desvío
+                          {l.desvios.length !== 1 ? "s" : ""})
+                        </span>
+                      )}
                       {l.subtipo !== undefined && l.subtipo !== null && (
                         <span className="text-slate-400">
                           ({String(l.subtipo)})
@@ -666,9 +785,15 @@ export default function DataEntryV2({
                   lineas={lineasParaUI}
                   origenActivo={origenActivo}
                   orientacion={orientacion}
-                  onCrearLinea={handleCrearLinea}
                 />
 
+                {popupActivo?.tipo === "saque" && (
+                  <PopupSaque
+                    pos={popupActivo.pos}
+                    onConfirmar={handleSaqueConfirmar}
+                    onCancelar={cerrarPopup}
+                  />
+                )}
                 {popupActivo?.tipo === "armado" && (
                   <PopupArmado
                     pos={popupActivo.pos}
@@ -732,7 +857,8 @@ export default function DataEntryV2({
           </div>
 
           <p className="text-xs text-slate-400 text-center">
-            Click en mini → círculo. Drag → línea. Popups aparecen solos.
+            Click en mini → origen. Click en otra mini → línea y nuevo origen.
+            Click en bloqueo → desvío de la línea en curso.
             <br />
             <strong>Atajos:</strong> Esc · Enter (cerrar) · D (borrar última) ·
             Ctrl+G (guardar)

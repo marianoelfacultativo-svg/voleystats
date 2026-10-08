@@ -9,6 +9,13 @@ import { CANCHA_V2_DIMS } from "./CanchaV2";
 
 export type ValorArmado = 1 | 2 | 3 | 4 | 5 | 6 | "T";
 
+export type ValorSaque =
+  | "ace"
+  | "positivo_mas"
+  | "positivo"
+  | "neutro"
+  | "negativo";
+
 export type TipoDefensa = "toque" | "gran-defensa" | "libre";
 
 export type ResultadoToqueRed =
@@ -40,6 +47,30 @@ const COL_ARMADO: Record<ValorArmado, string> = {
   6: "#059669",
   T: "#334155",
 };
+
+const COL_SAQUE: Record<ValorSaque, string> = {
+  ace: "#16a34a",
+  positivo_mas: "#65a30d",
+  positivo: "#84cc16",
+  neutro: "#94a3b8",
+  negativo: "#dc2626",
+};
+
+const ETIQ_SAQUE: Record<ValorSaque, string> = {
+  ace: "Ace",
+  positivo_mas: "Pos+",
+  positivo: "Pos",
+  neutro: "Neu",
+  negativo: "Neg",
+};
+
+const ORDEN_SAQUE: ValorSaque[] = [
+  "ace",
+  "positivo_mas",
+  "positivo",
+  "neutro",
+  "negativo",
+];
 
 const COL_DEFENSA: Record<TipoDefensa, string> = {
   toque: "#f59e0b",
@@ -158,8 +189,7 @@ function BotonSvg({
   fontSize = 10,
   onClick,
 }: BotonProps) {
-  const label =
-    texto.length > 16 ? texto.slice(0, 15) + "…" : texto;
+  const label = texto.length > 16 ? texto.slice(0, 15) + "…" : texto;
   return (
     <g
       style={{ cursor: "pointer", pointerEvents: "auto" }}
@@ -181,6 +211,64 @@ function BotonSvg({
         {label}
       </text>
     </g>
+  );
+}
+
+// ============================================================
+// POPUP SAQUE (ace / pos+ / pos / neutro / neg)
+// ============================================================
+
+interface PopupSaqueProps {
+  pos: PopupPos;
+  onConfirmar: (v: ValorSaque) => void;
+  onCancelar: () => void;
+}
+
+export function PopupSaque({
+  pos,
+  onConfirmar,
+  onCancelar,
+}: PopupSaqueProps) {
+  const btnW = 34;
+  const gap = 4;
+  const pad = 8;
+  const ancho = ORDEN_SAQUE.length * btnW + (ORDEN_SAQUE.length - 1) * gap + pad * 2;
+  const alto = 70;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="SAQUE — Calidad"
+    >
+      <g>
+        {ORDEN_SAQUE.map((v, i) => (
+          <BotonSvg
+            key={v}
+            x={pad + i * (btnW + gap)}
+            y={0}
+            w={btnW}
+            h={24}
+            texto={ETIQ_SAQUE[v]}
+            color={COL_SAQUE[v]}
+            fontSize={10}
+            onClick={() => onConfirmar(v)}
+          />
+        ))}
+        <BotonSvg
+          x={pad}
+          y={32}
+          w={ancho - pad * 2}
+          h={14}
+          texto="Cancelar (Esc)"
+          color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
   );
 }
 
