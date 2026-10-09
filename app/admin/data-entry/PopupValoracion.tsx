@@ -493,7 +493,7 @@ export function PopupLibre({
 }
 
 // ============================================================
-// POPUP JUGADOR (solo lista, sin tipo)
+// POPUP JUGADOR (solo lista)
 // ============================================================
 
 interface PopupJugadorProps {

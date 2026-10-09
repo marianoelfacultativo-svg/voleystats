@@ -25,15 +25,11 @@ export interface LineaV2 {
 
 interface Props {
   lineas: LineaV2[];
-  /** Círculo activo (sin armar) o armado. En ambos casos se dibuja igual. */
   origenActivo: PuntoV2 | null;
-  /** Desvíos cargados para el tramo en curso (todavía sin materializar). */
   desviosPendientes?: PuntoV2[];
-  /** Estrella de jugador marcada (auxiliar, no cierra línea). */
   estrella?: PuntoV2 | null;
   circulosAbandonados?: PuntoV2[];
   orientacion: Orientacion;
-  /** Click sobre el círculo activo. */
   onClickCirculo?: () => void;
   radioCirculoActivo?: number;
   radioCirculoUsado?: number;
@@ -74,6 +70,21 @@ function colorPorTipo(tipo?: string, esRival?: boolean): string {
   }
 }
 
+function estrellaPts(
+  cx: number,
+  cy: number,
+  rExt: number,
+  rInt: number
+): string {
+  const pts: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 === 0 ? rExt : rInt;
+    const ang = (Math.PI / 5) * i - Math.PI / 2;
+    pts.push(`${cx + r * Math.cos(ang)},${cy + r * Math.sin(ang)}`);
+  }
+  return pts.join(" ");
+}
+
 // ============================================================
 // COMPONENTE
 // ============================================================
@@ -89,8 +100,6 @@ export default function LineasV2({
   radioCirculoActivo = 12,
   radioCirculoUsado = 5,
 }: Props) {
-  // Círculos usados (chicos): todos los orígenes, destinos y desvíos
-  // de líneas visibles + abandonados, menos el origen activo.
   const circulos = useMemo(() => {
     const map = new Map<string, PuntoV2>();
     for (const l of lineas) {
@@ -122,12 +131,11 @@ export default function LineasV2({
     ? centroLayout(estrella.celda, estrella.mini)
     : null;
 
-  // Silenciamos el prop orientacion (los paths van en coords layout)
   void orientacion;
 
   return (
     <g>
-      {/* ---------- LÍNEAS YA CREADAS (con desvíos) ---------- */}
+      {/* ---------- LÍNEAS YA CREADAS ---------- */}
       {lineas.map((l) => {
         if (l.oculta) return null;
         const puntos: PuntoV2[] = [
@@ -163,17 +171,15 @@ export default function LineasV2({
       {/* ---------- DESVÍOS PENDIENTES (tramo en curso) ---------- */}
       {origenActivo &&
         desviosPendientes.map((d, i) => {
-          const o = centroLayout(origenActivo.celda, origenActivo.mini);
-          const p = centroLayout(d.celda, d.mini);
-          if (!o || !p) return null;
           const prev =
             i === 0
-              ? o
+              ? centroLayout(origenActivo.celda, origenActivo.mini)
               : centroLayout(
                   desviosPendientes[i - 1].celda,
                   desviosPendientes[i - 1].mini
                 );
-          if (!prev) return null;
+          const p = centroLayout(d.celda, d.mini);
+          if (!prev || !p) return null;
           return (
             <path
               key={`dp-${i}`}
@@ -189,7 +195,7 @@ export default function LineasV2({
           );
         })}
 
-      {/* ---------- CÍRCULOS USADOS (chicos) ---------- */}
+      {/* ---------- CÍRCULOS USADOS ---------- */}
       {circulos.map((c, i) => {
         const p = centroLayout(c.celda, c.mini);
         if (!p) return null;
@@ -208,7 +214,7 @@ export default function LineasV2({
         );
       })}
 
-      {/* ---------- ESTRELLA (posición de jugador marcada) ---------- */}
+      {/* ---------- ESTRELLA ---------- */}
       {posEstrella && (
         <g pointerEvents="none">
           <polygon
@@ -221,7 +227,7 @@ export default function LineasV2({
         </g>
       )}
 
-      {/* ---------- CÍRCULO ACTIVO (clickeable para armar) ---------- */}
+      {/* ---------- CÍRCULO ACTIVO (clickeable) ---------- */}
       {posOrigen && (
         <g
           style={{ cursor: onClickCirculo ? "pointer" : "default" }}
@@ -267,19 +273,4 @@ export default function LineasV2({
       )}
     </g>
   );
-}
-
-function estrellaPts(
-  cx: number,
-  cy: number,
-  rExt: number,
-  rInt: number
-): string {
-  const pts: string[] = [];
-  for (let i = 0; i < 10; i++) {
-    const r = i % 2 === 0 ? rExt : rInt;
-    const ang = (Math.PI / 5) * i - Math.PI / 2;
-    pts.push(`${cx + r * Math.cos(ang)},${cy + r * Math.sin(ang)}`);
-  }
-  return pts.join(" ");
 }
