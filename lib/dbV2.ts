@@ -33,7 +33,7 @@ export interface PuntoV2Data {
 /** Datos crudos de una acción (lo que va a acciones_v2). */
 export interface AccionV2Data {
   orden: number;
-  tipo: string;                // "saque" | "recepcion" | "armado" | ...
+  tipo: string;
   subtipo?: string | number | null;
   es_rival: boolean;
   jugador_id?: string | null;
@@ -75,10 +75,12 @@ export interface PuntoV2Completo extends PuntoV2Row {
 /**
  * Inserta el punto en `puntos_v2` y todas sus acciones en `acciones_v2`.
  *
- * Si falla la inserción de acciones, borra el punto huérfano antes de
- * devolver el error (rollback manual, Supabase no da transacciones acá).
+ * Antes de insertar, borra cualquier punto existente con el mismo
+ * (partido_id, set_numero, punto_numero) y sus acciones. Funciona
+ * como "upsert manual" para no chocar con el unique constraint.
  *
- * @returns `{ ok: true, puntoId }` si todo salió bien.
+ * Si falla la inserción de acciones, borra el punto huérfano antes de
+ * devolver el error.
  */
 export async function guardarPuntoV2(
   partidoId: string,
@@ -87,6 +89,48 @@ export async function guardarPuntoV2(
 ): Promise<{ ok: boolean; puntoId?: string; error?: string }> {
   if (!partidoId) return { ok: false, error: "Falta partidoId" };
 
+  // ---------- 1. Borrar punto existente con ese set/punto (upsert manual) ----------
+  const { data: existente, error: errBuscar } = await supabase
+    .from("puntos_v2")
+    .select("id")
+    .eq("partido_id", partidoId)
+    .eq("set_numero", punto.set_numero)
+    .eq("punto_numero", punto.punto_numero)
+    .maybeSingle();
+
+  if (errBuscar) {
+    return {
+      ok: false,
+      error: `buscando punto existente: ${errBuscar.message}`,
+    };
+  }
+
+  if (existente?.id) {
+    // Borrar acciones primero (por si no hay ON DELETE CASCADE)
+    const { error: errBorrarAcc } = await supabase
+      .from("acciones_v2")
+      .delete()
+      .eq("punto_id", existente.id);
+    if (errBorrarAcc) {
+      return {
+        ok: false,
+        error: `borrando acciones viejas: ${errBorrarAcc.message}`,
+      };
+    }
+
+    const { error: errBorrarPunto } = await supabase
+      .from("puntos_v2")
+      .delete()
+      .eq("id", existente.id);
+    if (errBorrarPunto) {
+      return {
+        ok: false,
+        error: `borrando punto viejo: ${errBorrarPunto.message}`,
+      };
+    }
+  }
+
+  // ---------- 2. Insertar punto nuevo ----------
   const filaPunto = {
     partido_id: partidoId,
     set_numero: punto.set_numero,
@@ -115,6 +159,7 @@ export async function guardarPuntoV2(
 
   const puntoId = inserted.id as string;
 
+  // ---------- 3. Insertar acciones ----------
   if (acciones.length > 0) {
     const filasAcciones = acciones.map((a) => ({
       punto_id: puntoId,
@@ -140,7 +185,7 @@ export async function guardarPuntoV2(
       .insert(filasAcciones);
 
     if (errAcc) {
-      // Rollback manual: no dejar el punto huérfano en puntos_v2
+      // Rollback manual: no dejar el punto huérfano
       await supabase.from("puntos_v2").delete().eq("id", puntoId);
       return { ok: false, error: `acciones_v2: ${errAcc.message}` };
     }
@@ -153,10 +198,6 @@ export async function guardarPuntoV2(
 // 2. CARGAR TODOS LOS PUNTOS DEL PARTIDO
 // ------------------------------------------------------------
 
-/**
- * Trae todos los puntos del partido, ordenados por set y punto, cada uno
- * con su lista de acciones (ordenadas por `orden`).
- */
 export async function cargarPuntosV2(
   partidoId: string
 ): Promise<{ ok: boolean; puntos?: PuntoV2Completo[]; error?: string }> {
@@ -183,7 +224,6 @@ export async function cargarPuntosV2(
     return { ok: false, error: `acciones_v2: ${errAcciones.message}` };
   }
 
-  // Agrupar acciones por punto_id
   const accionesPorPunto = new Map<string, AccionV2Row[]>();
   for (const a of (acciones ?? []) as AccionV2Row[]) {
     const lista = accionesPorPunto.get(a.punto_id) ?? [];
@@ -205,10 +245,6 @@ export async function cargarPuntosV2(
 // 3. BORRAR UN PUNTO
 // ------------------------------------------------------------
 
-/**
- * Borra un punto y todas sus acciones asociadas.
- * Primero las acciones (FK), después el punto.
- */
 export async function borrarPuntoV2(
   puntoId: string
 ): Promise<{ ok: boolean; error?: string }> {
@@ -230,13 +266,9 @@ export async function borrarPuntoV2(
 }
 
 // ------------------------------------------------------------
-// 4. LIMPIAR TODO EL PARTIDO (puntos + acciones + rotaciones)
+// 4. LIMPIAR TODO EL PARTIDO
 // ------------------------------------------------------------
 
-/**
- * Limpia todas las tablas V2 del partido.
- * Orden: acciones → puntos → rotaciones (por si hay FK).
- */
 export async function borrarTodosV2(
   partidoId: string
 ): Promise<{ ok: boolean; error?: string }> {
