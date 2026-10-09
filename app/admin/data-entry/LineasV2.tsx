@@ -26,6 +26,7 @@ export interface LineaV2 {
 interface Props {
   lineas: LineaV2[];
   origenActivo: PuntoV2 | null;
+  armado?: boolean;
   desviosPendientes?: PuntoV2[];
   estrella?: PuntoV2 | null;
   circulosAbandonados?: PuntoV2[];
@@ -92,6 +93,7 @@ function estrellaPts(
 export default function LineasV2({
   lineas,
   origenActivo,
+  armado = false,
   desviosPendientes = [],
   estrella = null,
   circulosAbandonados = [],
@@ -133,6 +135,13 @@ export default function LineasV2({
 
   void orientacion;
 
+  const colorHalo = armado ? "#ea580c" : "#0ea5e9";
+  const colorRelleno = armado ? "#fb923c" : "#ffffff";
+  const colorBorde = armado ? "#7c2d12" : "#000000";
+  const grosorBorde = armado ? 3 : 2;
+  const grosorHalo = armado ? 2.5 : 1.5;
+  const radioExtra = armado ? 6 : 4;
+
   return (
     <g>
       {/* ---------- LÍNEAS YA CREADAS ---------- */}
@@ -168,7 +177,7 @@ export default function LineasV2({
         );
       })}
 
-      {/* ---------- DESVÍOS PENDIENTES (tramo en curso) ---------- */}
+      {/* ---------- DESVÍOS PENDIENTES (tramo en curso, dashed) ---------- */}
       {origenActivo &&
         desviosPendientes.map((d, i) => {
           const prev =
@@ -189,7 +198,7 @@ export default function LineasV2({
               strokeLinecap="round"
               strokeDasharray="6 4"
               fill="none"
-              opacity={0.85}
+              opacity={0.9}
               pointerEvents="none"
             />
           );
@@ -227,7 +236,7 @@ export default function LineasV2({
         </g>
       )}
 
-      {/* ---------- CÍRCULO ACTIVO (clickeable) ---------- */}
+      {/* ---------- CÍRCULO ACTIVO ---------- */}
       {posOrigen && (
         <g
           style={{ cursor: onClickCirculo ? "pointer" : "default" }}
@@ -241,21 +250,21 @@ export default function LineasV2({
           <circle
             cx={posOrigen.x}
             cy={posOrigen.y}
-            r={radioCirculoActivo + 4}
+            r={radioCirculoActivo + radioExtra}
             fill="none"
-            stroke="#0ea5e9"
-            strokeWidth={1.5}
-            opacity={0.6}
+            stroke={colorHalo}
+            strokeWidth={grosorHalo}
+            opacity={0.65}
           >
             <animate
               attributeName="r"
-              values={`${radioCirculoActivo + 2};${radioCirculoActivo + 7};${radioCirculoActivo + 2}`}
+              values={`${radioCirculoActivo + radioExtra - 2};${radioCirculoActivo + radioExtra + 3};${radioCirculoActivo + radioExtra - 2}`}
               dur="1.4s"
               repeatCount="indefinite"
             />
             <animate
               attributeName="opacity"
-              values="0.6;0.1;0.6"
+              values={armado ? "0.85;0.25;0.85" : "0.6;0.1;0.6"}
               dur="1.4s"
               repeatCount="indefinite"
             />
@@ -265,10 +274,24 @@ export default function LineasV2({
             cx={posOrigen.x}
             cy={posOrigen.y}
             r={radioCirculoActivo}
-            fill="#ffffff"
-            stroke="#000000"
-            strokeWidth={2}
+            fill={colorRelleno}
+            stroke={colorBorde}
+            strokeWidth={grosorBorde}
           />
+
+          {armado && (
+            <text
+              x={posOrigen.x}
+              y={posOrigen.y + 4}
+              textAnchor="middle"
+              fontSize={12}
+              fontWeight="bold"
+              fill="#7c2d12"
+              pointerEvents="none"
+            >
+              ✓
+            </text>
+          )}
         </g>
       )}
     </g>

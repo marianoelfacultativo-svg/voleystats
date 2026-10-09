@@ -248,87 +248,96 @@ export default function DataEntryV2({
   const handleMiniClick = (coords: CoordsV2) => {
     if (!setupCompleto) return;
 
-    // Si hay popup abierto → se cierra sin valorar (sigue el flujo)
     if (colaPopups.length > 0) setColaPopups([]);
 
     const punto: PuntoV2 = { celda: coords.celda, mini: coords.mini };
 
-    // Red → popup toque-red directo
-    if (coords.zona === "red") {
-      setColaPopups([
-        {
-          tipo: "toque-red",
-          pos: posicionPopup(punto),
-          lineaId: "",
-        },
-      ]);
-      return;
-    }
-
-    const esBloqueo = esCeldaBloqueo(punto.celda);
-    const esPropia = esCanchaPropia(punto.celda);
-    const esRival = esCanchaRival(punto.celda);
-    const esFuera = punto.celda.startsWith("FUERA-");
-
-    // ---------- Click sobre el círculo activo (sin armar) → armar ----------
+    // ---------- Click sobre el círculo activo → toggle armar/desarmar ----------
     if (circuloSinArmar && mismaMini(circuloSinArmar, punto)) {
       setCirculoArmado(circuloSinArmar);
       setCirculoSinArmar(null);
       return;
     }
-
-    // ---------- Click sobre el círculo activo (armado) → desarmar ----------
     if (circuloArmado && mismaMini(circuloArmado, punto)) {
       setCirculoSinArmar(circuloArmado);
       setCirculoArmado(null);
+      // Al desarmar, se descartan los desvíos pendientes
+      setDesviosPendientes([]);
       return;
     }
 
-    // ---------- Caso: círculo ARMADO ----------
+    // ============================================================
+    // CÍRCULO ARMADO
+    // ============================================================
     if (circuloArmado) {
-      // Bloqueo como desvío (o como acción libre si la última fue libre)
-      if (esBloqueo) {
-        const ultima = lineas[lineas.length - 1];
-        if (ultima?.tipo === "libre") {
-          crearLinea(circuloArmado, punto);
-          return;
-        }
-        // Desvío pendiente. El círculo sigue armado en su lugar.
+      // Red → línea toque-red + popup
+      if (coords.zona === "red") {
+        const linea: LineaClasificada = {
+          id: `l-${contadorId}`,
+          tipo: "toque-red",
+          esRival: false,
+          jugadorId: null,
+          origen: circuloArmado,
+          destino: punto,
+          desvios:
+            desviosPendientes.length > 0 ? [...desviosPendientes] : undefined,
+          subtipo: null,
+        };
+        setLineas((prev) => [...prev, linea]);
+        setContadorId((c) => c + 1);
+        setDesviosPendientes([]);
+        setCirculoSinArmar(punto);
+        setCirculoArmado(null);
+        setEstrella(null);
+        setColaPopups([
+          {
+            tipo: "toque-red",
+            pos: posicionPopup(punto),
+            lineaId: linea.id,
+          },
+        ]);
+        return;
+      }
+
+      // Bloqueo → desvío pendiente (círculo sigue armado en su lugar)
+      if (esCeldaBloqueo(punto.celda)) {
         setDesviosPendientes((prev) => [...prev, punto]);
         return;
       }
 
-      // Si hay desvíos pendientes y click en propia → crear línea (excepción bloqueo)
-      if (desviosPendientes.length > 0 && esPropia) {
-        crearLinea(circuloArmado, punto);
-        return;
-      }
-
-      // Click en cancha propia → marcar ⭐ (sigue armado)
-      if (esPropia) {
-        setEstrella(punto);
-        return;
-      }
-
-      // Click en cancha rival / fuera → crear línea
-      if (esRival || esFuera) {
-        crearLinea(circuloArmado, punto);
-        return;
-      }
-
+      // Cualquier otra mini (propia, rival, fuera) → línea con desvíos pendientes
+      crearLinea(circuloArmado, punto);
       return;
     }
 
-    // ---------- Caso: círculo SIN ARMAR ----------
+    // ============================================================
+    // CÍRCULO SIN ARMAR
+    // ============================================================
     if (circuloSinArmar) {
-      // Click en propia → marcar ⭐ (sigue sin armar)
-      if (esPropia) {
+      // Red → popup toque-red directo (sin línea)
+      if (coords.zona === "red") {
+        setColaPopups([
+          {
+            tipo: "toque-red",
+            pos: posicionPopup(punto),
+            lineaId: "",
+          },
+        ]);
+        return;
+      }
+
+      // Propia → ⭐ (auxiliar)
+      if (esCanchaPropia(punto.celda)) {
         setEstrella(punto);
         return;
       }
 
-      // Click en rival / bloqueo / fuera → "rompe línea" como libre oculta
-      if (esRival || esBloqueo || esFuera) {
+      // Rival / bloqueo / fuera → rompe línea (libre oculta)
+      if (
+        esCanchaRival(punto.celda) ||
+        esCeldaBloqueo(punto.celda) ||
+        punto.celda.startsWith("FUERA-")
+      ) {
         const oculta: LineaClasificada = {
           id: `l-${contadorId}`,
           tipo: "libre",
@@ -364,6 +373,7 @@ export default function DataEntryV2({
     if (circuloArmado) {
       setCirculoSinArmar(circuloArmado);
       setCirculoArmado(null);
+      setDesviosPendientes([]);
     }
   };
 
@@ -410,7 +420,6 @@ export default function DataEntryV2({
     }
     setColaPopups(cola);
 
-    // La ⭐ se consume con la línea
     setEstrella(null);
   };
 
@@ -628,12 +637,13 @@ export default function DataEntryV2({
       }
       if (e.key === "Escape") {
         if (colaPopups.length > 0) setColaPopups([]);
+        else if (desviosPendientes.length > 0)
+          setDesviosPendientes((prev) => prev.slice(0, -1));
         else if (circuloArmado) {
           setCirculoSinArmar(circuloArmado);
           setCirculoArmado(null);
         } else if (circuloSinArmar) {
           setCirculoSinArmar(null);
-          setDesviosPendientes([]);
           setEstrella(null);
         }
         return;
@@ -658,6 +668,7 @@ export default function DataEntryV2({
     setActivo,
     circuloArmado,
     circuloSinArmar,
+    desviosPendientes,
   ]);
 
   // ============================================================
@@ -803,7 +814,7 @@ export default function DataEntryV2({
             {lineas.filter((l) => !l.oculta).length} línea
             {lineas.filter((l) => !l.oculta).length !== 1 ? "s" : ""}
             {circuloArmado
-              ? " · armado"
+              ? " · armado (naranja)"
               : circuloSinArmar
               ? " · click en el círculo"
               : ""}
@@ -899,6 +910,7 @@ export default function DataEntryV2({
                 <LineasV2
                   lineas={lineasParaUI}
                   origenActivo={origenActivoParaUI}
+                  armado={!!circuloArmado}
                   desviosPendientes={desviosPendientes}
                   estrella={estrella}
                   orientacion={orientacion}
@@ -985,14 +997,14 @@ export default function DataEntryV2({
           </div>
 
           <p className="text-xs text-slate-400 text-center">
-            Click en mini → círculo. Click en el círculo → armado. Click en mini
-            → línea y círculo nuevo.
+            Click en mini → círculo blanco. Click en el círculo → armado
+            (naranja ✓).
             <br />
-            Con el círculo sin armar: click en propia marca ⭐. Con el círculo
-            armado: click en bloqueo = desvío.
+            Sin armar: click propia = ⭐, click rival = rompe línea (libre).
+            Armado: click en bloqueo = desvío, click en cualquier otra = línea.
             <br />
-            <strong>Atajos:</strong> Esc (desarmar/borrar) · Enter (cerrar) · D
-            (borrar última) · Ctrl+G (guardar)
+            <strong>Atajos:</strong> Esc (desarmar/borrar desvío) · Enter
+            (cerrar) · D (borrar última) · Ctrl+G (guardar)
           </p>
         </>
       )}
