@@ -278,7 +278,6 @@ export function clasificarLinea(
   }
 
   // ---------- 1. PRIMERA LÍNEA = SAQUE ----------
-  // Saque propio → pide popup. Saque rival → NO se valora, sin popup.
   if (n === 0) {
     const esRival = ladoDeCelda(linea.origen.celda) === "rival";
     return {
@@ -290,7 +289,6 @@ export function clasificarLinea(
   }
 
   // ---------- 2. SEGUNDA LÍNEA = RECEPCIÓN ----------
-  // Recepción propia → pide popup. Recepción rival → NO se valora, sin popup.
   if (n === 1 && ultima!.tipo === "saque") {
     const esRival = !ultima!.esRival;
     return {
@@ -443,6 +441,9 @@ export function clasificarLinea(
 // ============================================================
 // RESOLVER GANADOR DEL PUNTO
 // ============================================================
+// Regla general para FUERA: el punto va al lado CONTRARIO al que
+// ejecutó la última acción visible. Si saqué yo y salió afuera,
+// punto del rival. Si el rival atacó y salió afuera, punto mío.
 
 export function ganadorDelPunto(
   lineas: LineaClasificada[]
@@ -454,24 +455,21 @@ export function ganadorDelPunto(
     return ultima.esRival ? "propio" : "rival";
   }
 
+  // FUERA: gana el contrario del que tiró la última pelota
+  if (ultima.destino.celda.startsWith("FUERA-")) {
+    return ultima.esRival ? "propio" : "rival";
+  }
+
   const ladoDestino = ladoDeCelda(ultima.destino.celda);
 
   if (ladoDestino === "rival") return "propio";
   if (ladoDestino === "propio") return "rival";
-  if (ultima.destino.celda.startsWith("FUERA-ARR")) return "propio";
-  if (ultima.destino.celda.startsWith("FUERA-ABA")) return "rival";
 
   return null;
 }
 
 // ============================================================
 // CÁLCULO DE SUBTIPOS DE ATAQUE
-// ============================================================
-// Reglas:
-//  - El ÚLTIMO ataque propio, si es la última acción visible del
-//    punto, se marca "punto" (ganamos) o "error" (perdimos).
-//  - Cualquier otro ataque propio → "neutro".
-//  - Ataques rivales nunca se valoran.
 // ============================================================
 
 export function calcularSubtiposAtaque(
