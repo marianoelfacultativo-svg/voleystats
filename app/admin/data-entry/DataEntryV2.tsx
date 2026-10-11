@@ -208,6 +208,14 @@ export default function DataEntryV2({
 
   const puntoActualCerrado = !!puntosCerrados[puntoActual];
 
+  // ---------- Límite de navegación ----------
+  // Máximo navegable = último cerrado + 1 (o 1 si no hay cerrados)
+  const maxNavegable = useMemo(() => {
+    const nums = Object.keys(puntosCerrados).map((n) => parseInt(n));
+    const ultimo = nums.length > 0 ? Math.max(...nums) : 0;
+    return ultimo + 1;
+  }, [puntosCerrados]);
+
   // ---------- Derivados ----------
   const situacion: Situacion =
     saqueInicial === "propio" ? "saque" : "recepcion";
@@ -790,6 +798,16 @@ export default function DataEntryV2({
   };
 
   // ============================================================
+  // NAVEGACIÓN
+  // ============================================================
+
+  const irAPunto = (n: number) => {
+    if (n < 1 || n > maxNavegable) return;
+    setPuntoActual(n);
+    cargarPuntoDesde(puntosCerrados, n);
+  };
+
+  // ============================================================
   // ATAJOS
   // ============================================================
 
@@ -861,16 +879,6 @@ export default function DataEntryV2({
       return;
     }
     setSetupCompleto(true);
-  };
-
-  // ============================================================
-  // NAVEGACIÓN
-  // ============================================================
-
-  const irAPunto = (n: number) => {
-    if (n < 1) return;
-    setPuntoActual(n);
-    cargarPuntoDesde(puntosCerrados, n);
   };
 
   // ============================================================
@@ -997,7 +1005,8 @@ export default function DataEntryV2({
             </span>
             <button
               onClick={() => irAPunto(puntoActual + 1)}
-              className="w-7 h-7 flex items-center justify-center rounded border border-slate-300 hover:bg-slate-50"
+              disabled={puntoActual + 1 > maxNavegable}
+              className="w-7 h-7 flex items-center justify-center rounded border border-slate-300 hover:bg-slate-50 disabled:opacity-30"
             >
               ▶
             </button>
