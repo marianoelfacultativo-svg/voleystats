@@ -31,6 +31,12 @@ export interface JugadorEnCancha {
   nombre: string;
 }
 
+export interface JugadorZona {
+  zona: 4 | 3 | 2;
+  jugadorId: string | null;
+  nombre: string;
+}
+
 export interface PopupPos {
   x: number;
   y: number;
@@ -81,15 +87,6 @@ const COL_RECEPCION: Record<ValorRecepcion, string> = {
   4: "#eab308",
   5: "#84cc16",
   6: "#16a34a",
-};
-
-const ETIQ_RECEPCION: Record<ValorRecepcion, string> = {
-  1: "Ace en contra",
-  2: "3x Neg",
-  3: "2x Neg",
-  4: "Neg",
-  5: "Pos",
-  6: "2x Pos",
 };
 
 const ORDEN_RECEPCION: ValorRecepcion[] = [1, 2, 3, 4, 5, 6];
@@ -282,7 +279,7 @@ export function PopupSaque({ pos, onConfirmar, onCancelar }: PopupSaqueProps) {
 }
 
 // ============================================================
-// POPUP RECEPCIÓN (1-6)
+// POPUP RECEPCIÓN
 // ============================================================
 
 interface PopupRecepcionProps {
@@ -758,3 +755,71 @@ export function PopupToqueRed({
     </PopupWrapper>
   );
 }
+
+// ============================================================
+// POPUP BLOQUEO PROPIO (¿quién bloqueó?)
+// ============================================================
+
+interface PopupBloqueoProps {
+  pos: PopupPos;
+  jugadores: JugadorZona[];
+  onConfirmar: (jugadorId: string | null) => void;
+  onCancelar: () => void;
+}
+
+export function PopupBloqueo({
+  pos,
+  jugadores,
+  onConfirmar,
+  onCancelar,
+}: PopupBloqueoProps) {
+  const pad = 8;
+  const btnW = 74;
+  const gap = 6;
+  const ancho =
+    jugadores.length * btnW + Math.max(0, jugadores.length - 1) * gap + pad * 2;
+  const alto = 70;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="¿QUIÉN BLOQUEÓ?"
+    >
+      <g>
+        {jugadores.map((j, i) => (
+          <BotonSvg
+            key={j.zona}
+            x={pad + i * (btnW + gap)}
+            y={0}
+            w={btnW}
+            h={30}
+            texto={`Z${j.zona} ${j.nombre}`}
+            color={j.jugadorId ? "#ea580c" : "#cbd5e1"}
+            colorTexto={j.jugadorId ? "#ffffff" : "#475569"}
+            fontSize={9}
+            onClick={() => onConfirmar(j.jugadorId)}
+          />
+        ))}
+        <BotonSvg
+          x={pad}
+          y={38}
+          w={ancho - pad * 2}
+          h={14}
+          texto="Cancelar (Esc)"
+          color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// EXPORTS
+// ============================================================
+
+export type { PopupPos as PopupPosicion };

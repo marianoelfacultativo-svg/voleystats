@@ -29,11 +29,13 @@ export type PopupRequerido =
   | "libre"
   | "jugador"
   | "toque-red"
+  | "bloqueo"
   | null;
 
 export interface PuntoV2 {
   celda: string;
   mini: string;
+  jugadorId?: string | null;
 }
 
 export interface LineaInput {
@@ -68,6 +70,7 @@ export interface ResultadoClasificacion {
   popup: PopupRequerido;
   cierraPunto?: Lado;
   desvios?: PuntoV2[];
+  subtipoFijo?: string | number;
 }
 
 // ============================================================
@@ -118,6 +121,53 @@ export function esCanchaRival(celda: string): boolean {
 export function esFuera(celda: string): boolean {
   if (celda.startsWith("FUERA-")) return true;
   if (/^F[123456]-C[15]$/.test(celda)) return true;
+  return false;
+}
+
+// ------------------------------------------------------------
+// CANCHA REAL (columnas C2/C3/C4)
+// ------------------------------------------------------------
+function esCanchaPropiaReal(celda: string): boolean {
+  return /^F[123]-C[234]$/.test(celda);
+}
+
+function esCanchaRivalReal(celda: string): boolean {
+  return /^F[456]-C[234]$/.test(celda);
+}
+
+// ------------------------------------------------------------
+// ATAQUE CON DESVÍO EN BLOQUEO RIVAL (cobertura)
+// ------------------------------------------------------------
+function tieneDesvioBloqueoRival(l: LineaClasificada): boolean {
+  return (l.desvios ?? []).some((d) => d.celda.startsWith("BLOQ-R-"));
+}
+
+// ------------------------------------------------------------
+// DESVÍO EN BLOQUEO PROPIO
+// ------------------------------------------------------------
+function tieneDesvioBloqueoPropio(l: LineaInput | LineaClasificada): boolean {
+  return (l.desvios ?? []).some((d) => d.celda.startsWith("BLOQ-P-"));
+}
+
+// Bloqueo propio sobre BLOQ-P-C2/C3/C4 (abre popup de zonas)
+export function esCeldaBloqueoPropioConPopup(celda: string): boolean {
+  return /^BLOQ-P-C[234]$/.test(celda);
+}
+
+// Bloqueo propio sobre BLOQ-P-C1/C5 (se valora como red)
+export function esCeldaBloqueoPropioLateral(celda: string): boolean {
+  return celda === "BLOQ-P-C1" || celda === "BLOQ-P-C5";
+}
+
+// ¿El predecesor hace que el bloqueo se valore como ataque propio?
+function bloqueoSeValoraComoAtaque(ultima: LineaClasificada): boolean {
+  if (ultima.tipo === "defensa" && ultima.esRival) return true;
+  if (
+    ultima.tipo === "armado" &&
+    ultima.esRival &&
+    ultima.subtipo !== "T"
+  )
+    return true;
   return false;
 }
 
@@ -287,7 +337,6 @@ export function clasificarLinea(
   }
 
   // ---------- 1. PRIMERA LÍNEA = SAQUE ----------
-  // Ya NO tiene popup: el subtipo se calcula automáticamente al guardar.
   if (n === 0) {
     const esRival = ladoDeCelda(linea.origen.celda) === "rival";
     return {
@@ -317,6 +366,20 @@ export function clasificarLinea(
 
   const ladoO = ladoDeCelda(linea.origen.celda);
   const ladoD = ladoDeCelda(linea.destino.celda);
+
+  // ---------- BLOQUEO PROPIO (desvío en BLOQ-P-*) ----------
+  if (tieneDesvioBloqueoPropio(linea) && ultima) {
+    const comoAtaque = bloqueoSeValoraComoAtaque(ultima);
+    const primerJugador =
+      (linea.desvios ?? []).find((d) => d.celda.startsWith("BLOQ-P-"))
+        ?.jugadorId ?? null;
+    return {
+      tipo: comoAtaque ? "ataque" : "bloqueo",
+      esRival: false,
+      jugadorId: primerJugador,
+      popup: null,
+    };
+  }
 
   if (esBloqueo(linea.origen.celda)) {
     const esRival = ultima!.esRival;
@@ -366,6 +429,17 @@ export function clasificarLinea(
   }
 
   if (ultima!.tipo === "ataque") {
+    // Ataque propio con desvío en BLOQ-R → siguiente acción = cobertura
+    if (!ultima!.esRival && tieneDesvioBloqueoRival(ultima!)) {
+      return {
+        tipo: "defensa",
+        esRival: false,
+        jugadorId: null,
+        popup: "jugador",
+        subtipoFijo: "cobertura",
+      };
+    }
+
     if (
       ultima!.esRival &&
       (ladoD === "propio" || esFuera(linea.destino.celda))
@@ -455,11 +529,8 @@ export function clasificarLinea(
 }
 
 // ============================================================
-// RESOLVER GANADOR DEL PUNTO
+// GANADOR DEL PUNTO
 // ============================================================
-// Regla general para FUERA: el punto va al lado CONTRARIO al que
-// ejecutó la última acción visible. Si saqué yo y salió afuera,
-// punto del rival. Si el rival atacó y salió afuera, punto mío.
 
 export function ganadorDelPunto(
   lineas: LineaClasificada[]
@@ -472,6 +543,14 @@ export function ganadorDelPunto(
   }
 
   if (esFuera(ultima.destino.celda)) {
+    // Ataque propio con desvío en BLOQ-R que sale afuera → punto propio
+    if (
+      ultima.tipo === "ataque" &&
+      !ultima.esRival &&
+      tieneDesvioBloqueoRival(ultima)
+    ) {
+      return "propio";
+    }
     return ultima.esRival ? "propio" : "rival";
   }
 
@@ -484,7 +563,7 @@ export function ganadorDelPunto(
 }
 
 // ============================================================
-// CÁLCULO DE SUBTIPOS DE ATAQUE
+// SUBTIPOS DE ATAQUE
 // ============================================================
 
 export function calcularSubtiposAtaque(
@@ -510,6 +589,7 @@ export function calcularSubtiposAtaque(
 
   return lineas.map((l, i) => {
     if (l.tipo !== "ataque" || l.esRival) return l;
+    if (l.subtipo && l.subtipo !== null) return l; // subtipoFijo (cobertura)
     if (i === ultimoAtaque && cierraElPunto) {
       return { ...l, subtipo: ganador === "propio" ? "punto" : "error" };
     }
@@ -518,30 +598,73 @@ export function calcularSubtiposAtaque(
 }
 
 // ============================================================
-// CÁLCULO DE SUBTIPOS DE SAQUE (automático)
+// SUBTIPOS DE BLOQUEO PROPIO (automático)
 // ============================================================
-// Reglas del usuario:
-//
-// SIN recepción rival (la pelota no fue tocada por el rival):
-//   - Cae dentro de cancha rival (F4/F5/F6-C2/C3/C4) → "ace"
-//   - Cualquier otro destino → "negativo"
-//
-// CON recepción rival (el rival la tocó):
-//   - FUERA-ARR (fuera largo rival)              → positivo_mas
-//   - F4/F5/F6-C1/C5 (fuera ancho rival)         → positivo_mas
-//   - F6-C2/C3/C4 (fondo rival)                  → positivo_mas
-//   - F1/F2/F3-C2/C3/C4 (cancha propia centro)   → positivo_mas
-//   - BLOQ-P-*                                   → positivo_mas
-//   - F4-C3                                      → neutro
-//   - RED-* / FUERA-ABA / F1/F2/F3-C1/C5 / BLOQ-R → ace
-//   - F5-C2/C3/C4 / F4-C2 / F4-C4                → positivo
-//
-// DESVÍO en bloqueo rival (saque golpea BLOQ-R y sigue):
-//   - Si el destino final es FUERA-* → negativo
-//   - Si no → aplicar reglas "sin recepción" al destino final
+// Reglas:
+//   Cancha rival (F4/F5/F6-C2/C3/C4) o BLOQ-R o BLOQ-P-C2/C3/C4:
+//     - Última línea visible → punto
+//     - Siguiente es libre rival → positivo_mas
+//     - Otro caso → positivo
+//   Cancha propia (F1/F2/F3-C2/C3/C4) → positivo
+//   Fuera (FUERA-* o laterales C1/C5) → use_rival
+//   Red (RED-* o BLOQ-P-C1/C5) → filtrada
+
+function valorarBloqueoBase(
+  destino: string,
+  esUltimaVisible: boolean,
+  siguiente: LineaClasificada | undefined
+): string {
+  if (esFuera(destino)) return "use_rival";
+  if (destino.startsWith("RED-")) return "filtrada";
+  if (esCeldaBloqueoPropioLateral(destino)) return "filtrada";
+  if (esCanchaPropiaReal(destino)) return "positivo";
+
+  const esRival =
+    esCanchaRivalReal(destino) ||
+    destino.startsWith("BLOQ-R-") ||
+    esCeldaBloqueoPropioConPopup(destino);
+
+  if (esRival) {
+    if (esUltimaVisible) return "punto";
+    if (siguiente?.tipo === "libre" && siguiente.esRival)
+      return "positivo_mas";
+    return "positivo";
+  }
+
+  return "positivo";
+}
+
+export function calcularSubtiposBloqueo(
+  lineas: LineaClasificada[]
+): LineaClasificada[] {
+  const idxBloqueos: number[] = [];
+  lineas.forEach((l, i) => {
+    if (l.tipo === "bloqueo" && !l.esRival) idxBloqueos.push(i);
+  });
+  if (idxBloqueos.length === 0) return lineas;
+
+  let ultimoVisible = -1;
+  for (let i = lineas.length - 1; i >= 0; i--) {
+    if (!lineas[i].oculta) {
+      ultimoVisible = i;
+      break;
+    }
+  }
+
+  return lineas.map((l, i) => {
+    if (l.tipo !== "bloqueo" || l.esRival) return l;
+    const esUltima = i === ultimoVisible;
+    const siguiente = lineas[i + 1];
+    const base = valorarBloqueoBase(l.destino.celda, esUltima, siguiente);
+    return { ...l, subtipo: base };
+  });
+}
+
+// ============================================================
+// SUBTIPOS DE SAQUE (automático)
+// ============================================================
 
 function valorarSaqueSinRecepcion(destino: string): string {
-  // Solo ace si cae dentro de cancha rival
   if (
     destino.startsWith("F4-") ||
     destino.startsWith("F5-") ||
@@ -554,16 +677,13 @@ function valorarSaqueSinRecepcion(destino: string): string {
 }
 
 function valorarSaqueConRecepcion(destino: string): string {
-  // Fuera de cancha
   if (destino.startsWith("FUERA-ARR-")) return "positivo_mas";
   if (destino.startsWith("FUERA-ABA-")) return "ace";
 
-  // Red / bloqueos
   if (destino.startsWith("RED-")) return "ace";
   if (destino.startsWith("BLOQ-R-")) return "ace";
   if (destino.startsWith("BLOQ-P-")) return "positivo_mas";
 
-  // Cancha propia
   if (
     destino.startsWith("F1-") ||
     destino.startsWith("F2-") ||
@@ -574,7 +694,6 @@ function valorarSaqueConRecepcion(destino: string): string {
     return "ace";
   }
 
-  // Cancha rival
   if (
     destino.startsWith("F4-") ||
     destino.startsWith("F5-") ||
@@ -586,11 +705,11 @@ function valorarSaqueConRecepcion(destino: string): string {
     if (fila === "F5") return "positivo";
     if (fila === "F4") {
       if (col === "C3") return "neutro";
-      return "positivo"; // C2, C4
+      return "positivo";
     }
   }
 
-  return "positivo"; // fallback
+  return "positivo";
 }
 
 export function calcularSubtiposSaque(
@@ -604,7 +723,6 @@ export function calcularSubtiposSaque(
   const saque = lineas[idxSaque];
   const destinoSaque = saque.destino.celda;
 
-  // ¿Hay desvío por bloqueo rival? (dentro de la misma línea)
   const desvios = saque.desvios ?? [];
   const tieneDesvioBloqueo = desvios.some((d) =>
     d.celda.startsWith("BLOQ-R-")
@@ -613,7 +731,6 @@ export function calcularSubtiposSaque(
   let subtipo: string;
 
   if (destinoSaque.startsWith("BLOQ-R-") && !tieneDesvioBloqueo) {
-    // El saque terminó sobre el bloqueo rival. Buscar la línea que sale del bloqueo.
     const siguiente = lineas[idxSaque + 1];
     if (siguiente && siguiente.origen.celda === destinoSaque) {
       const destinoFinal = siguiente.destino.celda;
@@ -623,18 +740,15 @@ export function calcularSubtiposSaque(
         subtipo = valorarSaqueSinRecepcion(destinoFinal);
       }
     } else {
-      // Quedó en el bloqueo → error
       subtipo = "negativo";
     }
   } else if (tieneDesvioBloqueo) {
-    // Hubo desvío por bloqueo rival en el medio. Evaluar el destino final.
     if (destinoSaque.startsWith("FUERA-")) {
       subtipo = "negativo";
     } else {
       subtipo = valorarSaqueSinRecepcion(destinoSaque);
     }
   } else {
-    // ¿Hay recepción rival?
     const siguiente = lineas[idxSaque + 1];
     if (siguiente && siguiente.tipo === "recepcion" && siguiente.esRival) {
       subtipo = valorarSaqueConRecepcion(siguiente.destino.celda);

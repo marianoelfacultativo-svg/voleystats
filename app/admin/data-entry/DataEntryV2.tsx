@@ -10,6 +10,7 @@ import LineasV2, { type PuntoV2, type LineaV2 } from "./LineasV2";
 import PanelRotacionV2, { type CambioPendiente } from "./PanelRotacionV2";
 import {
   PopupArmado,
+  PopupBloqueo,
   PopupDefensa,
   PopupJugador,
   PopupLibre,
@@ -22,6 +23,7 @@ import {
   type TipoDefensa,
   type ResultadoToqueRed,
   type JugadorEnCancha,
+  type JugadorZona,
   type PopupPos,
 } from "./PopupValoracion";
 
@@ -34,8 +36,10 @@ import {
 } from "@/lib/rotaciones";
 import {
   calcularSubtiposAtaque,
+  calcularSubtiposBloqueo,
   calcularSubtiposSaque,
   clasificarLinea,
+  esCeldaBloqueoPropioConPopup,
   esCanchaPropia,
   esCanchaRival,
   ganadorDelPunto,
@@ -66,6 +70,7 @@ interface PopupEnCola {
   tipo: Exclude<PopupRequerido, null>;
   pos: PopupPos;
   lineaId: string;
+  indiceDesvio?: number;
 }
 
 interface PuntoCerrado {
@@ -127,13 +132,21 @@ function aLineaV2(l: LineaClasificada): LineaV2 {
   };
 }
 
-function aAccionV2(l: LineaClasificada, orden: number): AccionV2Data {
+function aAccionV2(
+  l: LineaClasificada,
+  orden: number,
+  override?: { jugadorId?: string | null; subtipo?: string | null }
+): AccionV2Data {
+  const subtipoFinal =
+    override?.subtipo !== undefined ? override.subtipo : l.subtipo ?? null;
+  const jugadorFinal =
+    override?.jugadorId !== undefined ? override.jugadorId : l.jugadorId;
   return {
     orden,
     tipo: l.tipo,
-    subtipo: l.subtipo ?? null,
+    subtipo: subtipoFinal,
     es_rival: l.esRival,
-    jugador_id: l.jugadorId,
+    jugador_id: jugadorFinal,
     lado: l.esRival ? "rival" : "propio",
     origen_celda: l.origen.celda,
     origen_mini: l.origen.mini,
@@ -142,6 +155,36 @@ function aAccionV2(l: LineaClasificada, orden: number): AccionV2Data {
     desvios: (l.desvios ?? []).map((d) => ({ celda: d.celda, mini: d.mini })),
     zona: null,
   };
+}
+
+// Expande bloqueos con doble desvío en N acciones consecutivas.
+function lineasAAcciones(lineas: LineaClasificada[]): AccionV2Data[] {
+  const acciones: AccionV2Data[] = [];
+  let orden = 1;
+  for (const l of lineas) {
+    if (l.tipo === "bloqueo" && !l.esRival) {
+      const desviosBLOQP = (l.desvios ?? []).filter((d) =>
+        d.celda.startsWith("BLOQ-P-")
+      );
+      if (desviosBLOQP.length > 1) {
+        const base = (l.subtipo ?? "positivo") as string;
+        const esPositiva =
+          base === "punto" || base === "positivo_mas" || base === "positivo";
+        const sub = esPositiva ? "positivo" : "neutro";
+        for (const d of desviosBLOQP) {
+          acciones.push(
+            aAccionV2(l, orden++, {
+              jugadorId: d.jugadorId ?? null,
+              subtipo: sub,
+            })
+          );
+        }
+        continue;
+      }
+    }
+    acciones.push(aAccionV2(l, orden++));
+  }
+  return acciones;
 }
 
 function esCeldaBloqueo(celda: string): boolean {
@@ -173,13 +216,11 @@ export default function DataEntryV2({
   jugadores,
   rotacionInicial,
 }: Props) {
-  // ---------- Fuente de verdad ----------
   const [puntosCerrados, setPuntosCerrados] = useState<
     Record<number, PuntoCerrado>
   >({});
   const [puntoActual, setPuntoActual] = useState<number>(1);
 
-  // ---------- Estado activo del punto actual ----------
   const [lineas, setLineas] = useState<LineaClasificada[]>([]);
   const [circuloSinArmar, setCirculoSinArmar] = useState<PuntoV2 | null>(null);
   const [circuloArmado, setCirculoArmado] = useState<PuntoV2 | null>(null);
@@ -188,7 +229,6 @@ export default function DataEntryV2({
   const [colaPopups, setColaPopups] = useState<PopupEnCola[]>([]);
   const [contadorId, setContadorId] = useState(1);
 
-  // ---------- Estado del punto actual (saque/rotación/etc) ----------
   const [saqueInicial, setSaqueInicial] = useState<Lado>("propio");
   const [rotacion, setRotacion] = useState<RotacionPunto | null>(
     rotacionInicial ?? null
@@ -201,7 +241,6 @@ export default function DataEntryV2({
     []
   );
 
-  // ---------- UI ----------
   const [setActivo, setSetActivo] = useState<number>(1);
   const [orientacion, setOrientacion] = useState<Orientacion>("vertical");
   const [guardando, setGuardando] = useState(false);
@@ -209,14 +248,12 @@ export default function DataEntryV2({
 
   const puntoActualCerrado = !!puntosCerrados[puntoActual];
 
-  // ---------- Límite de navegación ----------
   const maxNavegable = useMemo(() => {
     const nums = Object.keys(puntosCerrados).map((n) => parseInt(n));
     const ultimo = nums.length > 0 ? Math.max(...nums) : 0;
     return ultimo + 1;
   }, [puntosCerrados]);
 
-  // ---------- Derivados ----------
   const situacion: Situacion =
     saqueInicial === "propio" ? "saque" : "recepcion";
 
@@ -258,11 +295,26 @@ export default function DataEntryV2({
     });
   }, [rotacion, posicionesPunto, cambiosPendientes, jugadores]);
 
+  // Jugadores en cada zona delantera (para popup de bloqueo)
+  const delanterosPorZona: JugadorZona[] = useMemo(() => {
+    if (!rotacionEfectiva) return [];
+    const zonas: (4 | 3 | 2)[] = [4, 3, 2];
+    return zonas.map((z) => {
+      const asig = rotacionEfectiva.posiciones[z as Zona];
+      const id = asig?.jugador_id ?? null;
+      const jugador = id ? jugadores.find((j) => j.id === id) : null;
+      return {
+        zona: z,
+        jugadorId: id,
+        nombre: jugador ? jugador.nombre : "(vacío)",
+      };
+    });
+  }, [rotacionEfectiva, jugadores]);
+
   const lineasParaUI: LineaV2[] = useMemo(() => lineas.map(aLineaV2), [lineas]);
   const origenActivoParaUI: PuntoV2 | null =
     circuloSinArmar ?? circuloArmado;
 
-  // Marcador: suma de ganadores de todos los puntos cerrados
   const marcador = useMemo(() => {
     let p = 0;
     let r = 0;
@@ -274,15 +326,16 @@ export default function DataEntryV2({
   }, [puntosCerrados]);
 
   // ============================================================
-  // SECUENCIA (calculada en vivo con subtipos aplicados)
+  // SECUENCIA (calculada en vivo)
   // ============================================================
 
   const secuenciaConValores = useMemo(() => {
     const conSaque = calcularSubtiposSaque(lineas);
     const ganadorActual = ganadorDelPunto(conSaque);
+    const conBloqueo = calcularSubtiposBloqueo(conSaque);
     const conAtaque = ganadorActual
-      ? calcularSubtiposAtaque(conSaque, ganadorActual)
-      : conSaque;
+      ? calcularSubtiposAtaque(conBloqueo, ganadorActual)
+      : conBloqueo;
     return conAtaque.filter((l) => !l.oculta);
   }, [lineas]);
 
@@ -294,14 +347,13 @@ export default function DataEntryV2({
   };
 
   // ============================================================
-  // CARGAR PUNTO (desde cerrados o derivar nuevo)
+  // CARGAR PUNTO
   // ============================================================
 
   const cargarPuntoDesde = (
     cerrados: Record<number, PuntoCerrado>,
     n: number
   ) => {
-    // Reset estado activo
     setLineas([]);
     setCirculoSinArmar(null);
     setCirculoArmado(null);
@@ -322,7 +374,6 @@ export default function DataEntryV2({
       return;
     }
 
-    // Punto nuevo: derivar del último cerrado anterior
     const anteriores = Object.values(cerrados)
       .filter((x) => x.numero < n)
       .sort((a, b) => b.numero - a.numero);
@@ -330,7 +381,7 @@ export default function DataEntryV2({
 
     if (prev) {
       let rotSig: RotacionPunto = prev.rotacion;
-      const saqueSig: Lado = prev.ganador; // gana saca
+      const saqueSig: Lado = prev.ganador;
       if (prev.ganador === "propio" && prev.saqueInicial === "rival") {
         const { rotacion: rotG } = girarRotacionPunto(prev.rotacion, 1);
         rotSig = rotG;
@@ -393,7 +444,7 @@ export default function DataEntryV2({
   }, [partidoId]);
 
   // ============================================================
-  // HANDLERS DE CLICK EN CANCHA
+  // CLICK EN CANCHA
   // ============================================================
 
   const handleMiniClick = (coords: CoordsV2) => {
@@ -445,7 +496,22 @@ export default function DataEntryV2({
       }
 
       if (esCeldaBloqueo(punto.celda)) {
-        setDesviosPendientes((prev) => [...prev, punto]);
+        const esPropioConPopup = esCeldaBloqueoPropioConPopup(punto.celda);
+        const indiceDesvio = desviosPendientes.length;
+        setDesviosPendientes((prev) => [
+          ...prev,
+          { ...punto, jugadorId: null },
+        ]);
+        if (esPropioConPopup) {
+          setColaPopups([
+            {
+              tipo: "bloqueo",
+              pos: posicionPopup(punto),
+              lineaId: "",
+              indiceDesvio,
+            },
+          ]);
+        }
         return;
       }
 
@@ -535,7 +601,7 @@ export default function DataEntryV2({
       destino,
       desvios:
         desviosPendientes.length > 0 ? [...desviosPendientes] : undefined,
-      subtipo: null,
+      subtipo: res.subtipoFijo ?? null,
     };
 
     setLineas((prev) => [...prev, nueva]);
@@ -595,7 +661,6 @@ export default function DataEntryV2({
     setColaPopups([]);
     setContadorId(1);
 
-    // Si estaba cerrado, lo des-cerramos
     if (puntoActualCerrado) {
       const copia = { ...puntosCerrados };
       delete copia[puntoActual];
@@ -604,7 +669,7 @@ export default function DataEntryV2({
   };
 
   // ============================================================
-  // CERRAR PUNTO (solo memoria + localStorage)
+  // CERRAR PUNTO
   // ============================================================
 
   const handleCerrarPunto = () => {
@@ -635,12 +700,10 @@ export default function DataEntryV2({
     const eraCerrado = puntoActualCerrado;
 
     if (eraCerrado) {
-      // Sobreescribir sin avanzar
       setPuntosCerrados((prev) => ({ ...prev, [puntoActual]: punto }));
       return;
     }
 
-    // Nuevo: guardar + avanzar
     const nuevosCerrados: Record<number, PuntoCerrado> = {
       ...puntosCerrados,
       [puntoActual]: punto,
@@ -690,14 +753,13 @@ export default function DataEntryV2({
         posiciones_punto: pc.posicionesPunto,
       };
 
-      // 1) Subtipos de saque automáticos
       const lineasConSaque = calcularSubtiposSaque(pc.lineas);
-      // 2) Subtipos de ataque (punto/error/neutro)
-      const lineasConSubtipo = calcularSubtiposAtaque(
-        lineasConSaque,
+      const lineasConBloqueo = calcularSubtiposBloqueo(lineasConSaque);
+      const lineasConAtaque = calcularSubtiposAtaque(
+        lineasConBloqueo,
         pc.ganador
       );
-      const acciones = lineasConSubtipo.map((l, i) => aAccionV2(l, i + 1));
+      const acciones = lineasAAcciones(lineasConAtaque);
 
       const res = await guardarPuntoV2(partidoId, puntoData, acciones);
       if (!res.ok) {
@@ -733,7 +795,6 @@ export default function DataEntryV2({
   };
 
   const handleSaqueConfirmar = (_v: ValorSaque) => {
-    // Saque ya no se valora con popup — auto al guardar.
     popupSiguiente();
   };
 
@@ -762,6 +823,17 @@ export default function DataEntryV2({
 
   const handleJugadorConfirmar = (jugadorId: string | null) => {
     actualizarLineaPopup({ jugadorId });
+    popupSiguiente();
+  };
+
+  const handleBloqueoConfirmar = (jugadorId: string | null) => {
+    if (!popupActivo) return;
+    const idx = popupActivo.indiceDesvio;
+    if (idx !== undefined && idx >= 0) {
+      setDesviosPendientes((prev) =>
+        prev.map((d, i) => (i === idx ? { ...d, jugadorId } : d))
+      );
+    }
     popupSiguiente();
   };
 
@@ -1219,6 +1291,14 @@ export default function DataEntryV2({
                     pos={popupActivo.pos}
                     jugadores={jugadoresEnCancha}
                     onConfirmar={handleToqueRedConfirmar}
+                    onCancelar={cerrarPopup}
+                  />
+                )}
+                {popupActivo?.tipo === "bloqueo" && (
+                  <PopupBloqueo
+                    pos={popupActivo.pos}
+                    jugadores={delanterosPorZona}
+                    onConfirmar={handleBloqueoConfirmar}
                     onCancelar={cerrarPopup}
                   />
                 )}
