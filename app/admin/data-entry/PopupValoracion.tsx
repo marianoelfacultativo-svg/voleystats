@@ -16,6 +16,8 @@ export type ValorSaque =
   | "neutro"
   | "negativo";
 
+export type ValorRecepcion = 1 | 2 | 3 | 4 | 5 | 6;
+
 export type TipoDefensa = "toque" | "gran-defensa" | "libre";
 
 export type ResultadoToqueRed =
@@ -71,6 +73,26 @@ const ORDEN_SAQUE: ValorSaque[] = [
   "neutro",
   "negativo",
 ];
+
+const COL_RECEPCION: Record<ValorRecepcion, string> = {
+  1: "#dc2626",
+  2: "#ea580c",
+  3: "#f59e0b",
+  4: "#eab308",
+  5: "#84cc16",
+  6: "#16a34a",
+};
+
+const ETIQ_RECEPCION: Record<ValorRecepcion, string> = {
+  1: "Ace en contra",
+  2: "3x Neg",
+  3: "2x Neg",
+  4: "Neg",
+  5: "Pos",
+  6: "2x Pos",
+};
+
+const ORDEN_RECEPCION: ValorRecepcion[] = [1, 2, 3, 4, 5, 6];
 
 const COL_DEFENSA: Record<TipoDefensa, string> = {
   toque: "#f59e0b",
@@ -240,6 +262,67 @@ export function PopupSaque({ pos, onConfirmar, onCancelar }: PopupSaqueProps) {
             texto={ETIQ_SAQUE[v]}
             color={COL_SAQUE[v]}
             fontSize={10}
+            onClick={() => onConfirmar(v)}
+          />
+        ))}
+        <BotonSvg
+          x={pad}
+          y={32}
+          w={ancho - pad * 2}
+          h={14}
+          texto="Cancelar (Esc)"
+          color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP RECEPCIÓN (1-6)
+// ============================================================
+
+interface PopupRecepcionProps {
+  pos: PopupPos;
+  onConfirmar: (v: ValorRecepcion) => void;
+  onCancelar: () => void;
+}
+
+export function PopupRecepcion({
+  pos,
+  onConfirmar,
+  onCancelar,
+}: PopupRecepcionProps) {
+  const btnW = 34;
+  const gap = 4;
+  const pad = 8;
+  const ancho =
+    ORDEN_RECEPCION.length * btnW +
+    (ORDEN_RECEPCION.length - 1) * gap +
+    pad * 2;
+  const alto = 70;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="RECEPCIÓN — Calidad"
+    >
+      <g>
+        {ORDEN_RECEPCION.map((v, i) => (
+          <BotonSvg
+            key={v}
+            x={pad + i * (btnW + gap)}
+            y={0}
+            w={btnW}
+            h={24}
+            texto={String(v)}
+            color={COL_RECEPCION[v]}
+            fontSize={11}
             onClick={() => onConfirmar(v)}
           />
         ))}

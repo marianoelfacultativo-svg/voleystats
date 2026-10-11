@@ -13,9 +13,11 @@ import {
   PopupDefensa,
   PopupJugador,
   PopupLibre,
+  PopupRecepcion,
   PopupSaque,
   PopupToqueRed,
   type ValorArmado,
+  type ValorRecepcion,
   type ValorSaque,
   type TipoDefensa,
   type ResultadoToqueRed,
@@ -31,6 +33,7 @@ import {
   type Zona,
 } from "@/lib/rotaciones";
 import {
+  calcularSubtiposAtaque,
   clasificarLinea,
   esCanchaPropia,
   esCanchaRival,
@@ -74,6 +77,15 @@ interface Props {
 }
 
 const CLAVE_V2 = "voleystats_dataentry_v2_";
+
+const POSICIONES_VACIAS: Record<Zona, string> = {
+  1: "",
+  2: "",
+  3: "",
+  4: "",
+  5: "",
+  6: "",
+};
 
 // ============================================================
 // HELPERS
@@ -164,7 +176,7 @@ export default function DataEntryV2({
   );
   const [liberos, setLiberos] = useState<Libero[]>([]);
   const [posicionesPunto, setPosicionesPunto] = useState<Record<Zona, string>>(
-    () => ({ 1: "", 2: "", 3: "", 4: "", 5: "", 6: "" })
+    () => ({ ...POSICIONES_VACIAS })
   );
   const [cambiosPendientes, setCambiosPendientes] = useState<CambioPendiente[]>(
     []
@@ -178,6 +190,21 @@ export default function DataEntryV2({
     saqueInicial === "propio" ? "saque" : "recepcion";
 
   const popupActivo = colaPopups[0] ?? null;
+
+  const rotacionEfectiva = useMemo<RotacionPunto | null>(() => {
+    if (!rotacion) return null;
+    const zonas: Zona[] = [1, 2, 3, 4, 5, 6];
+    let cambio = false;
+    const nuevas = { ...rotacion.posiciones };
+    for (const z of zonas) {
+      const override = posicionesPunto[z];
+      if (override && override !== nuevas[z]?.jugador_id) {
+        nuevas[z] = { ...nuevas[z], jugador_id: override };
+        cambio = true;
+      }
+    }
+    return cambio ? { ...rotacion, posiciones: nuevas } : rotacion;
+  }, [rotacion, posicionesPunto]);
 
   const jugadoresEnCancha: JugadorEnCancha[] = useMemo(() => {
     if (!rotacion) return [];
@@ -252,7 +279,6 @@ export default function DataEntryV2({
 
     const punto: PuntoV2 = { celda: coords.celda, mini: coords.mini };
 
-    // ---------- Click sobre el círculo activo → toggle armar/desarmar ----------
     if (circuloSinArmar && mismaMini(circuloSinArmar, punto)) {
       setCirculoArmado(circuloSinArmar);
       setCirculoSinArmar(null);
@@ -261,16 +287,12 @@ export default function DataEntryV2({
     if (circuloArmado && mismaMini(circuloArmado, punto)) {
       setCirculoSinArmar(circuloArmado);
       setCirculoArmado(null);
-      // Al desarmar, se descartan los desvíos pendientes
       setDesviosPendientes([]);
       return;
     }
 
-    // ============================================================
-    // CÍRCULO ARMADO
-    // ============================================================
+    // ---------- CÍRCULO ARMADO ----------
     if (circuloArmado) {
-      // Red → línea toque-red + popup
       if (coords.zona === "red") {
         const linea: LineaClasificada = {
           id: `l-${contadorId}`,
@@ -299,22 +321,17 @@ export default function DataEntryV2({
         return;
       }
 
-      // Bloqueo → desvío pendiente (círculo sigue armado en su lugar)
       if (esCeldaBloqueo(punto.celda)) {
         setDesviosPendientes((prev) => [...prev, punto]);
         return;
       }
 
-      // Cualquier otra mini (propia, rival, fuera) → línea con desvíos pendientes
       crearLinea(circuloArmado, punto);
       return;
     }
 
-    // ============================================================
-    // CÍRCULO SIN ARMAR
-    // ============================================================
+    // ---------- CÍRCULO SIN ARMAR ----------
     if (circuloSinArmar) {
-      // Red → popup toque-red directo (sin línea)
       if (coords.zona === "red") {
         setColaPopups([
           {
@@ -326,13 +343,11 @@ export default function DataEntryV2({
         return;
       }
 
-      // Propia → ⭐ (auxiliar)
       if (esCanchaPropia(punto.celda)) {
         setEstrella(punto);
         return;
       }
 
-      // Rival / bloqueo / fuera → rompe línea (libre oculta)
       if (
         esCanchaRival(punto.celda) ||
         esCeldaBloqueo(punto.celda) ||
@@ -360,7 +375,6 @@ export default function DataEntryV2({
       return;
     }
 
-    // ---------- No hay círculo → crear el primero (sin armar) ----------
     setCirculoSinArmar(punto);
   };
 
@@ -378,12 +392,12 @@ export default function DataEntryV2({
   };
 
   const crearLinea = (origen: PuntoV2, destino: PuntoV2) => {
-    if (!rotacion) return;
+    if (!rotacionEfectiva) return;
 
     const estado: EstadoClasificacion = {
       saqueInicial,
       situacion,
-      rotacion,
+      rotacion: rotacionEfectiva,
       lineas,
     };
 
@@ -405,11 +419,9 @@ export default function DataEntryV2({
     setContadorId((c) => c + 1);
     setDesviosPendientes([]);
 
-    // Cadena continua: nuevo círculo sin armar en el destino
     setCirculoSinArmar(destino);
     setCirculoArmado(null);
 
-    // Cola de popups: acción (si aplica) + jugador (si hay ⭐)
     const cola: PopupEnCola[] = [];
     const pos = posicionPopup(destino);
     if (res.popup) {
@@ -496,7 +508,12 @@ export default function DataEntryV2({
       posiciones_punto: posicionesPunto,
     };
 
-    const acciones: AccionV2Data[] = lineas.map((l, i) => aAccionV2(l, i + 1));
+    // Subtipos de ataque calculados sobre las líneas del punto
+    const lineasConSubtipo = calcularSubtiposAtaque(lineas, ganador);
+
+    const acciones: AccionV2Data[] = lineasConSubtipo.map((l, i) =>
+      aAccionV2(l, i + 1)
+    );
 
     setGuardando(true);
     const res = await guardarPuntoV2(partidoId, punto, acciones);
@@ -507,14 +524,34 @@ export default function DataEntryV2({
       return;
     }
 
+    // ---------- Actualizar marcador y avanzar punto ----------
     setMarcador((m) => ({ ...m, [ganador]: m[ganador] + 1 }));
     setPuntoActual((p) => p + 1);
+
+    // ---------- Reset completo del estado del punto ----------
     setLineas([]);
     setCirculoSinArmar(null);
     setCirculoArmado(null);
     setDesviosPendientes([]);
     setEstrella(null);
     setColaPopups([]);
+
+    // ---------- Reset 📋 Posición (solo dura un punto) ----------
+    setPosicionesPunto({ ...POSICIONES_VACIAS });
+
+    // ---------- Próximo saque: saca quien ganó el punto ----------
+    const proximoSaque: Lado = ganador === "propio" ? "propio" : "rival";
+    setSaqueInicial(proximoSaque);
+
+    // ---------- Rotación automática ----------
+    // Regla estándar: la rotación de mi equipo gira SOLO cuando
+    // ganamos un punto que empezamos en recepción (recuperamos el saque).
+    let rotacionSiguiente: RotacionPunto = rotacion;
+    if (ganador === "propio" && saqueInicial === "rival") {
+      const { rotacion: rotG } = girarRotacionPunto(rotacion, 1);
+      rotacionSiguiente = rotG;
+    }
+    setRotacion({ ...rotacionSiguiente, saque_equipo: proximoSaque });
   };
 
   // ============================================================
@@ -531,6 +568,11 @@ export default function DataEntryV2({
   };
 
   const handleSaqueConfirmar = (v: ValorSaque) => {
+    actualizarLineaPopup({ subtipo: v });
+    popupSiguiente();
+  };
+
+  const handleRecepcionConfirmar = (v: ValorRecepcion) => {
     actualizarLineaPopup({ subtipo: v });
     popupSiguiente();
   };
@@ -921,6 +963,13 @@ export default function DataEntryV2({
                   <PopupSaque
                     pos={popupActivo.pos}
                     onConfirmar={handleSaqueConfirmar}
+                    onCancelar={cerrarPopup}
+                  />
+                )}
+                {popupActivo?.tipo === "recepcion" && (
+                  <PopupRecepcion
+                    pos={popupActivo.pos}
+                    onConfirmar={handleRecepcionConfirmar}
                     onCancelar={cerrarPopup}
                   />
                 )}

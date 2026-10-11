@@ -23,6 +23,7 @@ export type Lado = "propio" | "rival";
 export type Situacion = "saque" | "recepcion";
 export type PopupRequerido =
   | "saque"
+  | "recepcion"
   | "armado"
   | "defensa"
   | "libre"
@@ -115,7 +116,6 @@ export function esFuera(celda: string): boolean {
 // RESOLUCIÓN DE JUGADOR — SAQUE
 // ============================================================
 
-/** Devuelve el jugador que saca: el que está en zona 1. */
 function jugadorQueSaca(rotacion: RotacionPunto): string | null {
   for (const asig of Object.values(rotacion.posiciones)) {
     if (asig.zona === 1) return asig.jugador_id;
@@ -127,9 +127,6 @@ function jugadorQueSaca(rotacion: RotacionPunto): string | null {
 // RESOLUCIÓN DE JUGADOR — RECEPCIÓN
 // ============================================================
 
-/** Zona de recepción según columna de la celda.
- *  C1+C2 → 5 · C3 → 6 · C4+C5 → 1
- */
 function zonaRecepcion(celda: string): 1 | 5 | 6 | null {
   if (!/^F[123]-/.test(celda)) return null;
   const col = celda.split("-")[1];
@@ -139,7 +136,6 @@ function zonaRecepcion(celda: string): 1 | 5 | 6 | null {
   return null;
 }
 
-/** Busca al central delantero (zona 2/3/4). */
 function buscarCentralDelantero(rotacion: RotacionPunto): string | null {
   for (const asig of Object.values(rotacion.posiciones)) {
     if (
@@ -152,7 +148,6 @@ function buscarCentralDelantero(rotacion: RotacionPunto): string | null {
   return null;
 }
 
-/** Busca al central zaguero (zona 1/5/6). */
 function buscarCentralZaguero(rotacion: RotacionPunto): string | null {
   for (const asig of Object.values(rotacion.posiciones)) {
     if (
@@ -165,7 +160,6 @@ function buscarCentralZaguero(rotacion: RotacionPunto): string | null {
   return null;
 }
 
-/** Busca al punta delantero (zona 2/3/4). */
 function buscarPuntaDelantero(rotacion: RotacionPunto): string | null {
   for (const asig of Object.values(rotacion.posiciones)) {
     if (
@@ -178,7 +172,6 @@ function buscarPuntaDelantero(rotacion: RotacionPunto): string | null {
   return null;
 }
 
-/** Busca al punta zaguero (zona 1/5/6). */
 function buscarPuntaZaguero(rotacion: RotacionPunto): string | null {
   for (const asig of Object.values(rotacion.posiciones)) {
     if (
@@ -191,10 +184,6 @@ function buscarPuntaZaguero(rotacion: RotacionPunto): string | null {
   return null;
 }
 
-/** Busca al líbero activo.
- *  Prioriza el de tipo "recepcion"; si hay 1 solo, ese.
- *  Si no hay líbero, cae al central zaguero.
- */
 function buscarLiberoActivo(rotacion: RotacionPunto): string | null {
   const lib =
     rotacion.liberos.find((l) => l.tipo === "recepcion") ??
@@ -205,9 +194,6 @@ function buscarLiberoActivo(rotacion: RotacionPunto): string | null {
 
 type RolRecepcion = "PD" | "PZ" | "L";
 
-/** Tabla de roles por zona del armador × zona de recepción.
- *  Portada de resolverJugadorRecepcion en page.tsx.
- */
 const TABLA_RECEPCION: Record<
   Zona,
   { z1: RolRecepcion; z6: RolRecepcion; z5: RolRecepcion }
@@ -220,7 +206,6 @@ const TABLA_RECEPCION: Record<
   6: { z1: "PZ", z6: "L", z5: "PD" },
 };
 
-/** Devuelve el jugador_id que recibe según la celda + rotación. */
 function jugadorQueRecibe(
   origen: PuntoV2,
   rotacion: RotacionPunto,
@@ -228,7 +213,6 @@ function jugadorQueRecibe(
 ): string | null {
   const celda = origen.celda;
 
-  // Excepción F1-C3: la recibe el central delantero
   if (celda === "F1-C3") {
     return (
       buscarCentralDelantero(rotacion) ??
@@ -240,7 +224,6 @@ function jugadorQueRecibe(
   const zonaRec = zonaRecepcion(celda);
   if (zonaRec === null) return null;
 
-  // Zona del armador
   let zonaArmador: Zona | null = null;
   for (const asig of Object.values(rotacion.posiciones)) {
     if (asig.tipo === "A") {
@@ -266,7 +249,6 @@ function jugadorQueRecibe(
       null
     );
   }
-  // rol === "PZ"
   return (
     buscarPuntaZaguero(rotacion) ??
     buscarLiberoActivo(rotacion) ??
@@ -296,17 +278,19 @@ export function clasificarLinea(
   }
 
   // ---------- 1. PRIMERA LÍNEA = SAQUE ----------
+  // Saque propio → pide popup. Saque rival → NO se valora, sin popup.
   if (n === 0) {
     const esRival = ladoDeCelda(linea.origen.celda) === "rival";
     return {
       tipo: "saque",
       esRival,
       jugadorId: esRival ? null : jugadorQueSaca(estado.rotacion),
-      popup: "saque",
+      popup: esRival ? null : "saque",
     };
   }
 
   // ---------- 2. SEGUNDA LÍNEA = RECEPCIÓN ----------
+  // Recepción propia → pide popup. Recepción rival → NO se valora, sin popup.
   if (n === 1 && ultima!.tipo === "saque") {
     const esRival = !ultima!.esRival;
     return {
@@ -315,7 +299,7 @@ export function clasificarLinea(
       jugadorId: esRival
         ? null
         : jugadorQueRecibe(linea.origen, estado.rotacion, estado.situacion),
-      popup: null,
+      popup: esRival ? null : "recepcion",
     };
   }
 
@@ -326,7 +310,6 @@ export function clasificarLinea(
   const ladoO = ladoDeCelda(linea.origen.celda);
   const ladoD = ladoDeCelda(linea.destino.celda);
 
-  // ---------- CASO: origen en zona de bloqueo → DEFENSA ----------
   if (esBloqueo(linea.origen.celda)) {
     return {
       tipo: "defensa",
@@ -336,7 +319,6 @@ export function clasificarLinea(
     };
   }
 
-  // Última fue ARMADO → ATAQUE
   if (ultima!.tipo === "armado") {
     const esRival = ultima!.esRival;
     const jugadorId = esRival
@@ -354,7 +336,6 @@ export function clasificarLinea(
     };
   }
 
-  // Última fue DEFENSA → ARMADO
   if (ultima!.tipo === "defensa") {
     return {
       tipo: "armado",
@@ -364,7 +345,6 @@ export function clasificarLinea(
     };
   }
 
-  // Última fue RECEPCIÓN → ARMADO
   if (ultima!.tipo === "recepcion") {
     return {
       tipo: "armado",
@@ -374,9 +354,7 @@ export function clasificarLinea(
     };
   }
 
-  // Última fue ATAQUE → DEFENSA o LIBRE
   if (ultima!.tipo === "ataque") {
-    // Si viene del lado opuesto y cae en mi cancha → DEFENSA mía
     if (
       ultima!.esRival &&
       (ladoD === "propio" || esFuera(linea.destino.celda))
@@ -389,7 +367,6 @@ export function clasificarLinea(
       };
     }
 
-    // Si es mi ataque y cae en cancha rival → defensa rival (no se evalúa)
     if (!ultima!.esRival && ladoD === "rival") {
       return {
         tipo: "defensa",
@@ -399,7 +376,6 @@ export function clasificarLinea(
       };
     }
 
-    // Si es mi ataque y cae en mi propia cancha → rebote
     return {
       tipo: "libre",
       esRival: ultima!.esRival,
@@ -408,7 +384,6 @@ export function clasificarLinea(
     };
   }
 
-  // Última fue BLOQUEO → DEFENSA o fin del punto
   if (ultima!.tipo === "bloqueo") {
     if (ladoD === "propio" || esFuera(linea.destino.celda)) {
       return {
@@ -428,7 +403,6 @@ export function clasificarLinea(
     }
   }
 
-  // Última fue LIBRE → ARMADO del otro lado o ATAQUE
   if (ultima!.tipo === "libre") {
     if (ladoO === "propio" && ladoD === "rival") {
       return {
@@ -450,7 +424,6 @@ export function clasificarLinea(
         popup: null,
       };
     }
-    // Mismo lado → armado
     return {
       tipo: "armado",
       esRival: ultima!.esRival,
@@ -459,7 +432,6 @@ export function clasificarLinea(
     };
   }
 
-  // ---------- FALLBACK ----------
   return {
     tipo: "libre",
     esRival: ultima!.esRival,
@@ -484,13 +456,50 @@ export function ganadorDelPunto(
 
   const ladoDestino = ladoDeCelda(ultima.destino.celda);
 
-  // Si cae en cancha rival → ganó propio
   if (ladoDestino === "rival") return "propio";
-  // Si cae en cancha propia → ganó rival
   if (ladoDestino === "propio") return "rival";
-  // Fuera: depende de qué lado
   if (ultima.destino.celda.startsWith("FUERA-ARR")) return "propio";
   if (ultima.destino.celda.startsWith("FUERA-ABA")) return "rival";
 
   return null;
+}
+
+// ============================================================
+// CÁLCULO DE SUBTIPOS DE ATAQUE
+// ============================================================
+// Reglas:
+//  - El ÚLTIMO ataque propio, si es la última acción visible del
+//    punto, se marca "punto" (ganamos) o "error" (perdimos).
+//  - Cualquier otro ataque propio → "neutro".
+//  - Ataques rivales nunca se valoran.
+// ============================================================
+
+export function calcularSubtiposAtaque(
+  lineas: LineaClasificada[],
+  ganador: Lado
+): LineaClasificada[] {
+  const idxAtaques: number[] = [];
+  lineas.forEach((l, i) => {
+    if (l.tipo === "ataque" && !l.esRival) idxAtaques.push(i);
+  });
+  if (idxAtaques.length === 0) return lineas;
+
+  let ultimoVisible = -1;
+  for (let i = lineas.length - 1; i >= 0; i--) {
+    if (!lineas[i].oculta) {
+      ultimoVisible = i;
+      break;
+    }
+  }
+
+  const ultimoAtaque = idxAtaques[idxAtaques.length - 1];
+  const cierraElPunto = ultimoAtaque === ultimoVisible;
+
+  return lineas.map((l, i) => {
+    if (l.tipo !== "ataque" || l.esRival) return l;
+    if (i === ultimoAtaque && cierraElPunto) {
+      return { ...l, subtipo: ganador === "propio" ? "punto" : "error" };
+    }
+    return { ...l, subtipo: "neutro" };
+  });
 }
