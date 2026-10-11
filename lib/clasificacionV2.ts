@@ -108,8 +108,17 @@ export function esCanchaRival(celda: string): boolean {
   return /^F[456]-/.test(celda);
 }
 
+// ------------------------------------------------------------
+// FUERA DE CANCHA
+// ------------------------------------------------------------
+// Es "fuera" si:
+//  - arranca con "FUERA-"
+//  - es F1..F6 con columna C1 o C5 (calles laterales)
+// ------------------------------------------------------------
 export function esFuera(celda: string): boolean {
-  return celda.startsWith("FUERA-");
+  if (celda.startsWith("FUERA-")) return true;
+  if (/^F[123456]-C[15]$/.test(celda)) return true;
+  return false;
 }
 
 // ============================================================
@@ -462,7 +471,7 @@ export function ganadorDelPunto(
     return ultima.esRival ? "propio" : "rival";
   }
 
-  if (ultima.destino.celda.startsWith("FUERA-")) {
+  if (esFuera(ultima.destino.celda)) {
     return ultima.esRival ? "propio" : "rival";
   }
 
