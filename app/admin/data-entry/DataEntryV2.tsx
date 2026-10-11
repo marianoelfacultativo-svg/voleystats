@@ -209,7 +209,6 @@ export default function DataEntryV2({
   const puntoActualCerrado = !!puntosCerrados[puntoActual];
 
   // ---------- Límite de navegación ----------
-  // Máximo navegable = último cerrado + 1 (o 1 si no hay cerrados)
   const maxNavegable = useMemo(() => {
     const nums = Object.keys(puntosCerrados).map((n) => parseInt(n));
     const ultimo = nums.length > 0 ? Math.max(...nums) : 0;
@@ -530,7 +529,7 @@ export default function DataEntryV2({
     if (res.popup) {
       cola.push({ tipo: res.popup, pos, lineaId: nueva.id });
     }
-    if (estrella) {
+    if (estrella && !res.esRival) {
       cola.push({ tipo: "jugador", pos, lineaId: nueva.id });
     }
     setColaPopups(cola);

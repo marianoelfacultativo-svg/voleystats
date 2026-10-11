@@ -81,7 +81,7 @@ export function ladoDeCelda(celda: string): Lado | null {
   if (celda.startsWith("BLOQ-R-")) return "rival";
   if (celda.startsWith("FUERA-ARR-")) return "rival";
   if (celda.startsWith("FUERA-ABA-")) return "propio";
-  return null; // RED-* = neutral
+  return null;
 }
 
 export function esRed(celda: string): boolean {
@@ -309,11 +309,12 @@ export function clasificarLinea(
   const ladoD = ladoDeCelda(linea.destino.celda);
 
   if (esBloqueo(linea.origen.celda)) {
+    const esRival = ultima!.esRival;
     return {
       tipo: "defensa",
-      esRival: ultima!.esRival,
+      esRival,
       jugadorId: null,
-      popup: "defensa",
+      popup: esRival ? null : "defensa",
     };
   }
 
@@ -335,20 +336,22 @@ export function clasificarLinea(
   }
 
   if (ultima!.tipo === "defensa") {
+    const esRival = ultima!.esRival;
     return {
       tipo: "armado",
-      esRival: ultima!.esRival,
+      esRival,
       jugadorId: null,
-      popup: "armado",
+      popup: esRival ? null : "armado",
     };
   }
 
   if (ultima!.tipo === "recepcion") {
+    const esRival = ultima!.esRival;
     return {
       tipo: "armado",
-      esRival: ultima!.esRival,
+      esRival,
       jugadorId: null,
-      popup: "armado",
+      popup: esRival ? null : "armado",
     };
   }
 
@@ -374,11 +377,12 @@ export function clasificarLinea(
       };
     }
 
+    const esRival = ultima!.esRival;
     return {
       tipo: "libre",
-      esRival: ultima!.esRival,
+      esRival,
       jugadorId: null,
-      popup: "libre",
+      popup: esRival ? null : "libre",
     };
   }
 
@@ -396,7 +400,7 @@ export function clasificarLinea(
         tipo: "libre",
         esRival: true,
         jugadorId: null,
-        popup: "libre",
+        popup: null,
       };
     }
   }
@@ -422,19 +426,21 @@ export function clasificarLinea(
         popup: null,
       };
     }
+    const esRival = ultima!.esRival;
     return {
       tipo: "armado",
-      esRival: ultima!.esRival,
+      esRival,
       jugadorId: null,
-      popup: "armado",
+      popup: esRival ? null : "armado",
     };
   }
 
+  const esRival = ultima!.esRival;
   return {
     tipo: "libre",
-    esRival: ultima!.esRival,
+    esRival,
     jugadorId: null,
-    popup: "libre",
+    popup: esRival ? null : "libre",
   };
 }
 
@@ -455,7 +461,6 @@ export function ganadorDelPunto(
     return ultima.esRival ? "propio" : "rival";
   }
 
-  // FUERA: gana el contrario del que tiró la última pelota
   if (ultima.destino.celda.startsWith("FUERA-")) {
     return ultima.esRival ? "propio" : "rival";
   }
