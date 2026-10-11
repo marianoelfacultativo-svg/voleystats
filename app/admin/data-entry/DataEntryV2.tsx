@@ -274,6 +274,26 @@ export default function DataEntryV2({
   }, [puntosCerrados]);
 
   // ============================================================
+  // SECUENCIA (calculada en vivo con subtipos aplicados)
+  // ============================================================
+
+  const secuenciaConValores = useMemo(() => {
+    const conSaque = calcularSubtiposSaque(lineas);
+    const ganadorActual = ganadorDelPunto(conSaque);
+    const conAtaque = ganadorActual
+      ? calcularSubtiposAtaque(conSaque, ganadorActual)
+      : conSaque;
+    return conAtaque.filter((l) => !l.oculta);
+  }, [lineas]);
+
+  const nombreDeJugador = (id: string | null): string => {
+    if (!id) return "—";
+    const j = jugadores.find((x) => x.id === id);
+    if (!j) return "?";
+    return j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
+  };
+
+  // ============================================================
   // CARGAR PUNTO (desde cerrados o derivar nuevo)
   // ============================================================
 
@@ -713,8 +733,7 @@ export default function DataEntryV2({
   };
 
   const handleSaqueConfirmar = (_v: ValorSaque) => {
-    // El saque ya no se valora con popup — se calcula automáticamente al guardar.
-    // Este handler queda por si en el futuro se quiere reactivar el popup.
+    // Saque ya no se valora con popup — auto al guardar.
     popupSiguiente();
   };
 
@@ -1063,33 +1082,61 @@ export default function DataEntryV2({
                 <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">
                   Secuencia
                 </p>
-                <ol className="text-[11px] text-slate-700 space-y-0.5">
-                  {lineas
-                    .filter((l) => !l.oculta)
-                    .map((l, i) => (
-                      <li key={l.id} className="flex items-center gap-1">
-                        <span className="w-4 text-slate-400 font-mono">
-                          {i + 1}.
-                        </span>
-                        <span className="font-medium">{l.tipo}</span>
-                        {l.desvios && l.desvios.length > 0 && (
-                          <span className="text-orange-600 text-[10px]">
-                            ({l.desvios.length} desvío
-                            {l.desvios.length !== 1 ? "s" : ""})
-                          </span>
-                        )}
-                        {l.subtipo !== undefined && l.subtipo !== null && (
-                          <span className="text-slate-400">
-                            ({String(l.subtipo)})
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  {lineas.filter((l) => !l.oculta).length === 0 && (
+                <ol className="text-[11px] text-slate-700 space-y-1.5">
+                  {secuenciaConValores.length === 0 && (
                     <li className="text-slate-400 italic text-[10px]">
                       (sin acciones)
                     </li>
                   )}
+                  {secuenciaConValores.map((l, i) => {
+                    const coord = `${l.origen.celda}${
+                      l.origen.mini ? `-${l.origen.mini}` : ""
+                    } → ${l.destino.celda}${
+                      l.destino.mini ? `-${l.destino.mini}` : ""
+                    }`;
+                    const val =
+                      l.subtipo !== undefined && l.subtipo !== null
+                        ? String(l.subtipo)
+                        : "";
+                    return (
+                      <li
+                        key={l.id}
+                        className="border-l-2 border-slate-300 pl-2"
+                      >
+                        <div className="font-semibold text-slate-800 flex items-center gap-1 flex-wrap">
+                          <span>{i + 1}.</span>
+                          <span>{l.tipo}</span>
+                          {val && (
+                            <span className="text-emerald-700 bg-emerald-50 px-1 rounded text-[10px] font-bold uppercase">
+                              {val}
+                            </span>
+                          )}
+                          {l.esRival && (
+                            <span className="text-[9px] text-slate-400 italic">
+                              (rival)
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-600 truncate">
+                          👤{" "}
+                          {l.jugadorId
+                            ? nombreDeJugador(l.jugadorId)
+                            : l.esRival
+                            ? "—"
+                            : "(sin asignar)"}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono truncate">
+                          {coord}
+                        </div>
+                        {l.desvios && l.desvios.length > 0 && (
+                          <div className="text-[10px] text-orange-600">
+                            ↳ {l.desvios.length} desvío
+                            {l.desvios.length !== 1 ? "s" : ""}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ol>
               </div>
             </div>
