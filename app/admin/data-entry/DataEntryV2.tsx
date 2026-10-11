@@ -34,6 +34,7 @@ import {
 } from "@/lib/rotaciones";
 import {
   calcularSubtiposAtaque,
+  calcularSubtiposSaque,
   clasificarLinea,
   esCanchaPropia,
   esCanchaRival,
@@ -669,7 +670,13 @@ export default function DataEntryV2({
         posiciones_punto: pc.posicionesPunto,
       };
 
-      const lineasConSubtipo = calcularSubtiposAtaque(pc.lineas, pc.ganador);
+      // 1) Subtipos de saque automáticos
+      const lineasConSaque = calcularSubtiposSaque(pc.lineas);
+      // 2) Subtipos de ataque (punto/error/neutro)
+      const lineasConSubtipo = calcularSubtiposAtaque(
+        lineasConSaque,
+        pc.ganador
+      );
       const acciones = lineasConSubtipo.map((l, i) => aAccionV2(l, i + 1));
 
       const res = await guardarPuntoV2(partidoId, puntoData, acciones);
@@ -705,8 +712,9 @@ export default function DataEntryV2({
     );
   };
 
-  const handleSaqueConfirmar = (v: ValorSaque) => {
-    actualizarLineaPopup({ subtipo: v });
+  const handleSaqueConfirmar = (_v: ValorSaque) => {
+    // El saque ya no se valora con popup — se calcula automáticamente al guardar.
+    // Este handler queda por si en el futuro se quiere reactivar el popup.
     popupSiguiente();
   };
 

@@ -278,13 +278,14 @@ export function clasificarLinea(
   }
 
   // ---------- 1. PRIMERA LÍNEA = SAQUE ----------
+  // Ya NO tiene popup: el subtipo se calcula automáticamente al guardar.
   if (n === 0) {
     const esRival = ladoDeCelda(linea.origen.celda) === "rival";
     return {
       tipo: "saque",
       esRival,
       jugadorId: esRival ? null : jugadorQueSaca(estado.rotacion),
-      popup: esRival ? null : "saque",
+      popup: null,
     };
   }
 
@@ -505,4 +506,135 @@ export function calcularSubtiposAtaque(
     }
     return { ...l, subtipo: "neutro" };
   });
+}
+
+// ============================================================
+// CÁLCULO DE SUBTIPOS DE SAQUE (automático)
+// ============================================================
+// Reglas del usuario:
+//
+// SIN recepción rival (la pelota no fue tocada por el rival):
+//   - Cae dentro de cancha rival (F4/F5/F6-C2/C3/C4) → "ace"
+//   - Cualquier otro destino → "negativo"
+//
+// CON recepción rival (el rival la tocó):
+//   - FUERA-ARR (fuera largo rival)              → positivo_mas
+//   - F4/F5/F6-C1/C5 (fuera ancho rival)         → positivo_mas
+//   - F6-C2/C3/C4 (fondo rival)                  → positivo_mas
+//   - F1/F2/F3-C2/C3/C4 (cancha propia centro)   → positivo_mas
+//   - BLOQ-P-*                                   → positivo_mas
+//   - F4-C3                                      → neutro
+//   - RED-* / FUERA-ABA / F1/F2/F3-C1/C5 / BLOQ-R → ace
+//   - F5-C2/C3/C4 / F4-C2 / F4-C4                → positivo
+//
+// DESVÍO en bloqueo rival (saque golpea BLOQ-R y sigue):
+//   - Si el destino final es FUERA-* → negativo
+//   - Si no → aplicar reglas "sin recepción" al destino final
+
+function valorarSaqueSinRecepcion(destino: string): string {
+  // Solo ace si cae dentro de cancha rival
+  if (
+    destino.startsWith("F4-") ||
+    destino.startsWith("F5-") ||
+    destino.startsWith("F6-")
+  ) {
+    const col = destino.split("-")[1];
+    if (col === "C2" || col === "C3" || col === "C4") return "ace";
+  }
+  return "negativo";
+}
+
+function valorarSaqueConRecepcion(destino: string): string {
+  // Fuera de cancha
+  if (destino.startsWith("FUERA-ARR-")) return "positivo_mas";
+  if (destino.startsWith("FUERA-ABA-")) return "ace";
+
+  // Red / bloqueos
+  if (destino.startsWith("RED-")) return "ace";
+  if (destino.startsWith("BLOQ-R-")) return "ace";
+  if (destino.startsWith("BLOQ-P-")) return "positivo_mas";
+
+  // Cancha propia
+  if (
+    destino.startsWith("F1-") ||
+    destino.startsWith("F2-") ||
+    destino.startsWith("F3-")
+  ) {
+    const col = destino.split("-")[1];
+    if (col === "C2" || col === "C3" || col === "C4") return "positivo_mas";
+    return "ace";
+  }
+
+  // Cancha rival
+  if (
+    destino.startsWith("F4-") ||
+    destino.startsWith("F5-") ||
+    destino.startsWith("F6-")
+  ) {
+    const [fila, col] = destino.split("-");
+    if (col === "C1" || col === "C5") return "positivo_mas";
+    if (fila === "F6") return "positivo_mas";
+    if (fila === "F5") return "positivo";
+    if (fila === "F4") {
+      if (col === "C3") return "neutro";
+      return "positivo"; // C2, C4
+    }
+  }
+
+  return "positivo"; // fallback
+}
+
+export function calcularSubtiposSaque(
+  lineas: LineaClasificada[]
+): LineaClasificada[] {
+  const idxSaque = lineas.findIndex(
+    (l) => l.tipo === "saque" && !l.esRival
+  );
+  if (idxSaque === -1) return lineas;
+
+  const saque = lineas[idxSaque];
+  const destinoSaque = saque.destino.celda;
+
+  // ¿Hay desvío por bloqueo rival? (dentro de la misma línea)
+  const desvios = saque.desvios ?? [];
+  const tieneDesvioBloqueo = desvios.some((d) =>
+    d.celda.startsWith("BLOQ-R-")
+  );
+
+  let subtipo: string;
+
+  if (destinoSaque.startsWith("BLOQ-R-") && !tieneDesvioBloqueo) {
+    // El saque terminó sobre el bloqueo rival. Buscar la línea que sale del bloqueo.
+    const siguiente = lineas[idxSaque + 1];
+    if (siguiente && siguiente.origen.celda === destinoSaque) {
+      const destinoFinal = siguiente.destino.celda;
+      if (destinoFinal.startsWith("FUERA-")) {
+        subtipo = "negativo";
+      } else {
+        subtipo = valorarSaqueSinRecepcion(destinoFinal);
+      }
+    } else {
+      // Quedó en el bloqueo → error
+      subtipo = "negativo";
+    }
+  } else if (tieneDesvioBloqueo) {
+    // Hubo desvío por bloqueo rival en el medio. Evaluar el destino final.
+    if (destinoSaque.startsWith("FUERA-")) {
+      subtipo = "negativo";
+    } else {
+      subtipo = valorarSaqueSinRecepcion(destinoSaque);
+    }
+  } else {
+    // ¿Hay recepción rival?
+    const siguiente = lineas[idxSaque + 1];
+    if (siguiente && siguiente.tipo === "recepcion" && siguiente.esRival) {
+      subtipo = valorarSaqueConRecepcion(siguiente.destino.celda);
+    } else {
+      subtipo = valorarSaqueSinRecepcion(destinoSaque);
+    }
+  }
+
+  return lineas.map((l, i) =>
+    i === idxSaque ? { ...l, subtipo } : l
+  );
 }
