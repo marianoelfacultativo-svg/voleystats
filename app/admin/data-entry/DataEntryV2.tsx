@@ -590,7 +590,13 @@ export default function DataEntryV2({
       lineas,
     };
 
-    const res = clasificarLinea(estado, { origen, destino });
+    // ⬇️ FIX: le pasamos los desvíos pendientes a clasificarLinea.
+    const res = clasificarLinea(estado, {
+      origen,
+      destino,
+      desvios:
+        desviosPendientes.length > 0 ? [...desviosPendientes] : undefined,
+    });
 
     const nueva: LineaClasificada = {
       id: `l-${contadorId}`,
@@ -1161,11 +1167,25 @@ export default function DataEntryV2({
                     </li>
                   )}
                   {secuenciaConValores.map((l, i) => {
-                    const coord = `${l.origen.celda}${
-                      l.origen.mini ? `-${l.origen.mini}` : ""
-                    } → ${l.destino.celda}${
-                      l.destino.mini ? `-${l.destino.mini}` : ""
-                    }`;
+                    // ⬇️ FIX: coordenada con desvíos intercalados.
+                    const partes: string[] = [];
+                    partes.push(
+                      `${l.origen.celda}${
+                        l.origen.mini ? `-${l.origen.mini}` : ""
+                      }`
+                    );
+                    for (const d of l.desvios ?? []) {
+                      partes.push(
+                        `${d.celda}${d.mini ? `-${d.mini}` : ""}`
+                      );
+                    }
+                    partes.push(
+                      `${l.destino.celda}${
+                        l.destino.mini ? `-${l.destino.mini}` : ""
+                      }`
+                    );
+                    const coord = partes.join(" → ");
+
                     const val =
                       l.subtipo !== undefined && l.subtipo !== null
                         ? String(l.subtipo)

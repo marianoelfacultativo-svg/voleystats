@@ -114,10 +114,6 @@ export function esCanchaRival(celda: string): boolean {
 // ------------------------------------------------------------
 // FUERA DE CANCHA
 // ------------------------------------------------------------
-// Es "fuera" si:
-//  - arranca con "FUERA-"
-//  - es F1..F6 con columna C1 o C5 (calles laterales)
-// ------------------------------------------------------------
 export function esFuera(celda: string): boolean {
   if (celda.startsWith("FUERA-")) return true;
   if (/^F[123456]-C[15]$/.test(celda)) return true;
@@ -149,17 +145,14 @@ function tieneDesvioBloqueoPropio(l: LineaInput | LineaClasificada): boolean {
   return (l.desvios ?? []).some((d) => d.celda.startsWith("BLOQ-P-"));
 }
 
-// Bloqueo propio sobre BLOQ-P-C2/C3/C4 (abre popup de zonas)
 export function esCeldaBloqueoPropioConPopup(celda: string): boolean {
   return /^BLOQ-P-C[234]$/.test(celda);
 }
 
-// Bloqueo propio sobre BLOQ-P-C1/C5 (se valora como red)
 export function esCeldaBloqueoPropioLateral(celda: string): boolean {
   return celda === "BLOQ-P-C1" || celda === "BLOQ-P-C5";
 }
 
-// ¿El predecesor hace que el bloqueo se valore como ataque propio?
 function bloqueoSeValoraComoAtaque(ultima: LineaClasificada): boolean {
   if (ultima.tipo === "defensa" && ultima.esRival) return true;
   if (
@@ -168,6 +161,28 @@ function bloqueoSeValoraComoAtaque(ultima: LineaClasificada): boolean {
     ultima.subtipo !== "T"
   )
     return true;
+  return false;
+}
+
+// ------------------------------------------------------------
+// ¿La línea cruzó la red?
+// ------------------------------------------------------------
+// Una línea "pasó la red" si:
+//  - tiene desvío en un bloqueo (BLOQ-P-* o BLOQ-R-*), porque la
+//    pelota tocó la red aunque vuelva al mismo lado, o
+//  - el origen y el destino están en lados opuestos.
+// ------------------------------------------------------------
+export function pasoLaRed(l: LineaClasificada): boolean {
+  if (
+    (l.desvios ?? []).some(
+      (d) => d.celda.startsWith("BLOQ-P-") || d.celda.startsWith("BLOQ-R-")
+    )
+  ) {
+    return true;
+  }
+  const ladoO = ladoDeCelda(l.origen.celda);
+  const ladoD = ladoDeCelda(l.destino.celda);
+  if (ladoO && ladoD && ladoO !== ladoD) return true;
   return false;
 }
 
@@ -368,6 +383,8 @@ export function clasificarLinea(
   const ladoD = ladoDeCelda(linea.destino.celda);
 
   // ---------- BLOQUEO PROPIO (desvío en BLOQ-P-*) ----------
+  // Esta línea EN SÍ es un bloqueo propio. Va primero porque la
+  // línea actual "es" el bloqueo, no un reinicio.
   if (tieneDesvioBloqueoPropio(linea) && ultima) {
     const comoAtaque = bloqueoSeValoraComoAtaque(ultima);
     const primerJugador =
@@ -381,6 +398,38 @@ export function clasificarLinea(
     };
   }
 
+  // ---------- REINICIO POR CRUCE DE RED ----------
+  // Si la última línea cruzó la red (por destino o por desvío en
+  // bloqueo), la próxima acción del lado receptor es DEFENSA.
+  // Excepción: ataque propio con desvío BLOQ-R-* que cae en cancha
+  // propia → defensa con subtipo "cobertura".
+  if (ultima && pasoLaRed(ultima)) {
+    if (
+      ultima.tipo === "ataque" &&
+      !ultima.esRival &&
+      tieneDesvioBloqueoRival(ultima) &&
+      ladoDeCelda(ultima.destino.celda) === "propio"
+    ) {
+      return {
+        tipo: "defensa",
+        esRival: false,
+        jugadorId: null,
+        popup: "jugador",
+        subtipoFijo: "cobertura",
+      };
+    }
+
+    const ladoReceptor = ladoDeCelda(ultima.destino.celda);
+    const esRival = ladoReceptor === "rival";
+    return {
+      tipo: "defensa",
+      esRival,
+      jugadorId: null,
+      popup: esRival ? null : "defensa",
+    };
+  }
+
+  // ---------- ORIGEN EN BLOQUEO ----------
   if (esBloqueo(linea.origen.celda)) {
     const esRival = ultima!.esRival;
     return {
@@ -391,6 +440,7 @@ export function clasificarLinea(
     };
   }
 
+  // ---------- CADENA NORMAL ----------
   if (ultima!.tipo === "armado") {
     const esRival = ultima!.esRival;
     const jugadorId = esRival
@@ -429,38 +479,8 @@ export function clasificarLinea(
   }
 
   if (ultima!.tipo === "ataque") {
-    // Ataque propio con desvío en BLOQ-R → siguiente acción = cobertura
-    if (!ultima!.esRival && tieneDesvioBloqueoRival(ultima!)) {
-      return {
-        tipo: "defensa",
-        esRival: false,
-        jugadorId: null,
-        popup: "jugador",
-        subtipoFijo: "cobertura",
-      };
-    }
-
-    if (
-      ultima!.esRival &&
-      (ladoD === "propio" || esFuera(linea.destino.celda))
-    ) {
-      return {
-        tipo: "defensa",
-        esRival: false,
-        jugadorId: null,
-        popup: "defensa",
-      };
-    }
-
-    if (!ultima!.esRival && ladoD === "rival") {
-      return {
-        tipo: "defensa",
-        esRival: true,
-        jugadorId: null,
-        popup: null,
-      };
-    }
-
+    // Nota: los casos "cruzó a cancha propia/rival" ya fueron
+    // manejados arriba por el reinicio por cruce de red.
     const esRival = ultima!.esRival;
     return {
       tipo: "libre",
@@ -471,22 +491,13 @@ export function clasificarLinea(
   }
 
   if (ultima!.tipo === "bloqueo") {
-    if (ladoD === "propio" || esFuera(linea.destino.celda)) {
-      return {
-        tipo: "defensa",
-        esRival: false,
-        jugadorId: null,
-        popup: "defensa",
-      };
-    }
-    if (ladoD === "rival") {
-      return {
-        tipo: "libre",
-        esRival: true,
-        jugadorId: null,
-        popup: null,
-      };
-    }
+    const esRival = ultima!.esRival;
+    return {
+      tipo: "libre",
+      esRival,
+      jugadorId: null,
+      popup: esRival ? null : "libre",
+    };
   }
 
   if (ultima!.tipo === "libre") {
@@ -543,7 +554,6 @@ export function ganadorDelPunto(
   }
 
   if (esFuera(ultima.destino.celda)) {
-    // Ataque propio con desvío en BLOQ-R que sale afuera → punto propio
     if (
       ultima.tipo === "ataque" &&
       !ultima.esRival &&
@@ -589,7 +599,7 @@ export function calcularSubtiposAtaque(
 
   return lineas.map((l, i) => {
     if (l.tipo !== "ataque" || l.esRival) return l;
-    if (l.subtipo && l.subtipo !== null) return l; // subtipoFijo (cobertura)
+    if (l.subtipo && l.subtipo !== null) return l;
     if (i === ultimoAtaque && cierraElPunto) {
       return { ...l, subtipo: ganador === "propio" ? "punto" : "error" };
     }
@@ -600,14 +610,6 @@ export function calcularSubtiposAtaque(
 // ============================================================
 // SUBTIPOS DE BLOQUEO PROPIO (automático)
 // ============================================================
-// Reglas:
-//   Cancha rival (F4/F5/F6-C2/C3/C4) o BLOQ-R o BLOQ-P-C2/C3/C4:
-//     - Última línea visible → punto
-//     - Siguiente es libre rival → positivo_mas
-//     - Otro caso → positivo
-//   Cancha propia (F1/F2/F3-C2/C3/C4) → positivo
-//   Fuera (FUERA-* o laterales C1/C5) → use_rival
-//   Red (RED-* o BLOQ-P-C1/C5) → filtrada
 
 function valorarBloqueoBase(
   destino: string,
