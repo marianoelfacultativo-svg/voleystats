@@ -7,7 +7,11 @@ import CanchaV2, {
   type Orientacion,
 } from "./CanchaV2";
 import LineasV2, { type PuntoV2, type LineaV2 } from "./LineasV2";
-import PanelRotacionV2, { type CambioPendiente } from "./PanelRotacionV2";
+import PanelRotacionV2, {
+  type CambioPendiente,
+  type RecepcionOverrides,
+  type ZonaRecepcion,
+} from "./PanelRotacionV2";
 import {
   PopupArmado,
   PopupBloqueo,
@@ -83,6 +87,7 @@ interface PuntoCerrado {
   liberos: Libero[];
   posicionesPunto: Record<Zona, string>;
   cambios: CambioPendiente[];
+  recepcionOverrides: RecepcionOverrides;
 }
 
 interface Props {
@@ -95,6 +100,7 @@ interface Props {
 }
 
 const CLAVE_V2 = "voleystats_dataentry_v2_";
+const CLAVE_RECEPCION_FIJOS = "voleystats_recepcion_fijos_";
 
 const POSICIONES_VACIAS: Record<Zona, string> = {
   1: "",
@@ -157,7 +163,6 @@ function aAccionV2(
   };
 }
 
-// Expande bloqueos con doble desvío en N acciones consecutivas.
 function lineasAAcciones(lineas: LineaClasificada[]): AccionV2Data[] {
   const acciones: AccionV2Data[] = [];
   let orden = 1;
@@ -204,6 +209,122 @@ function maxIdLineas(lineas: LineaClasificada[]): number {
   return max;
 }
 
+// ------------------------------------------------------------
+// Cálculo de receptores por defecto desde la rotación
+// ------------------------------------------------------------
+// Misma tabla que clasificacionV2.ts. Se usa para inicializar
+// los dropdowns del modal 📋 Posición.
+// ------------------------------------------------------------
+
+function zonaRecepcionDeCelda(celda: string): ZonaRecepcion | null {
+  if (!/^F[123]-/.test(celda)) return null;
+  const col = celda.split("-")[1];
+  if (col === "C1" || col === "C2") return 5;
+  if (col === "C3") return 6;
+  if (col === "C4" || col === "C5") return 1;
+  return null;
+}
+
+const TABLA_RECEPCION_DEFAULT: Record<
+  Zona,
+  { z1: "PD" | "PZ" | "L"; z6: "PD" | "PZ" | "L"; z5: "PD" | "PZ" | "L" }
+> = {
+  1: { z1: "PD", z6: "L", z5: "PZ" },
+  2: { z1: "L", z6: "PZ", z5: "PD" },
+  3: { z1: "PZ", z6: "L", z5: "PD" },
+  4: { z1: "L", z6: "PZ", z5: "PD" },
+  5: { z1: "L", z6: "PZ", z5: "PD" },
+  6: { z1: "PZ", z6: "L", z5: "PD" },
+};
+
+function buscarPunta(
+  rot: RotacionPunto,
+  ubicacion: "delantera" | "trasera"
+): string | null {
+  const zonasDel = [2, 3, 4];
+  const zonasTra = [1, 5, 6];
+  const zonas = ubicacion === "delantera" ? zonasDel : zonasTra;
+  for (const asig of Object.values(rot.posiciones)) {
+    if (
+      (asig.tipo === "P1" || asig.tipo === "P2") &&
+      zonas.includes(asig.zona) &&
+      asig.jugador_id
+    ) {
+      return asig.jugador_id;
+    }
+  }
+  return null;
+}
+
+function buscarCentralZaguero(rot: RotacionPunto): string | null {
+  for (const asig of Object.values(rot.posiciones)) {
+    if (
+      (asig.tipo === "C1" || asig.tipo === "C2") &&
+      (asig.zona === 1 || asig.zona === 5 || asig.zona === 6) &&
+      asig.jugador_id
+    ) {
+      return asig.jugador_id;
+    }
+  }
+  return null;
+}
+
+function buscarLiberoActivo(rot: RotacionPunto): string | null {
+  const lib =
+    rot.liberos.find((l) => l.tipo === "recepcion") ??
+    (rot.liberos.length === 1 ? rot.liberos[0] : null);
+  if (lib?.jugador_id) return lib.jugador_id;
+  return buscarCentralZaguero(rot);
+}
+
+function calcularReceptoresDefault(
+  rot: RotacionPunto | null
+): Record<ZonaRecepcion, string | null> {
+  const out: Record<ZonaRecepcion, string | null> = {
+    1: null,
+    5: null,
+    6: null,
+  };
+  if (!rot) return out;
+
+  let zonaArmador: Zona | null = null;
+  for (const asig of Object.values(rot.posiciones)) {
+    if (asig.tipo === "A") {
+      zonaArmador = asig.zona;
+      break;
+    }
+  }
+  if (!zonaArmador) return out;
+
+  const fila = TABLA_RECEPCION_DEFAULT[zonaArmador];
+
+  const resolver = (
+    rol: "PD" | "PZ" | "L"
+  ): string | null => {
+    if (rol === "L") {
+      return buscarLiberoActivo(rot) ?? buscarCentralZaguero(rot) ?? null;
+    }
+    if (rol === "PD") {
+      return (
+        buscarPunta(rot, "delantera") ??
+        buscarLiberoActivo(rot) ??
+        null
+      );
+    }
+    return (
+      buscarPunta(rot, "trasera") ??
+      buscarLiberoActivo(rot) ??
+      null
+    );
+  };
+
+  out[1] = resolver(fila.z1);
+  out[6] = resolver(fila.z6);
+  out[5] = resolver(fila.z5);
+
+  return out;
+}
+
 // ============================================================
 // COMPONENTE
 // ============================================================
@@ -240,6 +361,13 @@ export default function DataEntryV2({
   const [cambiosPendientes, setCambiosPendientes] = useState<CambioPendiente[]>(
     []
   );
+
+  // ---- NUEVO: sistema de receptores ----
+  const [recepcionOverridesPunto, setRecepcionOverridesPunto] =
+    useState<RecepcionOverrides>({});
+  const [recepcionOverridesFijos, setRecepcionOverridesFijos] =
+    useState<RecepcionOverrides>({});
+  // -------------------------------------
 
   const [setActivo, setSetActivo] = useState<number>(1);
   const [orientacion, setOrientacion] = useState<Orientacion>("vertical");
@@ -295,7 +423,6 @@ export default function DataEntryV2({
     });
   }, [rotacion, posicionesPunto, cambiosPendientes, jugadores]);
 
-  // Jugadores en cada zona delantera (para popup de bloqueo)
   const delanterosPorZona: JugadorZona[] = useMemo(() => {
     if (!rotacionEfectiva) return [];
     const zonas: (4 | 3 | 2)[] = [4, 3, 2];
@@ -310,6 +437,21 @@ export default function DataEntryV2({
       };
     });
   }, [rotacionEfectiva, jugadores]);
+
+  // ---- NUEVO: receptores por defecto (desde la rotación) ----
+  const receptoresDefault = useMemo<Record<ZonaRecepcion, string | null>>(
+    () => calcularReceptoresDefault(rotacionEfectiva),
+    [rotacionEfectiva]
+  );
+
+  // Overrides efectivos: fijos pisados por los del punto actual.
+  const recepcionOverridesEfectivos = useMemo<RecepcionOverrides>(() => {
+    return {
+      ...recepcionOverridesFijos,
+      ...recepcionOverridesPunto,
+    };
+  }, [recepcionOverridesFijos, recepcionOverridesPunto]);
+  // -----------------------------------------------------------
 
   const lineasParaUI: LineaV2[] = useMemo(() => lineas.map(aLineaV2), [lineas]);
   const origenActivoParaUI: PuntoV2 | null =
@@ -370,6 +512,7 @@ export default function DataEntryV2({
       setLiberos(pc.liberos);
       setPosicionesPunto(pc.posicionesPunto);
       setCambiosPendientes(pc.cambios);
+      setRecepcionOverridesPunto(pc.recepcionOverrides ?? {});
       setContadorId(maxIdLineas(pc.lineas) + 1);
       return;
     }
@@ -398,11 +541,25 @@ export default function DataEntryV2({
       setPosicionesPunto({ ...POSICIONES_VACIAS });
       setCambiosPendientes([]);
     }
+    setRecepcionOverridesPunto({});
   };
 
   // ============================================================
   // LOCALSTORAGE
   // ============================================================
+
+  // Persistir overrides fijos por partido.
+  useEffect(() => {
+    if (!partidoId) return;
+    try {
+      localStorage.setItem(
+        CLAVE_RECEPCION_FIJOS + partidoId,
+        JSON.stringify(recepcionOverridesFijos)
+      );
+    } catch {
+      /* noop */
+    }
+  }, [partidoId, recepcionOverridesFijos]);
 
   useEffect(() => {
     if (!partidoId) return;
@@ -424,6 +581,17 @@ export default function DataEntryV2({
 
   useEffect(() => {
     if (!partidoId) return;
+
+    // Cargar overrides fijos de recepción.
+    const rawFijos = localStorage.getItem(CLAVE_RECEPCION_FIJOS + partidoId);
+    if (rawFijos) {
+      try {
+        setRecepcionOverridesFijos(JSON.parse(rawFijos));
+      } catch {
+        /* noop */
+      }
+    }
+
     const raw = localStorage.getItem(CLAVE_V2 + partidoId);
     if (!raw) return;
     try {
@@ -588,9 +756,9 @@ export default function DataEntryV2({
       situacion,
       rotacion: rotacionEfectiva,
       lineas,
+      recepcionOverrides: recepcionOverridesEfectivos,
     };
 
-    // ⬇️ FIX: le pasamos los desvíos pendientes a clasificarLinea.
     const res = clasificarLinea(estado, {
       origen,
       destino,
@@ -701,6 +869,7 @@ export default function DataEntryV2({
       liberos,
       posicionesPunto,
       cambios: cambiosPendientes,
+      recepcionOverrides: recepcionOverridesPunto,
     };
 
     const eraCerrado = puntoActualCerrado;
@@ -1037,6 +1206,11 @@ export default function DataEntryV2({
                   liberos={liberos}
                   posicionesPunto={posicionesPunto}
                   cambiosPendientes={cambiosPendientes}
+                  recepcionOverridesPunto={recepcionOverridesPunto}
+                  recepcionOverridesFijos={recepcionOverridesFijos}
+                  receptoresDefault={receptoresDefault}
+                  onSetRecepcionOverridesPunto={setRecepcionOverridesPunto}
+                  onSetRecepcionOverridesFijos={setRecepcionOverridesFijos}
                   onSetLiberos={setLiberos}
                   onSetPosicionesPunto={setPosicionesPunto}
                   onSetCambiosPendientes={setCambiosPendientes}
@@ -1148,6 +1322,11 @@ export default function DataEntryV2({
                   liberos={liberos}
                   posicionesPunto={posicionesPunto}
                   cambiosPendientes={cambiosPendientes}
+                  recepcionOverridesPunto={recepcionOverridesPunto}
+                  recepcionOverridesFijos={recepcionOverridesFijos}
+                  receptoresDefault={receptoresDefault}
+                  onSetRecepcionOverridesPunto={setRecepcionOverridesPunto}
+                  onSetRecepcionOverridesFijos={setRecepcionOverridesFijos}
                   onSetLiberos={setLiberos}
                   onSetPosicionesPunto={setPosicionesPunto}
                   onSetCambiosPendientes={setCambiosPendientes}
@@ -1167,7 +1346,6 @@ export default function DataEntryV2({
                     </li>
                   )}
                   {secuenciaConValores.map((l, i) => {
-                    // ⬇️ FIX: coordenada con desvíos intercalados.
                     const partes: string[] = [];
                     partes.push(
                       `${l.origen.celda}${

@@ -61,6 +61,9 @@ export interface EstadoClasificacion {
   situacion: Situacion;
   rotacion: RotacionPunto;
   lineas: LineaClasificada[];
+  // Overrides de quién recibe en cada zona (5, 6, 1).
+  // Si el usuario asignó manualmente un receptor, va acá.
+  recepcionOverrides?: Partial<Record<Zona, string | null>>;
 }
 
 export interface ResultadoClasificacion {
@@ -166,11 +169,6 @@ function bloqueoSeValoraComoAtaque(ultima: LineaClasificada): boolean {
 
 // ------------------------------------------------------------
 // ¿La línea cruzó la red?
-// ------------------------------------------------------------
-// Una línea "pasó la red" si:
-//  - tiene desvío en un bloqueo (BLOQ-P-* o BLOQ-R-*), porque la
-//    pelota tocó la red aunque vuelva al mismo lado, o
-//  - el origen y el destino están en lados opuestos.
 // ------------------------------------------------------------
 export function pasoLaRed(l: LineaClasificada): boolean {
   if (
@@ -283,21 +281,20 @@ const TABLA_RECEPCION: Record<
 function jugadorQueRecibe(
   origen: PuntoV2,
   rotacion: RotacionPunto,
-  _situacion: Situacion
+  _situacion: Situacion,
+  overrides?: Partial<Record<Zona, string | null>>
 ): string | null {
   const celda = origen.celda;
-
-  if (celda === "F1-C3") {
-    return (
-      buscarCentralDelantero(rotacion) ??
-      buscarLiberoActivo(rotacion) ??
-      null
-    );
-  }
 
   const zonaRec = zonaRecepcion(celda);
   if (zonaRec === null) return null;
 
+  // Override manual (por punto o fijo): el usuario manda.
+  if (overrides && zonaRec in overrides) {
+    return overrides[zonaRec] ?? null;
+  }
+
+  // Resolución por tabla según la zona del armador.
   let zonaArmador: Zona | null = null;
   for (const asig of Object.values(rotacion.posiciones)) {
     if (asig.tipo === "A") {
@@ -370,7 +367,12 @@ export function clasificarLinea(
       esRival,
       jugadorId: esRival
         ? null
-        : jugadorQueRecibe(linea.origen, estado.rotacion, estado.situacion),
+        : jugadorQueRecibe(
+            linea.origen,
+            estado.rotacion,
+            estado.situacion,
+            estado.recepcionOverrides
+          ),
       popup: esRival ? null : "recepcion",
     };
   }
@@ -383,8 +385,6 @@ export function clasificarLinea(
   const ladoD = ladoDeCelda(linea.destino.celda);
 
   // ---------- BLOQUEO PROPIO (desvío en BLOQ-P-*) ----------
-  // Esta línea EN SÍ es un bloqueo propio. Va primero porque la
-  // línea actual "es" el bloqueo, no un reinicio.
   if (tieneDesvioBloqueoPropio(linea) && ultima) {
     const comoAtaque = bloqueoSeValoraComoAtaque(ultima);
     const primerJugador =
@@ -399,10 +399,6 @@ export function clasificarLinea(
   }
 
   // ---------- REINICIO POR CRUCE DE RED ----------
-  // Si la última línea cruzó la red (por destino o por desvío en
-  // bloqueo), la próxima acción del lado receptor es DEFENSA.
-  // Excepción: ataque propio con desvío BLOQ-R-* que cae en cancha
-  // propia → defensa con subtipo "cobertura".
   if (ultima && pasoLaRed(ultima)) {
     if (
       ultima.tipo === "ataque" &&
@@ -479,8 +475,6 @@ export function clasificarLinea(
   }
 
   if (ultima!.tipo === "ataque") {
-    // Nota: los casos "cruzó a cancha propia/rival" ya fueron
-    // manejados arriba por el reinicio por cruce de red.
     const esRival = ultima!.esRival;
     return {
       tipo: "libre",

@@ -25,6 +25,11 @@ export interface CambioPendiente {
   jugadorEntra: string;
 }
 
+export type ZonaRecepcion = 1 | 5 | 6;
+export type RecepcionOverrides = Partial<
+  Record<ZonaRecepcion, string | null>
+>;
+
 interface Props {
   rotacion: RotacionPunto;
   jugadoresEnCancha: Jugador[];
@@ -32,6 +37,15 @@ interface Props {
   liberos: Libero[];
   posicionesPunto: Record<Zona, string>;
   cambiosPendientes: CambioPendiente[];
+
+  // ---- NUEVO: sistema de receptores ----
+  recepcionOverridesPunto: RecepcionOverrides;
+  recepcionOverridesFijos: RecepcionOverrides;
+  receptoresDefault: Record<ZonaRecepcion, string | null>;
+  onSetRecepcionOverridesPunto: (o: RecepcionOverrides) => void;
+  onSetRecepcionOverridesFijos: (o: RecepcionOverrides) => void;
+  // -------------------------------------
+
   onSetLiberos: (liberos: Libero[]) => void;
   onSetPosicionesPunto: (pos: Record<Zona, string>) => void;
   onSetCambiosPendientes: (cambios: CambioPendiente[]) => void;
@@ -74,6 +88,11 @@ export default function PanelRotacionV2({
   liberos,
   posicionesPunto,
   cambiosPendientes,
+  recepcionOverridesPunto,
+  recepcionOverridesFijos,
+  receptoresDefault,
+  onSetRecepcionOverridesPunto,
+  onSetRecepcionOverridesFijos,
   onSetLiberos,
   onSetPosicionesPunto,
   onSetCambiosPendientes,
@@ -95,8 +114,6 @@ export default function PanelRotacionV2({
     return partes.length > 1 ? partes[0] : j.nombre.slice(0, 8);
   };
 
-  // Jugadores efectivos por zona (aplicando cambios pendientes).
-  // Primero mira los cambios pendientes, después la rotación base.
   const jugadorEnZona = (zona: Zona): string | null => {
     const pend = cambiosPendientes.find((c) => c.zona === zona);
     if (pend) return pend.jugadorEntra;
@@ -108,7 +125,6 @@ export default function PanelRotacionV2({
     return base?.rol ?? "?";
   };
 
-  // ¿Hay cambios pendientes sin guardar?
   const hayCambios = cambiosPendientes.length > 0;
 
   const handleAplicarCambio = (jugadorNuevo: Jugador) => {
@@ -116,7 +132,6 @@ export default function PanelRotacionV2({
     const zona = modalCambio;
     const jugadorViejo = jugadorEnZona(zona) ?? "";
 
-    // Sacar cualquier cambio previo para esa zona y reemplazarlo
     const sinPrev = cambiosPendientes.filter((c) => c.zona !== zona);
     onSetCambiosPendientes([
       ...sinPrev,
@@ -236,7 +251,7 @@ export default function PanelRotacionV2({
         ))}
       </div>
 
-      {/* Footer con cambios pendientes y botón de guardar */}
+      {/* Footer */}
       <div className="mt-2 pt-2 border-t border-slate-200 flex items-center justify-between gap-1">
         <div className="text-[9px] text-slate-500">
           {hayCambios ? (
@@ -293,9 +308,16 @@ export default function PanelRotacionV2({
         <ModalPosicion
           posicionesPunto={posicionesPunto}
           jugadoresEnCancha={jugadoresEnCancha}
+          jugadoresDisponibles={jugadoresDisponibles}
           jugadorEnZona={jugadorEnZona}
           onSetPosicionesPunto={onSetPosicionesPunto}
           onCerrar={() => setModalPosicion(false)}
+          esRecepcion={rotacion.saque_equipo === "rival"}
+          recepcionOverridesPunto={recepcionOverridesPunto}
+          recepcionOverridesFijos={recepcionOverridesFijos}
+          receptoresDefault={receptoresDefault}
+          onSetRecepcionOverridesPunto={onSetRecepcionOverridesPunto}
+          onSetRecepcionOverridesFijos={onSetRecepcionOverridesFijos}
         />
       )}
 
@@ -460,21 +482,35 @@ function ModalCambio({
 }
 
 // ============================================================
-// MODAL: POSICIÓN DEL PUNTO
+// MODAL: POSICIÓN DEL PUNTO (con sección de recepción)
 // ============================================================
 
 function ModalPosicion({
   posicionesPunto,
   jugadoresEnCancha,
+  jugadoresDisponibles,
   jugadorEnZona,
   onSetPosicionesPunto,
   onCerrar,
+  esRecepcion,
+  recepcionOverridesPunto,
+  recepcionOverridesFijos,
+  receptoresDefault,
+  onSetRecepcionOverridesPunto,
+  onSetRecepcionOverridesFijos,
 }: {
   posicionesPunto: Record<Zona, string>;
   jugadoresEnCancha: Jugador[];
+  jugadoresDisponibles: Jugador[];
   jugadorEnZona: (z: Zona) => string | null;
   onSetPosicionesPunto: (p: Record<Zona, string>) => void;
   onCerrar: () => void;
+  esRecepcion: boolean;
+  recepcionOverridesPunto: RecepcionOverrides;
+  recepcionOverridesFijos: RecepcionOverrides;
+  receptoresDefault: Record<ZonaRecepcion, string | null>;
+  onSetRecepcionOverridesPunto: (o: RecepcionOverrides) => void;
+  onSetRecepcionOverridesFijos: (o: RecepcionOverrides) => void;
 }) {
   const [seleccionado, setSeleccionado] = useState<Zona | null>(null);
   const [local, setLocal] = useState<Record<Zona, string>>(() => ({
@@ -486,13 +522,34 @@ function ModalPosicion({
     6: jugadorEnZona(6) ?? "",
   }));
 
+  const todosLosJugadores = [
+    ...jugadoresEnCancha,
+    ...jugadoresDisponibles,
+  ].filter(
+    (j, i, arr) => arr.findIndex((x) => x.id === j.id) === i
+  );
+
   const nombreDe = (id: string) => {
     if (!id) return "—";
-    const j = jugadoresEnCancha.find((x) => x.id === id);
+    const j = todosLosJugadores.find((x) => x.id === id);
     if (!j) return "?";
     const partes = j.nombre.split(" ");
     return partes.length > 1 ? partes[0] : j.nombre.slice(0, 8);
   };
+
+  // ---- Receptores efectivos (override punto > override fijo > default) ----
+  const receptorEfectivo = (zona: ZonaRecepcion): string | null => {
+    if (zona in recepcionOverridesPunto)
+      return recepcionOverridesPunto[zona] ?? null;
+    if (zona in recepcionOverridesFijos)
+      return recepcionOverridesFijos[zona] ?? null;
+    return receptoresDefault[zona] ?? null;
+  };
+
+  const hayOverridesFijos =
+    Object.keys(recepcionOverridesFijos).length > 0;
+  const hayOverridesPunto =
+    Object.keys(recepcionOverridesPunto).length > 0;
 
   const handleClickZona = (zona: Zona) => {
     if (seleccionado === null) {
@@ -528,6 +585,30 @@ function ModalPosicion({
     setSeleccionado(null);
   };
 
+  const handleCambiarReceptor = (
+    zona: ZonaRecepcion,
+    jugadorId: string | null
+  ) => {
+    onSetRecepcionOverridesPunto({
+      ...recepcionOverridesPunto,
+      [zona]: jugadorId,
+    });
+  };
+
+  const handleRestablecerRecepcion = () => {
+    onSetRecepcionOverridesPunto({});
+    onSetRecepcionOverridesFijos({});
+  };
+
+  const handleFijarRecepcion = () => {
+    // Copiar los overrides del punto actual a fijos.
+    onSetRecepcionOverridesFijos({
+      ...recepcionOverridesFijos,
+      ...recepcionOverridesPunto,
+    });
+    onSetRecepcionOverridesPunto({});
+  };
+
   const zonaBtn = (zona: Zona) => {
     const id = local[zona];
     const sel = seleccionado === zona;
@@ -552,7 +633,7 @@ function ModalPosicion({
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/60" onClick={onCerrar} />
-      <div className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white border-2 border-cyan-400 rounded-lg shadow-2xl p-4 w-[340px]">
+      <div className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white border-2 border-cyan-400 rounded-lg shadow-2xl p-4 w-[360px] max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-bold text-cyan-800">
             📋 Posición del punto
@@ -584,12 +665,83 @@ function ModalPosicion({
           {zonaBtn(1)}
         </div>
 
-        <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-200">
+        {/* ---------- SECCIÓN RECEPCIÓN (solo si saca el rival) ---------- */}
+        {esRecepcion && (
+          <div className="mt-3 pt-3 border-t-2 border-cyan-200">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] font-bold text-cyan-800 uppercase">
+                📥 Recepción
+              </p>
+              <div className="flex gap-1">
+                {hayOverridesFijos && (
+                  <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold">
+                    🔒 Fijo
+                  </span>
+                )}
+                {hayOverridesPunto && (
+                  <span className="text-[9px] bg-cyan-100 text-cyan-800 px-1.5 py-0.5 rounded font-semibold">
+                    ⏱ Punto
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <p className="text-[9px] text-slate-500 mb-2">
+              Elegí quién recibe en cada zona. Por defecto sale de la
+              rotación.
+            </p>
+
+            <div className="space-y-1.5">
+              {([5, 6, 1] as ZonaRecepcion[]).map((z) => (
+                <div key={z} className="flex items-center gap-1">
+                  <span className="w-8 text-[10px] font-bold text-cyan-700">
+                    Z{z}
+                  </span>
+                  <select
+                    value={receptorEfectivo(z) ?? ""}
+                    onChange={(e) =>
+                      handleCambiarReceptor(z, e.target.value || null)
+                    }
+                    className="flex-1 px-2 py-1 text-xs border border-cyan-300 rounded bg-white focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="">— sin asignar —</option>
+                    {todosLosJugadores.map((j) => (
+                      <option key={j.id} value={j.id}>
+                        {j.nombre}
+                        {j.numero !== null ? ` #${j.numero}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-1.5 mt-3">
+              <button
+                onClick={handleRestablecerRecepcion}
+                disabled={!hayOverridesFijos && !hayOverridesPunto}
+                className="flex-1 py-1 text-[10px] rounded border border-slate-300 hover:bg-slate-50 text-slate-600 disabled:opacity-40"
+              >
+                Restablecer
+              </button>
+              <button
+                onClick={handleFijarRecepcion}
+                disabled={!hayOverridesPunto}
+                className="flex-1 py-1 text-[10px] rounded bg-amber-500 text-white font-semibold hover:bg-amber-600 disabled:opacity-40"
+                title="Mantener estos receptores para el resto del partido"
+              >
+                🔒 Fijar para todo el partido
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-2 pt-3 mt-3 border-t border-slate-200">
           <button
             onClick={handleReset}
             className="text-[10px] text-slate-500 hover:text-slate-700"
           >
-            Restablecer
+            Restablecer posiciones
           </button>
           <div className="flex gap-2">
             <button
