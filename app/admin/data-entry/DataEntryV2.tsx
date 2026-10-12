@@ -60,6 +60,7 @@ import {
   type AccionV2Data,
   type PuntoV2Data,
 } from "@/lib/dbV2";
+import { borrarPuntoV1DeTablas } from "@/lib/db";
 
 // ============================================================
 // TIPOS
@@ -150,7 +151,6 @@ function aAccionV2(
   let subtipoFinal =
     override?.subtipo !== undefined ? override.subtipo : l.subtipo ?? null;
 
-  // Correlación: si el ataque tiene variante "toque", prefijamos el subtipo
   if (
     override?.subtipo === undefined &&
     l.tipo === "ataque" &&
@@ -555,7 +555,6 @@ export default function DataEntryV2({
       setPuntoActual(pto);
       cargarPuntoDesde(cerrados, pto);
 
-      // Restaurar estado del punto en curso (si todavía no está cerrado)
       if (!cerrados[pto]) {
         if (data.rotacion) setRotacion(data.rotacion);
         if (data.saqueInicial) setSaqueInicial(data.saqueInicial);
@@ -849,7 +848,7 @@ export default function DataEntryV2({
       !confirm(
         `¿Guardar ${lista.length} punto${
           lista.length !== 1 ? "s" : ""
-        } en Supabase?`
+        } en Supabase?\n\nLos mismos puntos se borrarán de las tablas V1 (reemplazo).`
       )
     )
       return;
@@ -883,6 +882,19 @@ export default function DataEntryV2({
       if (!res.ok) {
         errores++;
         if (!primerError) primerError = res.error ?? "desconocido";
+        continue;
+      }
+
+      // ---------- Reemplazo cruzado: borrar de V1 el mismo punto ----------
+      const resV1 = await borrarPuntoV1DeTablas(
+        partidoId,
+        setActivo,
+        pc.numero
+      );
+      if (!resV1.ok) {
+        errores++;
+        if (!primerError)
+          primerError = `borrando V1: ${resV1.error ?? "desconocido"}`;
       }
     }
 
@@ -893,7 +905,7 @@ export default function DataEntryV2({
         `⚠️ ${errores} punto(s) con error. Primer error: ${primerError}`
       );
     } else {
-      alert("✅ Puntos guardados en Supabase");
+      alert("✅ Puntos guardados en Supabase (V1 limpiado en esos puntos)");
     }
   };
 

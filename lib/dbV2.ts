@@ -17,7 +17,6 @@ export interface DesvioV2 {
   mini: string | null;
 }
 
-/** Datos crudos de un punto (lo que va a la tabla puntos_v2). */
 export interface PuntoV2Data {
   set_numero: number;
   punto_numero: number;
@@ -30,7 +29,6 @@ export interface PuntoV2Data {
   posiciones_punto: Record<string, string>;
 }
 
-/** Datos crudos de una acción (lo que va a acciones_v2). */
 export interface AccionV2Data {
   orden: number;
   tipo: string;
@@ -46,14 +44,12 @@ export interface AccionV2Data {
   zona: number | null;
 }
 
-/** Fila leída de puntos_v2. */
 export interface PuntoV2Row extends PuntoV2Data {
   id: string;
   partido_id: string;
   created_at: string;
 }
 
-/** Fila leída de acciones_v2. */
 export interface AccionV2Row extends AccionV2Data {
   id: string;
   punto_id: string;
@@ -63,7 +59,6 @@ export interface AccionV2Row extends AccionV2Data {
   created_at: string;
 }
 
-/** Punto con sus acciones, listo para el motor de stats / reconstrucción. */
 export interface PuntoV2Completo extends PuntoV2Row {
   acciones: AccionV2Row[];
 }
@@ -72,16 +67,6 @@ export interface PuntoV2Completo extends PuntoV2Row {
 // 1. GUARDAR PUNTO + ACCIONES
 // ------------------------------------------------------------
 
-/**
- * Inserta el punto en `puntos_v2` y todas sus acciones en `acciones_v2`.
- *
- * Antes de insertar, borra cualquier punto existente con el mismo
- * (partido_id, set_numero, punto_numero) y sus acciones. Funciona
- * como "upsert manual" para no chocar con el unique constraint.
- *
- * Si falla la inserción de acciones, borra el punto huérfano antes de
- * devolver el error.
- */
 export async function guardarPuntoV2(
   partidoId: string,
   punto: PuntoV2Data,
@@ -89,7 +74,6 @@ export async function guardarPuntoV2(
 ): Promise<{ ok: boolean; puntoId?: string; error?: string }> {
   if (!partidoId) return { ok: false, error: "Falta partidoId" };
 
-  // ---------- 1. Borrar punto existente con ese set/punto (upsert manual) ----------
   const { data: existente, error: errBuscar } = await supabase
     .from("puntos_v2")
     .select("id")
@@ -106,7 +90,6 @@ export async function guardarPuntoV2(
   }
 
   if (existente?.id) {
-    // Borrar acciones primero (por si no hay ON DELETE CASCADE)
     const { error: errBorrarAcc } = await supabase
       .from("acciones_v2")
       .delete()
@@ -130,7 +113,6 @@ export async function guardarPuntoV2(
     }
   }
 
-  // ---------- 2. Insertar punto nuevo ----------
   const filaPunto = {
     partido_id: partidoId,
     set_numero: punto.set_numero,
@@ -159,7 +141,6 @@ export async function guardarPuntoV2(
 
   const puntoId = inserted.id as string;
 
-  // ---------- 3. Insertar acciones ----------
   if (acciones.length > 0) {
     const filasAcciones = acciones.map((a) => ({
       punto_id: puntoId,
@@ -185,7 +166,6 @@ export async function guardarPuntoV2(
       .insert(filasAcciones);
 
     if (errAcc) {
-      // Rollback manual: no dejar el punto huérfano
       await supabase.from("puntos_v2").delete().eq("id", puntoId);
       return { ok: false, error: `acciones_v2: ${errAcc.message}` };
     }
@@ -242,7 +222,7 @@ export async function cargarPuntosV2(
 }
 
 // ------------------------------------------------------------
-// 3. BORRAR UN PUNTO
+// 3. BORRAR UN PUNTO POR ID
 // ------------------------------------------------------------
 
 export async function borrarPuntoV2(
@@ -266,7 +246,47 @@ export async function borrarPuntoV2(
 }
 
 // ------------------------------------------------------------
-// 4. LIMPIAR TODO EL PARTIDO
+// 4. BORRAR UN PUNTO POR COORDENADAS (partido + set + punto)
+//    Se usa cuando la consola V1 guarda y hay que eliminar el
+//    mismo punto de las tablas V2.
+// ------------------------------------------------------------
+
+export async function borrarPuntoV2PorCoordenadas(
+  partidoId: string,
+  setNumero: number,
+  puntoNumero: number
+): Promise<{ ok: boolean; error?: string }> {
+  if (!partidoId) return { ok: false, error: "Falta partidoId" };
+
+  const { data: existentes, error: errBuscar } = await supabase
+    .from("puntos_v2")
+    .select("id")
+    .eq("partido_id", partidoId)
+    .eq("set_numero", setNumero)
+    .eq("punto_numero", puntoNumero);
+
+  if (errBuscar) return { ok: false, error: errBuscar.message };
+
+  const ids = (existentes ?? []).map((r: { id: string }) => r.id);
+  if (ids.length === 0) return { ok: true };
+
+  const { error: errAcc } = await supabase
+    .from("acciones_v2")
+    .delete()
+    .in("punto_id", ids);
+  if (errAcc) return { ok: false, error: errAcc.message };
+
+  const { error: errPunto } = await supabase
+    .from("puntos_v2")
+    .delete()
+    .in("id", ids);
+  if (errPunto) return { ok: false, error: errPunto.message };
+
+  return { ok: true };
+}
+
+// ------------------------------------------------------------
+// 5. LIMPIAR TODO EL PARTIDO
 // ------------------------------------------------------------
 
 export async function borrarTodosV2(

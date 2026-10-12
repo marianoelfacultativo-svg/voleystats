@@ -251,6 +251,49 @@ export async function borrarDetalles(partidoId: string) {
   }
 }
 
+// ============================================================
+// BORRAR UN PUNTO ESPECÍFICO DE V1 (por partido + set + punto)
+// ============================================================
+//
+// Se usa cuando la consola V2 guarda y hay que eliminar el mismo
+// punto de las tablas V1, para que no queden datos duplicados.
+//
+// Tablas afectadas: armados_detalle + las 7 de detalle.
+// ============================================================
+
+export async function borrarPuntoV1DeTablas(
+  partidoId: string,
+  setNumero: number,
+  puntoNumero: number
+): Promise<{ ok: boolean; error?: string }> {
+  if (!partidoId) return { ok: false, error: "Falta partidoId" };
+
+  const tablas = [
+    "armados_detalle",
+    "rotaciones",
+    "ataques_detalle",
+    "defensa_detalle",
+    "bloqueo_detalle",
+    "saque_detalle",
+    "recepcion_detalle",
+    "cambios_jugador",
+  ] as const;
+
+  for (const t of tablas) {
+    const { error } = await supabase
+      .from(t)
+      .delete()
+      .eq("partido_id", partidoId)
+      .eq("set_numero", setNumero)
+      .eq("punto_numero", puntoNumero);
+    if (error) {
+      return { ok: false, error: `${t}: ${error.message}` };
+    }
+  }
+
+  return { ok: true };
+}
+
 // ============================================
 // ADAPTADOR: tablas nuevas → formato AccionDB
 // Correlación: armado → ataque (uno a uno)
@@ -414,7 +457,6 @@ export async function cargarAccionesCompatibles(
   });
 
   (armados.data ?? []).forEach((a: any) => {
-    // Toques: se cargan como fundamento "toque", no generan tendencia
     if (a.tipo === "toque") {
       if (!a.valoracion_toque) return;
       acciones.push({
@@ -491,7 +533,7 @@ export async function cargarAccionesCompatibles(
   }
 
   (armados.data ?? []).forEach((a: any) => {
-    if (a.tipo === "toque") return; // los toques no generan tendencia
+    if (a.tipo === "toque") return;
     if (a.zona_tendencia === null || a.zona_tendencia === undefined) return;
     procesadas.push({
       jugador_id: a.jugador_id,
