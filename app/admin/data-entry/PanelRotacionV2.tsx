@@ -110,6 +110,10 @@ export default function PanelRotacionV2({
   const situacion: Situacion =
     rotacion.saque_equipo === "rival" ? "recepcion" : "saque";
 
+  // Rotación efectiva: la que usa resolverRolAJugador para ver los líberos
+  // que el usuario cargó (que viven en el state `liberos`, no en rotacion).
+  const rotacionConLiberos: RotacionPunto = { ...rotacion, liberos };
+
   const nombreDe = (id: string | null | undefined) => {
     if (!id) return "—";
     const j =
@@ -120,7 +124,9 @@ export default function PanelRotacionV2({
     return partes.length > 1 ? partes[0] : j.nombre.slice(0, 8);
   };
 
-  // ---- Panel: solo rotación base + overrides (sin líbero resuelto) ----
+  const idsLiberos = new Set(liberos.map((l) => l.jugador_id));
+
+  // Panel: solo rotación base + overrides (sin líbero resuelto).
   const jugadorEnZona = (zona: Zona): string | null => {
     const pend = cambiosPendientes.find((c) => c.zona === zona);
     if (pend) return pend.jugadorEntra;
@@ -129,19 +135,18 @@ export default function PanelRotacionV2({
     return rotacion.posiciones[zona]?.jugador_id ?? null;
   };
 
-  // ---- Modal Posición: resuelve el líbero y los roles de juego ----
+  // Modal Posición: resuelve el líbero y los roles de juego.
   const jugadorParaModal = (zona: Zona): string | null => {
     const pend = cambiosPendientes.find((c) => c.zona === zona);
     if (pend) return pend.jugadorEntra;
     if (posicionesPunto[zona]) return posicionesPunto[zona];
     if (posicionesFijas[zona]) return posicionesFijas[zona];
 
-    // Posición sugerida: POSICIONES_JUEGO[rot][sit] → rol → jugador
     const numeroRot = numeroRotacionDesdePosiciones(rotacion);
     const fila = POSICIONES_JUEGO[numeroRot]?.[situacion];
     const rol = fila?.[zona];
     if (rol) {
-      const jug = resolverRolAJugador(rotacion, rol);
+      const jug = resolverRolAJugador(rotacionConLiberos, rol);
       if (jug) return jug;
     }
     return rotacion.posiciones[zona]?.jugador_id ?? null;
@@ -182,7 +187,6 @@ export default function PanelRotacionV2({
 
   return (
     <div className="bg-white border border-slate-200 rounded-lg p-2 inline-block relative">
-      {/* Header */}
       <div className="flex items-center justify-between gap-2 mb-1">
         <span className="text-xs font-semibold text-slate-700">
           Rotación actual
@@ -205,7 +209,6 @@ export default function PanelRotacionV2({
         </div>
       </div>
 
-      {/* Saque + Líberos + Posición */}
       <div className="flex items-center gap-1 mb-1.5">
         <div className="flex rounded overflow-hidden border border-slate-300 text-[9px]">
           <button
@@ -265,7 +268,6 @@ export default function PanelRotacionV2({
         ── RED ──
       </div>
 
-      {/* Grid de zonas */}
       <div className="grid grid-cols-3 gap-0.5">
         {frente.map((l) => (
           <CeldaZona
@@ -289,7 +291,6 @@ export default function PanelRotacionV2({
         ))}
       </div>
 
-      {/* Footer */}
       <div className="mt-2 pt-2 border-t border-slate-200 flex items-center justify-between gap-1">
         <div className="text-[9px] text-slate-500">
           {hayCambios ? (
@@ -326,6 +327,10 @@ export default function PanelRotacionV2({
         <ModalCambio
           zona={modalCambio}
           jugadorActualId={jugadorEnZona(modalCambio)}
+          jugadorOriginalId={
+            rotacion.posiciones[modalCambio]?.jugador_id ?? null
+          }
+          idsLiberos={idsLiberos}
           jugadoresEnCancha={jugadoresEnCancha}
           jugadoresDisponibles={jugadoresDisponibles}
           liberos={liberos}
@@ -414,12 +419,14 @@ function CeldaZona({
 }
 
 // ============================================================
-// MODAL: CAMBIO EN ZONA
+// MODAL: CAMBIO EN ZONA (con reglas de líbero)
 // ============================================================
 
 function ModalCambio({
   zona,
   jugadorActualId,
+  jugadorOriginalId,
+  idsLiberos,
   jugadoresEnCancha,
   jugadoresDisponibles,
   liberos,
@@ -430,6 +437,8 @@ function ModalCambio({
 }: {
   zona: Zona;
   jugadorActualId: string | null;
+  jugadorOriginalId: string | null;
+  idsLiberos: Set<string>;
   jugadoresEnCancha: Jugador[];
   jugadoresDisponibles: Jugador[];
   liberos: Libero[];
@@ -438,15 +447,35 @@ function ModalCambio({
   onQuitarCambio: () => void;
   tieneCambioPendiente: boolean;
 }) {
+  const todos = [...jugadoresEnCancha, ...jugadoresDisponibles].filter(
+    (j, i, arr) => arr.findIndex((x) => x.id === j.id) === i
+  );
+
   const nombreDe = (id: string | null) => {
     if (!id) return "—";
-    const j =
-      jugadoresEnCancha.find((x) => x.id === id) ??
-      jugadoresDisponibles.find((x) => x.id === id);
+    const j = todos.find((x) => x.id === id);
     return j ? `${j.nombre}${j.numero !== null ? ` #${j.numero}` : ""}` : "?";
   };
 
   const esLibero = (id: string) => liberos.some((l) => l.jugador_id === id);
+
+  const zonaActualEsLibero =
+    jugadorActualId !== null && idsLiberos.has(jugadorActualId);
+
+  // Candidatos según la regla:
+  // - Zona del líbero: solo el líbero actual + el jugador original (central).
+  // - Zona normal: todos los no-líberos.
+  const candidatos: Jugador[] = (() => {
+    if (zonaActualEsLibero) {
+      const ids: string[] = [];
+      if (jugadorActualId) ids.push(jugadorActualId);
+      if (jugadorOriginalId && jugadorOriginalId !== jugadorActualId) {
+        ids.push(jugadorOriginalId);
+      }
+      return todos.filter((j) => ids.includes(j.id));
+    }
+    return todos.filter((j) => !idsLiberos.has(j.id));
+  })();
 
   return (
     <>
@@ -468,6 +497,11 @@ function ModalCambio({
           {jugadorActualId ? (
             <>
               En cancha: <strong>{nombreDe(jugadorActualId)}</strong>
+              {zonaActualEsLibero && (
+                <span className="ml-1 text-pink-700 font-semibold">
+                  (Líbero)
+                </span>
+              )}
             </>
           ) : (
             <span className="text-slate-400 italic">Zona vacía</span>
@@ -484,33 +518,46 @@ function ModalCambio({
         )}
 
         <p className="text-[9px] text-slate-500 uppercase mb-1">
-          Elegí jugador
+          {zonaActualEsLibero
+            ? "Solo puede entrar el jugador que reemplaza"
+            : "Elegí jugador"}
         </p>
 
-        {jugadoresDisponibles.length === 0 && (
+        {candidatos.length === 0 && (
           <p className="text-[10px] text-slate-400 italic">
             No hay jugadores disponibles
           </p>
         )}
 
         <div className="space-y-0.5">
-          {jugadoresDisponibles.map((j) => (
-            <button
-              key={j.id}
-              onClick={() => onAplicar(j)}
-              className={`w-full text-left px-2 py-1 text-xs rounded hover:bg-emerald-50 flex items-center justify-between ${
-                esLibero(j.id) ? "bg-pink-50" : ""
-              }`}
-            >
-              <span className="text-slate-700">
-                {j.nombre}
-                {j.numero !== null ? ` #${j.numero}` : ""}
-              </span>
-              {esLibero(j.id) && (
-                <span className="text-[8px] text-pink-600 font-bold">L</span>
-              )}
-            </button>
-          ))}
+          {candidatos.map((j) => {
+            const esActual = j.id === jugadorActualId;
+            return (
+              <button
+                key={j.id}
+                onClick={() => !esActual && onAplicar(j)}
+                disabled={esActual}
+                className={`w-full text-left px-2 py-1 text-xs rounded flex items-center justify-between ${
+                  esActual
+                    ? "bg-slate-100 text-slate-400 cursor-default"
+                    : "text-slate-700 hover:bg-emerald-50"
+                } ${esLibero(j.id) ? "bg-pink-50" : ""}`}
+              >
+                <span>
+                  {j.nombre}
+                  {j.numero !== null ? ` #${j.numero}` : ""}
+                  {esActual && (
+                    <span className="ml-1 text-[9px] text-slate-400">
+                      (actual)
+                    </span>
+                  )}
+                </span>
+                {esLibero(j.id) && (
+                  <span className="text-[8px] text-pink-600 font-bold">L</span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
     </>
@@ -702,7 +749,6 @@ function ModalPosicion({
           {zonaBtn(1)}
         </div>
 
-        {/* ---------- SECCIÓN RECEPCIÓN (solo si saca el rival) ---------- */}
         {esRecepcion && (
           <div className="mt-3 pt-3 border-t-2 border-cyan-200">
             <div className="flex items-center justify-between mb-2">
@@ -834,8 +880,7 @@ function ModalLibero({
         </div>
 
         <p className="text-[10px] text-slate-500 mb-3">
-          Elegí hasta 2 líberos entre todos los jugadores. Los líberos se
-          intercambian entre sí pero no reemplazan a un tercero.
+          Elegí hasta 2 líberos entre todos los jugadores.
         </p>
 
         <div className="space-y-1">
