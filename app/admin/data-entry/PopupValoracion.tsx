@@ -815,7 +815,7 @@ export function PopupToqueRed({
 }
 
 // ============================================================
-// POPUP BLOQUEO PROPIO (¿quién bloqueó?)
+// POPUP BLOQUEO PROPIO (¿quién bloqueó?) — más chico
 // ============================================================
 
 interface PopupBloqueoProps {
@@ -831,12 +831,12 @@ export function PopupBloqueo({
   onConfirmar,
   onCancelar,
 }: PopupBloqueoProps) {
-  const pad = 8;
-  const btnW = 74;
-  const gap = 6;
+  const pad = 6;
+  const btnW = 54;
+  const gap = 4;
   const ancho =
     jugadores.length * btnW + Math.max(0, jugadores.length - 1) * gap + pad * 2;
-  const alto = 70;
+  const alto = 56;
 
   return (
     <PopupWrapper
@@ -852,23 +852,23 @@ export function PopupBloqueo({
             x={pad + i * (btnW + gap)}
             y={0}
             w={btnW}
-            h={30}
+            h={22}
             texto={`Z${j.zona} ${j.nombre}`}
             color={j.jugadorId ? "#ea580c" : "#cbd5e1"}
             colorTexto={j.jugadorId ? "#ffffff" : "#475569"}
-            fontSize={9}
+            fontSize={8}
             onClick={() => onConfirmar(j.jugadorId)}
           />
         ))}
         <BotonSvg
           x={pad}
-          y={38}
+          y={28}
           w={ancho - pad * 2}
-          h={14}
+          h={12}
           texto="Cancelar (Esc)"
           color="#e2e8f0"
           colorTexto="#475569"
-          fontSize={9}
+          fontSize={8}
           onClick={onCancelar}
         />
       </g>
