@@ -30,6 +30,7 @@ export interface JugadorEnCancha {
   id: string;
   nombre: string;
   rol?: string;
+  zona?: number;
 }
 
 export interface JugadorZona {
@@ -114,6 +115,36 @@ const OPCIONES_TOQUE_RED: {
   { id: "invasion-delantero", label: "Invasión delantero", color: "#f59e0b" },
   { id: "toque-red-rival", label: "Toque red rival", color: "#0284c7" },
 ];
+
+// ============================================================
+// HELPER: color por rol
+// ============================================================
+
+function colorDeRol(rol?: string) {
+  switch (rol) {
+    case "A":
+      return { bg: "#ede9fe", borde: "#a78bfa", texto: "#5b21b6" };
+    case "O":
+      return { bg: "#ffedd5", borde: "#fb923c", texto: "#9a3412" };
+    case "C":
+    case "C1":
+    case "C2":
+      return { bg: "#dbeafe", borde: "#60a5fa", texto: "#1e40af" };
+    case "P":
+    case "P1":
+    case "P2":
+      return { bg: "#dcfce7", borde: "#4ade80", texto: "#166534" };
+    case "L":
+      return { bg: "#fce7f3", borde: "#f472b6", texto: "#9d174d" };
+    default:
+      return { bg: "#f1f5f9", borde: "#cbd5e1", texto: "#475569" };
+  }
+}
+
+function textoCortoNombre(nombre: string) {
+  const partes = nombre.split(" ");
+  return partes.length > 1 ? partes[0] : nombre.slice(0, 10);
+}
 
 // ============================================================
 // WRAPPER
@@ -396,7 +427,7 @@ export function PopupArmado({ pos, onConfirmar, onCancelar }: PopupArmadoProps) 
 }
 
 // ============================================================
-// POPUP DEFENSA
+// POPUP DEFENSA (2 filas × 3 columnas, con rol + zona + nombre)
 // ============================================================
 
 interface PopupDefensaProps {
@@ -414,12 +445,12 @@ export function PopupDefensa({
 }: PopupDefensaProps) {
   const tipos: TipoDefensa[] = ["toque", "gran-defensa", "libre"];
   const pad = 8;
-  const ancho = 260;
-  const btnW = (ancho - pad * 2 - 4 * 2) / 3;
+  const ancho = 310;
+  const btnTipoW = (ancho - pad * 2 - 4 * 2) / 3;
 
   const maxJugadores = Math.min(jugadores.length, 6);
-  const filasJugadores = Math.ceil(maxJugadores / 2);
-  const alto = 20 + 20 + 8 + 12 + filasJugadores * 18 + 6 + 14 + 8;
+  const filasJugadores = Math.ceil(maxJugadores / 3);
+  const alto = 20 + 22 + 6 + 12 + filasJugadores * 24 + 6 + 14 + 8;
 
   return (
     <PopupWrapper
@@ -429,13 +460,14 @@ export function PopupDefensa({
       titulo="DEFENSA — Tipo (opcional)"
     >
       <g>
+        {/* Fila de tipos */}
         {tipos.map((t, i) => (
           <BotonSvg
             key={t}
-            x={pad + i * (btnW + 4)}
+            x={pad + i * (btnTipoW + 4)}
             y={0}
-            w={btnW}
-            h={20}
+            w={btnTipoW}
+            h={22}
             texto={ETIQ_DEFENSA[t]}
             color={COL_DEFENSA[t]}
             fontSize={9}
@@ -445,7 +477,7 @@ export function PopupDefensa({
 
         <text
           x={pad}
-          y={36}
+          y={38}
           fontSize={9}
           fontWeight={600}
           fill="#64748b"
@@ -454,31 +486,79 @@ export function PopupDefensa({
           ¿Quién la hizo? (opcional)
         </text>
 
-        <g transform="translate(0, 44)">
+        {/* Grid 2 filas × 3 columnas */}
+        <g transform="translate(0, 46)">
           {jugadores.slice(0, maxJugadores).map((j, i) => {
-            const col = i % 2;
-            const row = Math.floor(i / 2);
-            const wCol = (ancho - pad * 2 - 4) / 2;
+            const col = i % 3;
+            const row = Math.floor(i / 3);
+            const wCol = (ancho - pad * 2 - 2 * 4) / 3;
+            const c = colorDeRol(j.rol);
+            const x = pad + col * (wCol + 4);
+            const y = row * 24;
+
             return (
-              <BotonSvg
+              <g
                 key={j.id}
-                x={pad + col * (wCol + 4)}
-                y={row * 18}
-                w={wCol}
-                h={16}
-                texto={j.nombre}
-                color="#f1f5f9"
-                colorTexto="#334155"
-                fontSize={9}
-                onClick={() => onConfirmar("toque", j.id)}
-              />
+                style={{ cursor: "pointer", pointerEvents: "auto" }}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  onConfirmar("toque", j.id);
+                }}
+              >
+                <rect
+                  x={x}
+                  y={y}
+                  width={wCol}
+                  height={22}
+                  rx={4}
+                  fill={c.bg}
+                  stroke={c.borde}
+                  strokeWidth={1.5}
+                />
+                {/* Rol */}
+                <text
+                  x={x + 4}
+                  y={y + 15}
+                  fontSize={10}
+                  fontWeight={800}
+                  fill={c.texto}
+                  pointerEvents="none"
+                >
+                  {j.rol ?? "?"}
+                </text>
+                {/* Zona */}
+                {j.zona !== undefined && (
+                  <text
+                    x={x + 17}
+                    y={y + 15}
+                    fontSize={8}
+                    fontWeight={600}
+                    fill={c.texto}
+                    opacity={0.65}
+                    pointerEvents="none"
+                  >
+                    Z{j.zona}
+                  </text>
+                )}
+                {/* Nombre */}
+                <text
+                  x={x + 34}
+                  y={y + 15}
+                  fontSize={8}
+                  fontWeight={600}
+                  fill={c.texto}
+                  pointerEvents="none"
+                >
+                  {textoCortoNombre(j.nombre)}
+                </text>
+              </g>
             );
           })}
         </g>
 
         <BotonSvg
           x={pad}
-          y={44 + filasJugadores * 18}
+          y={46 + filasJugadores * 24 + 4}
           w={ancho - pad * 2}
           h={14}
           texto="Saltar (Esc)"
@@ -596,32 +676,6 @@ export function PopupJugador({
   const filasJugadores = Math.ceil(maxJugadores / 2);
   const alto = 20 + 12 + filasJugadores * 22 + 6 + 14 + 4 + 14 + 8;
 
-  const colorRol = (rol?: string) => {
-    switch (rol) {
-      case "A":
-        return { bg: "#ede9fe", borde: "#a78bfa", texto: "#5b21b6" };
-      case "O":
-        return { bg: "#ffedd5", borde: "#fb923c", texto: "#9a3412" };
-      case "C":
-      case "C1":
-      case "C2":
-        return { bg: "#dbeafe", borde: "#60a5fa", texto: "#1e40af" };
-      case "P":
-      case "P1":
-      case "P2":
-        return { bg: "#dcfce7", borde: "#4ade80", texto: "#166534" };
-      case "L":
-        return { bg: "#fce7f3", borde: "#f472b6", texto: "#9d174d" };
-      default:
-        return { bg: "#f1f5f9", borde: "#cbd5e1", texto: "#475569" };
-    }
-  };
-
-  const textoCorto = (nombre: string) => {
-    const partes = nombre.split(" ");
-    return partes.length > 1 ? partes[0] : nombre.slice(0, 10);
-  };
-
   return (
     <PopupWrapper
       pos={pos}
@@ -635,7 +689,7 @@ export function PopupJugador({
             const col = i % 2;
             const row = Math.floor(i / 2);
             const wCol = (ancho - pad * 2 - 4) / 2;
-            const c = colorRol(j.rol);
+            const c = colorDeRol(j.rol);
             const x = pad + col * (wCol + 4);
             const y = row * 22;
 
@@ -676,7 +730,7 @@ export function PopupJugador({
                   fill={c.texto}
                   pointerEvents="none"
                 >
-                  {textoCorto(j.nombre)}
+                  {textoCortoNombre(j.nombre)}
                 </text>
               </g>
             );
@@ -815,7 +869,7 @@ export function PopupToqueRed({
 }
 
 // ============================================================
-// POPUP BLOQUEO PROPIO (¿quién bloqueó?) — más chico
+// POPUP BLOQUEO PROPIO (¿quién bloqueó?)
 // ============================================================
 
 interface PopupBloqueoProps {

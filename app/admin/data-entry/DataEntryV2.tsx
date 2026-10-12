@@ -38,6 +38,7 @@ import {
   type Zona,
 } from "@/lib/rotaciones";
 import {
+  POSICIONES_JUEGO,
   calcularSubtiposAtaque,
   calcularSubtiposBloqueo,
   calcularSubtiposSaque,
@@ -46,6 +47,7 @@ import {
   esCanchaPropia,
   esCanchaRival,
   ganadorDelPunto,
+  resolverRolAJugador,
   type EstadoClasificacion,
   type LineaClasificada,
   type PopupRequerido,
@@ -225,6 +227,13 @@ function calcularRecepcionOverrides(
   return out;
 }
 
+// Mapear rol lógico → letra corta para mostrar
+function rolCortoParaUI(rol: string): string {
+  if (rol === "C1" || rol === "C2") return "C";
+  if (rol === "P1" || rol === "P2") return "P";
+  return rol;
+}
+
 // ============================================================
 // COMPONENTE
 // ============================================================
@@ -299,29 +308,47 @@ export default function DataEntryV2({
     return cambio ? { ...rotacion, posiciones: nuevas } : rotacion;
   }, [rotacion, posicionesPunto]);
 
+  // ------------------------------------------------------------
+  // JUGADORES EN CANCHA — resuelve con POSICIONES_JUEGO + líbero
+  // y aplica overrides del punto. Devuelve 6 (con rol + zona).
+  // ------------------------------------------------------------
   const jugadoresEnCancha: JugadorEnCancha[] = useMemo(() => {
     if (!rotacion) return [];
-    const mapaIdRol = new Map<string, string>();
+
+    const numeroRot = numeroRotacionDesdePosiciones(rotacion);
+    const fila = POSICIONES_JUEGO[numeroRot]?.[situacion];
+    const rotConLib: RotacionPunto = { ...rotacion, liberos };
+
     const zonasOrden: Zona[] = [1, 2, 3, 4, 5, 6];
+    const out: JugadorEnCancha[] = [];
+
     for (const z of zonasOrden) {
-      const pend = cambiosPendientes.find((c) => c.zona === z);
-      const override = posicionesPunto[z];
-      const rot = rotacion.posiciones[z];
-      const id = pend?.jugadorEntra || override || rot?.jugador_id;
-      const rol = rot?.rol ?? "?";
-      if (id) mapaIdRol.set(id, rol);
-    }
-    for (const l of liberos) {
-      if (l.jugador_id) mapaIdRol.set(l.jugador_id, "L");
-    }
-    return Array.from(mapaIdRol.entries()).map(([id, rol]) => {
+      const rol = fila?.[z];
+      if (!rol) continue;
+
+      let id: string | null = null;
+      if (posicionesPunto[z]) {
+        id = posicionesPunto[z];
+      } else {
+        id = resolverRolAJugador(rotConLib, rol);
+      }
+      if (!id) continue;
+
       const j = jugadores.find((x) => x.id === id);
       const nombre = j
         ? j.nombre + (j.numero !== null ? ` #${j.numero}` : "")
         : "?";
-      return { id, nombre, rol };
-    });
-  }, [rotacion, posicionesPunto, cambiosPendientes, jugadores, liberos]);
+
+      out.push({
+        id,
+        nombre,
+        rol: rolCortoParaUI(rol),
+        zona: z,
+      });
+    }
+
+    return out;
+  }, [rotacion, situacion, liberos, posicionesPunto, jugadores]);
 
   const delanterosPorZona: JugadorZona[] = useMemo(() => {
     if (!rotacionEfectiva) return [];
