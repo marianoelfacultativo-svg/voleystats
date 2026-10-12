@@ -350,7 +350,7 @@ export function clasificarLinea(
     };
   }
 
-  // ---------- REGLA NUEVA: LIBRE RIVAL → LIBRE PROPIO SIN POPUP ----------
+  // Regla: libre rival → libre propio sin popup
   if (ultima && ultima.tipo === "libre" && ultima.esRival) {
     return {
       tipo: "libre",
@@ -362,6 +362,8 @@ export function clasificarLinea(
 
   const ladoO = ladoDeCelda(linea.origen.celda);
   const ladoD = ladoDeCelda(linea.destino.celda);
+  // ¿La línea actual cruza la red?
+  const cruzaNet = ladoO !== null && ladoD !== null && ladoO !== ladoD;
 
   if (tieneDesvioBloqueoPropio(linea) && ultima) {
     const comoAtaque = bloqueoSeValoraComoAtaque(ultima);
@@ -412,7 +414,6 @@ export function clasificarLinea(
     };
   }
 
-  // ---------- REGLA NUEVA: ARMADO PROPIO → ARMADOR POR DEFECTO ----------
   if (ultima!.tipo === "armado") {
     const esRival = ultima!.esRival;
     const jugadorId = esRival
@@ -430,24 +431,28 @@ export function clasificarLinea(
     };
   }
 
+  // NUEVO: si el armado cruza la red, en realidad es una libre.
+  const armarOlibre = (esRival: boolean): ResultadoClasificacion =>
+    cruzaNet
+      ? {
+          tipo: "libre",
+          esRival,
+          jugadorId: null,
+          popup: esRival ? null : "libre",
+        }
+      : {
+          tipo: "armado",
+          esRival,
+          jugadorId: esRival ? null : jugadorQueArma(estado.rotacion),
+          popup: esRival ? null : "armado",
+        };
+
   if (ultima!.tipo === "defensa") {
-    const esRival = ultima!.esRival;
-    return {
-      tipo: "armado",
-      esRival,
-      jugadorId: esRival ? null : jugadorQueArma(estado.rotacion),
-      popup: esRival ? null : "armado",
-    };
+    return armarOlibre(ultima!.esRival);
   }
 
   if (ultima!.tipo === "recepcion") {
-    const esRival = ultima!.esRival;
-    return {
-      tipo: "armado",
-      esRival,
-      jugadorId: esRival ? null : jugadorQueArma(estado.rotacion),
-      popup: esRival ? null : "armado",
-    };
+    return armarOlibre(ultima!.esRival);
   }
 
   if (ultima!.tipo === "ataque") {
@@ -491,13 +496,7 @@ export function clasificarLinea(
         popup: null,
       };
     }
-    const esRival = ultima!.esRival;
-    return {
-      tipo: "armado",
-      esRival,
-      jugadorId: esRival ? null : jugadorQueArma(estado.rotacion),
-      popup: esRival ? null : "armado",
-    };
+    return armarOlibre(ultima!.esRival);
   }
 
   const esRival = ultima!.esRival;
