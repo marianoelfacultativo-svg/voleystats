@@ -37,7 +37,6 @@ export type PopupRequerido =
   | "ataque-toque-libre"
   | null;
 
-/** Variante del ataque elegida por el usuario en el popup. */
 export type VarianteAtaque = "remate" | "toque";
 
 export interface PuntoV2 {
@@ -61,13 +60,6 @@ export interface LineaClasificada {
   destino: PuntoV2;
   desvios?: PuntoV2[];
   subtipo?: string | number | null;
-  /**
-   * Solo aplica a ataques propios:
-   *  - null      → remate (default)
-   *  - "remate"  → remate explícito
-   *  - "toque"   → toque de ataque (subtipo auto queda igual, se prefija al guardar)
-   * El caso "libre" se maneja cambiando `tipo` a "libre" desde el handler.
-   */
   variante?: VarianteAtaque | null;
   oculta?: boolean;
 }
@@ -244,6 +236,10 @@ function jugadorDeTipo(
   return null;
 }
 
+function jugadorQueArma(rotacion: RotacionPunto): string | null {
+  return jugadorDeTipo(rotacion, "A");
+}
+
 function buscarCentralZaguero(rotacion: RotacionPunto): string | null {
   for (const asig of Object.values(rotacion.posiciones)) {
     if (
@@ -354,6 +350,16 @@ export function clasificarLinea(
     };
   }
 
+  // ---------- REGLA NUEVA: LIBRE RIVAL → LIBRE PROPIO SIN POPUP ----------
+  if (ultima && ultima.tipo === "libre" && ultima.esRival) {
+    return {
+      tipo: "libre",
+      esRival: false,
+      jugadorId: null,
+      popup: null,
+    };
+  }
+
   const ladoO = ladoDeCelda(linea.origen.celda);
   const ladoD = ladoDeCelda(linea.destino.celda);
 
@@ -406,6 +412,7 @@ export function clasificarLinea(
     };
   }
 
+  // ---------- REGLA NUEVA: ARMADO PROPIO → ARMADOR POR DEFECTO ----------
   if (ultima!.tipo === "armado") {
     const esRival = ultima!.esRival;
     const jugadorId = esRival
@@ -428,7 +435,7 @@ export function clasificarLinea(
     return {
       tipo: "armado",
       esRival,
-      jugadorId: null,
+      jugadorId: esRival ? null : jugadorQueArma(estado.rotacion),
       popup: esRival ? null : "armado",
     };
   }
@@ -438,7 +445,7 @@ export function clasificarLinea(
     return {
       tipo: "armado",
       esRival,
-      jugadorId: null,
+      jugadorId: esRival ? null : jugadorQueArma(estado.rotacion),
       popup: esRival ? null : "armado",
     };
   }
@@ -488,7 +495,7 @@ export function clasificarLinea(
     return {
       tipo: "armado",
       esRival,
-      jugadorId: null,
+      jugadorId: esRival ? null : jugadorQueArma(estado.rotacion),
       popup: esRival ? null : "armado",
     };
   }

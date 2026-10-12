@@ -883,11 +883,42 @@ export default function DataEntryV2({
     popupSiguiente();
   };
 
+  /**
+   * Defensa propia:
+   *   1) Setea el subtipo + jugador en la línea de defensa.
+   *   2) Regla nueva: el último ataque rival previo hereda el mismo subtipo.
+   */
   const handleDefensaConfirmar = (
     subtipo: TipoDefensa,
     jugadorId: string | null
   ) => {
-    actualizarLineaPopup({ subtipo, jugadorId });
+    if (!popupActivo?.lineaId) {
+      popupSiguiente();
+      return;
+    }
+    setLineas((prev) => {
+      const idx = prev.findIndex((l) => l.id === popupActivo.lineaId);
+      if (idx < 0) return prev;
+      const copia = [...prev];
+
+      copia[idx] = { ...copia[idx], subtipo, jugadorId };
+
+      let idxAtaqueRival = -1;
+      for (let i = idx - 1; i >= 0; i--) {
+        if (copia[i].tipo === "ataque" && copia[i].esRival) {
+          idxAtaqueRival = i;
+          break;
+        }
+      }
+      if (idxAtaqueRival !== -1) {
+        copia[idxAtaqueRival] = {
+          ...copia[idxAtaqueRival],
+          subtipo,
+        };
+      }
+
+      return copia;
+    });
     popupSiguiente();
   };
 
@@ -939,7 +970,7 @@ export default function DataEntryV2({
   };
 
   /**
-   * Popup nuevo del ataque: Toque / Libre.
+   * Popup del ataque: Toque / Libre.
    *  - "toque"  → guarda `variante: "toque"` (sigue siendo ataque).
    *  - "libre"  → cambia `tipo` de la línea a "libre".
    *  - Esc / cancelar → no toca nada (queda como remate, default).
