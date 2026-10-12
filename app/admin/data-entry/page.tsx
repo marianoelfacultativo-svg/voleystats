@@ -368,8 +368,8 @@ export default function DataEntryPage() {
   const [erroresRivales, setErroresRivales] = useState(0);
   const [buenasRivales, setBuenasRivales] = useState(0);
 
-  // Toggle para mostrar DataEntryV2
-  const [mostrarPruebaCancha, setMostrarPruebaCancha] = useState(false);
+  // Toggle para mostrar DataEntryV2 (por defecto: visible)
+  const [mostrarPruebaCancha, setMostrarPruebaCancha] = useState(true);
 
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -1504,6 +1504,7 @@ export default function DataEntryPage() {
                   </p>
                 </div>
                 <DataEntryV2
+                  key={partidoId}
                   partidoId={partidoId}
                   equipoId={equipoId}
                   nombreMiEquipo={
