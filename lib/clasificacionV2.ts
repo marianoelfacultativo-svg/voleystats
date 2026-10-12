@@ -2,7 +2,11 @@
 // CLASIFICACIÓN V2 — motor de tipos de acción
 // ============================================================
 
-import type { RotacionPunto, Zona } from "./rotaciones";
+import {
+  numeroRotacionDesdePosiciones,
+  type RotacionPunto,
+  type Zona,
+} from "./rotaciones";
 import { jugadorQueAtacaDesdeCelda } from "./mapeoV2";
 
 // ============================================================
@@ -185,6 +189,45 @@ export function pasoLaRed(l: LineaClasificada): boolean {
 }
 
 // ============================================================
+// POSICIONES DE JUEGO POR ROTACIÓN Y SITUACIÓN
+// ============================================================
+// Tabla aprobada: para cada rotación (1-6) y situación (saque/recepción),
+// indica qué ROL juega en cada ZONA (1-6).
+// ============================================================
+
+export type RolJuego = "A" | "O" | "C1" | "C2" | "P1" | "P2" | "L";
+
+export const POSICIONES_JUEGO: Record<
+  number,
+  Record<Situacion, Record<Zona, RolJuego>>
+> = {
+  1: {
+    saque: { 1: "A", 2: "O", 3: "C1", 4: "P1", 5: "L", 6: "P2" },
+    recepcion: { 1: "A", 2: "P1", 3: "C1", 4: "O", 5: "L", 6: "P2" },
+  },
+  2: {
+    saque: { 1: "P1", 2: "C1", 3: "O", 4: "P2", 5: "C2", 6: "A" },
+    recepcion: { 1: "A", 2: "O", 3: "C1", 4: "P2", 5: "L", 6: "P1" },
+  },
+  3: {
+    saque: { 1: "C1", 2: "O", 3: "P2", 4: "C2", 5: "A", 6: "P1" },
+    recepcion: { 1: "A", 2: "O", 3: "C2", 4: "P2", 5: "L", 6: "P1" },
+  },
+  4: {
+    saque: { 1: "O", 2: "P2", 3: "C2", 4: "A", 5: "P1", 6: "C1" },
+    recepcion: { 1: "O", 2: "A", 3: "C2", 4: "P2", 5: "L", 6: "P1" },
+  },
+  5: {
+    saque: { 1: "P2", 2: "C2", 3: "A", 4: "P1", 5: "C1", 6: "O" },
+    recepcion: { 1: "O", 2: "A", 3: "C2", 4: "P1", 5: "L", 6: "P2" },
+  },
+  6: {
+    saque: { 1: "C2", 2: "A", 3: "P1", 4: "C1", 5: "O", 6: "P2" },
+    recepcion: { 1: "O", 2: "A", 3: "C1", 4: "P1", 5: "L", 6: "P2" },
+  },
+};
+
+// ============================================================
 // RESOLUCIÓN DE JUGADOR — SAQUE
 // ============================================================
 
@@ -196,26 +239,15 @@ function jugadorQueSaca(rotacion: RotacionPunto): string | null {
 }
 
 // ============================================================
-// RESOLUCIÓN DE JUGADOR — RECEPCIÓN
+// RESOLUCIÓN DE JUGADOR — POR ROL LÓGICO
 // ============================================================
 
-function zonaRecepcion(celda: string): 1 | 5 | 6 | null {
-  if (!/^F[123]-/.test(celda)) return null;
-  const col = celda.split("-")[1];
-  if (col === "C1" || col === "C2") return 5;
-  if (col === "C3") return 6;
-  if (col === "C4" || col === "C5") return 1;
-  return null;
-}
-
-function buscarCentralDelantero(rotacion: RotacionPunto): string | null {
+function jugadorDeTipo(
+  rotacion: RotacionPunto,
+  tipo: "A" | "O" | "C1" | "C2" | "P1" | "P2"
+): string | null {
   for (const asig of Object.values(rotacion.posiciones)) {
-    if (
-      (asig.tipo === "C1" || asig.tipo === "C2") &&
-      (asig.zona === 2 || asig.zona === 3 || asig.zona === 4)
-    ) {
-      return asig.jugador_id;
-    }
+    if (asig.tipo === tipo) return asig.jugador_id;
   }
   return null;
 }
@@ -232,30 +264,6 @@ function buscarCentralZaguero(rotacion: RotacionPunto): string | null {
   return null;
 }
 
-function buscarPuntaDelantero(rotacion: RotacionPunto): string | null {
-  for (const asig of Object.values(rotacion.posiciones)) {
-    if (
-      (asig.tipo === "P1" || asig.tipo === "P2") &&
-      (asig.zona === 2 || asig.zona === 3 || asig.zona === 4)
-    ) {
-      return asig.jugador_id;
-    }
-  }
-  return null;
-}
-
-function buscarPuntaZaguero(rotacion: RotacionPunto): string | null {
-  for (const asig of Object.values(rotacion.posiciones)) {
-    if (
-      (asig.tipo === "P1" || asig.tipo === "P2") &&
-      (asig.zona === 1 || asig.zona === 5 || asig.zona === 6)
-    ) {
-      return asig.jugador_id;
-    }
-  }
-  return null;
-}
-
 function buscarLiberoActivo(rotacion: RotacionPunto): string | null {
   const lib =
     rotacion.liberos.find((l) => l.tipo === "recepcion") ??
@@ -264,24 +272,35 @@ function buscarLiberoActivo(rotacion: RotacionPunto): string | null {
   return buscarCentralZaguero(rotacion);
 }
 
-type RolRecepcion = "PD" | "PZ" | "L";
+/**
+ * Dado un rol lógico (A, O, C1, C2, P1, P2, L) y la rotación actual,
+ * devuelve el jugador_id que ocupa ese rol.
+ */
+export function resolverRolAJugador(
+  rotacion: RotacionPunto,
+  rol: RolJuego
+): string | null {
+  if (rol === "L") return buscarLiberoActivo(rotacion);
+  return jugadorDeTipo(rotacion, rol);
+}
 
-const TABLA_RECEPCION: Record<
-  Zona,
-  { z1: RolRecepcion; z6: RolRecepcion; z5: RolRecepcion }
-> = {
-  1: { z1: "PD", z6: "L", z5: "PZ" },
-  2: { z1: "L", z6: "PZ", z5: "PD" },
-  3: { z1: "PZ", z6: "L", z5: "PD" },
-  4: { z1: "L", z6: "PZ", z5: "PD" },
-  5: { z1: "L", z6: "PZ", z5: "PD" },
-  6: { z1: "PZ", z6: "L", z5: "PD" },
-};
+// ============================================================
+// RESOLUCIÓN DE JUGADOR — RECEPCIÓN
+// ============================================================
+
+function zonaRecepcion(celda: string): 1 | 5 | 6 | null {
+  if (!/^F[123]-/.test(celda)) return null;
+  const col = celda.split("-")[1];
+  if (col === "C1" || col === "C2") return 5;
+  if (col === "C3") return 6;
+  if (col === "C4" || col === "C5") return 1;
+  return null;
+}
 
 function jugadorQueRecibe(
   origen: PuntoV2,
   rotacion: RotacionPunto,
-  _situacion: Situacion,
+  situacion: Situacion,
   overrides?: Partial<Record<Zona, string | null>>
 ): string | null {
   const celda = origen.celda;
@@ -294,37 +313,12 @@ function jugadorQueRecibe(
     return overrides[zonaRec] ?? null;
   }
 
-  // Resolución por tabla según la zona del armador.
-  let zonaArmador: Zona | null = null;
-  for (const asig of Object.values(rotacion.posiciones)) {
-    if (asig.tipo === "A") {
-      zonaArmador = asig.zona;
-      break;
-    }
-  }
-  if (!zonaArmador) return null;
-
-  const fila = TABLA_RECEPCION[zonaArmador];
-  let rol: RolRecepcion;
-  if (zonaRec === 1) rol = fila.z1;
-  else if (zonaRec === 6) rol = fila.z6;
-  else rol = fila.z5;
-
-  if (rol === "L") {
-    return buscarLiberoActivo(rotacion) ?? null;
-  }
-  if (rol === "PD") {
-    return (
-      buscarPuntaDelantero(rotacion) ??
-      buscarLiberoActivo(rotacion) ??
-      null
-    );
-  }
-  return (
-    buscarPuntaZaguero(rotacion) ??
-    buscarLiberoActivo(rotacion) ??
-    null
-  );
+  // Resolución por tabla POSICIONES_JUEGO según rotación + situación.
+  const numeroRot = numeroRotacionDesdePosiciones(rotacion);
+  const fila = POSICIONES_JUEGO[numeroRot]?.[situacion];
+  if (!fila) return null;
+  const rol = fila[zonaRec];
+  return resolverRolAJugador(rotacion, rol);
 }
 
 // ============================================================

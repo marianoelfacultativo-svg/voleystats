@@ -9,8 +9,6 @@ import CanchaV2, {
 import LineasV2, { type PuntoV2, type LineaV2 } from "./LineasV2";
 import PanelRotacionV2, {
   type CambioPendiente,
-  type RecepcionOverrides,
-  type ZonaRecepcion,
 } from "./PanelRotacionV2";
 import {
   PopupArmado,
@@ -33,9 +31,13 @@ import {
 
 import {
   girarRotacionPunto,
+  numeroRotacionDesdePosiciones,
+  ROL_DE_TIPO,
+  type AsignacionZona,
   type Libero,
   type RotacionPunto,
   type SaqueEquipo,
+  type TipoLogico,
   type Zona,
 } from "@/lib/rotaciones";
 import {
@@ -47,9 +49,11 @@ import {
   esCanchaPropia,
   esCanchaRival,
   ganadorDelPunto,
+  POSICIONES_JUEGO,
   type EstadoClasificacion,
   type LineaClasificada,
   type PopupRequerido,
+  type RolJuego,
   type Situacion,
 } from "@/lib/clasificacionV2";
 import {
@@ -87,7 +91,6 @@ interface PuntoCerrado {
   liberos: Libero[];
   posicionesPunto: Record<Zona, string>;
   cambios: CambioPendiente[];
-  recepcionOverrides: RecepcionOverrides;
 }
 
 interface Props {
@@ -100,7 +103,7 @@ interface Props {
 }
 
 const CLAVE_V2 = "voleystats_dataentry_v2_";
-const CLAVE_RECEPCION_FIJOS = "voleystats_recepcion_fijos_";
+const CLAVE_POSICIONES_FIJAS = "voleystats_posiciones_fijas_";
 
 const POSICIONES_VACIAS: Record<Zona, string> = {
   1: "",
@@ -110,6 +113,8 @@ const POSICIONES_VACIAS: Record<Zona, string> = {
   5: "",
   6: "",
 };
+
+const ZONAS: Zona[] = [1, 2, 3, 4, 5, 6];
 
 // ============================================================
 // HELPERS
@@ -210,119 +215,72 @@ function maxIdLineas(lineas: LineaClasificada[]): number {
 }
 
 // ------------------------------------------------------------
-// Cálculo de receptores por defecto desde la rotación
-// ------------------------------------------------------------
-// Misma tabla que clasificacionV2.ts. Se usa para inicializar
-// los dropdowns del modal 📋 Posición.
+// Resolución de un rol de juego a jugador_id
 // ------------------------------------------------------------
 
-function zonaRecepcionDeCelda(celda: string): ZonaRecepcion | null {
-  if (!/^F[123]-/.test(celda)) return null;
-  const col = celda.split("-")[1];
-  if (col === "C1" || col === "C2") return 5;
-  if (col === "C3") return 6;
-  if (col === "C4" || col === "C5") return 1;
-  return null;
-}
-
-const TABLA_RECEPCION_DEFAULT: Record<
-  Zona,
-  { z1: "PD" | "PZ" | "L"; z6: "PD" | "PZ" | "L"; z5: "PD" | "PZ" | "L" }
-> = {
-  1: { z1: "PD", z6: "L", z5: "PZ" },
-  2: { z1: "L", z6: "PZ", z5: "PD" },
-  3: { z1: "PZ", z6: "L", z5: "PD" },
-  4: { z1: "L", z6: "PZ", z5: "PD" },
-  5: { z1: "L", z6: "PZ", z5: "PD" },
-  6: { z1: "PZ", z6: "L", z5: "PD" },
-};
-
-function buscarPunta(
-  rot: RotacionPunto,
-  ubicacion: "delantera" | "trasera"
+function resolverJugadorRol(
+  rotacion: RotacionPunto,
+  liberos: Libero[],
+  rol: RolJuego
 ): string | null {
-  const zonasDel = [2, 3, 4];
-  const zonasTra = [1, 5, 6];
-  const zonas = ubicacion === "delantera" ? zonasDel : zonasTra;
-  for (const asig of Object.values(rot.posiciones)) {
-    if (
-      (asig.tipo === "P1" || asig.tipo === "P2") &&
-      zonas.includes(asig.zona) &&
-      asig.jugador_id
-    ) {
-      return asig.jugador_id;
+  if (rol === "L") {
+    const lib =
+      liberos.find((l) => l.tipo === "recepcion") ??
+      (liberos.length === 1 ? liberos[0] : null);
+    if (lib?.jugador_id) return lib.jugador_id;
+    // Fallback: central zaguero
+    for (const asig of Object.values(rotacion.posiciones)) {
+      if (
+        (asig.tipo === "C1" || asig.tipo === "C2") &&
+        (asig.zona === 1 || asig.zona === 5 || asig.zona === 6)
+      ) {
+        return asig.jugador_id;
+      }
     }
+    return null;
+  }
+  for (const asig of Object.values(rotacion.posiciones)) {
+    if (asig.tipo === rol) return asig.jugador_id;
   }
   return null;
 }
 
-function buscarCentralZaguero(rot: RotacionPunto): string | null {
-  for (const asig of Object.values(rot.posiciones)) {
-    if (
-      (asig.tipo === "C1" || asig.tipo === "C2") &&
-      (asig.zona === 1 || asig.zona === 5 || asig.zona === 6) &&
-      asig.jugador_id
-    ) {
-      return asig.jugador_id;
-    }
+// ------------------------------------------------------------
+// Construye la "rotación de juego": quién está en cada zona
+// según la tabla POSICIONES_JUEGO, respetando fijadas manuales.
+// ------------------------------------------------------------
+
+function construirRotacionJuego(
+  rotacionBase: RotacionPunto,
+  situacion: Situacion,
+  liberos: Libero[],
+  fijadas: Record<Zona, string> | undefined
+): RotacionPunto {
+  const numeroRot = numeroRotacionDesdePosiciones(rotacionBase);
+  const tabla = POSICIONES_JUEGO[numeroRot]?.[situacion];
+  if (!tabla) return rotacionBase;
+
+  const nuevas: Partial<Record<Zona, AsignacionZona>> = {};
+
+  for (const z of ZONAS) {
+    const rolJuego = tabla[z];
+    const idFijado = fijadas?.[z];
+    const jugadorId =
+      idFijado || resolverJugadorRol(rotacionBase, liberos, rolJuego);
+
+    const tipo: TipoLogico = rolJuego === "L" ? "C1" : rolJuego;
+    const rol: AsignacionZona["rol"] =
+      rolJuego === "L" ? "L" : ROL_DE_TIPO[tipo];
+
+    nuevas[z] = {
+      zona: z,
+      jugador_id: jugadorId ?? null,
+      rol,
+      tipo,
+    };
   }
-  return null;
-}
 
-function buscarLiberoActivo(rot: RotacionPunto): string | null {
-  const lib =
-    rot.liberos.find((l) => l.tipo === "recepcion") ??
-    (rot.liberos.length === 1 ? rot.liberos[0] : null);
-  if (lib?.jugador_id) return lib.jugador_id;
-  return buscarCentralZaguero(rot);
-}
-
-function calcularReceptoresDefault(
-  rot: RotacionPunto | null
-): Record<ZonaRecepcion, string | null> {
-  const out: Record<ZonaRecepcion, string | null> = {
-    1: null,
-    5: null,
-    6: null,
-  };
-  if (!rot) return out;
-
-  let zonaArmador: Zona | null = null;
-  for (const asig of Object.values(rot.posiciones)) {
-    if (asig.tipo === "A") {
-      zonaArmador = asig.zona;
-      break;
-    }
-  }
-  if (!zonaArmador) return out;
-
-  const fila = TABLA_RECEPCION_DEFAULT[zonaArmador];
-
-  const resolver = (
-    rol: "PD" | "PZ" | "L"
-  ): string | null => {
-    if (rol === "L") {
-      return buscarLiberoActivo(rot) ?? buscarCentralZaguero(rot) ?? null;
-    }
-    if (rol === "PD") {
-      return (
-        buscarPunta(rot, "delantera") ??
-        buscarLiberoActivo(rot) ??
-        null
-      );
-    }
-    return (
-      buscarPunta(rot, "trasera") ??
-      buscarLiberoActivo(rot) ??
-      null
-    );
-  };
-
-  out[1] = resolver(fila.z1);
-  out[6] = resolver(fila.z6);
-  out[5] = resolver(fila.z5);
-
-  return out;
+  return { ...rotacionBase, posiciones: nuevas as Record<Zona, AsignacionZona> };
 }
 
 // ============================================================
@@ -362,12 +320,11 @@ export default function DataEntryV2({
     []
   );
 
-  // ---- NUEVO: sistema de receptores ----
-  const [recepcionOverridesPunto, setRecepcionOverridesPunto] =
-    useState<RecepcionOverrides>({});
-  const [recepcionOverridesFijos, setRecepcionOverridesFijos] =
-    useState<RecepcionOverrides>({});
-  // -------------------------------------
+  // Posiciones fijadas por rotación + situación.
+  // Key: `${numeroRot}-${situacion}` → Record<Zona, jugadorId>
+  const [posicionesFijas, setPosicionesFijas] = useState<
+    Record<string, Record<Zona, string>>
+  >({});
 
   const [setActivo, setSetActivo] = useState<number>(1);
   const [orientacion, setOrientacion] = useState<Orientacion>("vertical");
@@ -385,14 +342,19 @@ export default function DataEntryV2({
   const situacion: Situacion =
     saqueInicial === "propio" ? "saque" : "recepcion";
 
+  const numeroRot = useMemo(
+    () => (rotacion ? numeroRotacionDesdePosiciones(rotacion) : null),
+    [rotacion]
+  );
+
   const popupActivo = colaPopups[0] ?? null;
 
+  // Rotación base con posicionesPunto aplicadas (para clasificarLinea).
   const rotacionEfectiva = useMemo<RotacionPunto | null>(() => {
     if (!rotacion) return null;
-    const zonas: Zona[] = [1, 2, 3, 4, 5, 6];
     let cambio = false;
     const nuevas = { ...rotacion.posiciones };
-    for (const z of zonas) {
+    for (const z of ZONAS) {
       const override = posicionesPunto[z];
       if (override && override !== nuevas[z]?.jugador_id) {
         nuevas[z] = { ...nuevas[z], jugador_id: override };
@@ -402,16 +364,54 @@ export default function DataEntryV2({
     return cambio ? { ...rotacion, posiciones: nuevas } : rotacion;
   }, [rotacion, posicionesPunto]);
 
+  // Overrides para clasificarLinea: fijadas (por rot+sit) + posicionesPunto.
+  const overridesParaClasificar = useMemo<
+    Partial<Record<Zona, string | null>>
+  >(() => {
+    const out: Partial<Record<Zona, string | null>> = {};
+    if (numeroRot !== null) {
+      const fijadas = posicionesFijas[`${numeroRot}-${situacion}`];
+      if (fijadas) {
+        for (const z of ZONAS) {
+          if (fijadas[z]) out[z] = fijadas[z];
+        }
+      }
+    }
+    for (const z of ZONAS) {
+      if (posicionesPunto[z]) out[z] = posicionesPunto[z];
+    }
+    return out;
+  }, [numeroRot, situacion, posicionesFijas, posicionesPunto]);
+
+  // ¿Hay fijadas para la rot + situación actuales?
+  const tieneFijadas = useMemo(() => {
+    if (numeroRot === null) return false;
+    return !!posicionesFijas[`${numeroRot}-${situacion}`];
+  }, [numeroRot, situacion, posicionesFijas]);
+
+  // Rotación de juego (para mostrar en el panel).
+  const rotacionJuego = useMemo<RotacionPunto | null>(() => {
+    if (!rotacion) return null;
+    const fijadas =
+      numeroRot !== null
+        ? posicionesFijas[`${numeroRot}-${situacion}`]
+        : undefined;
+    return construirRotacionJuego(rotacion, situacion, liberos, fijadas);
+  }, [rotacion, situacion, liberos, numeroRot, posicionesFijas]);
+
   const jugadoresEnCancha: JugadorEnCancha[] = useMemo(() => {
     if (!rotacion) return [];
     const ids = new Set<string>();
-    const zonasOrden: Zona[] = [1, 2, 3, 4, 5, 6];
-    for (const z of zonasOrden) {
+    for (const z of ZONAS) {
       const pend = cambiosPendientes.find((c) => c.zona === z);
       const override = posicionesPunto[z];
       const rot = rotacion.posiciones[z];
       const id = pend?.jugadorEntra || override || rot?.jugador_id;
       if (id) ids.add(id);
+    }
+    // Agregar líberos
+    for (const lib of liberos) {
+      if (lib.jugador_id) ids.add(lib.jugador_id);
     }
     return Array.from(ids).map((id) => {
       const j = jugadores.find((x) => x.id === id);
@@ -421,13 +421,13 @@ export default function DataEntryV2({
         nombre: j.nombre + (j.numero !== null ? ` #${j.numero}` : ""),
       };
     });
-  }, [rotacion, posicionesPunto, cambiosPendientes, jugadores]);
+  }, [rotacion, posicionesPunto, cambiosPendientes, jugadores, liberos]);
 
   const delanterosPorZona: JugadorZona[] = useMemo(() => {
-    if (!rotacionEfectiva) return [];
+    if (!rotacionJuego) return [];
     const zonas: (4 | 3 | 2)[] = [4, 3, 2];
     return zonas.map((z) => {
-      const asig = rotacionEfectiva.posiciones[z as Zona];
+      const asig = rotacionJuego.posiciones[z as Zona];
       const id = asig?.jugador_id ?? null;
       const jugador = id ? jugadores.find((j) => j.id === id) : null;
       return {
@@ -436,22 +436,7 @@ export default function DataEntryV2({
         nombre: jugador ? jugador.nombre : "(vacío)",
       };
     });
-  }, [rotacionEfectiva, jugadores]);
-
-  // ---- NUEVO: receptores por defecto (desde la rotación) ----
-  const receptoresDefault = useMemo<Record<ZonaRecepcion, string | null>>(
-    () => calcularReceptoresDefault(rotacionEfectiva),
-    [rotacionEfectiva]
-  );
-
-  // Overrides efectivos: fijos pisados por los del punto actual.
-  const recepcionOverridesEfectivos = useMemo<RecepcionOverrides>(() => {
-    return {
-      ...recepcionOverridesFijos,
-      ...recepcionOverridesPunto,
-    };
-  }, [recepcionOverridesFijos, recepcionOverridesPunto]);
-  // -----------------------------------------------------------
+  }, [rotacionJuego, jugadores]);
 
   const lineasParaUI: LineaV2[] = useMemo(() => lineas.map(aLineaV2), [lineas]);
   const origenActivoParaUI: PuntoV2 | null =
@@ -468,7 +453,7 @@ export default function DataEntryV2({
   }, [puntosCerrados]);
 
   // ============================================================
-  // SECUENCIA (calculada en vivo)
+  // SECUENCIA
   // ============================================================
 
   const secuenciaConValores = useMemo(() => {
@@ -512,7 +497,6 @@ export default function DataEntryV2({
       setLiberos(pc.liberos);
       setPosicionesPunto(pc.posicionesPunto);
       setCambiosPendientes(pc.cambios);
-      setRecepcionOverridesPunto(pc.recepcionOverrides ?? {});
       setContadorId(maxIdLineas(pc.lineas) + 1);
       return;
     }
@@ -541,25 +525,23 @@ export default function DataEntryV2({
       setPosicionesPunto({ ...POSICIONES_VACIAS });
       setCambiosPendientes([]);
     }
-    setRecepcionOverridesPunto({});
   };
 
   // ============================================================
   // LOCALSTORAGE
   // ============================================================
 
-  // Persistir overrides fijos por partido.
   useEffect(() => {
     if (!partidoId) return;
     try {
       localStorage.setItem(
-        CLAVE_RECEPCION_FIJOS + partidoId,
-        JSON.stringify(recepcionOverridesFijos)
+        CLAVE_POSICIONES_FIJAS + partidoId,
+        JSON.stringify(posicionesFijas)
       );
     } catch {
       /* noop */
     }
-  }, [partidoId, recepcionOverridesFijos]);
+  }, [partidoId, posicionesFijas]);
 
   useEffect(() => {
     if (!partidoId) return;
@@ -582,11 +564,10 @@ export default function DataEntryV2({
   useEffect(() => {
     if (!partidoId) return;
 
-    // Cargar overrides fijos de recepción.
-    const rawFijos = localStorage.getItem(CLAVE_RECEPCION_FIJOS + partidoId);
-    if (rawFijos) {
+    const rawFijas = localStorage.getItem(CLAVE_POSICIONES_FIJAS + partidoId);
+    if (rawFijas) {
       try {
-        setRecepcionOverridesFijos(JSON.parse(rawFijos));
+        setPosicionesFijas(JSON.parse(rawFijas));
       } catch {
         /* noop */
       }
@@ -599,8 +580,7 @@ export default function DataEntryV2({
       if (data.setActivo) setSetActivo(data.setActivo);
       if (data.setupCompleto !== undefined)
         setSetupCompleto(data.setupCompleto);
-      const cerrados: Record<number, PuntoCerrado> =
-        data.puntosCerrados ?? {};
+      const cerrados: Record<number, PuntoCerrado> = data.puntosCerrados ?? {};
       setPuntosCerrados(cerrados);
       const pto = data.puntoActual ?? 1;
       setPuntoActual(pto);
@@ -633,7 +613,6 @@ export default function DataEntryV2({
       return;
     }
 
-    // ---------- CÍRCULO ARMADO ----------
     if (circuloArmado) {
       if (coords.zona === "red") {
         const linea: LineaClasificada = {
@@ -687,7 +666,6 @@ export default function DataEntryV2({
       return;
     }
 
-    // ---------- CÍRCULO SIN ARMAR ----------
     if (circuloSinArmar) {
       if (coords.zona === "red") {
         setColaPopups([
@@ -756,7 +734,7 @@ export default function DataEntryV2({
       situacion,
       rotacion: rotacionEfectiva,
       lineas,
-      recepcionOverrides: recepcionOverridesEfectivos,
+      recepcionOverrides: overridesParaClasificar,
     };
 
     const res = clasificarLinea(estado, {
@@ -869,7 +847,6 @@ export default function DataEntryV2({
       liberos,
       posicionesPunto,
       cambios: cambiosPendientes,
-      recepcionOverrides: recepcionOverridesPunto,
     };
 
     const eraCerrado = puntoActualCerrado;
@@ -946,9 +923,7 @@ export default function DataEntryV2({
     setGuardando(false);
 
     if (errores > 0) {
-      alert(
-        `⚠️ ${errores} punto(s) con error. Primer error: ${primerError}`
-      );
+      alert(`⚠️ ${errores} punto(s) con error. Primer error: ${primerError}`);
     } else {
       alert("✅ Puntos guardados en Supabase");
     }
@@ -1071,6 +1046,27 @@ export default function DataEntryV2({
   };
 
   // ============================================================
+  // FIJAR / DESFIJAR POSICIONES
+  // ============================================================
+
+  const handleFijarPosiciones = (pos: Record<Zona, string>) => {
+    if (numeroRot === null) return;
+    const key = `${numeroRot}-${situacion}`;
+    setPosicionesFijas((prev) => ({ ...prev, [key]: pos }));
+    setPosicionesPunto({ ...POSICIONES_VACIAS });
+  };
+
+  const handleLimpiarFijadas = () => {
+    if (numeroRot === null) return;
+    const key = `${numeroRot}-${situacion}`;
+    setPosicionesFijas((prev) => {
+      const copia = { ...prev };
+      delete copia[key];
+      return copia;
+    });
+  };
+
+  // ============================================================
   // NAVEGACIÓN
   // ============================================================
 
@@ -1190,9 +1186,9 @@ export default function DataEntryV2({
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4">
             <div>
-              {rotacion && (
+              {rotacionJuego && (
                 <PanelRotacionV2
-                  rotacion={rotacion}
+                  rotacion={rotacionJuego}
                   jugadoresEnCancha={jugadores.map((j) => ({
                     id: j.id,
                     nombre: j.nombre,
@@ -1206,11 +1202,9 @@ export default function DataEntryV2({
                   liberos={liberos}
                   posicionesPunto={posicionesPunto}
                   cambiosPendientes={cambiosPendientes}
-                  recepcionOverridesPunto={recepcionOverridesPunto}
-                  recepcionOverridesFijos={recepcionOverridesFijos}
-                  receptoresDefault={receptoresDefault}
-                  onSetRecepcionOverridesPunto={setRecepcionOverridesPunto}
-                  onSetRecepcionOverridesFijos={setRecepcionOverridesFijos}
+                  onFijarPosiciones={handleFijarPosiciones}
+                  tieneFijadas={tieneFijadas}
+                  onLimpiarFijadas={handleLimpiarFijadas}
                   onSetLiberos={setLiberos}
                   onSetPosicionesPunto={setPosicionesPunto}
                   onSetCambiosPendientes={setCambiosPendientes}
@@ -1306,9 +1300,9 @@ export default function DataEntryV2({
         <>
           <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-3">
             <div className="space-y-2">
-              {rotacion && (
+              {rotacionJuego && (
                 <PanelRotacionV2
-                  rotacion={rotacion}
+                  rotacion={rotacionJuego}
                   jugadoresEnCancha={jugadores.map((j) => ({
                     id: j.id,
                     nombre: j.nombre,
@@ -1322,11 +1316,9 @@ export default function DataEntryV2({
                   liberos={liberos}
                   posicionesPunto={posicionesPunto}
                   cambiosPendientes={cambiosPendientes}
-                  recepcionOverridesPunto={recepcionOverridesPunto}
-                  recepcionOverridesFijos={recepcionOverridesFijos}
-                  receptoresDefault={receptoresDefault}
-                  onSetRecepcionOverridesPunto={setRecepcionOverridesPunto}
-                  onSetRecepcionOverridesFijos={setRecepcionOverridesFijos}
+                  onFijarPosiciones={handleFijarPosiciones}
+                  tieneFijadas={tieneFijadas}
+                  onLimpiarFijadas={handleLimpiarFijadas}
                   onSetLiberos={setLiberos}
                   onSetPosicionesPunto={setPosicionesPunto}
                   onSetCambiosPendientes={setCambiosPendientes}
@@ -1353,9 +1345,7 @@ export default function DataEntryV2({
                       }`
                     );
                     for (const d of l.desvios ?? []) {
-                      partes.push(
-                        `${d.celda}${d.mini ? `-${d.mini}` : ""}`
-                      );
+                      partes.push(`${d.celda}${d.mini ? `-${d.mini}` : ""}`);
                     }
                     partes.push(
                       `${l.destino.celda}${
