@@ -1,12 +1,19 @@
 "use client";
 
-import { useState } from "react";
-import type {
-  RotacionPunto,
-  Zona,
-  Libero,
-  SaqueEquipo,
+import { useMemo, useState } from "react";
+import {
+  numeroRotacionDesdePosiciones,
+  type RotacionPunto,
+  type Zona,
+  type Libero,
+  type SaqueEquipo,
 } from "@/lib/rotaciones";
+import {
+  POSICIONES_JUEGO,
+  resolverRolAJugador,
+  type RolJuego,
+  type Situacion,
+} from "@/lib/clasificacionV2";
 
 // ============================================================
 // TIPOS
@@ -25,8 +32,7 @@ export interface CambioPendiente {
   jugadorEntra: string;
 }
 
-// Los dejamos exportados como stubs para no romper la compilación
-// mientras terminamos de adaptar DataEntryV2. No se usan acá.
+// Stubs para no romper imports viejos mientras adaptamos DataEntryV2
 export type ZonaRecepcion = 1 | 5 | 6;
 export type RecepcionOverrides = Partial<
   Record<ZonaRecepcion, string | null>
@@ -38,11 +44,10 @@ interface Props {
   jugadoresDisponibles: Jugador[];
   liberos: Libero[];
   posicionesPunto: Record<Zona, string>;
+  posicionesFijas: Record<Zona, string>;
   cambiosPendientes: CambioPendiente[];
 
-  // Fijar posiciones por rotación + situación
-  onFijarPosiciones?: (posiciones: Record<Zona, string>) => void;
-  tieneFijadas?: boolean;
+  onFijarPosiciones?: (pos: Record<Zona, string>) => void;
   onLimpiarFijadas?: () => void;
 
   onSetLiberos: (liberos: Libero[]) => void;
@@ -77,6 +82,34 @@ const ROL_COLOR: Record<string, string> = {
 };
 
 // ============================================================
+// HELPERS
+// ============================================================
+
+/**
+ * Devuelve las posiciones de JUEGO (rol + jugador) para la rotación
+ * y situación actuales, según POSICIONES_JUEGO.
+ */
+function calcularPosicionesJuego(
+  rotacion: RotacionPunto,
+  situacion: Situacion
+): Record<Zona, { rol: RolJuego; jugador_id: string | null }> {
+  const numeroRot = numeroRotacionDesdePosiciones(rotacion);
+  const fila = POSICIONES_JUEGO[numeroRot]?.[situacion];
+  const out = {} as Record<
+    Zona,
+    { rol: RolJuego; jugador_id: string | null }
+  >;
+  for (const z of [1, 2, 3, 4, 5, 6] as Zona[]) {
+    const rol: RolJuego = fila?.[z] ?? "A";
+    out[z] = {
+      rol,
+      jugador_id: fila ? resolverRolAJugador(rotacion, rol) : null,
+    };
+  }
+  return out;
+}
+
+// ============================================================
 // PANEL PRINCIPAL
 // ============================================================
 
@@ -86,9 +119,9 @@ export default function PanelRotacionV2({
   jugadoresDisponibles,
   liberos,
   posicionesPunto,
+  posicionesFijas,
   cambiosPendientes,
   onFijarPosiciones,
-  tieneFijadas = false,
   onLimpiarFijadas,
   onSetLiberos,
   onSetPosicionesPunto,
@@ -101,6 +134,14 @@ export default function PanelRotacionV2({
   const [modalPosicion, setModalPosicion] = useState(false);
   const [modalLibero, setModalLibero] = useState(false);
 
+  const situacion: Situacion =
+    rotacion.saque_equipo === "rival" ? "recepcion" : "saque";
+
+  const posicionesJuego = useMemo(
+    () => calcularPosicionesJuego(rotacion, situacion),
+    [rotacion, situacion]
+  );
+
   const nombreDe = (id: string | null | undefined) => {
     if (!id) return "—";
     const j =
@@ -111,19 +152,18 @@ export default function PanelRotacionV2({
     return partes.length > 1 ? partes[0] : j.nombre.slice(0, 8);
   };
 
+  // Orden de prioridad: cambio pendiente > override del punto > fijas > juego
   const jugadorEnZona = (zona: Zona): string | null => {
     const pend = cambiosPendientes.find((c) => c.zona === zona);
     if (pend) return pend.jugadorEntra;
-    const override = posicionesPunto[zona];
-    if (override) return override;
-    return rotacion.posiciones[zona]?.jugador_id ?? null;
+    if (posicionesPunto[zona]) return posicionesPunto[zona];
+    if (posicionesFijas[zona]) return posicionesFijas[zona];
+    return posicionesJuego[zona].jugador_id;
   };
 
-  const rolEnZona = (zona: Zona): string => {
-    const base = rotacion.posiciones[zona];
-    return base?.rol ?? "?";
-  };
+  const rolEnZona = (zona: Zona): RolJuego => posicionesJuego[zona].rol;
 
+  const tieneFijadas = Object.values(posicionesFijas).some((v) => v);
   const hayCambios = cambiosPendientes.length > 0;
 
   const handleAplicarCambio = (jugadorNuevo: Jugador) => {
@@ -315,12 +355,12 @@ export default function PanelRotacionV2({
       {modalPosicion && (
         <ModalPosicion
           posicionesPunto={posicionesPunto}
+          posicionesFijas={posicionesFijas}
+          jugadorEnZona={jugadorEnZona}
           jugadoresEnCancha={jugadoresEnCancha}
           jugadoresDisponibles={jugadoresDisponibles}
-          jugadorEnZona={jugadorEnZona}
           onSetPosicionesPunto={onSetPosicionesPunto}
           onFijarPosiciones={onFijarPosiciones}
-          tieneFijadas={tieneFijadas}
           onLimpiarFijadas={onLimpiarFijadas}
           onCerrar={() => setModalPosicion(false)}
         />
@@ -352,7 +392,7 @@ function CeldaZona({
 }: {
   zona: Zona;
   jugadorNombre: string;
-  rol: string;
+  rol: RolJuego;
   tieneCambio: boolean;
   onClick: () => void;
 }) {
@@ -492,22 +532,22 @@ function ModalCambio({
 
 function ModalPosicion({
   posicionesPunto,
+  posicionesFijas,
+  jugadorEnZona,
   jugadoresEnCancha,
   jugadoresDisponibles,
-  jugadorEnZona,
   onSetPosicionesPunto,
   onFijarPosiciones,
-  tieneFijadas,
   onLimpiarFijadas,
   onCerrar,
 }: {
   posicionesPunto: Record<Zona, string>;
+  posicionesFijas: Record<Zona, string>;
+  jugadorEnZona: (z: Zona) => string | null;
   jugadoresEnCancha: Jugador[];
   jugadoresDisponibles: Jugador[];
-  jugadorEnZona: (z: Zona) => string | null;
   onSetPosicionesPunto: (p: Record<Zona, string>) => void;
   onFijarPosiciones?: (p: Record<Zona, string>) => void;
-  tieneFijadas?: boolean;
   onLimpiarFijadas?: () => void;
   onCerrar: () => void;
 }) {
@@ -533,6 +573,8 @@ function ModalPosicion({
     const partes = j.nombre.split(" ");
     return partes.length > 1 ? partes[0] : j.nombre.slice(0, 8);
   };
+
+  const tieneFijadas = Object.values(posicionesFijas).some((v) => v);
 
   const handleClickZona = (zona: Zona) => {
     if (seleccionado === null) {
@@ -575,13 +617,16 @@ function ModalPosicion({
   };
 
   const handleLimpiarFijadas = () => {
-    if (!confirm(
-      "¿Desfijar las posiciones para esta rotación + situación?\n\n" +
-        "Vuelve a las posiciones de juego automáticas."
-    )) {
+    if (
+      !confirm(
+        "¿Desfijar las posiciones para esta rotación + situación?\n\n" +
+          "Vuelve a las posiciones de juego automáticas."
+      )
+    ) {
       return;
     }
     onLimpiarFijadas?.();
+    onCerrar();
   };
 
   const zonaBtn = (zona: Zona) => {
