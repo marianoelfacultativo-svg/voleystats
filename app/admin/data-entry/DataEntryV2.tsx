@@ -151,7 +151,6 @@ function aAccionV2(
     override?.subtipo !== undefined ? override.subtipo : l.subtipo ?? null;
 
   // Correlación: si el ataque tiene variante "toque", prefijamos el subtipo
-  // (ej: "toque:punto"). Así se guardan ambos sin cambiar el esquema de BD.
   if (
     override?.subtipo === undefined &&
     l.tipo === "ataque" &&
@@ -292,6 +291,7 @@ export default function DataEntryV2({
   const [orientacion, setOrientacion] = useState<Orientacion>("vertical");
   const [guardando, setGuardando] = useState(false);
   const [setupCompleto, setSetupCompleto] = useState(false);
+  const [hidratado, setHidratado] = useState(false);
 
   const puntoActualCerrado = !!puntosCerrados[puntoActual];
 
@@ -473,8 +473,9 @@ export default function DataEntryV2({
     }
   };
 
+  // ---------- GUARDADO (bloqueado hasta hidratar) ----------
   useEffect(() => {
-    if (!partidoId) return;
+    if (!partidoId || !hidratado) return;
     try {
       localStorage.setItem(
         CLAVE_POSICIONES_FIJAS + partidoId,
@@ -483,10 +484,10 @@ export default function DataEntryV2({
     } catch {
       /* noop */
     }
-  }, [partidoId, posicionesFijas]);
+  }, [partidoId, hidratado, posicionesFijas]);
 
   useEffect(() => {
-    if (!partidoId) return;
+    if (!partidoId || !hidratado) return;
     try {
       localStorage.setItem(
         CLAVE_V2 + partidoId,
@@ -496,13 +497,35 @@ export default function DataEntryV2({
           puntoActual,
           setupCompleto,
           puntosCerrados,
+          rotacion,
+          saqueInicial,
+          liberos,
+          posicionesPunto,
+          cambiosPendientes,
+          lineas,
+          contadorId,
         })
       );
     } catch {
       /* noop */
     }
-  }, [partidoId, setActivo, puntoActual, setupCompleto, puntosCerrados]);
+  }, [
+    partidoId,
+    hidratado,
+    setActivo,
+    puntoActual,
+    setupCompleto,
+    puntosCerrados,
+    rotacion,
+    saqueInicial,
+    liberos,
+    posicionesPunto,
+    cambiosPendientes,
+    lineas,
+    contadorId,
+  ]);
 
+  // ---------- CARGA ----------
   useEffect(() => {
     if (!partidoId) return;
 
@@ -516,7 +539,10 @@ export default function DataEntryV2({
     }
 
     const raw = localStorage.getItem(CLAVE_V2 + partidoId);
-    if (!raw) return;
+    if (!raw) {
+      setHidratado(true);
+      return;
+    }
     try {
       const data = JSON.parse(raw);
       if (data.setActivo) setSetActivo(data.setActivo);
@@ -528,9 +554,22 @@ export default function DataEntryV2({
       const pto = data.puntoActual ?? 1;
       setPuntoActual(pto);
       cargarPuntoDesde(cerrados, pto);
+
+      // Restaurar estado del punto en curso (si todavía no está cerrado)
+      if (!cerrados[pto]) {
+        if (data.rotacion) setRotacion(data.rotacion);
+        if (data.saqueInicial) setSaqueInicial(data.saqueInicial);
+        if (data.liberos) setLiberos(data.liberos);
+        if (data.posicionesPunto) setPosicionesPunto(data.posicionesPunto);
+        if (data.cambiosPendientes)
+          setCambiosPendientes(data.cambiosPendientes);
+        if (data.lineas) setLineas(data.lineas);
+        if (data.contadorId) setContadorId(data.contadorId);
+      }
     } catch {
       /* noop */
     }
+    setHidratado(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partidoId]);
 
@@ -883,11 +922,6 @@ export default function DataEntryV2({
     popupSiguiente();
   };
 
-  /**
-   * Defensa propia:
-   *   1) Setea el subtipo + jugador en la línea de defensa.
-   *   2) Regla nueva: el último ataque rival previo hereda el mismo subtipo.
-   */
   const handleDefensaConfirmar = (
     subtipo: TipoDefensa,
     jugadorId: string | null
@@ -969,12 +1003,6 @@ export default function DataEntryV2({
     popupSiguiente();
   };
 
-  /**
-   * Popup del ataque: Toque / Libre.
-   *  - "toque"  → guarda `variante: "toque"` (sigue siendo ataque).
-   *  - "libre"  → cambia `tipo` de la línea a "libre".
-   *  - Esc / cancelar → no toca nada (queda como remate, default).
-   */
   const handleAtaqueToqueLibreConfirmar = (v: VarianteAtaquePopup) => {
     if (!popupActivo) return;
 
