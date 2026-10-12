@@ -614,7 +614,6 @@ export default function AdminPage() {
   const inputBase =
     "px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500";
 
-  // Componente: selector G/P/— para cada set
   const SelectorSetGanado = ({
     valor,
     onChange,
@@ -674,13 +673,17 @@ export default function AdminPage() {
           </div>
           <div className="flex gap-2 flex-wrap">
             <button
-              onClick={() => router.push("/admin/dataentry/data-entry-jugador")}
+              onClick={() =>
+                router.push("/admin/data-entry/data-entry-jugador")
+              }
               className="px-4 py-2 text-sm bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition"
             >
               🎯 Consola por jugador
             </button>
             <button
-              onClick={() => router.push("/admin/dataentry/data-entry-equipo")}
+              onClick={() =>
+                router.push("/admin/data-entry/data-entry-equipo")
+              }
               className="px-4 py-2 text-sm bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-medium rounded-lg transition"
             >
               🧪 Consola por equipo
