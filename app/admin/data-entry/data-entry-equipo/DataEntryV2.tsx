@@ -42,6 +42,7 @@ import {
 import {
   POSICIONES_JUEGO,
   calcularSubtiposAtaque,
+  calcularSubtiposAtaqueRival,
   calcularSubtiposBloqueo,
   calcularSubtiposDefensa,
   calcularSubtiposSaque,
@@ -413,7 +414,8 @@ export default function DataEntryV2({
   const secuenciaConValores = useMemo(() => {
     const conSaque = calcularSubtiposSaque(lineas);
     const ganadorActual = ganadorDelPunto(conSaque);
-    const conBloqueo = calcularSubtiposBloqueo(conSaque);
+    const conAtaqueRival = calcularSubtiposAtaqueRival(conSaque);
+    const conBloqueo = calcularSubtiposBloqueo(conAtaqueRival);
     const conDefensa = calcularSubtiposDefensa(conBloqueo);
     const conAtaque = ganadorActual
       ? calcularSubtiposAtaque(conDefensa, ganadorActual)
@@ -896,7 +898,9 @@ export default function DataEntryV2({
       };
 
       const lineasConSaque = calcularSubtiposSaque(pc.lineas);
-      const lineasConBloqueo = calcularSubtiposBloqueo(lineasConSaque);
+      const lineasConAtaqueRival =
+        calcularSubtiposAtaqueRival(lineasConSaque);
+      const lineasConBloqueo = calcularSubtiposBloqueo(lineasConAtaqueRival);
       const lineasConDefensa = calcularSubtiposDefensa(lineasConBloqueo);
       const lineasConAtaque = calcularSubtiposAtaque(
         lineasConDefensa,
@@ -978,20 +982,6 @@ export default function DataEntryV2({
       const jugadorFinal = jugadorId ?? lineaActual.jugadorId ?? null;
 
       copia[idx] = { ...lineaActual, subtipo, jugadorId: jugadorFinal };
-
-      let idxAtaqueRival = -1;
-      for (let i = idx - 1; i >= 0; i--) {
-        if (copia[i].tipo === "ataque" && copia[i].esRival) {
-          idxAtaqueRival = i;
-          break;
-        }
-      }
-      if (idxAtaqueRival !== -1) {
-        copia[idxAtaqueRival] = {
-          ...copia[idxAtaqueRival],
-          subtipo,
-        };
-      }
 
       return copia;
     });

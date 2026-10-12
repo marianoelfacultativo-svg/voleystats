@@ -650,6 +650,71 @@ export function calcularSubtiposDefensa(
 }
 
 // ============================================================
+// SUBTIPOS DE ATAQUE RIVAL (según defensa propia siguiente)
+// ============================================================
+//
+// Para cada ataque rival seguido de una defensa propia:
+//   - defensa con subtipo "toque"        → ataque rival = "toque"
+//   - defensa con subtipo "gran-defensa" → ataque rival = "peligroso"
+//   - defensa con subtipo "libre"        → ataque rival = "libre"
+//   - defensa sin elegir (defensa_normal / null):
+//       · si es la última visible → ataque rival = "buena_rival"
+//       · si la jugada sigue       → ataque rival = "simple"
+//
+// IMPORTANTE: esta función se debe llamar ANTES de
+// calcularSubtiposDefensa, porque lee el subtipo crudo de la defensa
+// ("defensa_normal" = sin elegir) antes de que ese paso lo reemplace.
+// ============================================================
+
+export function calcularSubtiposAtaqueRival(
+  lineas: LineaClasificada[]
+): LineaClasificada[] {
+  if (lineas.length === 0) return lineas;
+
+  // Índice de la última línea visible (para saber si la defensa cierra).
+  let ultimoVisible = -1;
+  for (let i = lineas.length - 1; i >= 0; i--) {
+    if (!lineas[i].oculta) {
+      ultimoVisible = i;
+      break;
+    }
+  }
+
+  const resultado = [...lineas];
+
+  for (let i = 0; i < resultado.length; i++) {
+    const l = resultado[i];
+    if (l.tipo !== "ataque" || !l.esRival) continue;
+
+    // Buscar la siguiente línea visible después del ataque rival.
+    let j = i + 1;
+    while (j < resultado.length && resultado[j].oculta) j++;
+    if (j >= resultado.length) continue;
+
+    const siguiente = resultado[j];
+    if (siguiente.tipo !== "defensa" || siguiente.esRival) continue;
+
+    const subtipoDef = siguiente.subtipo;
+    let nuevoSub: string;
+
+    if (subtipoDef === "toque") {
+      nuevoSub = "toque";
+    } else if (subtipoDef === "gran-defensa") {
+      nuevoSub = "peligroso";
+    } else if (subtipoDef === "libre") {
+      nuevoSub = "libre";
+    } else {
+      // Sin elegir: defensa_normal o null.
+      nuevoSub = j === ultimoVisible ? "buena_rival" : "simple";
+    }
+
+    resultado[i] = { ...l, subtipo: nuevoSub };
+  }
+
+  return resultado;
+}
+
+// ============================================================
 // SUBTIPOS DE BLOQUEO PROPIO
 // ============================================================
 
