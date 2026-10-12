@@ -74,8 +74,10 @@ const LAYOUT: { zona: Zona; fila: "frente" | "fondo" }[] = [
 const ROL_COLOR: Record<string, string> = {
   A: "border-violet-400 bg-violet-50 text-violet-800",
   O: "border-orange-400 bg-orange-50 text-orange-800",
+  C: "border-blue-400 bg-blue-50 text-blue-800",
   C1: "border-blue-400 bg-blue-50 text-blue-800",
   C2: "border-blue-400 bg-blue-50 text-blue-800",
+  P: "border-emerald-400 bg-emerald-50 text-emerald-800",
   P1: "border-emerald-400 bg-emerald-50 text-emerald-800",
   P2: "border-emerald-400 bg-emerald-50 text-emerald-800",
   L: "border-pink-400 bg-pink-50 text-pink-800",
@@ -110,8 +112,6 @@ export default function PanelRotacionV2({
   const situacion: Situacion =
     rotacion.saque_equipo === "rival" ? "recepcion" : "saque";
 
-  // Rotación efectiva: la que usa resolverRolAJugador para ver los líberos
-  // que el usuario cargó (que viven en el state `liberos`, no en rotacion).
   const rotacionConLiberos: RotacionPunto = { ...rotacion, liberos };
 
   const nombreDe = (id: string | null | undefined) => {
@@ -126,7 +126,6 @@ export default function PanelRotacionV2({
 
   const idsLiberos = new Set(liberos.map((l) => l.jugador_id));
 
-  // Panel: solo rotación base + overrides (sin líbero resuelto).
   const jugadorEnZona = (zona: Zona): string | null => {
     const pend = cambiosPendientes.find((c) => c.zona === zona);
     if (pend) return pend.jugadorEntra;
@@ -135,7 +134,6 @@ export default function PanelRotacionV2({
     return rotacion.posiciones[zona]?.jugador_id ?? null;
   };
 
-  // Modal Posición: resuelve el líbero y los roles de juego.
   const jugadorParaModal = (zona: Zona): string | null => {
     const pend = cambiosPendientes.find((c) => c.zona === zona);
     if (pend) return pend.jugadorEntra;
@@ -154,6 +152,25 @@ export default function PanelRotacionV2({
 
   const rolEnZona = (zona: Zona): string =>
     rotacion.posiciones[zona]?.rol ?? "?";
+
+  const rolDeJugador = (id: string | null): string => {
+    if (!id) return "?";
+    for (const z of Object.values(rotacion.posiciones)) {
+      if (z.jugador_id === id) return z.rol;
+    }
+    if (idsLiberos.has(id)) return "L";
+    const numeroRot = numeroRotacionDesdePosiciones(rotacion);
+    const fila = POSICIONES_JUEGO[numeroRot]?.[situacion];
+    if (fila) {
+      for (const z of [1, 2, 3, 4, 5, 6] as Zona[]) {
+        const rol = fila[z];
+        if (rol && resolverRolAJugador(rotacionConLiberos, rol) === id) {
+          return rol;
+        }
+      }
+    }
+    return "?";
+  };
 
   const tieneFijadas =
     tieneFijadasProp ??
@@ -322,7 +339,6 @@ export default function PanelRotacionV2({
         </div>
       </div>
 
-      {/* ---------- MODAL: CAMBIO EN ZONA ---------- */}
       {modalCambio !== null && (
         <ModalCambio
           zona={modalCambio}
@@ -346,7 +362,6 @@ export default function PanelRotacionV2({
         />
       )}
 
-      {/* ---------- MODAL: POSICIÓN DEL PUNTO ---------- */}
       {modalPosicion && (
         <ModalPosicion
           posicionesPunto={posicionesPunto}
@@ -355,6 +370,7 @@ export default function PanelRotacionV2({
           jugadoresEnCancha={jugadoresEnCancha}
           jugadoresDisponibles={jugadoresDisponibles}
           situacion={situacion}
+          rolDeJugador={rolDeJugador}
           onSetPosicionesPunto={onSetPosicionesPunto}
           onFijarPosiciones={onFijarPosiciones}
           onLimpiarFijadas={onLimpiarFijadas}
@@ -362,7 +378,6 @@ export default function PanelRotacionV2({
         />
       )}
 
-      {/* ---------- MODAL: LÍBEROS ---------- */}
       {modalLibero && (
         <ModalLibero
           todosLosJugadores={[...jugadoresEnCancha, ...jugadoresDisponibles]}
@@ -419,7 +434,7 @@ function CeldaZona({
 }
 
 // ============================================================
-// MODAL: CAMBIO EN ZONA (con reglas de líbero)
+// MODAL: CAMBIO EN ZONA
 // ============================================================
 
 function ModalCambio({
@@ -462,9 +477,6 @@ function ModalCambio({
   const zonaActualEsLibero =
     jugadorActualId !== null && idsLiberos.has(jugadorActualId);
 
-  // Candidatos según la regla:
-  // - Zona del líbero: solo el líbero actual + el jugador original (central).
-  // - Zona normal: todos los no-líberos.
   const candidatos: Jugador[] = (() => {
     if (zonaActualEsLibero) {
       const ids: string[] = [];
@@ -565,7 +577,7 @@ function ModalCambio({
 }
 
 // ============================================================
-// MODAL: POSICIÓN DEL PUNTO
+// MODAL: POSICIÓN DEL PUNTO (con colores por rol)
 // ============================================================
 
 function ModalPosicion({
@@ -575,6 +587,7 @@ function ModalPosicion({
   jugadoresEnCancha,
   jugadoresDisponibles,
   situacion,
+  rolDeJugador,
   onSetPosicionesPunto,
   onFijarPosiciones,
   onLimpiarFijadas,
@@ -586,6 +599,7 @@ function ModalPosicion({
   jugadoresEnCancha: Jugador[];
   jugadoresDisponibles: Jugador[];
   situacion: Situacion;
+  rolDeJugador: (id: string | null) => string;
   onSetPosicionesPunto: (p: Record<Zona, string>) => void;
   onFijarPosiciones?: (p: Record<Zona, string>) => void;
   onLimpiarFijadas?: () => void;
@@ -680,18 +694,23 @@ function ModalPosicion({
   const zonaBtn = (zona: Zona) => {
     const id = local[zona];
     const sel = seleccionado === zona;
+    const rolJug = rolDeJugador(id || null);
+    const colorRol =
+      ROL_COLOR[rolJug] ?? "border-slate-300 bg-slate-50 text-slate-700";
+
     return (
       <button
         key={zona}
         onClick={() => handleClickZona(zona)}
-        className={`w-16 h-14 border-2 rounded p-1 flex flex-col items-center justify-center transition ${
-          sel
-            ? "border-cyan-500 bg-cyan-100 ring-2 ring-cyan-300"
-            : "border-slate-300 bg-slate-50 hover:bg-cyan-50"
+        className={`w-16 h-14 border-2 rounded p-1 flex flex-col items-center justify-center transition ${colorRol} ${
+          sel ? "ring-2 ring-cyan-500" : "hover:brightness-95"
         }`}
       >
-        <span className="text-[8px] font-bold text-slate-400">Z{zona}</span>
-        <span className="text-[10px] font-semibold text-slate-800 truncate w-full text-center">
+        <span className="text-[8px] font-bold opacity-60">Z{zona}</span>
+        <span className="text-[9px] font-bold leading-none">
+          {rolJug !== "?" ? rolJug : "—"}
+        </span>
+        <span className="text-[9px] font-semibold truncate w-full text-center leading-tight">
           {nombreDe(id)}
         </span>
       </button>

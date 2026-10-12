@@ -109,7 +109,6 @@ const POSICIONES_VACIAS: Record<Zona, string> = {
   6: "",
 };
 
-// Tipo del mapa de posiciones fijas por rot+situación.
 type PosicionesFijasMap = Record<string, Record<Zona, string>>;
 
 // ============================================================
@@ -210,11 +209,6 @@ function maxIdLineas(lineas: LineaClasificada[]): number {
   return max;
 }
 
-/**
- * Mapea las posiciones fijas + del punto a un objeto `recepcionOverrides`
- * que entiende clasificarLinea. Solo importan las zonas de recepción (5, 6, 1).
- * Prioridad: posicionesPunto > posicionesFijas.
- */
 function calcularRecepcionOverrides(
   posicionesFijas: Record<Zona, string>,
   posicionesPunto: Record<Zona, string>
@@ -268,11 +262,9 @@ export default function DataEntryV2({
     []
   );
 
-  // ---- Posiciones fijas por rotación + situación ----
   const [posicionesFijas, setPosicionesFijas] = useState<PosicionesFijasMap>(
     {}
   );
-  // --------------------------------------------------
 
   const [setActivo, setSetActivo] = useState<number>(1);
   const [orientacion, setOrientacion] = useState<Orientacion>("vertical");
@@ -309,24 +301,27 @@ export default function DataEntryV2({
 
   const jugadoresEnCancha: JugadorEnCancha[] = useMemo(() => {
     if (!rotacion) return [];
-    const ids = new Set<string>();
+    const mapaIdRol = new Map<string, string>();
     const zonasOrden: Zona[] = [1, 2, 3, 4, 5, 6];
     for (const z of zonasOrden) {
       const pend = cambiosPendientes.find((c) => c.zona === z);
       const override = posicionesPunto[z];
       const rot = rotacion.posiciones[z];
       const id = pend?.jugadorEntra || override || rot?.jugador_id;
-      if (id) ids.add(id);
+      const rol = rot?.rol ?? "?";
+      if (id) mapaIdRol.set(id, rol);
     }
-    return Array.from(ids).map((id) => {
+    for (const l of liberos) {
+      if (l.jugador_id) mapaIdRol.set(l.jugador_id, "L");
+    }
+    return Array.from(mapaIdRol.entries()).map(([id, rol]) => {
       const j = jugadores.find((x) => x.id === id);
-      if (!j) return { id, nombre: "?" };
-      return {
-        id,
-        nombre: j.nombre + (j.numero !== null ? ` #${j.numero}` : ""),
-      };
+      const nombre = j
+        ? j.nombre + (j.numero !== null ? ` #${j.numero}` : "")
+        : "?";
+      return { id, nombre, rol };
     });
-  }, [rotacion, posicionesPunto, cambiosPendientes, jugadores]);
+  }, [rotacion, posicionesPunto, cambiosPendientes, jugadores, liberos]);
 
   const delanterosPorZona: JugadorZona[] = useMemo(() => {
     if (!rotacionEfectiva) return [];
@@ -343,7 +338,6 @@ export default function DataEntryV2({
     });
   }, [rotacionEfectiva, jugadores]);
 
-  // ---- Clave de posiciones fijas para el rot+sit actuales ----
   const clavePosicionesFijas = useMemo(() => {
     if (!rotacion) return "";
     const numRot = numeroRotacionDesdePosiciones(rotacion);
@@ -361,7 +355,6 @@ export default function DataEntryV2({
       posicionesPunto
     );
   }, [posicionesFijasActuales, posicionesPunto]);
-  // -----------------------------------------------------------
 
   const lineasParaUI: LineaV2[] = useMemo(() => lineas.map(aLineaV2), [lineas]);
   const origenActivoParaUI: PuntoV2 | null =
@@ -376,10 +369,6 @@ export default function DataEntryV2({
     }
     return { propio: p, rival: r };
   }, [puntosCerrados]);
-
-  // ============================================================
-  // SECUENCIA (calculada en vivo)
-  // ============================================================
 
   const secuenciaConValores = useMemo(() => {
     const conSaque = calcularSubtiposSaque(lineas);
@@ -397,10 +386,6 @@ export default function DataEntryV2({
     if (!j) return "?";
     return j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
   };
-
-  // ============================================================
-  // CARGAR PUNTO
-  // ============================================================
 
   const cargarPuntoDesde = (
     cerrados: Record<number, PuntoCerrado>,
@@ -452,11 +437,6 @@ export default function DataEntryV2({
     }
   };
 
-  // ============================================================
-  // LOCALSTORAGE
-  // ============================================================
-
-  // Persistir posiciones fijas por partido.
   useEffect(() => {
     if (!partidoId) return;
     try {
@@ -490,7 +470,6 @@ export default function DataEntryV2({
   useEffect(() => {
     if (!partidoId) return;
 
-    // Cargar posiciones fijas.
     const rawFijas = localStorage.getItem(CLAVE_POSICIONES_FIJAS + partidoId);
     if (rawFijas) {
       try {
@@ -519,10 +498,6 @@ export default function DataEntryV2({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partidoId]);
 
-  // ============================================================
-  // CLICK EN CANCHA
-  // ============================================================
-
   const handleMiniClick = (coords: CoordsV2) => {
     if (!setupCompleto) return;
     if (colaPopups.length > 0) setColaPopups([]);
@@ -541,7 +516,6 @@ export default function DataEntryV2({
       return;
     }
 
-    // ---------- CÍRCULO ARMADO ----------
     if (circuloArmado) {
       if (coords.zona === "red") {
         const linea: LineaClasificada = {
@@ -595,7 +569,6 @@ export default function DataEntryV2({
       return;
     }
 
-    // ---------- CÍRCULO SIN ARMAR ----------
     if (circuloSinArmar) {
       if (coords.zona === "red") {
         setColaPopups([
@@ -706,10 +679,6 @@ export default function DataEntryV2({
     setEstrella(null);
   };
 
-  // ============================================================
-  // BORRAR
-  // ============================================================
-
   const handleBorrarUltima = () => {
     if (lineas.length === 0) {
       if (circuloArmado || circuloSinArmar) {
@@ -749,10 +718,6 @@ export default function DataEntryV2({
       setPuntosCerrados(copia);
     }
   };
-
-  // ============================================================
-  // CERRAR PUNTO
-  // ============================================================
 
   const handleCerrarPunto = () => {
     if (lineas.length === 0) return;
@@ -796,10 +761,6 @@ export default function DataEntryV2({
     setPuntoActual(siguiente);
     cargarPuntoDesde(nuevosCerrados, siguiente);
   };
-
-  // ============================================================
-  // GUARDAR EN SUPABASE
-  // ============================================================
 
   const handleGuardarSupabase = async () => {
     const lista = Object.values(puntosCerrados).sort(
@@ -860,10 +821,6 @@ export default function DataEntryV2({
       alert("✅ Puntos guardados en Supabase");
     }
   };
-
-  // ============================================================
-  // POPUPS
-  // ============================================================
 
   const popupSiguiente = () => setColaPopups((prev) => prev.slice(1));
 
@@ -947,10 +904,6 @@ export default function DataEntryV2({
 
   const cerrarPopup = () => setColaPopups([]);
 
-  // ============================================================
-  // ROTACIÓN
-  // ============================================================
-
   const handleGuardarCambios = () => {
     if (!rotacion) return;
     const nueva = { ...rotacion };
@@ -977,10 +930,6 @@ export default function DataEntryV2({
     if (rotacion) setRotacion({ ...rotacion, saque_equipo: equipo });
   };
 
-  // ============================================================
-  // POSICIONES FIJAS
-  // ============================================================
-
   const handleFijarPosiciones = (pos: Record<Zona, string>) => {
     if (!clavePosicionesFijas) return;
     setPosicionesFijas((prev) => ({
@@ -998,19 +947,11 @@ export default function DataEntryV2({
     });
   };
 
-  // ============================================================
-  // NAVEGACIÓN
-  // ============================================================
-
   const irAPunto = (n: number) => {
     if (n < 1 || n > maxNavegable) return;
     setPuntoActual(n);
     cargarPuntoDesde(puntosCerrados, n);
   };
-
-  // ============================================================
-  // ATAJOS
-  // ============================================================
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1068,10 +1009,6 @@ export default function DataEntryV2({
     cambiosPendientes,
   ]);
 
-  // ============================================================
-  // SETUP
-  // ============================================================
-
   const necesitaSetup = !setupCompleto;
 
   const handleComenzar = () => {
@@ -1082,13 +1019,8 @@ export default function DataEntryV2({
     setSetupCompleto(true);
   };
 
-  // ============================================================
-  // RENDER
-  // ============================================================
-
   return (
     <div className="space-y-3">
-      {/* MARCADOR */}
       <div className="flex items-center justify-center gap-6 bg-slate-900 text-white rounded-2xl px-6 py-3">
         <div className="text-center">
           <p className="text-[10px] font-semibold text-slate-400 uppercase">
@@ -1110,7 +1042,6 @@ export default function DataEntryV2({
         </div>
       </div>
 
-      {/* SETUP */}
       {necesitaSetup && (
         <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 space-y-3">
           <h2 className="text-lg font-bold text-amber-900">
@@ -1185,7 +1116,6 @@ export default function DataEntryV2({
         </div>
       )}
 
-      {/* INFO DEL PUNTO */}
       {!necesitaSetup && (
         <div className="flex items-center justify-between text-sm text-slate-600 bg-white border border-slate-200 rounded-xl px-4 py-2">
           <div className="flex items-center gap-2">
@@ -1227,7 +1157,6 @@ export default function DataEntryV2({
         </div>
       )}
 
-      {/* LAYOUT */}
       {!necesitaSetup && (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-3">
@@ -1430,7 +1359,6 @@ export default function DataEntryV2({
             </div>
           </div>
 
-          {/* BOTONES */}
           <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl p-3">
             <div className="flex gap-2">
               <button

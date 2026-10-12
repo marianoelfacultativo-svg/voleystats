@@ -29,6 +29,7 @@ export type ResultadoToqueRed =
 export interface JugadorEnCancha {
   id: string;
   nombre: string;
+  rol?: string;
 }
 
 export interface JugadorZona {
@@ -573,7 +574,7 @@ export function PopupLibre({
 }
 
 // ============================================================
-// POPUP JUGADOR (solo lista)
+// POPUP JUGADOR (solo lista) — con colores por rol
 // ============================================================
 
 interface PopupJugadorProps {
@@ -590,10 +591,36 @@ export function PopupJugador({
   onCancelar,
 }: PopupJugadorProps) {
   const pad = 8;
-  const ancho = 220;
+  const ancho = 240;
   const maxJugadores = Math.min(jugadores.length, 6);
   const filasJugadores = Math.ceil(maxJugadores / 2);
-  const alto = 20 + 12 + filasJugadores * 18 + 6 + 14 + 4 + 14 + 8;
+  const alto = 20 + 12 + filasJugadores * 22 + 6 + 14 + 4 + 14 + 8;
+
+  const colorRol = (rol?: string) => {
+    switch (rol) {
+      case "A":
+        return { bg: "#ede9fe", borde: "#a78bfa", texto: "#5b21b6" };
+      case "O":
+        return { bg: "#ffedd5", borde: "#fb923c", texto: "#9a3412" };
+      case "C":
+      case "C1":
+      case "C2":
+        return { bg: "#dbeafe", borde: "#60a5fa", texto: "#1e40af" };
+      case "P":
+      case "P1":
+      case "P2":
+        return { bg: "#dcfce7", borde: "#4ade80", texto: "#166534" };
+      case "L":
+        return { bg: "#fce7f3", borde: "#f472b6", texto: "#9d174d" };
+      default:
+        return { bg: "#f1f5f9", borde: "#cbd5e1", texto: "#475569" };
+    }
+  };
+
+  const textoCorto = (nombre: string) => {
+    const partes = nombre.split(" ");
+    return partes.length > 1 ? partes[0] : nombre.slice(0, 10);
+  };
 
   return (
     <PopupWrapper
@@ -608,26 +635,57 @@ export function PopupJugador({
             const col = i % 2;
             const row = Math.floor(i / 2);
             const wCol = (ancho - pad * 2 - 4) / 2;
+            const c = colorRol(j.rol);
+            const x = pad + col * (wCol + 4);
+            const y = row * 22;
+
             return (
-              <BotonSvg
+              <g
                 key={j.id}
-                x={pad + col * (wCol + 4)}
-                y={row * 18}
-                w={wCol}
-                h={16}
-                texto={j.nombre}
-                color="#dbeafe"
-                colorTexto="#1e3a8a"
-                fontSize={9}
-                onClick={() => onConfirmar(j.id)}
-              />
+                style={{ cursor: "pointer", pointerEvents: "auto" }}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  onConfirmar(j.id);
+                }}
+              >
+                <rect
+                  x={x}
+                  y={y}
+                  width={wCol}
+                  height={20}
+                  rx={4}
+                  fill={c.bg}
+                  stroke={c.borde}
+                  strokeWidth={1.5}
+                />
+                <text
+                  x={x + 4}
+                  y={y + 13}
+                  fontSize={9}
+                  fontWeight={800}
+                  fill={c.texto}
+                  pointerEvents="none"
+                >
+                  {j.rol ?? "?"}
+                </text>
+                <text
+                  x={x + 20}
+                  y={y + 13}
+                  fontSize={9}
+                  fontWeight={600}
+                  fill={c.texto}
+                  pointerEvents="none"
+                >
+                  {textoCorto(j.nombre)}
+                </text>
+              </g>
             );
           })}
         </g>
 
         <BotonSvg
           x={pad}
-          y={filasJugadores * 18 + 6}
+          y={filasJugadores * 22 + 6}
           w={ancho - pad * 2}
           h={14}
           texto="Sin asignar"
@@ -639,7 +697,7 @@ export function PopupJugador({
 
         <BotonSvg
           x={pad}
-          y={filasJugadores * 18 + 24}
+          y={filasJugadores * 22 + 24}
           w={ancho - pad * 2}
           h={14}
           texto="Cancelar (Esc)"
