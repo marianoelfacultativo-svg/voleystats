@@ -1,753 +1,1002 @@
-// ============================================================
-// CLASIFICACIÓN V2 — motor de tipos de acción
-// ============================================================
+"use client";
 
-import {
-  numeroRotacionDesdePosiciones,
-  type RotacionPunto,
-  type Zona,
-} from "./rotaciones";
-import { jugadorQueAtacaDesdeCelda } from "./mapeoV2";
+import React from "react";
+import { CANCHA_V2_DIMS } from "./CanchaV2";
 
 // ============================================================
 // TIPOS
 // ============================================================
 
-export type TipoAccion =
-  | "saque"
-  | "recepcion"
-  | "armado"
-  | "ataque"
-  | "bloqueo"
-  | "defensa"
-  | "libre"
-  | "toque-red";
+export type ValorArmado = 1 | 2 | 3 | 4 | 5 | 6 | "R";
 
-export type Lado = "propio" | "rival";
-export type Situacion = "saque" | "recepcion";
-export type PopupRequerido =
-  | "saque"
-  | "recepcion"
-  | "armado"
-  | "defensa"
-  | "libre"
-  | "jugador"
-  | "toque-red"
-  | "bloqueo"
-  | null;
+export type ValorSaque =
+  | "ace"
+  | "positivo_mas"
+  | "positivo"
+  | "neutro"
+  | "negativo";
 
-export interface PuntoV2 {
-  celda: string;
-  mini: string;
-  jugadorId?: string | null;
-}
+export type ValorRecepcion = 1 | 2 | 3 | 4 | 5 | 6;
 
-export interface LineaInput {
-  origen: PuntoV2;
-  destino: PuntoV2;
-  desvios?: PuntoV2[];
-}
+export type TipoDefensa = "toque" | "gran-defensa" | "libre";
 
-export interface LineaClasificada {
+export type ResultadoRoceRed =
+  | "ofensivo-propio"
+  | "invasion-zaguero"
+  | "invasion-delantero"
+  | "roce-red-rival";
+
+/** Variante de ataque elegida por el usuario en el popup nuevo. */
+export type VarianteAtaquePopup = "toque" | "libre";
+
+export interface JugadorEnCancha {
   id: string;
-  tipo: TipoAccion;
-  esRival: boolean;
+  nombre: string;
+  rol?: string;
+  zona?: number;
+}
+
+export interface JugadorZona {
+  zona: 4 | 3 | 2;
   jugadorId: string | null;
-  origen: PuntoV2;
-  destino: PuntoV2;
-  desvios?: PuntoV2[];
-  subtipo?: string | number | null;
-  oculta?: boolean;
+  nombre: string;
 }
 
-export interface EstadoClasificacion {
-  saqueInicial: Lado;
-  situacion: Situacion;
-  rotacion: RotacionPunto;
-  lineas: LineaClasificada[];
-  // Overrides de quién recibe en cada zona (5, 6, 1).
-  // Si el usuario asignó manualmente un receptor, va acá.
-  recepcionOverrides?: Partial<Record<Zona, string | null>>;
-}
-
-export interface ResultadoClasificacion {
-  tipo: TipoAccion;
-  esRival: boolean;
-  jugadorId: string | null;
-  popup: PopupRequerido;
-  cierraPunto?: Lado;
-  desvios?: PuntoV2[];
-  subtipoFijo?: string | number;
+export interface PopupPos {
+  x: number;
+  y: number;
 }
 
 // ============================================================
-// HELPERS DE CELDA
+// COLORES Y ETIQUETAS
 // ============================================================
 
-export function ladoDeCelda(celda: string): Lado | null {
-  if (/^F[123]-/.test(celda)) return "propio";
-  if (/^F[456]-/.test(celda)) return "rival";
-  if (celda.startsWith("BLOQ-P-")) return "propio";
-  if (celda.startsWith("BLOQ-R-")) return "rival";
-  if (celda.startsWith("FUERA-ARR-")) return "rival";
-  if (celda.startsWith("FUERA-ABA-")) return "propio";
-  return null;
-}
-
-export function esRed(celda: string): boolean {
-  return celda.startsWith("RED-");
-}
-
-export function esBloqueoPropio(celda: string): boolean {
-  return celda.startsWith("BLOQ-P-");
-}
-
-export function esBloqueoRival(celda: string): boolean {
-  return celda.startsWith("BLOQ-R-");
-}
-
-export function esBloqueo(celda: string): boolean {
-  return esBloqueoPropio(celda) || esBloqueoRival(celda);
-}
-
-export function esCanchaPropia(celda: string): boolean {
-  return /^F[123]-/.test(celda);
-}
-
-export function esCanchaRival(celda: string): boolean {
-  return /^F[456]-/.test(celda);
-}
-
-// ------------------------------------------------------------
-// FUERA DE CANCHA
-// ------------------------------------------------------------
-export function esFuera(celda: string): boolean {
-  if (celda.startsWith("FUERA-")) return true;
-  if (/^F[123456]-C[15]$/.test(celda)) return true;
-  return false;
-}
-
-// ------------------------------------------------------------
-// CANCHA REAL (columnas C2/C3/C4)
-// ------------------------------------------------------------
-function esCanchaPropiaReal(celda: string): boolean {
-  return /^F[123]-C[234]$/.test(celda);
-}
-
-function esCanchaRivalReal(celda: string): boolean {
-  return /^F[456]-C[234]$/.test(celda);
-}
-
-// ------------------------------------------------------------
-// ATAQUE CON DESVÍO EN BLOQUEO RIVAL (cobertura)
-// ------------------------------------------------------------
-function tieneDesvioBloqueoRival(l: LineaClasificada): boolean {
-  return (l.desvios ?? []).some((d) => d.celda.startsWith("BLOQ-R-"));
-}
-
-// ------------------------------------------------------------
-// DESVÍO EN BLOQUEO PROPIO
-// ------------------------------------------------------------
-function tieneDesvioBloqueoPropio(l: LineaInput | LineaClasificada): boolean {
-  return (l.desvios ?? []).some((d) => d.celda.startsWith("BLOQ-P-"));
-}
-
-export function esCeldaBloqueoPropioConPopup(celda: string): boolean {
-  return /^BLOQ-P-C[234]$/.test(celda);
-}
-
-export function esCeldaBloqueoPropioLateral(celda: string): boolean {
-  return celda === "BLOQ-P-C1" || celda === "BLOQ-P-C5";
-}
-
-function bloqueoSeValoraComoAtaque(ultima: LineaClasificada): boolean {
-  if (ultima.tipo === "defensa" && ultima.esRival) return true;
-  if (
-    ultima.tipo === "armado" &&
-    ultima.esRival &&
-    ultima.subtipo !== "T"
-  )
-    return true;
-  return false;
-}
-
-// ------------------------------------------------------------
-// ¿La línea cruzó la red?
-// ------------------------------------------------------------
-export function pasoLaRed(l: LineaClasificada): boolean {
-  if (
-    (l.desvios ?? []).some(
-      (d) => d.celda.startsWith("BLOQ-P-") || d.celda.startsWith("BLOQ-R-")
-    )
-  ) {
-    return true;
-  }
-  const ladoO = ladoDeCelda(l.origen.celda);
-  const ladoD = ladoDeCelda(l.destino.celda);
-  if (ladoO && ladoD && ladoO !== ladoD) return true;
-  return false;
-}
-
-// ============================================================
-// POSICIONES DE JUEGO POR ROTACIÓN Y SITUACIÓN
-// ============================================================
-// Tabla aprobada: para cada rotación (1-6) y situación (saque/recepción),
-// indica qué ROL juega en cada ZONA (1-6).
-// ============================================================
-
-export type RolJuego = "A" | "O" | "C1" | "C2" | "P1" | "P2" | "L";
-
-export const POSICIONES_JUEGO: Record<
-  number,
-  Record<Situacion, Record<Zona, RolJuego>>
-> = {
-  1: {
-    saque: { 1: "A", 2: "O", 3: "C1", 4: "P1", 5: "L", 6: "P2" },
-    recepcion: { 1: "A", 2: "P1", 3: "C1", 4: "O", 5: "L", 6: "P2" },
-  },
-  2: {
-    saque: { 1: "P1", 2: "C1", 3: "O", 4: "P2", 5: "C2", 6: "A" },
-    recepcion: { 1: "A", 2: "O", 3: "C1", 4: "P2", 5: "L", 6: "P1" },
-  },
-  3: {
-    saque: { 1: "C1", 2: "O", 3: "P2", 4: "C2", 5: "A", 6: "P1" },
-    recepcion: { 1: "A", 2: "O", 3: "C2", 4: "P2", 5: "L", 6: "P1" },
-  },
-  4: {
-    saque: { 1: "O", 2: "P2", 3: "C2", 4: "A", 5: "P1", 6: "C1" },
-    recepcion: { 1: "O", 2: "A", 3: "C2", 4: "P2", 5: "L", 6: "P1" },
-  },
-  5: {
-    saque: { 1: "P2", 2: "C2", 3: "A", 4: "P1", 5: "C1", 6: "O" },
-    recepcion: { 1: "O", 2: "A", 3: "C2", 4: "P1", 5: "L", 6: "P2" },
-  },
-  6: {
-    saque: { 1: "C2", 2: "A", 3: "P1", 4: "C1", 5: "O", 6: "P2" },
-    recepcion: { 1: "O", 2: "A", 3: "C1", 4: "P1", 5: "L", 6: "P2" },
-  },
+const COL_ARMADO: Record<ValorArmado, string> = {
+  1: "#dc2626",
+  2: "#ea580c",
+  3: "#eab308",
+  4: "#84cc16",
+  5: "#16a34a",
+  6: "#059669",
+  R: "#334155",
 };
 
+const COL_SAQUE: Record<ValorSaque, string> = {
+  ace: "#16a34a",
+  positivo_mas: "#65a30d",
+  positivo: "#84cc16",
+  neutro: "#94a3b8",
+  negativo: "#dc2626",
+};
+
+const ETIQ_SAQUE: Record<ValorSaque, string> = {
+  ace: "Ace",
+  positivo_mas: "Pos+",
+  positivo: "Pos",
+  neutro: "Neu",
+  negativo: "Neg",
+};
+
+const ORDEN_SAQUE: ValorSaque[] = [
+  "ace",
+  "positivo_mas",
+  "positivo",
+  "neutro",
+  "negativo",
+];
+
+const COL_RECEPCION: Record<ValorRecepcion, string> = {
+  1: "#dc2626",
+  2: "#ea580c",
+  3: "#f59e0b",
+  4: "#eab308",
+  5: "#84cc16",
+  6: "#16a34a",
+};
+
+const ORDEN_RECEPCION: ValorRecepcion[] = [1, 2, 3, 4, 5, 6];
+
+const COL_DEFENSA: Record<TipoDefensa, string> = {
+  toque: "#f59e0b",
+  "gran-defensa": "#16a34a",
+  libre: "#a16207",
+};
+
+const ETIQ_DEFENSA: Record<TipoDefensa, string> = {
+  toque: "Toque",
+  "gran-defensa": "Gran def.",
+  libre: "Libre",
+};
+
+const OPCIONES_ATAQUE_TOQUE_LIBRE: {
+  id: VarianteAtaquePopup;
+  label: string;
+  color: string;
+}[] = [
+  { id: "toque", label: "Toque", color: "#f59e0b" },
+  { id: "libre", label: "Libre", color: "#a16207" },
+];
+
+const OPCIONES_ROCE_RED: {
+  id: ResultadoRoceRed;
+  label: string;
+  color: string;
+}[] = [
+  { id: "ofensivo-propio", label: "Ofensivo propio", color: "#dc2626" },
+  { id: "invasion-zaguero", label: "Invasión zaguero", color: "#ea580c" },
+  { id: "invasion-delantero", label: "Invasión delantero", color: "#f59e0b" },
+  { id: "roce-red-rival", label: "Roce red rival", color: "#0284c7" },
+];
+
 // ============================================================
-// RESOLUCIÓN DE JUGADOR — SAQUE
+// HELPER: color por rol
 // ============================================================
 
-function jugadorQueSaca(rotacion: RotacionPunto): string | null {
-  for (const asig of Object.values(rotacion.posiciones)) {
-    if (asig.zona === 1) return asig.jugador_id;
+function colorDeRol(rol?: string) {
+  switch (rol) {
+    case "A":
+      return { bg: "#ede9fe", borde: "#a78bfa", texto: "#5b21b6" };
+    case "O":
+      return { bg: "#ffedd5", borde: "#fb923c", texto: "#9a3412" };
+    case "C":
+    case "C1":
+    case "C2":
+      return { bg: "#dbeafe", borde: "#60a5fa", texto: "#1e40af" };
+    case "P":
+    case "P1":
+    case "P2":
+      return { bg: "#dcfce7", borde: "#4ade80", texto: "#166534" };
+    case "L":
+      return { bg: "#fce7f3", borde: "#f472b6", texto: "#9d174d" };
+    default:
+      return { bg: "#f1f5f9", borde: "#cbd5e1", texto: "#475569" };
   }
-  return null;
+}
+
+function textoCortoNombre(nombre: string) {
+  const partes = nombre.split(" ");
+  return partes.length > 1 ? partes[0] : nombre.slice(0, 10);
 }
 
 // ============================================================
-// RESOLUCIÓN DE JUGADOR — POR ROL LÓGICO
+// WRAPPER
 // ============================================================
 
-function jugadorDeTipo(
-  rotacion: RotacionPunto,
-  tipo: "A" | "O" | "C1" | "C2" | "P1" | "P2"
-): string | null {
-  for (const asig of Object.values(rotacion.posiciones)) {
-    if (asig.tipo === tipo) return asig.jugador_id;
-  }
-  return null;
+interface WrapperProps {
+  pos: PopupPos;
+  ancho: number;
+  alto: number;
+  titulo: string;
+  children: React.ReactNode;
 }
 
-function buscarCentralZaguero(rotacion: RotacionPunto): string | null {
-  for (const asig of Object.values(rotacion.posiciones)) {
-    if (
-      (asig.tipo === "C1" || asig.tipo === "C2") &&
-      (asig.zona === 1 || asig.zona === 5 || asig.zona === 6)
-    ) {
-      return asig.jugador_id;
-    }
-  }
-  return null;
-}
+function PopupWrapper({ pos, ancho, alto, titulo, children }: WrapperProps) {
+  const { ancho: W, alto: H } = CANCHA_V2_DIMS;
 
-function buscarLiberoActivo(rotacion: RotacionPunto): string | null {
-  const lib =
-    rotacion.liberos.find((l) => l.tipo === "recepcion") ??
-    (rotacion.liberos.length === 1 ? rotacion.liberos[0] : null);
-  if (lib?.jugador_id) return lib.jugador_id;
-  return buscarCentralZaguero(rotacion);
-}
+  let x = pos.x - ancho / 2;
+  if (x < 2) x = 2;
+  if (x + ancho > W - 2) x = W - ancho - 2;
 
-/**
- * Dado un rol lógico (A, O, C1, C2, P1, P2, L) y la rotación actual,
- * devuelve el jugador_id que ocupa ese rol.
- */
-export function resolverRolAJugador(
-  rotacion: RotacionPunto,
-  rol: RolJuego
-): string | null {
-  if (rol === "L") return buscarLiberoActivo(rotacion);
-  return jugadorDeTipo(rotacion, rol);
-}
+  let y = pos.y - alto - 6;
+  if (y < 2) y = pos.y + 6;
+  if (y + alto > H - 2) y = H - alto - 2;
 
-// ============================================================
-// RESOLUCIÓN DE JUGADOR — RECEPCIÓN
-// ============================================================
-
-function zonaRecepcion(celda: string): 1 | 5 | 6 | null {
-  if (!/^F[123]-/.test(celda)) return null;
-  const col = celda.split("-")[1];
-  if (col === "C1" || col === "C2") return 5;
-  if (col === "C3") return 6;
-  if (col === "C4" || col === "C5") return 1;
-  return null;
-}
-
-function jugadorQueRecibe(
-  origen: PuntoV2,
-  rotacion: RotacionPunto,
-  situacion: Situacion,
-  overrides?: Partial<Record<Zona, string | null>>
-): string | null {
-  const celda = origen.celda;
-
-  const zonaRec = zonaRecepcion(celda);
-  if (zonaRec === null) return null;
-
-  // Override manual (por punto o fijo): el usuario manda.
-  if (overrides && zonaRec in overrides) {
-    return overrides[zonaRec] ?? null;
-  }
-
-  // Resolución por tabla POSICIONES_JUEGO según rotación + situación.
-  const numeroRot = numeroRotacionDesdePosiciones(rotacion);
-  const fila = POSICIONES_JUEGO[numeroRot]?.[situacion];
-  if (!fila) return null;
-  const rol = fila[zonaRec];
-  return resolverRolAJugador(rotacion, rol);
-}
-
-// ============================================================
-// CLASIFICACIÓN PRINCIPAL
-// ============================================================
-
-export function clasificarLinea(
-  estado: EstadoClasificacion,
-  linea: LineaInput
-): ResultadoClasificacion {
-  const n = estado.lineas.length;
-  const ultima = n > 0 ? estado.lineas[n - 1] : null;
-
-  // ---------- 0. TOQUE DE RED ----------
-  if (esRed(linea.origen.celda) || esRed(linea.destino.celda)) {
-    return {
-      tipo: "toque-red",
-      esRival: false,
-      jugadorId: null,
-      popup: "toque-red",
-    };
-  }
-
-  // ---------- 1. PRIMERA LÍNEA = SAQUE ----------
-  if (n === 0) {
-    const esRival = ladoDeCelda(linea.origen.celda) === "rival";
-    return {
-      tipo: "saque",
-      esRival,
-      jugadorId: esRival ? null : jugadorQueSaca(estado.rotacion),
-      popup: null,
-    };
-  }
-
-  // ---------- 2. SEGUNDA LÍNEA = RECEPCIÓN ----------
-  if (n === 1 && ultima!.tipo === "saque") {
-    const esRival = !ultima!.esRival;
-    return {
-      tipo: "recepcion",
-      esRival,
-      jugadorId: esRival
-        ? null
-        : jugadorQueRecibe(
-            linea.origen,
-            estado.rotacion,
-            estado.situacion,
-            estado.recepcionOverrides
-          ),
-      popup: esRival ? null : "recepcion",
-    };
-  }
-
-  // ============================================================
-  // A PARTIR DE LA 3RA LÍNEA
-  // ============================================================
-
-  const ladoO = ladoDeCelda(linea.origen.celda);
-  const ladoD = ladoDeCelda(linea.destino.celda);
-
-  // ---------- BLOQUEO PROPIO (desvío en BLOQ-P-*) ----------
-  if (tieneDesvioBloqueoPropio(linea) && ultima) {
-    const comoAtaque = bloqueoSeValoraComoAtaque(ultima);
-    const primerJugador =
-      (linea.desvios ?? []).find((d) => d.celda.startsWith("BLOQ-P-"))
-        ?.jugadorId ?? null;
-    return {
-      tipo: comoAtaque ? "ataque" : "bloqueo",
-      esRival: false,
-      jugadorId: primerJugador,
-      popup: null,
-    };
-  }
-
-  // ---------- REINICIO POR CRUCE DE RED ----------
-  if (ultima && pasoLaRed(ultima)) {
-    if (
-      ultima.tipo === "ataque" &&
-      !ultima.esRival &&
-      tieneDesvioBloqueoRival(ultima) &&
-      ladoDeCelda(ultima.destino.celda) === "propio"
-    ) {
-      return {
-        tipo: "defensa",
-        esRival: false,
-        jugadorId: null,
-        popup: "jugador",
-        subtipoFijo: "cobertura",
-      };
-    }
-
-    const ladoReceptor = ladoDeCelda(ultima.destino.celda);
-    const esRival = ladoReceptor === "rival";
-    return {
-      tipo: "defensa",
-      esRival,
-      jugadorId: null,
-      popup: esRival ? null : "defensa",
-    };
-  }
-
-  // ---------- ORIGEN EN BLOQUEO ----------
-  if (esBloqueo(linea.origen.celda)) {
-    const esRival = ultima!.esRival;
-    return {
-      tipo: "defensa",
-      esRival,
-      jugadorId: null,
-      popup: esRival ? null : "defensa",
-    };
-  }
-
-  // ---------- CADENA NORMAL ----------
-  if (ultima!.tipo === "armado") {
-    const esRival = ultima!.esRival;
-    const jugadorId = esRival
-      ? null
-      : jugadorQueAtacaDesdeCelda(
-          linea.origen.celda,
-          estado.rotacion,
-          estado.situacion
-        );
-    return {
-      tipo: "ataque",
-      esRival,
-      jugadorId,
-      popup: null,
-    };
-  }
-
-  if (ultima!.tipo === "defensa") {
-    const esRival = ultima!.esRival;
-    return {
-      tipo: "armado",
-      esRival,
-      jugadorId: null,
-      popup: esRival ? null : "armado",
-    };
-  }
-
-  if (ultima!.tipo === "recepcion") {
-    const esRival = ultima!.esRival;
-    return {
-      tipo: "armado",
-      esRival,
-      jugadorId: null,
-      popup: esRival ? null : "armado",
-    };
-  }
-
-  if (ultima!.tipo === "ataque") {
-    const esRival = ultima!.esRival;
-    return {
-      tipo: "libre",
-      esRival,
-      jugadorId: null,
-      popup: esRival ? null : "libre",
-    };
-  }
-
-  if (ultima!.tipo === "bloqueo") {
-    const esRival = ultima!.esRival;
-    return {
-      tipo: "libre",
-      esRival,
-      jugadorId: null,
-      popup: esRival ? null : "libre",
-    };
-  }
-
-  if (ultima!.tipo === "libre") {
-    if (ladoO === "propio" && ladoD === "rival") {
-      return {
-        tipo: "ataque",
-        esRival: false,
-        jugadorId: jugadorQueAtacaDesdeCelda(
-          linea.origen.celda,
-          estado.rotacion,
-          estado.situacion
-        ),
-        popup: null,
-      };
-    }
-    if (ladoO === "rival" && ladoD === "propio") {
-      return {
-        tipo: "ataque",
-        esRival: true,
-        jugadorId: null,
-        popup: null,
-      };
-    }
-    const esRival = ultima!.esRival;
-    return {
-      tipo: "armado",
-      esRival,
-      jugadorId: null,
-      popup: esRival ? null : "armado",
-    };
-  }
-
-  const esRival = ultima!.esRival;
-  return {
-    tipo: "libre",
-    esRival,
-    jugadorId: null,
-    popup: esRival ? null : "libre",
-  };
-}
-
-// ============================================================
-// GANADOR DEL PUNTO
-// ============================================================
-
-export function ganadorDelPunto(
-  lineas: LineaClasificada[]
-): Lado | null {
-  if (lineas.length === 0) return null;
-  const ultima = lineas[lineas.length - 1];
-
-  if (ultima.tipo === "toque-red") {
-    return ultima.esRival ? "propio" : "rival";
-  }
-
-  if (esFuera(ultima.destino.celda)) {
-    if (
-      ultima.tipo === "ataque" &&
-      !ultima.esRival &&
-      tieneDesvioBloqueoRival(ultima)
-    ) {
-      return "propio";
-    }
-    return ultima.esRival ? "propio" : "rival";
-  }
-
-  const ladoDestino = ladoDeCelda(ultima.destino.celda);
-
-  if (ladoDestino === "rival") return "propio";
-  if (ladoDestino === "propio") return "rival";
-
-  return null;
-}
-
-// ============================================================
-// SUBTIPOS DE ATAQUE
-// ============================================================
-
-export function calcularSubtiposAtaque(
-  lineas: LineaClasificada[],
-  ganador: Lado
-): LineaClasificada[] {
-  const idxAtaques: number[] = [];
-  lineas.forEach((l, i) => {
-    if (l.tipo === "ataque" && !l.esRival) idxAtaques.push(i);
-  });
-  if (idxAtaques.length === 0) return lineas;
-
-  let ultimoVisible = -1;
-  for (let i = lineas.length - 1; i >= 0; i--) {
-    if (!lineas[i].oculta) {
-      ultimoVisible = i;
-      break;
-    }
-  }
-
-  const ultimoAtaque = idxAtaques[idxAtaques.length - 1];
-  const cierraElPunto = ultimoAtaque === ultimoVisible;
-
-  return lineas.map((l, i) => {
-    if (l.tipo !== "ataque" || l.esRival) return l;
-    if (l.subtipo && l.subtipo !== null) return l;
-    if (i === ultimoAtaque && cierraElPunto) {
-      return { ...l, subtipo: ganador === "propio" ? "punto" : "error" };
-    }
-    return { ...l, subtipo: "neutro" };
-  });
-}
-
-// ============================================================
-// SUBTIPOS DE BLOQUEO PROPIO (automático)
-// ============================================================
-
-function valorarBloqueoBase(
-  destino: string,
-  esUltimaVisible: boolean,
-  siguiente: LineaClasificada | undefined
-): string {
-  if (esFuera(destino)) return "use_rival";
-  if (destino.startsWith("RED-")) return "filtrada";
-  if (esCeldaBloqueoPropioLateral(destino)) return "filtrada";
-  if (esCanchaPropiaReal(destino)) return "positivo";
-
-  const esRival =
-    esCanchaRivalReal(destino) ||
-    destino.startsWith("BLOQ-R-") ||
-    esCeldaBloqueoPropioConPopup(destino);
-
-  if (esRival) {
-    if (esUltimaVisible) return "punto";
-    if (siguiente?.tipo === "libre" && siguiente.esRival)
-      return "positivo_mas";
-    return "positivo";
-  }
-
-  return "positivo";
-}
-
-export function calcularSubtiposBloqueo(
-  lineas: LineaClasificada[]
-): LineaClasificada[] {
-  const idxBloqueos: number[] = [];
-  lineas.forEach((l, i) => {
-    if (l.tipo === "bloqueo" && !l.esRival) idxBloqueos.push(i);
-  });
-  if (idxBloqueos.length === 0) return lineas;
-
-  let ultimoVisible = -1;
-  for (let i = lineas.length - 1; i >= 0; i--) {
-    if (!lineas[i].oculta) {
-      ultimoVisible = i;
-      break;
-    }
-  }
-
-  return lineas.map((l, i) => {
-    if (l.tipo !== "bloqueo" || l.esRival) return l;
-    const esUltima = i === ultimoVisible;
-    const siguiente = lineas[i + 1];
-    const base = valorarBloqueoBase(l.destino.celda, esUltima, siguiente);
-    return { ...l, subtipo: base };
-  });
-}
-
-// ============================================================
-// SUBTIPOS DE SAQUE (automático)
-// ============================================================
-
-function valorarSaqueSinRecepcion(destino: string): string {
-  if (
-    destino.startsWith("F4-") ||
-    destino.startsWith("F5-") ||
-    destino.startsWith("F6-")
-  ) {
-    const col = destino.split("-")[1];
-    if (col === "C2" || col === "C3" || col === "C4") return "ace";
-  }
-  return "negativo";
-}
-
-function valorarSaqueConRecepcion(destino: string): string {
-  if (destino.startsWith("FUERA-ARR-")) return "positivo_mas";
-  if (destino.startsWith("FUERA-ABA-")) return "ace";
-
-  if (destino.startsWith("RED-")) return "ace";
-  if (destino.startsWith("BLOQ-R-")) return "ace";
-  if (destino.startsWith("BLOQ-P-")) return "positivo_mas";
-
-  if (
-    destino.startsWith("F1-") ||
-    destino.startsWith("F2-") ||
-    destino.startsWith("F3-")
-  ) {
-    const col = destino.split("-")[1];
-    if (col === "C2" || col === "C3" || col === "C4") return "positivo_mas";
-    return "ace";
-  }
-
-  if (
-    destino.startsWith("F4-") ||
-    destino.startsWith("F5-") ||
-    destino.startsWith("F6-")
-  ) {
-    const [fila, col] = destino.split("-");
-    if (col === "C1" || col === "C5") return "positivo_mas";
-    if (fila === "F6") return "positivo_mas";
-    if (fila === "F5") return "positivo";
-    if (fila === "F4") {
-      if (col === "C3") return "neutro";
-      return "positivo";
-    }
-  }
-
-  return "positivo";
-}
-
-export function calcularSubtiposSaque(
-  lineas: LineaClasificada[]
-): LineaClasificada[] {
-  const idxSaque = lineas.findIndex(
-    (l) => l.tipo === "saque" && !l.esRival
-  );
-  if (idxSaque === -1) return lineas;
-
-  const saque = lineas[idxSaque];
-  const destinoSaque = saque.destino.celda;
-
-  const desvios = saque.desvios ?? [];
-  const tieneDesvioBloqueo = desvios.some((d) =>
-    d.celda.startsWith("BLOQ-R-")
-  );
-
-  let subtipo: string;
-
-  if (destinoSaque.startsWith("BLOQ-R-") && !tieneDesvioBloqueo) {
-    const siguiente = lineas[idxSaque + 1];
-    if (siguiente && siguiente.origen.celda === destinoSaque) {
-      const destinoFinal = siguiente.destino.celda;
-      if (destinoFinal.startsWith("FUERA-")) {
-        subtipo = "negativo";
-      } else {
-        subtipo = valorarSaqueSinRecepcion(destinoFinal);
-      }
-    } else {
-      subtipo = "negativo";
-    }
-  } else if (tieneDesvioBloqueo) {
-    if (destinoSaque.startsWith("FUERA-")) {
-      subtipo = "negativo";
-    } else {
-      subtipo = valorarSaqueSinRecepcion(destinoSaque);
-    }
-  } else {
-    const siguiente = lineas[idxSaque + 1];
-    if (siguiente && siguiente.tipo === "recepcion" && siguiente.esRival) {
-      subtipo = valorarSaqueConRecepcion(siguiente.destino.celda);
-    } else {
-      subtipo = valorarSaqueSinRecepcion(destinoSaque);
-    }
-  }
-
-  return lineas.map((l, i) =>
-    i === idxSaque ? { ...l, subtipo } : l
+  return (
+    <g style={{ pointerEvents: "auto" }}>
+      <rect
+        x={x + 2}
+        y={y + 3}
+        width={ancho}
+        height={alto}
+        rx={6}
+        fill="#000000"
+        opacity={0.22}
+        pointerEvents="none"
+      />
+      <rect
+        x={x}
+        y={y}
+        width={ancho}
+        height={alto}
+        rx={6}
+        fill="#ffffff"
+        stroke="#0f172a"
+        strokeWidth={1.5}
+        pointerEvents="none"
+      />
+      <text
+        x={x + ancho / 2}
+        y={y + 14}
+        textAnchor="middle"
+        fontSize={10}
+        fontWeight={800}
+        fill="#0f172a"
+        pointerEvents="none"
+      >
+        {titulo}
+      </text>
+      <g transform={`translate(${x}, ${y + 20})`}>{children}</g>
+    </g>
   );
 }
+
+// ============================================================
+// BOTÓN SVG
+// ============================================================
+
+interface BotonProps {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  texto: string;
+  color: string;
+  colorTexto?: string;
+  fontSize?: number;
+  onClick: () => void;
+}
+
+function BotonSvg({
+  x,
+  y,
+  w,
+  h,
+  texto,
+  color,
+  colorTexto = "#ffffff",
+  fontSize = 10,
+  onClick,
+}: BotonProps) {
+  const label = texto.length > 16 ? texto.slice(0, 15) + "…" : texto;
+  return (
+    <g
+      style={{ cursor: "pointer", pointerEvents: "auto" }}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+    >
+      <rect x={x} y={y} width={w} height={h} rx={4} fill={color} />
+      <text
+        x={x + w / 2}
+        y={y + h / 2 + fontSize * 0.35}
+        textAnchor="middle"
+        fontSize={fontSize}
+        fontWeight={700}
+        fill={colorTexto}
+        pointerEvents="none"
+      >
+        {label}
+      </text>
+    </g>
+  );
+}
+
+// ============================================================
+// POPUP SAQUE
+// ============================================================
+
+interface PopupSaqueProps {
+  pos: PopupPos;
+  onConfirmar: (v: ValorSaque) => void;
+  onCancelar: () => void;
+}
+
+export function PopupSaque({ pos, onConfirmar, onCancelar }: PopupSaqueProps) {
+  const btnW = 34;
+  const gap = 4;
+  const pad = 8;
+  const ancho =
+    ORDEN_SAQUE.length * btnW + (ORDEN_SAQUE.length - 1) * gap + pad * 2;
+  const alto = 70;
+
+  return (
+    <PopupWrapper pos={pos} ancho={ancho} alto={alto} titulo="SAQUE — Calidad">
+      <g>
+        {ORDEN_SAQUE.map((v, i) => (
+          <BotonSvg
+            key={v}
+            x={pad + i * (btnW + gap)}
+            y={0}
+            w={btnW}
+            h={24}
+            texto={ETIQ_SAQUE[v]}
+            color={COL_SAQUE[v]}
+            fontSize={10}
+            onClick={() => onConfirmar(v)}
+          />
+        ))}
+        <BotonSvg
+          x={pad}
+          y={32}
+          w={ancho - pad * 2}
+          h={14}
+          texto="Cancelar (Esc)"
+          color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP RECEPCIÓN
+// ============================================================
+
+interface PopupRecepcionProps {
+  pos: PopupPos;
+  onConfirmar: (v: ValorRecepcion) => void;
+  onCancelar: () => void;
+}
+
+export function PopupRecepcion({
+  pos,
+  onConfirmar,
+  onCancelar,
+}: PopupRecepcionProps) {
+  const btnW = 34;
+  const gap = 4;
+  const pad = 8;
+  const ancho =
+    ORDEN_RECEPCION.length * btnW +
+    (ORDEN_RECEPCION.length - 1) * gap +
+    pad * 2;
+  const alto = 70;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="RECEPCIÓN — Calidad"
+    >
+      <g>
+        {ORDEN_RECEPCION.map((v, i) => (
+          <BotonSvg
+            key={v}
+            x={pad + i * (btnW + gap)}
+            y={0}
+            w={btnW}
+            h={24}
+            texto={String(v)}
+            color={COL_RECEPCION[v]}
+            fontSize={11}
+            onClick={() => onConfirmar(v)}
+          />
+        ))}
+        <BotonSvg
+          x={pad}
+          y={32}
+          w={ancho - pad * 2}
+          h={14}
+          texto="Cancelar (Esc)"
+          color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP ARMADO  (T → R: remate de segunda)
+// ============================================================
+
+interface PopupArmadoProps {
+  pos: PopupPos;
+  onConfirmar: (v: ValorArmado) => void;
+  onCancelar: () => void;
+}
+
+export function PopupArmado({ pos, onConfirmar, onCancelar }: PopupArmadoProps) {
+  const botones: ValorArmado[] = [1, 2, 3, 4, 5, 6, "R"];
+  const btnW = 24;
+  const gap = 4;
+  const pad = 8;
+  const ancho = botones.length * btnW + (botones.length - 1) * gap + pad * 2;
+  const alto = 70;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="ARMADO — Calidad"
+    >
+      <g>
+        {botones.map((v, i) => (
+          <BotonSvg
+            key={String(v)}
+            x={pad + i * (btnW + gap)}
+            y={0}
+            w={btnW}
+            h={24}
+            texto={String(v)}
+            color={COL_ARMADO[v]}
+            fontSize={11}
+            onClick={() => onConfirmar(v)}
+          />
+        ))}
+        <BotonSvg
+          x={pad}
+          y={32}
+          w={ancho - pad * 2}
+          h={14}
+          texto="Cancelar (Esc)"
+          color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP DEFENSA
+// ============================================================
+
+interface PopupDefensaProps {
+  pos: PopupPos;
+  jugadores: JugadorEnCancha[];
+  onConfirmar: (subtipo: TipoDefensa, jugadorId: string | null) => void;
+  onCancelar: () => void;
+}
+
+export function PopupDefensa({
+  pos,
+  jugadores,
+  onConfirmar,
+  onCancelar,
+}: PopupDefensaProps) {
+  const tipos: TipoDefensa[] = ["toque", "gran-defensa", "libre"];
+  const pad = 8;
+  const ancho = 310;
+  const btnTipoW = (ancho - pad * 2 - 4 * 2) / 3;
+
+  const maxJugadores = Math.min(jugadores.length, 6);
+  const filasJugadores = Math.ceil(maxJugadores / 3);
+  const alto = 20 + 22 + 6 + 12 + filasJugadores * 24 + 6 + 14 + 8;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="DEFENSA — Tipo (opcional)"
+    >
+      <g>
+        {tipos.map((t, i) => (
+          <BotonSvg
+            key={t}
+            x={pad + i * (btnTipoW + 4)}
+            y={0}
+            w={btnTipoW}
+            h={22}
+            texto={ETIQ_DEFENSA[t]}
+            color={COL_DEFENSA[t]}
+            fontSize={9}
+            onClick={() => onConfirmar(t, null)}
+          />
+        ))}
+
+        <text
+          x={pad}
+          y={38}
+          fontSize={9}
+          fontWeight={600}
+          fill="#64748b"
+          pointerEvents="none"
+        >
+          ¿Quién la hizo? (opcional)
+        </text>
+
+        <g transform="translate(0, 46)">
+          {jugadores.slice(0, maxJugadores).map((j, i) => {
+            const col = i % 3;
+            const row = Math.floor(i / 3);
+            const wCol = (ancho - pad * 2 - 2 * 4) / 3;
+            const c = colorDeRol(j.rol);
+            const x = pad + col * (wCol + 4);
+            const y = row * 24;
+
+            return (
+              <g
+                key={j.id}
+                style={{ cursor: "pointer", pointerEvents: "auto" }}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  onConfirmar("toque", j.id);
+                }}
+              >
+                <rect
+                  x={x}
+                  y={y}
+                  width={wCol}
+                  height={22}
+                  rx={4}
+                  fill={c.bg}
+                  stroke={c.borde}
+                  strokeWidth={1.5}
+                />
+                <text
+                  x={x + 4}
+                  y={y + 15}
+                  fontSize={10}
+                  fontWeight={800}
+                  fill={c.texto}
+                  pointerEvents="none"
+                >
+                  {j.rol ?? "?"}
+                </text>
+                {j.zona !== undefined && (
+                  <text
+                    x={x + 17}
+                    y={y + 15}
+                    fontSize={8}
+                    fontWeight={600}
+                    fill={c.texto}
+                    opacity={0.65}
+                    pointerEvents="none"
+                  >
+                    Z{j.zona}
+                  </text>
+                )}
+                <text
+                  x={x + 34}
+                  y={y + 15}
+                  fontSize={8}
+                  fontWeight={600}
+                  fill={c.texto}
+                  pointerEvents="none"
+                >
+                  {textoCortoNombre(j.nombre)}
+                </text>
+              </g>
+            );
+          })}
+        </g>
+
+        <BotonSvg
+          x={pad}
+          y={46 + filasJugadores * 24 + 4}
+          w={ancho - pad * 2}
+          h={14}
+          texto="Saltar (Esc)"
+          color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP LIBRE
+// ============================================================
+
+interface PopupLibreProps {
+  pos: PopupPos;
+  jugadores: JugadorEnCancha[];
+  onConfirmar: (jugadorId: string | null) => void;
+  onCancelar: () => void;
+}
+
+export function PopupLibre({
+  pos,
+  jugadores,
+  onConfirmar,
+  onCancelar,
+}: PopupLibreProps) {
+  const pad = 8;
+  const ancho = 220;
+  const maxJugadores = Math.min(jugadores.length, 6);
+  const filasJugadores = Math.ceil(maxJugadores / 2);
+  const alto = 20 + 12 + filasJugadores * 18 + 6 + 14 + 4 + 14 + 8;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="LIBRE — ¿Quién la pasó?"
+    >
+      <g>
+        <g transform="translate(0, 0)">
+          {jugadores.slice(0, maxJugadores).map((j, i) => {
+            const col = i % 2;
+            const row = Math.floor(i / 2);
+            const wCol = (ancho - pad * 2 - 4) / 2;
+            return (
+              <BotonSvg
+                key={j.id}
+                x={pad + col * (wCol + 4)}
+                y={row * 18}
+                w={wCol}
+                h={16}
+                texto={j.nombre}
+                color="#fef3c7"
+                colorTexto="#78350f"
+                fontSize={9}
+                onClick={() => onConfirmar(j.id)}
+              />
+            );
+          })}
+        </g>
+
+        <BotonSvg
+          x={pad}
+          y={filasJugadores * 18 + 6}
+          w={ancho - pad * 2}
+          h={14}
+          texto="Sin asignar"
+          color="#f1f5f9"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={() => onConfirmar(null)}
+        />
+
+        <BotonSvg
+          x={pad}
+          y={filasJugadores * 18 + 24}
+          w={ancho - pad * 2}
+          h={14}
+          texto="Cancelar (Esc)"
+          color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP JUGADOR (solo lista)
+// ============================================================
+
+interface PopupJugadorProps {
+  pos: PopupPos;
+  jugadores: JugadorEnCancha[];
+  onConfirmar: (jugadorId: string | null) => void;
+  onCancelar: () => void;
+}
+
+export function PopupJugador({
+  pos,
+  jugadores,
+  onConfirmar,
+  onCancelar,
+}: PopupJugadorProps) {
+  const pad = 8;
+  const ancho = 240;
+  const maxJugadores = Math.min(jugadores.length, 6);
+  const filasJugadores = Math.ceil(maxJugadores / 2);
+  const alto = 20 + 12 + filasJugadores * 22 + 6 + 14 + 4 + 14 + 8;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="¿QUIÉN HIZO LA ACCIÓN?"
+    >
+      <g>
+        <g transform="translate(0, 0)">
+          {jugadores.slice(0, maxJugadores).map((j, i) => {
+            const col = i % 2;
+            const row = Math.floor(i / 2);
+            const wCol = (ancho - pad * 2 - 4) / 2;
+            const c = colorDeRol(j.rol);
+            const x = pad + col * (wCol + 4);
+            const y = row * 22;
+
+            return (
+              <g
+                key={j.id}
+                style={{ cursor: "pointer", pointerEvents: "auto" }}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  onConfirmar(j.id);
+                }}
+              >
+                <rect
+                  x={x}
+                  y={y}
+                  width={wCol}
+                  height={20}
+                  rx={4}
+                  fill={c.bg}
+                  stroke={c.borde}
+                  strokeWidth={1.5}
+                />
+                <text
+                  x={x + 4}
+                  y={y + 13}
+                  fontSize={9}
+                  fontWeight={800}
+                  fill={c.texto}
+                  pointerEvents="none"
+                >
+                  {j.rol ?? "?"}
+                </text>
+                <text
+                  x={x + 20}
+                  y={y + 13}
+                  fontSize={9}
+                  fontWeight={600}
+                  fill={c.texto}
+                  pointerEvents="none"
+                >
+                  {textoCortoNombre(j.nombre)}
+                </text>
+              </g>
+            );
+          })}
+        </g>
+
+        <BotonSvg
+          x={pad}
+          y={filasJugadores * 22 + 6}
+          w={ancho - pad * 2}
+          h={14}
+          texto="Sin asignar"
+          color="#f1f5f9"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={() => onConfirmar(null)}
+        />
+
+        <BotonSvg
+          x={pad}
+          y={filasJugadores * 22 + 24}
+          w={ancho - pad * 2}
+          h={14}
+          texto="Cancelar (Esc)"
+          color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP ROCE DE RED / INVASIÓN  (era "toque-red")
+// ============================================================
+
+interface PopupRoceRedProps {
+  pos: PopupPos;
+  jugadores: JugadorEnCancha[];
+  onConfirmar: (resultado: ResultadoRoceRed, jugadorId: string | null) => void;
+  onCancelar: () => void;
+}
+
+export function PopupRoceRed({
+  pos,
+  jugadores,
+  onConfirmar,
+  onCancelar,
+}: PopupRoceRedProps) {
+  const pad = 8;
+  const ancho = 260;
+  const altoOpcion = 20;
+  const gap = 4;
+
+  const maxJugadores = Math.min(jugadores.length, 6);
+  const filasJugadores = Math.ceil(maxJugadores / 2);
+
+  const altoTotalOpciones =
+    OPCIONES_ROCE_RED.length * altoOpcion +
+    (OPCIONES_ROCE_RED.length - 1) * gap;
+
+  const alto =
+    20 + altoTotalOpciones + 8 + 12 + filasJugadores * 18 + 6 + 14 + 8;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="ROCE DE RED / INVASIÓN"
+    >
+      <g>
+        {OPCIONES_ROCE_RED.map((o, i) => (
+          <BotonSvg
+            key={o.id}
+            x={pad}
+            y={i * (altoOpcion + gap)}
+            w={ancho - pad * 2}
+            h={altoOpcion}
+            texto={o.label}
+            color={o.color}
+            fontSize={10}
+            onClick={() => onConfirmar(o.id, null)}
+          />
+        ))}
+
+        <text
+          x={pad}
+          y={altoTotalOpciones + 18}
+          fontSize={9}
+          fontWeight={600}
+          fill="#64748b"
+          pointerEvents="none"
+        >
+          ¿Quién? (opcional)
+        </text>
+
+        <g transform={`translate(0, ${altoTotalOpciones + 26})`}>
+          {jugadores.slice(0, maxJugadores).map((j, i) => {
+            const col = i % 2;
+            const row = Math.floor(i / 2);
+            const wCol = (ancho - pad * 2 - 4) / 2;
+            return (
+              <BotonSvg
+                key={j.id}
+                x={pad + col * (wCol + 4)}
+                y={row * 18}
+                w={wCol}
+                h={16}
+                texto={j.nombre}
+                color="#f1f5f9"
+                colorTexto="#334155"
+                fontSize={9}
+                onClick={() => onConfirmar("ofensivo-propio", j.id)}
+              />
+            );
+          })}
+        </g>
+
+        <BotonSvg
+          x={pad}
+          y={altoTotalOpciones + 26 + filasJugadores * 18 + 6}
+          w={ancho - pad * 2}
+          h={14}
+          texto="Cancelar (Esc)"
+          color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP ATAQUE — TOQUE / LIBRE  (NUEVO)
+// ============================================================
+
+interface PopupAtaqueToqueLibreProps {
+  pos: PopupPos;
+  onConfirmar: (v: VarianteAtaquePopup) => void;
+  onCancelar: () => void;
+}
+
+export function PopupAtaqueToqueLibre({
+  pos,
+  onConfirmar,
+  onCancelar,
+}: PopupAtaqueToqueLibreProps) {
+  const pad = 8;
+  const ancho = 240;
+  const alto = 82;
+  const btnW = (ancho - pad * 2 - 4) / 2;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="ATAQUE — Toque / Libre (opcional)"
+    >
+      <g>
+        {OPCIONES_ATAQUE_TOQUE_LIBRE.map((o, i) => (
+          <BotonSvg
+            key={o.id}
+            x={pad + i * (btnW + 4)}
+            y={0}
+            w={btnW}
+            h={24}
+            texto={o.label}
+            color={o.color}
+            fontSize={11}
+            onClick={() => onConfirmar(o.id)}
+          />
+        ))}
+
+        <BotonSvg
+          x={pad}
+          y={32}
+          w={ancho - pad * 2}
+          h={16}
+          texto="Remate (default, Esc)"
+          color="#f1f5f9"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP BLOQUEO PROPIO
+// ============================================================
+
+interface PopupBloqueoProps {
+  pos: PopupPos;
+  jugadores: JugadorZona[];
+  onConfirmar: (jugadorId: string | null) => void;
+  onCancelar: () => void;
+}
+
+export function PopupBloqueo({
+  pos,
+  jugadores,
+  onConfirmar,
+  onCancelar,
+}: PopupBloqueoProps) {
+  const pad = 6;
+  const btnW = 54;
+  const gap = 4;
+  const ancho =
+    jugadores.length * btnW + Math.max(0, jugadores.length - 1) * gap + pad * 2;
+  const alto = 56;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="¿QUIÉN BLOQUEÓ?"
+    >
+      <g>
+        {jugadores.map((j, i) => (
+          <BotonSvg
+            key={j.zona}
+            x={pad + i * (btnW + gap)}
+            y={0}
+            w={btnW}
+            h={22}
+            texto={`Z${j.zona} ${j.nombre}`}
+            color={j.jugadorId ? "#ea580c" : "#cbd5e1"}
+            colorTexto={j.jugadorId ? "#ffffff" : "#475569"}
+            fontSize={8}
+            onClick={() => onConfirmar(j.jugadorId)}
+          />
+        ))}
+        <BotonSvg
+          x={pad}
+          y={28}
+          w={ancho - pad * 2}
+          h={12}
+          texto="Cancelar (Esc)"
+          color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={8}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// EXPORTS
+// ============================================================
+
+export type { PopupPos as PopupPosicion };

@@ -7,7 +7,7 @@ import { CANCHA_V2_DIMS } from "./CanchaV2";
 // TIPOS
 // ============================================================
 
-export type ValorArmado = 1 | 2 | 3 | 4 | 5 | 6 | "T";
+export type ValorArmado = 1 | 2 | 3 | 4 | 5 | 6 | "R";
 
 export type ValorSaque =
   | "ace"
@@ -20,11 +20,14 @@ export type ValorRecepcion = 1 | 2 | 3 | 4 | 5 | 6;
 
 export type TipoDefensa = "toque" | "gran-defensa" | "libre";
 
-export type ResultadoToqueRed =
+export type ResultadoRoceRed =
   | "ofensivo-propio"
   | "invasion-zaguero"
   | "invasion-delantero"
-  | "toque-red-rival";
+  | "roce-red-rival";
+
+/** Variante de ataque elegida por el usuario en el popup nuevo. */
+export type VarianteAtaquePopup = "toque" | "libre";
 
 export interface JugadorEnCancha {
   id: string;
@@ -55,7 +58,7 @@ const COL_ARMADO: Record<ValorArmado, string> = {
   4: "#84cc16",
   5: "#16a34a",
   6: "#059669",
-  T: "#334155",
+  R: "#334155",
 };
 
 const COL_SAQUE: Record<ValorSaque, string> = {
@@ -105,15 +108,24 @@ const ETIQ_DEFENSA: Record<TipoDefensa, string> = {
   libre: "Libre",
 };
 
-const OPCIONES_TOQUE_RED: {
-  id: ResultadoToqueRed;
+const OPCIONES_ATAQUE_TOQUE_LIBRE: {
+  id: VarianteAtaquePopup;
+  label: string;
+  color: string;
+}[] = [
+  { id: "toque", label: "Toque", color: "#f59e0b" },
+  { id: "libre", label: "Libre", color: "#a16207" },
+];
+
+const OPCIONES_ROCE_RED: {
+  id: ResultadoRoceRed;
   label: string;
   color: string;
 }[] = [
   { id: "ofensivo-propio", label: "Ofensivo propio", color: "#dc2626" },
   { id: "invasion-zaguero", label: "Invasión zaguero", color: "#ea580c" },
   { id: "invasion-delantero", label: "Invasión delantero", color: "#f59e0b" },
-  { id: "toque-red-rival", label: "Toque red rival", color: "#0284c7" },
+  { id: "roce-red-rival", label: "Roce red rival", color: "#0284c7" },
 ];
 
 // ============================================================
@@ -372,7 +384,7 @@ export function PopupRecepcion({
 }
 
 // ============================================================
-// POPUP ARMADO
+// POPUP ARMADO  (T → R: remate de segunda)
 // ============================================================
 
 interface PopupArmadoProps {
@@ -382,7 +394,7 @@ interface PopupArmadoProps {
 }
 
 export function PopupArmado({ pos, onConfirmar, onCancelar }: PopupArmadoProps) {
-  const botones: ValorArmado[] = [1, 2, 3, 4, 5, 6, "T"];
+  const botones: ValorArmado[] = [1, 2, 3, 4, 5, 6, "R"];
   const btnW = 24;
   const gap = 4;
   const pad = 8;
@@ -427,7 +439,7 @@ export function PopupArmado({ pos, onConfirmar, onCancelar }: PopupArmadoProps) 
 }
 
 // ============================================================
-// POPUP DEFENSA (2 filas × 3 columnas, con rol + zona + nombre)
+// POPUP DEFENSA
 // ============================================================
 
 interface PopupDefensaProps {
@@ -460,7 +472,6 @@ export function PopupDefensa({
       titulo="DEFENSA — Tipo (opcional)"
     >
       <g>
-        {/* Fila de tipos */}
         {tipos.map((t, i) => (
           <BotonSvg
             key={t}
@@ -486,7 +497,6 @@ export function PopupDefensa({
           ¿Quién la hizo? (opcional)
         </text>
 
-        {/* Grid 2 filas × 3 columnas */}
         <g transform="translate(0, 46)">
           {jugadores.slice(0, maxJugadores).map((j, i) => {
             const col = i % 3;
@@ -515,7 +525,6 @@ export function PopupDefensa({
                   stroke={c.borde}
                   strokeWidth={1.5}
                 />
-                {/* Rol */}
                 <text
                   x={x + 4}
                   y={y + 15}
@@ -526,7 +535,6 @@ export function PopupDefensa({
                 >
                   {j.rol ?? "?"}
                 </text>
-                {/* Zona */}
                 {j.zona !== undefined && (
                   <text
                     x={x + 17}
@@ -540,7 +548,6 @@ export function PopupDefensa({
                     Z{j.zona}
                   </text>
                 )}
-                {/* Nombre */}
                 <text
                   x={x + 34}
                   y={y + 15}
@@ -654,7 +661,7 @@ export function PopupLibre({
 }
 
 // ============================================================
-// POPUP JUGADOR (solo lista) — con colores por rol
+// POPUP JUGADOR (solo lista)
 // ============================================================
 
 interface PopupJugadorProps {
@@ -766,22 +773,22 @@ export function PopupJugador({
 }
 
 // ============================================================
-// POPUP TOQUE DE RED / INVASIÓN
+// POPUP ROCE DE RED / INVASIÓN  (era "toque-red")
 // ============================================================
 
-interface PopupToqueRedProps {
+interface PopupRoceRedProps {
   pos: PopupPos;
   jugadores: JugadorEnCancha[];
-  onConfirmar: (resultado: ResultadoToqueRed, jugadorId: string | null) => void;
+  onConfirmar: (resultado: ResultadoRoceRed, jugadorId: string | null) => void;
   onCancelar: () => void;
 }
 
-export function PopupToqueRed({
+export function PopupRoceRed({
   pos,
   jugadores,
   onConfirmar,
   onCancelar,
-}: PopupToqueRedProps) {
+}: PopupRoceRedProps) {
   const pad = 8;
   const ancho = 260;
   const altoOpcion = 20;
@@ -791,8 +798,8 @@ export function PopupToqueRed({
   const filasJugadores = Math.ceil(maxJugadores / 2);
 
   const altoTotalOpciones =
-    OPCIONES_TOQUE_RED.length * altoOpcion +
-    (OPCIONES_TOQUE_RED.length - 1) * gap;
+    OPCIONES_ROCE_RED.length * altoOpcion +
+    (OPCIONES_ROCE_RED.length - 1) * gap;
 
   const alto =
     20 + altoTotalOpciones + 8 + 12 + filasJugadores * 18 + 6 + 14 + 8;
@@ -802,10 +809,10 @@ export function PopupToqueRed({
       pos={pos}
       ancho={ancho}
       alto={alto}
-      titulo="TOQUE DE RED / INVASIÓN"
+      titulo="ROCE DE RED / INVASIÓN"
     >
       <g>
-        {OPCIONES_TOQUE_RED.map((o, i) => (
+        {OPCIONES_ROCE_RED.map((o, i) => (
           <BotonSvg
             key={o.id}
             x={pad}
@@ -869,7 +876,65 @@ export function PopupToqueRed({
 }
 
 // ============================================================
-// POPUP BLOQUEO PROPIO (¿quién bloqueó?)
+// POPUP ATAQUE — TOQUE / LIBRE  (NUEVO)
+// ============================================================
+
+interface PopupAtaqueToqueLibreProps {
+  pos: PopupPos;
+  onConfirmar: (v: VarianteAtaquePopup) => void;
+  onCancelar: () => void;
+}
+
+export function PopupAtaqueToqueLibre({
+  pos,
+  onConfirmar,
+  onCancelar,
+}: PopupAtaqueToqueLibreProps) {
+  const pad = 8;
+  const ancho = 240;
+  const alto = 82;
+  const btnW = (ancho - pad * 2 - 4) / 2;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="ATAQUE — Toque / Libre (opcional)"
+    >
+      <g>
+        {OPCIONES_ATAQUE_TOQUE_LIBRE.map((o, i) => (
+          <BotonSvg
+            key={o.id}
+            x={pad + i * (btnW + 4)}
+            y={0}
+            w={btnW}
+            h={24}
+            texto={o.label}
+            color={o.color}
+            fontSize={11}
+            onClick={() => onConfirmar(o.id)}
+          />
+        ))}
+
+        <BotonSvg
+          x={pad}
+          y={32}
+          w={ancho - pad * 2}
+          h={16}
+          texto="Remate (default, Esc)"
+          color="#f1f5f9"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP BLOQUEO PROPIO
 // ============================================================
 
 interface PopupBloqueoProps {

@@ -12,18 +12,20 @@ import PanelRotacionV2, {
 } from "./PanelRotacionV2";
 import {
   PopupArmado,
+  PopupAtaqueToqueLibre,
   PopupBloqueo,
   PopupDefensa,
   PopupJugador,
   PopupLibre,
   PopupRecepcion,
+  PopupRoceRed,
   PopupSaque,
-  PopupToqueRed,
   type ValorArmado,
   type ValorRecepcion,
   type ValorSaque,
   type TipoDefensa,
-  type ResultadoToqueRed,
+  type ResultadoRoceRed,
+  type VarianteAtaquePopup,
   type JugadorEnCancha,
   type JugadorZona,
   type PopupPos,
@@ -145,8 +147,20 @@ function aAccionV2(
   orden: number,
   override?: { jugadorId?: string | null; subtipo?: string | null }
 ): AccionV2Data {
-  const subtipoFinal =
+  let subtipoFinal =
     override?.subtipo !== undefined ? override.subtipo : l.subtipo ?? null;
+
+  // Correlación: si el ataque tiene variante "toque", prefijamos el subtipo
+  // (ej: "toque:punto"). Así se guardan ambos sin cambiar el esquema de BD.
+  if (
+    override?.subtipo === undefined &&
+    l.tipo === "ataque" &&
+    l.variante === "toque" &&
+    subtipoFinal !== null
+  ) {
+    subtipoFinal = `toque:${subtipoFinal}`;
+  }
+
   const jugadorFinal =
     override?.jugadorId !== undefined ? override.jugadorId : l.jugadorId;
   return {
@@ -227,7 +241,6 @@ function calcularRecepcionOverrides(
   return out;
 }
 
-// Mapear rol lógico → letra corta para mostrar
 function rolCortoParaUI(rol: string): string {
   if (rol === "C1" || rol === "C2") return "C";
   if (rol === "P1" || rol === "P2") return "P";
@@ -308,10 +321,6 @@ export default function DataEntryV2({
     return cambio ? { ...rotacion, posiciones: nuevas } : rotacion;
   }, [rotacion, posicionesPunto]);
 
-  // ------------------------------------------------------------
-  // JUGADORES EN CANCHA — resuelve con POSICIONES_JUEGO + líbero
-  // y aplica overrides del punto. Devuelve 6 (con rol + zona).
-  // ------------------------------------------------------------
   const jugadoresEnCancha: JugadorEnCancha[] = useMemo(() => {
     if (!rotacion) return [];
 
@@ -547,7 +556,7 @@ export default function DataEntryV2({
       if (coords.zona === "red") {
         const linea: LineaClasificada = {
           id: `l-${contadorId}`,
-          tipo: "toque-red",
+          tipo: "roce-red",
           esRival: false,
           jugadorId: null,
           origen: circuloArmado,
@@ -564,7 +573,7 @@ export default function DataEntryV2({
         setEstrella(null);
         setColaPopups([
           {
-            tipo: "toque-red",
+            tipo: "roce-red",
             pos: posicionPopup(punto),
             lineaId: linea.id,
           },
@@ -600,7 +609,7 @@ export default function DataEntryV2({
       if (coords.zona === "red") {
         setColaPopups([
           {
-            tipo: "toque-red",
+            tipo: "roce-red",
             pos: posicionPopup(punto),
             lineaId: "",
           },
@@ -903,18 +912,18 @@ export default function DataEntryV2({
     popupSiguiente();
   };
 
-  const handleToqueRedConfirmar = (
-    resultado: ResultadoToqueRed,
+  const handleRoceRedConfirmar = (
+    resultado: ResultadoRoceRed,
     jugadorId: string | null
   ) => {
     if (!popupActivo) return;
 
-    const esRival = resultado === "toque-red-rival";
+    const esRival = resultado === "roce-red-rival";
 
     if (!popupActivo.lineaId) {
       const ficticia: LineaClasificada = {
         id: `tr-${contadorId}`,
-        tipo: "toque-red",
+        tipo: "roce-red",
         esRival,
         jugadorId,
         origen: { celda: "RED-C3", mini: "m1-5" },
@@ -925,6 +934,35 @@ export default function DataEntryV2({
       setContadorId((c) => c + 1);
     } else {
       actualizarLineaPopup({ subtipo: resultado, jugadorId, esRival });
+    }
+    popupSiguiente();
+  };
+
+  /**
+   * Popup nuevo del ataque: Toque / Libre.
+   *  - "toque"  → guarda `variante: "toque"` (sigue siendo ataque).
+   *  - "libre"  → cambia `tipo` de la línea a "libre".
+   *  - Esc / cancelar → no toca nada (queda como remate, default).
+   */
+  const handleAtaqueToqueLibreConfirmar = (v: VarianteAtaquePopup) => {
+    if (!popupActivo) return;
+
+    if (v === "toque") {
+      setLineas((prev) =>
+        prev.map((l) =>
+          l.id === popupActivo.lineaId
+            ? { ...l, variante: "toque" }
+            : l
+        )
+      );
+    } else if (v === "libre") {
+      setLineas((prev) =>
+        prev.map((l) =>
+          l.id === popupActivo.lineaId
+            ? { ...l, tipo: "libre", variante: null }
+            : l
+        )
+      );
     }
     popupSiguiente();
   };
@@ -1249,6 +1287,8 @@ export default function DataEntryV2({
                         l.subtipo !== undefined && l.subtipo !== null
                           ? String(l.subtipo)
                           : "";
+                      const esToqueAtaque =
+                        l.tipo === "ataque" && l.variante === "toque";
                       return (
                         <li
                           key={l.id}
@@ -1260,6 +1300,11 @@ export default function DataEntryV2({
                             {val && (
                               <span className="text-emerald-700 bg-emerald-50 px-1 rounded text-[10px] font-bold uppercase">
                                 {val}
+                              </span>
+                            )}
+                            {esToqueAtaque && (
+                              <span className="text-amber-700 bg-amber-50 px-1 rounded text-[10px] font-bold uppercase">
+                                toque
                               </span>
                             )}
                             {l.esRival && (
@@ -1366,11 +1411,18 @@ export default function DataEntryV2({
                     onCancelar={cerrarPopup}
                   />
                 )}
-                {popupActivo?.tipo === "toque-red" && (
-                  <PopupToqueRed
+                {popupActivo?.tipo === "roce-red" && (
+                  <PopupRoceRed
                     pos={popupActivo.pos}
                     jugadores={jugadoresEnCancha}
-                    onConfirmar={handleToqueRedConfirmar}
+                    onConfirmar={handleRoceRedConfirmar}
+                    onCancelar={cerrarPopup}
+                  />
+                )}
+                {popupActivo?.tipo === "ataque-toque-libre" && (
+                  <PopupAtaqueToqueLibre
+                    pos={popupActivo.pos}
+                    onConfirmar={handleAtaqueToqueLibreConfirmar}
                     onCancelar={cerrarPopup}
                   />
                 )}
