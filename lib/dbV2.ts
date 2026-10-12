@@ -42,6 +42,9 @@ export interface AccionV2Data {
   destino_mini: string | null;
   desvios: DesvioV2[];
   zona: number | null;
+  // Posición previa del jugador (estrella). null si no hubo desplazamiento.
+  posicion_inicial_celda?: string | null;
+  posicion_inicial_mini?: string | null;
 }
 
 export interface PuntoV2Row extends PuntoV2Data {
@@ -159,6 +162,8 @@ export async function guardarPuntoV2(
       destino_mini: a.destino_mini,
       desvios: a.desvios ?? [],
       zona: a.zona ?? null,
+      posicion_inicial_celda: a.posicion_inicial_celda ?? null,
+      posicion_inicial_mini: a.posicion_inicial_mini ?? null,
     }));
 
     const { error: errAcc } = await supabase
@@ -246,9 +251,7 @@ export async function borrarPuntoV2(
 }
 
 // ------------------------------------------------------------
-// 4. BORRAR UN PUNTO POR COORDENADAS (partido + set + punto)
-//    Se usa cuando la consola V1 guarda y hay que eliminar el
-//    mismo punto de las tablas V2.
+// 4. BORRAR UN PUNTO POR COORDENADAS
 // ------------------------------------------------------------
 
 export async function borrarPuntoV2PorCoordenadas(

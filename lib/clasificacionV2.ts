@@ -49,6 +49,8 @@ export interface LineaInput {
   origen: PuntoV2;
   destino: PuntoV2;
   desvios?: PuntoV2[];
+  /** Posición previa del jugador (estrella). null = no hubo desplazamiento. */
+  posicionInicial?: PuntoV2 | null;
 }
 
 export interface LineaClasificada {
@@ -61,6 +63,11 @@ export interface LineaClasificada {
   desvios?: PuntoV2[];
   subtipo?: string | number | null;
   variante?: VarianteAtaque | null;
+  /**
+   * Posición previa del jugador (estrella) antes de hacer la acción.
+   * null = no hubo desplazamiento (siempre estuvo en el origen).
+   */
+  posicionInicial?: PuntoV2 | null;
   oculta?: boolean;
 }
 
@@ -304,6 +311,35 @@ function jugadorQueRecibe(
 }
 
 // ============================================================
+// RESOLUCIÓN DE JUGADOR — DEFENSA (por defecto, sin estrella)
+// ============================================================
+//
+// Mismo mapeo por columna que recepción. Devuelve el jugador que
+// por defecto cubre esa posición según POSICIONES_JUEGO + rotación.
+// ============================================================
+
+export function resolverJugadorDefensa(
+  origen: PuntoV2,
+  rotacion: RotacionPunto,
+  situacion: Situacion
+): string | null {
+  const celda = origen.celda;
+  if (!/^F[123]-/.test(celda)) return null;
+
+  const col = celda.split("-")[1];
+  let zona: Zona;
+  if (col === "C1" || col === "C2") zona = 5;
+  else if (col === "C3") zona = 6;
+  else zona = 1;
+
+  const numeroRot = numeroRotacionDesdePosiciones(rotacion);
+  const fila = POSICIONES_JUEGO[numeroRot]?.[situacion];
+  if (!fila) return null;
+  const rol = fila[zona];
+  return resolverRolAJugador(rotacion, rol);
+}
+
+// ============================================================
 // CLASIFICACIÓN PRINCIPAL
 // ============================================================
 
@@ -350,7 +386,6 @@ export function clasificarLinea(
     };
   }
 
-  // Regla: libre rival → libre propio sin popup
   if (ultima && ultima.tipo === "libre" && ultima.esRival) {
     return {
       tipo: "libre",
@@ -362,7 +397,6 @@ export function clasificarLinea(
 
   const ladoO = ladoDeCelda(linea.origen.celda);
   const ladoD = ladoDeCelda(linea.destino.celda);
-  // ¿La línea actual cruza la red?
   const cruzaNet = ladoO !== null && ladoD !== null && ladoO !== ladoD;
 
   if (tieneDesvioBloqueoPropio(linea) && ultima) {
@@ -431,7 +465,6 @@ export function clasificarLinea(
     };
   }
 
-  // NUEVO: si el armado cruza la red, en realidad es una libre.
   const armarOlibre = (esRival: boolean): ResultadoClasificacion =>
     cruzaNet
       ? {
@@ -573,6 +606,46 @@ export function calcularSubtiposAtaque(
       return { ...l, subtipo: ganador === "propio" ? "punto" : "error" };
     }
     return { ...l, subtipo: "neutro" };
+  });
+}
+
+// ============================================================
+// SUBTIPOS DE DEFENSA (para "defensa normal" sin tipo asignado)
+// ============================================================
+//
+// Se aplica sólo a defensas propias que NO tengan subtipo asignado.
+//  - Si la defensa es la última acción visible → "buena_rival"
+//  - Si la jugada sigue (hay acciones después) → "neutro"
+// ============================================================
+
+export function calcularSubtiposDefensa(
+  lineas: LineaClasificada[]
+): LineaClasificada[] {
+  const idxDefensas: number[] = [];
+  lineas.forEach((l, i) => {
+    if (l.tipo === "defensa" && !l.esRival) idxDefensas.push(i);
+  });
+  if (idxDefensas.length === 0) return lineas;
+
+  let ultimoVisible = -1;
+  for (let i = lineas.length - 1; i >= 0; i--) {
+    if (!lineas[i].oculta) {
+      ultimoVisible = i;
+      break;
+    }
+  }
+
+  return lineas.map((l, i) => {
+    if (l.tipo !== "defensa" || l.esRival) return l;
+    // Sólo aplicamos a defensas sin subtipo real (null o "defensa_normal").
+    if (l.subtipo && l.subtipo !== "defensa_normal") return l;
+    const esUltima = i === ultimoVisible;
+    return {
+      ...l,
+      subtipo: esUltima ? "buena_rival" : "neutro",
+      // Mantenemos la marca para saber que originalmente era "defensa_normal"
+      variante: "defensa_normal" as any,
+    };
   });
 }
 

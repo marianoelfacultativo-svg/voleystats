@@ -672,12 +672,18 @@ export default function AdminPage() {
             </h1>
             <p className="text-slate-500 text-sm mt-1">Bienvenido admin</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button
-              onClick={() => router.push("/admin/data-entry")}
+              onClick={() => router.push("/admin/dataentry/data-entry-jugador")}
               className="px-4 py-2 text-sm bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition"
             >
-              🎯 Consola de Data Entry
+              🎯 Consola por jugador
+            </button>
+            <button
+              onClick={() => router.push("/admin/dataentry/data-entry-equipo")}
+              className="px-4 py-2 text-sm bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-medium rounded-lg transition"
+            >
+              🧪 Consola por equipo
             </button>
             <button
               onClick={() => router.push("/admin/estadisticas")}

@@ -36,7 +36,6 @@ import CanchaDefensa from "./CanchaDefensa";
 import CanchaBloqueo from "./CanchaBloqueo";
 import CanchaSaque from "./CanchaSaque";
 import CanchaRecepcion from "./CanchaRecepcion";
-import DataEntryV2 from "./DataEntryV2";
 
 interface Equipo { id: string; nombre: string }
 interface Jugador { id: string; nombre: string; numero: number | null; rol: string }
@@ -337,7 +336,7 @@ function calcularZonaTendenciaAjustada(
 // ============================================================
 // COMPONENTE
 // ============================================================
-export default function DataEntryPage() {
+export default function DataEntryJugadorPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
 
@@ -368,9 +367,6 @@ export default function DataEntryPage() {
   // Estados para rival
   const [erroresRivales, setErroresRivales] = useState(0);
   const [buenasRivales, setBuenasRivales] = useState(0);
-
-  // true = Consola V2, false = Consola V1 (por defecto V2)
-  const [usarV2, setUsarV2] = useState(true);
 
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -622,9 +618,8 @@ export default function DataEntryPage() {
     buenasRivales,
   ]);
 
-  // Atajos de pestañas (solo V1)
+  // Atajos de pestañas
   useEffect(() => {
-    if (usarV2) return;
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (
@@ -643,12 +638,11 @@ export default function DataEntryPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [usarV2]);
+  }, []);
 
   const guardarRef = useRef<() => void>(() => {});
   guardarRef.current = guardarTodo;
   useEffect(() => {
-    if (usarV2) return;
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
         e.preventDefault();
@@ -657,7 +651,7 @@ export default function DataEntryPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [usarV2]);
+  }, []);
 
   const limpiarTodo = () => {
     setRotaciones({});
@@ -1067,39 +1061,15 @@ export default function DataEntryPage() {
               ← Volver al panel
             </button>
             <h1 className="text-3xl font-bold text-slate-900">
-              🎯 Consola de Data Entry
+              🎯 Consola de Data Entry (Jugador)
             </h1>
           </div>
-          <div className="flex gap-2 items-center">
-            <div className="flex rounded-lg overflow-hidden border border-slate-300">
-              <button
-                onClick={() => setUsarV2(false)}
-                className={`px-3 py-2 text-sm font-medium transition ${
-                  !usarV2
-                    ? "bg-emerald-500 text-white"
-                    : "bg-white text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                Consola V1
-              </button>
-              <button
-                onClick={() => setUsarV2(true)}
-                className={`px-3 py-2 text-sm font-medium transition ${
-                  usarV2
-                    ? "bg-fuchsia-500 text-white"
-                    : "bg-white text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                🧪 Consola V2
-              </button>
-            </div>
-            <button
-              onClick={handleCerrar}
-              className="px-4 py-2 text-sm bg-slate-200 hover:bg-slate-300 rounded-lg transition"
-            >
-              Cerrar sesión
-            </button>
-          </div>
+          <button
+            onClick={handleCerrar}
+            className="px-4 py-2 text-sm bg-slate-200 hover:bg-slate-300 rounded-lg transition"
+          >
+            Cerrar sesión
+          </button>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-4">
@@ -1155,441 +1125,400 @@ export default function DataEntryPage() {
 
         {!noHayPartido && (
           <>
-            {/* ============================================================ */}
-            {/* CONSOLA V2                                                   */}
-            {/* ============================================================ */}
-            {usarV2 && (
-              <div className="bg-white rounded-2xl shadow-sm border-2 border-fuchsia-300 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-lg font-bold text-fuchsia-800">
-                    🧪 Consola V2
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Consola nueva unificada
-                  </p>
-                </div>
-                <DataEntryV2
-                  key={partidoId}
-                  partidoId={partidoId}
-                  equipoId={equipoId}
-                  nombreMiEquipo={
-                    equipos.find((e) => e.id === equipoId)?.nombre ??
-                    "Mi equipo"
-                  }
-                  nombreRival={
-                    partidos.find((p) => p.id === partidoId)?.rival ?? "Rival"
-                  }
-                  jugadores={jugadoresDelEquipo.map((j) => ({
-                    id: j.id,
-                    nombre: j.nombre,
-                    numero: j.numero,
-                  }))}
-                  rotacionInicial={rotActual}
-                />
-              </div>
-            )}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-4">
+              <div className="flex flex-wrap items-center gap-4 justify-between">
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-semibold text-slate-500 uppercase mr-2">
+                      Set:
+                    </span>
+                    {([1, 2, 3, 4, 5] as const).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => {
+                          setSetActivo(s);
+                          setPuntoActual(1);
+                        }}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-lg transition ${
+                          setActivo === s
+                            ? "bg-emerald-500 text-white"
+                            : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
 
-            {/* ============================================================ */}
-            {/* CONSOLA V1                                                   */}
-            {/* ============================================================ */}
-            {!usarV2 && (
-              <>
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-4">
-                  <div className="flex flex-wrap items-center gap-4 justify-between">
-                    <div className="flex flex-wrap items-center gap-4">
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs font-semibold text-slate-500 uppercase mr-2">
-                          Set:
-                        </span>
-                        {([1, 2, 3, 4, 5] as const).map((s) => (
-                          <button
-                            key={s}
-                            onClick={() => {
-                              setSetActivo(s);
-                              setPuntoActual(1);
-                            }}
-                            className={`px-3 py-1.5 text-sm font-medium rounded-lg transition ${
-                              setActivo === s
-                                ? "bg-emerald-500 text-white"
-                                : "bg-slate-100 hover:bg-slate-200 text-slate-700"
-                            }`}
-                          >
-                            {s}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs font-semibold text-slate-500 uppercase mr-2">
-                          Punto:
-                        </span>
-                        <button
-                          onClick={() =>
-                            setPuntoActual((p) => Math.max(1, p - 1))
-                          }
-                          disabled={puntoActual === 1}
-                          className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm disabled:opacity-40"
-                        >
-                          ◀
-                        </button>
-                        <input
-                          type="number"
-                          value={puntoActual}
-                          onChange={(e) =>
-                            setPuntoActual(
-                              Math.max(1, parseInt(e.target.value) || 1)
-                            )
-                          }
-                          className="w-16 px-2 py-1.5 text-center border border-slate-300 rounded-lg text-sm"
-                        />
-                        <button
-                          onClick={() => setPuntoActual((p) => p + 1)}
-                          className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm"
-                        >
-                          ▶
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <div className="flex items-center gap-1 bg-red-50 border border-red-200 rounded-lg px-2 py-1">
-                        <span className="text-[10px] font-bold text-red-700 uppercase tracking-wide">
-                          Error rival
-                        </span>
-                        <button
-                          onClick={() =>
-                            setErroresRivales((v) => Math.max(0, v - 1))
-                          }
-                          disabled={erroresRivales === 0}
-                          className="w-6 h-6 flex items-center justify-center rounded bg-white border border-red-300 text-red-700 font-bold text-sm disabled:opacity-40"
-                        >
-                          −
-                        </button>
-                        <span className="w-8 text-center font-bold text-red-800">
-                          {erroresRivales}
-                        </span>
-                        <button
-                          onClick={() => setErroresRivales((v) => v + 1)}
-                          className="w-6 h-6 flex items-center justify-center rounded bg-red-500 text-white font-bold text-sm hover:bg-red-600"
-                        >
-                          +
-                        </button>
-                      </div>
-
-                      <div className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
-                        <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wide">
-                          Buena rival
-                        </span>
-                        <button
-                          onClick={() =>
-                            setBuenasRivales((v) => Math.max(0, v - 1))
-                          }
-                          disabled={buenasRivales === 0}
-                          className="w-6 h-6 flex items-center justify-center rounded bg-white border border-blue-300 text-blue-700 font-bold text-sm disabled:opacity-40"
-                        >
-                          −
-                        </button>
-                        <span className="w-8 text-center font-bold text-blue-800">
-                          {buenasRivales}
-                        </span>
-                        <button
-                          onClick={() => setBuenasRivales((v) => v + 1)}
-                          className="w-6 h-6 flex items-center justify-center rounded bg-blue-500 text-white font-bold text-sm hover:bg-blue-600"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-semibold text-slate-500 uppercase mr-2">
+                      Punto:
+                    </span>
+                    <button
+                      onClick={() =>
+                        setPuntoActual((p) => Math.max(1, p - 1))
+                      }
+                      disabled={puntoActual === 1}
+                      className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm disabled:opacity-40"
+                    >
+                      ◀
+                    </button>
+                    <input
+                      type="number"
+                      value={puntoActual}
+                      onChange={(e) =>
+                        setPuntoActual(
+                          Math.max(1, parseInt(e.target.value) || 1)
+                        )
+                      }
+                      className="w-16 px-2 py-1.5 text-center border border-slate-300 rounded-lg text-sm"
+                    />
+                    <button
+                      onClick={() => setPuntoActual((p) => p + 1)}
+                      className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm"
+                    >
+                      ▶
+                    </button>
                   </div>
                 </div>
 
-                <div className="mb-4 flex items-start gap-2">
-                  <PanelRotacion
-                    rotacion={rotActual}
-                    jugadores={jugadoresDelEquipo}
-                    onChange={setRotActual}
-                    numeroRotacion={1}
-                    onCambioRotacion={() => {}}
-                  />
-                  <button
-                    onClick={rePropagarRotacion}
-                    className="px-3 py-2 text-xs bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 rounded-lg transition"
-                    title="Re-propagar esta rotación a los puntos siguientes del set"
-                  >
-                    🔄 Re-propagar a siguientes
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap gap-2 mb-4 border-b border-slate-200">
-                  {PESTANAS.map((p, i) => (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1 bg-red-50 border border-red-200 rounded-lg px-2 py-1">
+                    <span className="text-[10px] font-bold text-red-700 uppercase tracking-wide">
+                      Error rival
+                    </span>
                     <button
-                      key={p.id}
-                      onClick={() => setPestana(p.id)}
-                      className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px flex items-center gap-2 ${
-                        pestana === p.id
-                          ? "border-emerald-500 text-emerald-600"
-                          : "border-transparent text-slate-500 hover:text-slate-700"
-                      }`}
+                      onClick={() =>
+                        setErroresRivales((v) => Math.max(0, v - 1))
+                      }
+                      disabled={erroresRivales === 0}
+                      className="w-6 h-6 flex items-center justify-center rounded bg-white border border-red-300 text-red-700 font-bold text-sm disabled:opacity-40"
                     >
-                      <span className="w-5 h-5 rounded bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center">
-                        {i + 1}
-                      </span>
-                      <span>
-                        {p.icono} {p.nombre}
-                      </span>
+                      −
                     </button>
-                  ))}
+                    <span className="w-8 text-center font-bold text-red-800">
+                      {erroresRivales}
+                    </span>
+                    <button
+                      onClick={() => setErroresRivales((v) => v + 1)}
+                      className="w-6 h-6 flex items-center justify-center rounded bg-red-500 text-white font-bold text-sm hover:bg-red-600"
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
+                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wide">
+                      Buena rival
+                    </span>
+                    <button
+                      onClick={() =>
+                        setBuenasRivales((v) => Math.max(0, v - 1))
+                      }
+                      disabled={buenasRivales === 0}
+                      className="w-6 h-6 flex items-center justify-center rounded bg-white border border-blue-300 text-blue-700 font-bold text-sm disabled:opacity-40"
+                    >
+                      −
+                    </button>
+                    <span className="w-8 text-center font-bold text-blue-800">
+                      {buenasRivales}
+                    </span>
+                    <button
+                      onClick={() => setBuenasRivales((v) => v + 1)}
+                      className="w-6 h-6 flex items-center justify-center rounded bg-blue-500 text-white font-bold text-sm hover:bg-blue-600"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
+              </div>
+            </div>
 
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
-                  {pestana === "armado" && (
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2 mb-3">
-                        <span className="text-[10px] font-semibold text-slate-500 uppercase">
-                          Armados del punto:
-                        </span>
-                        {armadosDelPunto.length === 0 && (
-                          <span className="text-[10px] text-slate-400 italic">
-                            (ninguno todavía)
-                          </span>
-                        )}
-                        {armadosDelPunto.map((a, i) => (
-                          <button
-                            key={i}
-                            onClick={() => setArmadoIdx(i)}
-                            className={`px-2 py-0.5 text-[10px] rounded border ${
-                              armadoIdx === i
-                                ? "bg-emerald-500 text-white border-emerald-500"
-                                : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
-                            }`}
-                          >
-                            #{i + 1} {nombreDe(a.jugador_id) ?? "(sin dueño)"}
-                          </button>
-                        ))}
-                        <button
-                          onClick={agregarArmado}
-                          className="px-2 py-0.5 text-[10px] rounded border border-dashed border-slate-400 text-slate-600 hover:bg-slate-50"
-                        >
-                          + Nuevo armado
-                        </button>
-                        {armadosDelPunto.length > 0 && (
-                          <button
-                            onClick={borrarArmadoActual}
-                            className="px-2 py-0.5 text-[10px] rounded bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
-                          >
-                            🗑 Borrar armado #{armadoIdx + 1}
-                          </button>
-                        )}
-                      </div>
+            <div className="mb-4 flex items-start gap-2">
+              <PanelRotacion
+                rotacion={rotActual}
+                jugadores={jugadoresDelEquipo}
+                onChange={setRotActual}
+                numeroRotacion={1}
+                onCambioRotacion={() => {}}
+              />
+              <button
+                onClick={rePropagarRotacion}
+                className="px-3 py-2 text-xs bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 rounded-lg transition"
+                title="Re-propagar esta rotación a los puntos siguientes del set"
+              >
+                🔄 Re-propagar a siguientes
+              </button>
+            </div>
 
-                      {armadosDelPunto.length > 0 && (
-                        <div className="flex items-center gap-2 mb-3">
-                          <span className="text-[10px] font-semibold text-slate-500 uppercase">
-                            Armó:
-                          </span>
-                          <select
-                            value={armadoActual.jugador_id}
-                            onChange={(e) =>
-                              setJugadorArmadoActual(e.target.value)
-                            }
-                            className="px-2 py-1 text-xs border border-slate-300 rounded-lg"
-                          >
-                            <option value="">(sin asignar)</option>
-                            {jugadoresDelEquipo.map((j) => (
-                              <option key={j.id} value={j.id}>
-                                {j.nombre}
-                                {j.numero !== null ? ` #${j.numero}` : ""}
-                                {j.id === armadorDelPunto ? " · armador" : ""}
-                              </option>
-                            ))}
-                          </select>
-                          <span className="text-[10px] text-slate-400">
-                            (cambialo para armado de emergencia)
-                          </span>
-                        </div>
-                      )}
+            <div className="flex flex-wrap gap-2 mb-4 border-b border-slate-200">
+              {PESTANAS.map((p, i) => (
+                <button
+                  key={p.id}
+                  onClick={() => setPestana(p.id)}
+                  className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px flex items-center gap-2 ${
+                    pestana === p.id
+                      ? "border-emerald-500 text-emerald-600"
+                      : "border-transparent text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  <span className="w-5 h-5 rounded bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center">
+                    {i + 1}
+                  </span>
+                  <span>
+                    {p.icono} {p.nombre}
+                  </span>
+                </button>
+              ))}
+            </div>
 
-                      <TableroArmadorPunto
-                        punto={{
-                          numero: puntoActual,
-                          lineas: armadoActual.lineas,
-                          toques: armadoActual.toques ?? [],
-                          armadorNumero: 1,
-                        }}
-                        onChange={(p) =>
-                          setContenidoArmadoActual(p.lineas, p.toques)
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+              {pestana === "armado" && (
+                <div>
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase">
+                      Armados del punto:
+                    </span>
+                    {armadosDelPunto.length === 0 && (
+                      <span className="text-[10px] text-slate-400 italic">
+                        (ninguno todavía)
+                      </span>
+                    )}
+                    {armadosDelPunto.map((a, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setArmadoIdx(i)}
+                        className={`px-2 py-0.5 text-[10px] rounded border ${
+                          armadoIdx === i
+                            ? "bg-emerald-500 text-white border-emerald-500"
+                            : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                        }`}
+                      >
+                        #{i + 1} {nombreDe(a.jugador_id) ?? "(sin dueño)"}
+                      </button>
+                    ))}
+                    <button
+                      onClick={agregarArmado}
+                      className="px-2 py-0.5 text-[10px] rounded border border-dashed border-slate-400 text-slate-600 hover:bg-slate-50"
+                    >
+                      + Nuevo armado
+                    </button>
+                    {armadosDelPunto.length > 0 && (
+                      <button
+                        onClick={borrarArmadoActual}
+                        className="px-2 py-0.5 text-[10px] rounded bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
+                      >
+                        🗑 Borrar armado #{armadoIdx + 1}
+                      </button>
+                    )}
+                  </div>
+
+                  {armadosDelPunto.length > 0 && (
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-[10px] font-semibold text-slate-500 uppercase">
+                        Armó:
+                      </span>
+                      <select
+                        value={armadoActual.jugador_id}
+                        onChange={(e) =>
+                          setJugadorArmadoActual(e.target.value)
                         }
-                      />
+                        className="px-2 py-1 text-xs border border-slate-300 rounded-lg"
+                      >
+                        <option value="">(sin asignar)</option>
+                        {jugadoresDelEquipo.map((j) => (
+                          <option key={j.id} value={j.id}>
+                            {j.nombre}
+                            {j.numero !== null ? ` #${j.numero}` : ""}
+                            {j.id === armadorDelPunto ? " · armador" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-[10px] text-slate-400">
+                        (cambialo para armado de emergencia)
+                      </span>
                     </div>
                   )}
 
-                  {pestana === "ataque" && (
-                    <CanchaAtaque
-                      ataquesDelPunto={filtrar(ataques)}
-                      armadosPendientes={Math.max(
-                        0,
-                        armadosDelPunto.length - filtrar(ataques).length
-                      )}
-                      onAgregar={agregarAtaque}
-                      onBorrarUltimo={() => {
-                        const idx = ataques.findLastIndex(
-                          (x) =>
-                            x.set_numero === setActivo &&
-                            x.punto_numero === puntoActual
-                        );
-                        if (idx >= 0)
-                          setAtaques((prev) =>
-                            prev.filter((_, i) => i !== idx)
-                          );
-                      }}
-                      atacanteSugerido={atacanteSugerido}
-                    />
-                  )}
+                  <TableroArmadorPunto
+                    punto={{
+                      numero: puntoActual,
+                      lineas: armadoActual.lineas,
+                      toques: armadoActual.toques ?? [],
+                      armadorNumero: 1,
+                    }}
+                    onChange={(p) =>
+                      setContenidoArmadoActual(p.lineas, p.toques)
+                    }
+                  />
+                </div>
+              )}
 
-                  {pestana === "defensa" && (
-                    <CanchaDefensa
-                      defensasDelPunto={filtrar(defensas)}
-                      onAgregar={agregarDefensa}
-                      onBorrarUltimo={() => {
-                        const idx = defensas.findLastIndex(
-                          (x) =>
+              {pestana === "ataque" && (
+                <CanchaAtaque
+                  ataquesDelPunto={filtrar(ataques)}
+                  armadosPendientes={Math.max(
+                    0,
+                    armadosDelPunto.length - filtrar(ataques).length
+                  )}
+                  onAgregar={agregarAtaque}
+                  onBorrarUltimo={() => {
+                    const idx = ataques.findLastIndex(
+                      (x) =>
+                        x.set_numero === setActivo &&
+                        x.punto_numero === puntoActual
+                    );
+                    if (idx >= 0)
+                      setAtaques((prev) =>
+                        prev.filter((_, i) => i !== idx)
+                      );
+                  }}
+                  atacanteSugerido={atacanteSugerido}
+                />
+              )}
+
+              {pestana === "defensa" && (
+                <CanchaDefensa
+                  defensasDelPunto={filtrar(defensas)}
+                  onAgregar={agregarDefensa}
+                  onBorrarUltimo={() => {
+                    const idx = defensas.findLastIndex(
+                      (x) =>
+                        x.set_numero === setActivo &&
+                        x.punto_numero === puntoActual
+                    );
+                    if (idx >= 0)
+                      setDefensas((prev) =>
+                        prev.filter((_, i) => i !== idx)
+                      );
+                  }}
+                  onLimpiarPunto={() =>
+                    setDefensas((prev) =>
+                      prev.filter(
+                        (x) =>
+                          !(
                             x.set_numero === setActivo &&
                             x.punto_numero === puntoActual
-                        );
-                        if (idx >= 0)
-                          setDefensas((prev) =>
-                            prev.filter((_, i) => i !== idx)
-                          );
-                      }}
-                      onLimpiarPunto={() =>
-                        setDefensas((prev) =>
-                          prev.filter(
-                            (x) =>
-                              !(
-                                x.set_numero === setActivo &&
-                                x.punto_numero === puntoActual
-                              )
                           )
-                        )
-                      }
-                    />
-                  )}
+                      )
+                    )
+                  }
+                />
+              )}
 
-                  {pestana === "bloqueo" && (
-                    <CanchaBloqueo
-                      bloqueosDelPunto={filtrar(bloqueos)}
-                      jugadoresRed={[
-                        {
-                          zona: 4 as const,
-                          jugador_id:
-                            rotActual.posiciones[4]?.jugador_id ?? "",
-                          nombre:
-                            nombreDe(
-                              rotActual.posiciones[4]?.jugador_id ?? null
-                            ) ?? "Z4",
-                        },
-                        {
-                          zona: 3 as const,
-                          jugador_id:
-                            rotActual.posiciones[3]?.jugador_id ?? "",
-                          nombre:
-                            nombreDe(
-                              rotActual.posiciones[3]?.jugador_id ?? null
-                            ) ?? "Z3",
-                        },
-                        {
-                          zona: 2 as const,
-                          jugador_id:
-                            rotActual.posiciones[2]?.jugador_id ?? "",
-                          nombre:
-                            nombreDe(
-                              rotActual.posiciones[2]?.jugador_id ?? null
-                            ) ?? "Z2",
-                        },
-                      ].filter((j) => j.jugador_id)}
-                      onAgregar={agregarBloqueo}
-                      onBorrarUltimo={() => {
-                        const idx = bloqueos.findLastIndex(
-                          (x) =>
-                            x.set_numero === setActivo &&
-                            x.punto_numero === puntoActual
+              {pestana === "bloqueo" && (
+                <CanchaBloqueo
+                  bloqueosDelPunto={filtrar(bloqueos)}
+                  jugadoresRed={[
+                    {
+                      zona: 4 as const,
+                      jugador_id:
+                        rotActual.posiciones[4]?.jugador_id ?? "",
+                      nombre:
+                        nombreDe(
+                          rotActual.posiciones[4]?.jugador_id ?? null
+                        ) ?? "Z4",
+                    },
+                    {
+                      zona: 3 as const,
+                      jugador_id:
+                        rotActual.posiciones[3]?.jugador_id ?? "",
+                      nombre:
+                        nombreDe(
+                          rotActual.posiciones[3]?.jugador_id ?? null
+                        ) ?? "Z3",
+                    },
+                    {
+                      zona: 2 as const,
+                      jugador_id:
+                        rotActual.posiciones[2]?.jugador_id ?? "",
+                      nombre:
+                        nombreDe(
+                          rotActual.posiciones[2]?.jugador_id ?? null
+                        ) ?? "Z2",
+                    },
+                  ].filter((j) => j.jugador_id)}
+                  onAgregar={agregarBloqueo}
+                  onBorrarUltimo={() => {
+                    const idx = bloqueos.findLastIndex(
+                      (x) =>
+                        x.set_numero === setActivo &&
+                        x.punto_numero === puntoActual
+                    );
+                    if (idx >= 0)
+                      setBloqueos((prev) =>
+                        prev.filter((_, i) => i !== idx)
+                      );
+                  }}
+                />
+              )}
+
+              {pestana === "saque" && (
+                <>
+                  {sacadorActual && (
+                    <div className="mb-2 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 text-center">
+                      Sacador (zona 1):{" "}
+                      <strong>{nombreDe(sacadorActual)}</strong>
+                    </div>
+                  )}
+                  <CanchaSaque
+                    saquesDelPunto={filtrar(saques)}
+                    tipo={saquesTipo[keyPuntoActual] ?? "flotado"}
+                    onCambiarTipo={(t) =>
+                      setSaquesTipo((prev) => ({
+                        ...prev,
+                        [keyPuntoActual]: t,
+                      }))
+                    }
+                    onAgregar={agregarSaque}
+                    onBorrarUltimo={() => {
+                      const idx = saques.findLastIndex(
+                        (x) =>
+                          x.set_numero === setActivo &&
+                          x.punto_numero === puntoActual
+                      );
+                      if (idx >= 0)
+                        setSaques((prev) =>
+                          prev.filter((_, i) => i !== idx)
                         );
-                        if (idx >= 0)
-                          setBloqueos((prev) =>
-                            prev.filter((_, i) => i !== idx)
-                          );
-                      }}
-                    />
-                  )}
+                    }}
+                  />
+                </>
+              )}
 
-                  {pestana === "saque" && (
-                    <>
-                      {sacadorActual && (
-                        <div className="mb-2 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 text-center">
-                          Sacador (zona 1):{" "}
-                          <strong>{nombreDe(sacadorActual)}</strong>
-                        </div>
-                      )}
-                      <CanchaSaque
-                        saquesDelPunto={filtrar(saques)}
-                        tipo={saquesTipo[keyPuntoActual] ?? "flotado"}
-                        onCambiarTipo={(t) =>
-                          setSaquesTipo((prev) => ({
-                            ...prev,
-                            [keyPuntoActual]: t,
-                          }))
-                        }
-                        onAgregar={agregarSaque}
-                        onBorrarUltimo={() => {
-                          const idx = saques.findLastIndex(
-                            (x) =>
-                              x.set_numero === setActivo &&
-                              x.punto_numero === puntoActual
-                          );
-                          if (idx >= 0)
-                            setSaques((prev) =>
-                              prev.filter((_, i) => i !== idx)
-                            );
-                        }}
-                      />
-                    </>
-                  )}
+              {pestana === "recepcion" && (
+                <CanchaRecepcion
+                  recepcionesDelPunto={filtrar(recepciones)}
+                  onAgregar={agregarRecepcion}
+                  onBorrarUltimo={() => {
+                    const idx = recepciones.findLastIndex(
+                      (x) =>
+                        x.set_numero === setActivo &&
+                        x.punto_numero === puntoActual
+                    );
+                    if (idx >= 0)
+                      setRecepciones((prev) =>
+                        prev.filter((_, i) => i !== idx)
+                      );
+                  }}
+                  nombreDe={nombreDe}
+                />
+              )}
+            </div>
 
-                  {pestana === "recepcion" && (
-                    <CanchaRecepcion
-                      recepcionesDelPunto={filtrar(recepciones)}
-                      onAgregar={agregarRecepcion}
-                      onBorrarUltimo={() => {
-                        const idx = recepciones.findLastIndex(
-                          (x) =>
-                            x.set_numero === setActivo &&
-                            x.punto_numero === puntoActual
-                        );
-                        if (idx >= 0)
-                          setRecepciones((prev) =>
-                            prev.filter((_, i) => i !== idx)
-                          );
-                      }}
-                      nombreDe={nombreDe}
-                    />
-                  )}
-                </div>
-
-                <div className="sticky bottom-4 bg-white rounded-2xl shadow-lg border border-slate-200 p-4 flex items-center justify-between">
-                  <p className="text-sm text-slate-600">
-                    {mensaje ||
-                      "Ctrl+G para guardar. Teclas 1-6 cambian de pestaña. Autoguardado local."}
-                  </p>
-                  <button
-                    onClick={guardarTodo}
-                    disabled={guardando}
-                    className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 text-white font-medium rounded-lg transition"
-                  >
-                    {guardando ? "Guardando..." : "💾 Guardar Datos (Ctrl+G)"}
-                  </button>
-                </div>
-              </>
-            )}
+            <div className="sticky bottom-4 bg-white rounded-2xl shadow-lg border border-slate-200 p-4 flex items-center justify-between">
+              <p className="text-sm text-slate-600">
+                {mensaje ||
+                  "Ctrl+G para guardar. Teclas 1-6 cambian de pestaña. Autoguardado local."}
+              </p>
+              <button
+                onClick={guardarTodo}
+                disabled={guardando}
+                className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 text-white font-medium rounded-lg transition"
+              >
+                {guardando ? "Guardando..." : "💾 Guardar Datos (Ctrl+G)"}
+              </button>
+            </div>
           </>
         )}
       </div>

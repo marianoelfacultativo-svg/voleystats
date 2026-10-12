@@ -43,12 +43,14 @@ import {
   POSICIONES_JUEGO,
   calcularSubtiposAtaque,
   calcularSubtiposBloqueo,
+  calcularSubtiposDefensa,
   calcularSubtiposSaque,
   clasificarLinea,
   esCeldaBloqueoPropioConPopup,
   esCanchaPropia,
   esCanchaRival,
   ganadorDelPunto,
+  resolverJugadorDefensa,
   resolverRolAJugador,
   type EstadoClasificacion,
   type LineaClasificada,
@@ -175,6 +177,8 @@ function aAccionV2(
     destino_mini: l.destino.mini,
     desvios: (l.desvios ?? []).map((d) => ({ celda: d.celda, mini: d.mini })),
     zona: null,
+    posicion_inicial_celda: l.posicionInicial?.celda ?? null,
+    posicion_inicial_mini: l.posicionInicial?.mini ?? null,
   };
 }
 
@@ -410,9 +414,10 @@ export default function DataEntryV2({
     const conSaque = calcularSubtiposSaque(lineas);
     const ganadorActual = ganadorDelPunto(conSaque);
     const conBloqueo = calcularSubtiposBloqueo(conSaque);
+    const conDefensa = calcularSubtiposDefensa(conBloqueo);
     const conAtaque = ganadorActual
-      ? calcularSubtiposAtaque(conBloqueo, ganadorActual)
-      : conBloqueo;
+      ? calcularSubtiposAtaque(conDefensa, ganadorActual)
+      : conDefensa;
     return conAtaque.filter((l) => !l.oculta);
   }, [lineas]);
 
@@ -602,6 +607,7 @@ export default function DataEntryV2({
           desvios:
             desviosPendientes.length > 0 ? [...desviosPendientes] : undefined,
           subtipo: null,
+          posicionInicial: estrella ? { ...estrella } : null,
         };
         setLineas((prev) => [...prev, linea]);
         setContadorId((c) => c + 1);
@@ -674,6 +680,7 @@ export default function DataEntryV2({
           destino: punto,
           oculta: true,
           subtipo: null,
+          posicionInicial: estrella ? { ...estrella } : null,
         };
         setLineas((prev) => [...prev, oculta]);
         setContadorId((c) => c + 1);
@@ -721,16 +728,34 @@ export default function DataEntryV2({
         desviosPendientes.length > 0 ? [...desviosPendientes] : undefined,
     });
 
+    // ---------- Regla: defensa propia sin jugador → asignar por defecto ----------
+    let jugadorFinal = res.jugadorId;
+    let subtipoFinal = res.subtipoFijo ?? null;
+
+    if (res.tipo === "defensa" && !res.esRival) {
+      if (!jugadorFinal) {
+        jugadorFinal = resolverJugadorDefensa(
+          origen,
+          rotacionEfectiva,
+          situacion
+        );
+      }
+      if (!subtipoFinal) {
+        subtipoFinal = "defensa_normal";
+      }
+    }
+
     const nueva: LineaClasificada = {
       id: `l-${contadorId}`,
       tipo: res.tipo,
       esRival: res.esRival,
-      jugadorId: res.jugadorId,
+      jugadorId: jugadorFinal,
       origen,
       destino,
       desvios:
         desviosPendientes.length > 0 ? [...desviosPendientes] : undefined,
-      subtipo: res.subtipoFijo ?? null,
+      subtipo: subtipoFinal,
+      posicionInicial: estrella ? { ...estrella } : null,
     };
 
     setLineas((prev) => [...prev, nueva]);
@@ -872,8 +897,9 @@ export default function DataEntryV2({
 
       const lineasConSaque = calcularSubtiposSaque(pc.lineas);
       const lineasConBloqueo = calcularSubtiposBloqueo(lineasConSaque);
+      const lineasConDefensa = calcularSubtiposDefensa(lineasConBloqueo);
       const lineasConAtaque = calcularSubtiposAtaque(
-        lineasConBloqueo,
+        lineasConDefensa,
         pc.ganador
       );
       const acciones = lineasAAcciones(lineasConAtaque);
@@ -885,7 +911,6 @@ export default function DataEntryV2({
         continue;
       }
 
-      // ---------- Reemplazo cruzado: borrar de V1 el mismo punto ----------
       const resV1 = await borrarPuntoV1DeTablas(
         partidoId,
         setActivo,
@@ -947,7 +972,12 @@ export default function DataEntryV2({
       if (idx < 0) return prev;
       const copia = [...prev];
 
-      copia[idx] = { ...copia[idx], subtipo, jugadorId };
+      // Si el usuario eligió un tipo pero no jugador, mantenemos el jugador
+      // por defecto que ya habíamos asignado en crearLinea.
+      const lineaActual = copia[idx];
+      const jugadorFinal = jugadorId ?? lineaActual.jugadorId ?? null;
+
+      copia[idx] = { ...lineaActual, subtipo, jugadorId: jugadorFinal };
 
       let idxAtaqueRival = -1;
       for (let i = idx - 1; i >= 0; i--) {
@@ -1337,6 +1367,15 @@ export default function DataEntryV2({
                     )}
                     {secuenciaConValores.map((l, i) => {
                       const partes: string[] = [];
+                      if (l.posicionInicial) {
+                        partes.push(
+                          `⭐${l.posicionInicial.celda}${
+                            l.posicionInicial.mini
+                              ? `-${l.posicionInicial.mini}`
+                              : ""
+                          }`
+                        );
+                      }
                       partes.push(
                         `${l.origen.celda}${
                           l.origen.mini ? `-${l.origen.mini}` : ""
