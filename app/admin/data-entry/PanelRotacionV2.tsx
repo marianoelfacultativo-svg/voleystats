@@ -1,12 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import type {
-  RotacionPunto,
-  Zona,
-  Libero,
-  SaqueEquipo,
+import {
+  numeroRotacionDesdePosiciones,
+  type RotacionPunto,
+  type Zona,
+  type Libero,
+  type SaqueEquipo,
 } from "@/lib/rotaciones";
+import {
+  POSICIONES_JUEGO,
+  resolverRolAJugador,
+  type Situacion,
+} from "@/lib/clasificacionV2";
 
 // ============================================================
 // TIPOS
@@ -25,7 +31,6 @@ export interface CambioPendiente {
   jugadorEntra: string;
 }
 
-// Stubs para no romper imports viejos.
 export type ZonaRecepcion = 1 | 5 | 6;
 export type RecepcionOverrides = Partial<
   Record<ZonaRecepcion, string | null>
@@ -102,6 +107,9 @@ export default function PanelRotacionV2({
   const [modalPosicion, setModalPosicion] = useState(false);
   const [modalLibero, setModalLibero] = useState(false);
 
+  const situacion: Situacion =
+    rotacion.saque_equipo === "rival" ? "recepcion" : "saque";
+
   const nombreDe = (id: string | null | undefined) => {
     if (!id) return "—";
     const j =
@@ -112,12 +120,30 @@ export default function PanelRotacionV2({
     return partes.length > 1 ? partes[0] : j.nombre.slice(0, 8);
   };
 
-  // Prioridad: cambio pendiente > override punto > fijo por rot+sit > rotación base
+  // ---- Panel: solo rotación base + overrides (sin líbero resuelto) ----
   const jugadorEnZona = (zona: Zona): string | null => {
     const pend = cambiosPendientes.find((c) => c.zona === zona);
     if (pend) return pend.jugadorEntra;
     if (posicionesPunto[zona]) return posicionesPunto[zona];
     if (posicionesFijas[zona]) return posicionesFijas[zona];
+    return rotacion.posiciones[zona]?.jugador_id ?? null;
+  };
+
+  // ---- Modal Posición: resuelve el líbero y los roles de juego ----
+  const jugadorParaModal = (zona: Zona): string | null => {
+    const pend = cambiosPendientes.find((c) => c.zona === zona);
+    if (pend) return pend.jugadorEntra;
+    if (posicionesPunto[zona]) return posicionesPunto[zona];
+    if (posicionesFijas[zona]) return posicionesFijas[zona];
+
+    // Posición sugerida: POSICIONES_JUEGO[rot][sit] → rol → jugador
+    const numeroRot = numeroRotacionDesdePosiciones(rotacion);
+    const fila = POSICIONES_JUEGO[numeroRot]?.[situacion];
+    const rol = fila?.[zona];
+    if (rol) {
+      const jug = resolverRolAJugador(rotacion, rol);
+      if (jug) return jug;
+    }
     return rotacion.posiciones[zona]?.jugador_id ?? null;
   };
 
@@ -320,9 +346,10 @@ export default function PanelRotacionV2({
         <ModalPosicion
           posicionesPunto={posicionesPunto}
           posicionesFijas={posicionesFijas}
-          jugadorEnZona={jugadorEnZona}
+          jugadorEnZona={jugadorParaModal}
           jugadoresEnCancha={jugadoresEnCancha}
           jugadoresDisponibles={jugadoresDisponibles}
+          situacion={situacion}
           onSetPosicionesPunto={onSetPosicionesPunto}
           onFijarPosiciones={onFijarPosiciones}
           onLimpiarFijadas={onLimpiarFijadas}
@@ -500,6 +527,7 @@ function ModalPosicion({
   jugadorEnZona,
   jugadoresEnCancha,
   jugadoresDisponibles,
+  situacion,
   onSetPosicionesPunto,
   onFijarPosiciones,
   onLimpiarFijadas,
@@ -510,6 +538,7 @@ function ModalPosicion({
   jugadorEnZona: (z: Zona) => string | null;
   jugadoresEnCancha: Jugador[];
   jugadoresDisponibles: Jugador[];
+  situacion: Situacion;
   onSetPosicionesPunto: (p: Record<Zona, string>) => void;
   onFijarPosiciones?: (p: Record<Zona, string>) => void;
   onLimpiarFijadas?: () => void;
@@ -539,6 +568,7 @@ function ModalPosicion({
   };
 
   const tieneFijadas = Object.values(posicionesFijas).some((v) => v);
+  const esRecepcion = situacion === "recepcion";
 
   const handleClickZona = (zona: Zona) => {
     if (seleccionado === null) {
@@ -555,6 +585,13 @@ function ModalPosicion({
     copia[zona] = temp;
     setLocal(copia);
     setSeleccionado(null);
+  };
+
+  const handleCambiarReceptor = (
+    zona: ZonaRecepcion,
+    jugadorId: string | null
+  ) => {
+    setLocal((prev) => ({ ...prev, [zona]: jugadorId ?? "" }));
   };
 
   const handleGuardar = () => {
@@ -664,6 +701,46 @@ function ModalPosicion({
           {zonaBtn(6)}
           {zonaBtn(1)}
         </div>
+
+        {/* ---------- SECCIÓN RECEPCIÓN (solo si saca el rival) ---------- */}
+        {esRecepcion && (
+          <div className="mt-3 pt-3 border-t-2 border-cyan-200">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] font-bold text-cyan-800 uppercase">
+                📥 Recepción
+              </p>
+            </div>
+
+            <p className="text-[9px] text-slate-500 mb-2">
+              Elegí quién recibe en cada zona.
+            </p>
+
+            <div className="space-y-1.5">
+              {([5, 6, 1] as ZonaRecepcion[]).map((z) => (
+                <div key={z} className="flex items-center gap-1">
+                  <span className="w-8 text-[10px] font-bold text-cyan-700">
+                    Z{z}
+                  </span>
+                  <select
+                    value={local[z] ?? ""}
+                    onChange={(e) =>
+                      handleCambiarReceptor(z, e.target.value || null)
+                    }
+                    className="flex-1 px-2 py-1 text-xs border border-cyan-300 rounded bg-white focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="">— sin asignar —</option>
+                    {todosLosJugadores.map((j) => (
+                      <option key={j.id} value={j.id}>
+                        {j.nombre}
+                        {j.numero !== null ? ` #${j.numero}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-between gap-2 pt-3 mt-3 border-t border-slate-200 flex-wrap">
           <button
