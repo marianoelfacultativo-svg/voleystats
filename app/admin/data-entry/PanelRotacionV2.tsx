@@ -1,19 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import {
-  numeroRotacionDesdePosiciones,
-  type RotacionPunto,
-  type Zona,
-  type Libero,
-  type SaqueEquipo,
+import { useState } from "react";
+import type {
+  RotacionPunto,
+  Zona,
+  Libero,
+  SaqueEquipo,
 } from "@/lib/rotaciones";
-import {
-  POSICIONES_JUEGO,
-  resolverRolAJugador,
-  type RolJuego,
-  type Situacion,
-} from "@/lib/clasificacionV2";
 
 // ============================================================
 // TIPOS
@@ -32,6 +25,7 @@ export interface CambioPendiente {
   jugadorEntra: string;
 }
 
+// Stubs para no romper imports viejos.
 export type ZonaRecepcion = 1 | 5 | 6;
 export type RecepcionOverrides = Partial<
   Record<ZonaRecepcion, string | null>
@@ -83,30 +77,6 @@ const ROL_COLOR: Record<string, string> = {
 };
 
 // ============================================================
-// HELPERS
-// ============================================================
-
-function calcularPosicionesJuego(
-  rotacion: RotacionPunto,
-  situacion: Situacion
-): Record<Zona, { rol: RolJuego; jugador_id: string | null }> {
-  const numeroRot = numeroRotacionDesdePosiciones(rotacion);
-  const fila = POSICIONES_JUEGO[numeroRot]?.[situacion];
-  const out = {} as Record<
-    Zona,
-    { rol: RolJuego; jugador_id: string | null }
-  >;
-  for (const z of [1, 2, 3, 4, 5, 6] as Zona[]) {
-    const rol: RolJuego = fila?.[z] ?? "A";
-    out[z] = {
-      rol,
-      jugador_id: fila ? resolverRolAJugador(rotacion, rol) : null,
-    };
-  }
-  return out;
-}
-
-// ============================================================
 // PANEL PRINCIPAL
 // ============================================================
 
@@ -132,14 +102,6 @@ export default function PanelRotacionV2({
   const [modalPosicion, setModalPosicion] = useState(false);
   const [modalLibero, setModalLibero] = useState(false);
 
-  const situacion: Situacion =
-    rotacion.saque_equipo === "rival" ? "recepcion" : "saque";
-
-  const posicionesJuego = useMemo(
-    () => calcularPosicionesJuego(rotacion, situacion),
-    [rotacion, situacion]
-  );
-
   const nombreDe = (id: string | null | undefined) => {
     if (!id) return "—";
     const j =
@@ -150,26 +112,21 @@ export default function PanelRotacionV2({
     return partes.length > 1 ? partes[0] : j.nombre.slice(0, 8);
   };
 
-  // ---- Rotación base (fija hasta que se gire) ----
-  const jugadorBase = (zona: Zona): string | null =>
-    rotacion.posiciones[zona]?.jugador_id ?? null;
-
-  const rolBase = (zona: Zona): string =>
-    rotacion.posiciones[zona]?.rol ?? "?";
-
-  // ---- Posición efectiva (juego + overrides) ----
+  // Prioridad: cambio pendiente > override punto > fijo por rot+sit > rotación base
   const jugadorEnZona = (zona: Zona): string | null => {
     const pend = cambiosPendientes.find((c) => c.zona === zona);
     if (pend) return pend.jugadorEntra;
     if (posicionesPunto[zona]) return posicionesPunto[zona];
     if (posicionesFijas[zona]) return posicionesFijas[zona];
-    return posicionesJuego[zona].jugador_id;
+    return rotacion.posiciones[zona]?.jugador_id ?? null;
   };
 
-  const rolEnZona = (zona: Zona): RolJuego => posicionesJuego[zona].rol;
+  const rolEnZona = (zona: Zona): string =>
+    rotacion.posiciones[zona]?.rol ?? "?";
 
   const tieneFijadas =
-    tieneFijadasProp ?? Object.values(posicionesFijas).some((v) => v);
+    tieneFijadasProp ??
+    Object.values(posicionesFijas).some((v) => v);
 
   const hayCambios = cambiosPendientes.length > 0;
 
@@ -199,6 +156,7 @@ export default function PanelRotacionV2({
 
   return (
     <div className="bg-white border border-slate-200 rounded-lg p-2 inline-block relative">
+      {/* Header */}
       <div className="flex items-center justify-between gap-2 mb-1">
         <span className="text-xs font-semibold text-slate-700">
           Rotación actual
@@ -221,6 +179,7 @@ export default function PanelRotacionV2({
         </div>
       </div>
 
+      {/* Saque + Líberos + Posición */}
       <div className="flex items-center gap-1 mb-1.5">
         <div className="flex rounded overflow-hidden border border-slate-300 text-[9px]">
           <button
@@ -286,10 +245,8 @@ export default function PanelRotacionV2({
           <CeldaZona
             key={l.zona}
             zona={l.zona}
-            rolBase={rolBase(l.zona)}
-            jugadorBase={nombreDe(jugadorBase(l.zona))}
-            rolPos={rolEnZona(l.zona)}
-            jugadorPos={nombreDe(jugadorEnZona(l.zona))}
+            jugadorNombre={nombreDe(jugadorEnZona(l.zona))}
+            rol={rolEnZona(l.zona)}
             tieneCambio={cambiosPendientes.some((c) => c.zona === l.zona)}
             onClick={() => setModalCambio(l.zona)}
           />
@@ -298,16 +255,15 @@ export default function PanelRotacionV2({
           <CeldaZona
             key={l.zona}
             zona={l.zona}
-            rolBase={rolBase(l.zona)}
-            jugadorBase={nombreDe(jugadorBase(l.zona))}
-            rolPos={rolEnZona(l.zona)}
-            jugadorPos={nombreDe(jugadorEnZona(l.zona))}
+            jugadorNombre={nombreDe(jugadorEnZona(l.zona))}
+            rol={rolEnZona(l.zona)}
             tieneCambio={cambiosPendientes.some((c) => c.zona === l.zona)}
             onClick={() => setModalCambio(l.zona)}
           />
         ))}
       </div>
 
+      {/* Footer */}
       <div className="mt-2 pt-2 border-t border-slate-200 flex items-center justify-between gap-1">
         <div className="text-[9px] text-slate-500">
           {hayCambios ? (
@@ -339,6 +295,7 @@ export default function PanelRotacionV2({
         </div>
       </div>
 
+      {/* ---------- MODAL: CAMBIO EN ZONA ---------- */}
       {modalCambio !== null && (
         <ModalCambio
           zona={modalCambio}
@@ -358,6 +315,7 @@ export default function PanelRotacionV2({
         />
       )}
 
+      {/* ---------- MODAL: POSICIÓN DEL PUNTO ---------- */}
       {modalPosicion && (
         <ModalPosicion
           posicionesPunto={posicionesPunto}
@@ -372,6 +330,7 @@ export default function PanelRotacionV2({
         />
       )}
 
+      {/* ---------- MODAL: LÍBEROS ---------- */}
       {modalLibero && (
         <ModalLibero
           todosLosJugadores={[...jugadoresEnCancha, ...jugadoresDisponibles]}
@@ -385,35 +344,29 @@ export default function PanelRotacionV2({
 }
 
 // ============================================================
-// CELDA DE ZONA — muestra rotación base + posición al mismo tiempo
+// CELDA DE ZONA
 // ============================================================
 
 function CeldaZona({
   zona,
-  rolBase,
-  jugadorBase,
-  rolPos,
-  jugadorPos,
+  jugadorNombre,
+  rol,
   tieneCambio,
   onClick,
 }: {
   zona: Zona;
-  rolBase: string;
-  jugadorBase: string;
-  rolPos: RolJuego;
-  jugadorPos: string;
+  jugadorNombre: string;
+  rol: string;
   tieneCambio: boolean;
   onClick: () => void;
 }) {
-  const sonIguales = rolBase === rolPos && jugadorBase === jugadorPos;
-
-  const colorPos =
-    ROL_COLOR[rolPos] ?? "border-slate-300 bg-slate-50 text-slate-700";
+  const colorRol =
+    ROL_COLOR[rol] ?? "border-slate-300 bg-slate-50 text-slate-700";
 
   return (
     <button
       onClick={onClick}
-      className={`w-[68px] h-[58px] border-2 rounded p-0.5 flex flex-col items-stretch transition hover:shadow-sm relative ${colorPos} ${
+      className={`w-14 h-11 border-2 rounded p-0.5 flex flex-col items-center justify-center transition hover:shadow-sm relative ${colorRol} ${
         tieneCambio ? "ring-2 ring-amber-400" : ""
       }`}
     >
@@ -425,38 +378,10 @@ function CeldaZona({
           ↻
         </span>
       )}
-
-      <div className="w-full flex flex-col gap-[2px] mt-[9px]">
-        {/* Fila rotación base */}
-        <div className="flex items-center gap-[2px] w-full leading-none">
-          <span className="text-[6px] font-bold text-slate-500 bg-slate-200 rounded px-[2px]">
-            R
-          </span>
-          <span className="text-[8px] font-bold leading-none text-slate-700">
-            {rolBase}
-          </span>
-          <span className="text-[6px] leading-none truncate flex-1 text-left text-slate-500">
-            {jugadorBase}
-          </span>
-        </div>
-
-        {/* Fila posición */}
-        <div
-          className={`flex items-center gap-[2px] w-full leading-none rounded ${
-            !sonIguales ? "bg-cyan-100" : ""
-          }`}
-        >
-          <span className="text-[6px] font-bold text-cyan-700 bg-cyan-200 rounded px-[2px]">
-            P
-          </span>
-          <span className="text-[8px] font-bold leading-none text-cyan-800">
-            {rolPos}
-          </span>
-          <span className="text-[6px] leading-none truncate flex-1 text-left text-cyan-800">
-            {jugadorPos}
-          </span>
-        </div>
-      </div>
+      <span className="text-[10px] font-bold leading-none">{rol}</span>
+      <span className="text-[7px] leading-tight truncate w-full px-0.5">
+        {jugadorNombre}
+      </span>
     </button>
   );
 }
