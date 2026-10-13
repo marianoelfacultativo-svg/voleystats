@@ -177,6 +177,15 @@ export function pasoLaRed(l: LineaClasificada): boolean {
   return false;
 }
 
+function ultimaVisible(
+  lineas: LineaClasificada[]
+): LineaClasificada | null {
+  for (let i = lineas.length - 1; i >= 0; i--) {
+    if (!lineas[i].oculta) return lineas[i];
+  }
+  return null;
+}
+
 // ============================================================
 // POSICIONES DE JUEGO
 // ============================================================
@@ -247,6 +256,18 @@ function buscarCentralZaguero(rotacion: RotacionPunto): string | null {
     if (
       (asig.tipo === "C1" || asig.tipo === "C2") &&
       (asig.zona === 1 || asig.zona === 5 || asig.zona === 6)
+    ) {
+      return asig.jugador_id;
+    }
+  }
+  return null;
+}
+
+function buscarCentralDelantero(rotacion: RotacionPunto): string | null {
+  for (const asig of Object.values(rotacion.posiciones)) {
+    if (
+      (asig.tipo === "C1" || asig.tipo === "C2") &&
+      (asig.zona === 2 || asig.zona === 3 || asig.zona === 4)
     ) {
       return asig.jugador_id;
     }
@@ -328,6 +349,31 @@ export function resolverJugadorDefensa(
   if (!fila) return null;
   const rol = fila[zona];
   return resolverRolAJugador(rotacion, rol);
+}
+
+// ============================================================
+// RESOLUCIÓN DE JUGADOR — ARMADO ALTERNATIVO
+// ============================================================
+//
+// Si el armador defendió la pelota anterior, no puede armar la
+// siguiente. Por defecto:
+//   - Origen del armado en F1 (delantera) → central delantero.
+//   - Origen del armado en F2 o F3 (trasera) → líbero activo.
+// ============================================================
+
+export function resolverJugadorArmadoAlternativo(
+  origen: PuntoV2,
+  rotacion: RotacionPunto
+): string | null {
+  const celda = origen.celda;
+  if (!/^F[123]-/.test(celda)) return null;
+
+  const fila = celda.split("-")[0];
+
+  if (fila === "F1") {
+    return buscarCentralDelantero(rotacion);
+  }
+  return buscarLiberoActivo(rotacion);
 }
 
 // ============================================================
@@ -472,6 +518,30 @@ export function clasificarLinea(
         };
 
   if (ultima!.tipo === "defensa") {
+    // Regla: si el armador defendió, no puede armar. Asignar
+    // líbero (origen F2/F3) o central delantero (origen F1).
+    if (!ultima!.esRival && !cruzaNet) {
+      const ultimaVis = ultimaVisible(estado.lineas);
+      const armador = jugadorQueArma(estado.rotacion);
+      if (
+        ultimaVis &&
+        ultimaVis.tipo === "defensa" &&
+        !ultimaVis.esRival &&
+        armador &&
+        ultimaVis.jugadorId === armador
+      ) {
+        const alternativo = resolverJugadorArmadoAlternativo(
+          linea.origen,
+          estado.rotacion
+        );
+        return {
+          tipo: "armado",
+          esRival: false,
+          jugadorId: alternativo,
+          popup: "armado",
+        };
+      }
+    }
     return armarOlibre(ultima!.esRival);
   }
 
@@ -579,16 +649,16 @@ export function calcularSubtiposAtaque(
   });
   if (idxAtaques.length === 0) return lineas;
 
-  let ultimoVisible = -1;
+  let ultimoVisibleIdx = -1;
   for (let i = lineas.length - 1; i >= 0; i--) {
     if (!lineas[i].oculta) {
-      ultimoVisible = i;
+      ultimoVisibleIdx = i;
       break;
     }
   }
 
   const ultimoAtaque = idxAtaques[idxAtaques.length - 1];
-  const cierraElPunto = ultimoAtaque === ultimoVisible;
+  const cierraElPunto = ultimoAtaque === ultimoVisibleIdx;
 
   return lineas.map((l, i) => {
     if (l.tipo !== "ataque" || l.esRival) return l;
@@ -613,10 +683,10 @@ export function calcularSubtiposDefensa(
   });
   if (idxDefensas.length === 0) return lineas;
 
-  let ultimoVisible = -1;
+  let ultimoVisibleIdx = -1;
   for (let i = lineas.length - 1; i >= 0; i--) {
     if (!lineas[i].oculta) {
-      ultimoVisible = i;
+      ultimoVisibleIdx = i;
       break;
     }
   }
@@ -624,7 +694,7 @@ export function calcularSubtiposDefensa(
   return lineas.map((l, i) => {
     if (l.tipo !== "defensa" || l.esRival) return l;
     if (l.subtipo && l.subtipo !== "defensa_normal") return l;
-    const esUltima = i === ultimoVisible;
+    const esUltima = i === ultimoVisibleIdx;
     return {
       ...l,
       subtipo: esUltima ? "buena_rival" : "neutro",
@@ -636,29 +706,16 @@ export function calcularSubtiposDefensa(
 // ============================================================
 // SUBTIPOS DE ATAQUE RIVAL (según defensa propia siguiente)
 // ============================================================
-//
-// Para cada ataque rival seguido de una defensa propia:
-//   - defensa con subtipo "toque"        → ataque rival = "toque"
-//   - defensa con subtipo "gran-defensa" → ataque rival = "peligroso"
-//   - defensa con subtipo "libre"        → ataque rival = "libre"
-//   - defensa sin elegir (defensa_normal / null):
-//       · si es la última visible → ataque rival = "buena_rival"
-//       · si la jugada sigue       → ataque rival = "simple"
-//
-// IMPORTANTE: esta función corre ANTES de calcularSubtiposDefensa.
-// La marca de "es error rival" (fuera/red/cancha propia) la sobreescribe
-// después calcularErroresRival.
-// ============================================================
 
 export function calcularSubtiposAtaqueRival(
   lineas: LineaClasificada[]
 ): LineaClasificada[] {
   if (lineas.length === 0) return lineas;
 
-  let ultimoVisible = -1;
+  let ultimoVisibleIdx = -1;
   for (let i = lineas.length - 1; i >= 0; i--) {
     if (!lineas[i].oculta) {
-      ultimoVisible = i;
+      ultimoVisibleIdx = i;
       break;
     }
   }
@@ -673,9 +730,7 @@ export function calcularSubtiposAtaqueRival(
     while (j < resultado.length && resultado[j].oculta) j++;
 
     if (j >= resultado.length) {
-      // Última acción visible: es el ataque rival → buena_rival
-      // (calcularErroresRival después lo pisa a error_rival si corresponde)
-      if (i === ultimoVisible) {
+      if (i === ultimoVisibleIdx) {
         resultado[i] = { ...l, subtipo: "buena_rival" };
       }
       continue;
@@ -683,7 +738,7 @@ export function calcularSubtiposAtaqueRival(
 
     const siguiente = resultado[j];
     if (siguiente.tipo !== "defensa" || siguiente.esRival) {
-      if (i === ultimoVisible) {
+      if (i === ultimoVisibleIdx) {
         resultado[i] = { ...l, subtipo: "buena_rival" };
       }
       continue;
@@ -699,7 +754,7 @@ export function calcularSubtiposAtaqueRival(
     } else if (subtipoDef === "libre") {
       nuevoSub = "libre";
     } else {
-      nuevoSub = j === ultimoVisible ? "buena_rival" : "simple";
+      nuevoSub = j === ultimoVisibleIdx ? "buena_rival" : "simple";
     }
 
     resultado[i] = { ...l, subtipo: nuevoSub };
@@ -711,19 +766,6 @@ export function calcularSubtiposAtaqueRival(
 // ============================================================
 // ERRORES RIVALES (unificados)
 // ============================================================
-//
-// Corre al FINAL del pipeline. Recorre todas las líneas rivales y,
-// si la acción es un error, le pone subtipo "error_rival".
-//
-// Reglas:
-//   - Roce-red rival → siempre error_rival.
-//   - Saque rival con destino en FUERA-*, RED-*, o cancha propia
-//     del rival (F4/5/6) → error_rival.
-//   - Ataque rival con destino en FUERA-*, RED-*, o cancha propia
-//     del rival (F4/5/6) → error_rival.
-//
-// Sobreescribe cualquier subtipo previo (buena_rival, simple, etc.).
-// ============================================================
 
 export function calcularErroresRival(
   lineas: LineaClasificada[]
@@ -731,14 +773,10 @@ export function calcularErroresRival(
   return lineas.map((l) => {
     if (!l.esRival) return l;
 
-    // Roce-red rival → siempre error.
     if (l.tipo === "roce-red") {
       return { ...l, subtipo: "error_rival" };
     }
 
-    // Saque rival o ataque rival: error si cae afuera, en la red,
-    // o en su propia cancha (F4/5/6 reales, sin las C1/C5 que ya
-    // cubre esFuera).
     if (l.tipo === "saque" || l.tipo === "ataque") {
       const d = l.destino.celda;
       const esError =
@@ -792,17 +830,17 @@ export function calcularSubtiposBloqueo(
   });
   if (idxBloqueos.length === 0) return lineas;
 
-  let ultimoVisible = -1;
+  let ultimoVisibleIdx = -1;
   for (let i = lineas.length - 1; i >= 0; i--) {
     if (!lineas[i].oculta) {
-      ultimoVisible = i;
+      ultimoVisibleIdx = i;
       break;
     }
   }
 
   return lineas.map((l, i) => {
     if (l.tipo !== "bloqueo" || l.esRival) return l;
-    const esUltima = i === ultimoVisible;
+    const esUltima = i === ultimoVisibleIdx;
     const siguiente = lineas[i + 1];
     const base = valorarBloqueoBase(l.destino.celda, esUltima, siguiente);
     return { ...l, subtipo: base };
