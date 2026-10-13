@@ -546,8 +546,7 @@ export function clasificarLinea(
       !ultima!.esRival &&
       anterior?.tipo === "defensa" &&
       anterior.x2 === true &&
-      !ultima!.x2 &&
-      !cruzaNet
+      !ultima!.x2
     ) {
       return {
         tipo: "ataque",
