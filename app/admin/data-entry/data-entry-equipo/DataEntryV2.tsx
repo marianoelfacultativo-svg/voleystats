@@ -1491,7 +1491,6 @@ export default function DataEntryV2({
                 {popupActivo?.tipo === "defensa" && (
                   <PopupDefensa
                     pos={popupActivo.pos}
-                    jugadores={jugadoresEnCancha}
                     onConfirmar={handleDefensaConfirmar}
                     onCancelar={cerrarPopup}
                   />
