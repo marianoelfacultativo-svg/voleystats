@@ -967,8 +967,9 @@ export default function DataEntryV2({
   };
 
   const handleDefensaConfirmar = (
-    subtipo: TipoDefensa,
-    jugadorId: string | null
+    subtipo: TipoDefensa | null,
+    jugadorId: string | null,
+    x2: boolean
   ) => {
     if (!popupActivo?.lineaId) {
       popupSiguiente();
@@ -982,7 +983,12 @@ export default function DataEntryV2({
       const lineaActual = copia[idx];
       const jugadorFinal = jugadorId ?? lineaActual.jugadorId ?? null;
 
-      copia[idx] = { ...lineaActual, subtipo, jugadorId: jugadorFinal };
+      copia[idx] = {
+        ...lineaActual,
+        subtipo: subtipo ?? lineaActual.subtipo,
+        jugadorId: jugadorFinal,
+        x2: x2 || undefined,
+      };
 
       return copia;
     });
@@ -1401,6 +1407,11 @@ export default function DataEntryV2({
                             {val && (
                               <span className="text-emerald-700 bg-emerald-50 px-1 rounded text-[10px] font-bold uppercase">
                                 {val}
+                              </span>
+                            )}
+                            {l.x2 && (
+                              <span className="text-violet-700 bg-violet-50 px-1 rounded text-[10px] font-bold uppercase">
+                                x2
                               </span>
                             )}
                             {esToqueAtaque && (

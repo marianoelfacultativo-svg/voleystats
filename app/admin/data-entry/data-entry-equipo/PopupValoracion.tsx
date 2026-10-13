@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { CANCHA_V2_DIMS } from "./CanchaV2";
 
 // ============================================================
@@ -439,12 +439,16 @@ export function PopupArmado({ pos, onConfirmar, onCancelar }: PopupArmadoProps) 
 }
 
 // ============================================================
-// POPUP DEFENSA (simplificado: solo tipo)
+// POPUP DEFENSA (con toggle x2)
 // ============================================================
 
 interface PopupDefensaProps {
   pos: PopupPos;
-  onConfirmar: (subtipo: TipoDefensa, jugadorId: string | null) => void;
+  onConfirmar: (
+    subtipo: TipoDefensa | null,
+    jugadorId: string | null,
+    x2: boolean
+  ) => void;
   onCancelar: () => void;
 }
 
@@ -453,10 +457,11 @@ export function PopupDefensa({
   onConfirmar,
   onCancelar,
 }: PopupDefensaProps) {
+  const [x2, setX2] = useState(false);
   const tipos: TipoDefensa[] = ["toque", "gran-defensa", "libre"];
   const pad = 8;
-  const ancho = 250;
-  const alto = 70;
+  const ancho = 260;
+  const alto = 96;
   const btnTipoW = (ancho - pad * 2 - 4 * 2) / 3;
 
   return (
@@ -473,24 +478,54 @@ export function PopupDefensa({
             x={pad + i * (btnTipoW + 4)}
             y={0}
             w={btnTipoW}
-            h={28}
+            h={26}
             texto={ETIQ_DEFENSA[t]}
             color={COL_DEFENSA[t]}
             fontSize={10}
-            onClick={() => onConfirmar(t, null)}
+            onClick={() => onConfirmar(t, null, x2)}
           />
         ))}
 
+        <g
+          style={{ cursor: "pointer", pointerEvents: "auto" }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            setX2((v) => !v);
+          }}
+        >
+          <rect
+            x={pad}
+            y={32}
+            width={ancho - pad * 2}
+            height={24}
+            rx={4}
+            fill={x2 ? "#7c3aed" : "#f1f5f9"}
+            stroke={x2 ? "#5b21b6" : "#cbd5e1"}
+            strokeWidth={1.5}
+          />
+          <text
+            x={ancho / 2}
+            y={32 + 16}
+            textAnchor="middle"
+            fontSize={11}
+            fontWeight={800}
+            fill={x2 ? "#ffffff" : "#475569"}
+            pointerEvents="none"
+          >
+            {x2 ? "✓ x2 — la próxima también es defensa" : "x2 (dos defensas seguidas)"}
+          </text>
+        </g>
+
         <BotonSvg
           x={pad}
-          y={36}
+          y={62}
           w={ancho - pad * 2}
           h={16}
           texto="Saltar (Esc)"
           color="#e2e8f0"
           colorTexto="#475569"
           fontSize={9}
-          onClick={onCancelar}
+          onClick={() => onConfirmar(null, null, x2)}
         />
       </g>
     </PopupWrapper>
@@ -691,7 +726,7 @@ export function PopupJugador({
 }
 
 // ============================================================
-// POPUP ROCE DE RED / INVASIÓN  (era "toque-red")
+// POPUP ROCE DE RED / INVASIÓN
 // ============================================================
 
 interface PopupRoceRedProps {
@@ -794,7 +829,7 @@ export function PopupRoceRed({
 }
 
 // ============================================================
-// POPUP ATAQUE — TOQUE / LIBRE  (NUEVO)
+// POPUP ATAQUE — TOQUE / LIBRE
 // ============================================================
 
 interface PopupAtaqueToqueLibreProps {

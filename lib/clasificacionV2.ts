@@ -64,6 +64,8 @@ export interface LineaClasificada {
   variante?: VarianteAtaque | null;
   posicionInicial?: PuntoV2 | null;
   oculta?: boolean;
+  /** Marca interna (no se persiste): la próxima línea también es defensa. */
+  x2?: boolean;
 }
 
 export interface EstadoClasificacion {
@@ -181,6 +183,16 @@ function ultimaVisible(
   lineas: LineaClasificada[]
 ): LineaClasificada | null {
   for (let i = lineas.length - 1; i >= 0; i--) {
+    if (!lineas[i].oculta) return lineas[i];
+  }
+  return null;
+}
+
+function anteriorVisible(
+  lineas: LineaClasificada[],
+  desdeIdx: number
+): LineaClasificada | null {
+  for (let i = desdeIdx - 1; i >= 0; i--) {
     if (!lineas[i].oculta) return lineas[i];
   }
   return null;
@@ -354,12 +366,6 @@ export function resolverJugadorDefensa(
 // ============================================================
 // RESOLUCIÓN DE JUGADOR — ARMADO ALTERNATIVO
 // ============================================================
-//
-// Si el armador defendió la pelota anterior, no puede armar la
-// siguiente. Por defecto:
-//   - Origen del armado en F1 (delantera) → central delantero.
-//   - Origen del armado en F2 o F3 (trasera) → líbero activo.
-// ============================================================
 
 export function resolverJugadorArmadoAlternativo(
   origen: PuntoV2,
@@ -518,8 +524,44 @@ export function clasificarLinea(
         };
 
   if (ultima!.tipo === "defensa") {
-    // Regla: si el armador defendió, no puede armar. Asignar
-    // líbero (origen F2/F3) o central delantero (origen F1).
+    // ---------- CASO x2 ----------
+    // 1. La última defensa tiene x2 → la siguiente es defensa (sin popup).
+    if (!ultima!.esRival && ultima!.x2 === true) {
+      return {
+        tipo: "defensa",
+        esRival: false,
+        jugadorId: resolverJugadorDefensa(
+          linea.origen,
+          estado.rotacion,
+          estado.situacion
+        ),
+        popup: null,
+      };
+    }
+
+    // 2. La defensa anterior visible era x2 (y la actual NO tiene x2) → ataque.
+    const idxUltima = estado.lineas.length - 1;
+    const anterior = anteriorVisible(estado.lineas, idxUltima);
+    if (
+      !ultima!.esRival &&
+      anterior?.tipo === "defensa" &&
+      anterior.x2 === true &&
+      !ultima!.x2 &&
+      !cruzaNet
+    ) {
+      return {
+        tipo: "ataque",
+        esRival: false,
+        jugadorId: jugadorQueAtacaDesdeCelda(
+          linea.origen.celda,
+          estado.rotacion,
+          estado.situacion
+        ),
+        popup: "ataque-toque-libre",
+      };
+    }
+
+    // ---------- Regla: si el armador defendió, no puede armar ----------
     if (!ultima!.esRival && !cruzaNet) {
       const ultimaVis = ultimaVisible(estado.lineas);
       const armador = jugadorQueArma(estado.rotacion);
