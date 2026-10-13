@@ -4,6 +4,7 @@
 
 import {
   numeroRotacionDesdePosiciones,
+  type Libero,
   type RotacionPunto,
   type Zona,
 } from "./rotaciones";
@@ -287,12 +288,33 @@ function buscarCentralDelantero(rotacion: RotacionPunto): string | null {
   return null;
 }
 
+// ============================================================
+// LÍBERO ACTIVO
+// ============================================================
+//
+// Regla:
+//   - Si no hay líberos cargados → no hay líbero.
+//   - Si hay 1 solo líbero → siempre juega él (sin importar el tipo).
+//   - Si hay 2 líberos:
+//       · recepción → el de tipo "recepcion"
+//       · saque     → el de tipo "defensa"
+//
+// La excepción "central en 1 al saque juega el central" ya está
+// reflejada en POSICIONES_JUEGO (en esas rotaciones no aparece "L").
+// ============================================================
+
 function buscarLiberoActivo(rotacion: RotacionPunto): string | null {
-  const lib =
-    rotacion.liberos.find((l) => l.tipo === "recepcion") ??
-    (rotacion.liberos.length === 1 ? rotacion.liberos[0] : null);
-  if (lib?.jugador_id) return lib.jugador_id;
-  return buscarCentralZaguero(rotacion);
+  const liberos: Libero[] = rotacion.liberos ?? [];
+  if (liberos.length === 0) return null;
+
+  if (liberos.length === 1) {
+    return liberos[0].jugador_id || null;
+  }
+
+  const esRecepcion = rotacion.saque_equipo === "rival";
+  const tipoBuscado: Libero["tipo"] = esRecepcion ? "recepcion" : "defensa";
+  const lib = liberos.find((l) => l.tipo === tipoBuscado);
+  return (lib ?? liberos[0]).jugador_id || null;
 }
 
 export function resolverRolAJugador(
@@ -525,7 +547,6 @@ export function clasificarLinea(
 
   if (ultima!.tipo === "defensa") {
     // ---------- CASO x2 ----------
-    // 1. La última defensa tiene x2 → la siguiente es defensa (sin popup).
     if (!ultima!.esRival && ultima!.x2 === true) {
       return {
         tipo: "defensa",
@@ -539,7 +560,6 @@ export function clasificarLinea(
       };
     }
 
-    // 2. La defensa anterior visible era x2 (y la actual NO tiene x2) → ataque.
     const idxUltima = estado.lineas.length - 1;
     const anterior = anteriorVisible(estado.lineas, idxUltima);
     if (

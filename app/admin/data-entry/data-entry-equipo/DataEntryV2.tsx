@@ -324,8 +324,11 @@ export default function DataEntryV2({
         cambio = true;
       }
     }
-    return cambio ? { ...rotacion, posiciones: nuevas } : rotacion;
-  }, [rotacion, posicionesPunto]);
+    return {
+      ...(cambio ? { ...rotacion, posiciones: nuevas } : rotacion),
+      liberos,
+    };
+  }, [rotacion, posicionesPunto, liberos]);
 
   const jugadoresEnCancha: JugadorEnCancha[] = useMemo(() => {
     if (!rotacion) return [];
