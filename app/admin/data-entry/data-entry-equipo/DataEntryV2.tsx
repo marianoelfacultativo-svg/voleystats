@@ -41,6 +41,7 @@ import {
 } from "@/lib/rotaciones";
 import {
   POSICIONES_JUEGO,
+  calcularErroresRival,
   calcularSubtiposAtaque,
   calcularSubtiposAtaqueRival,
   calcularSubtiposBloqueo,
@@ -420,7 +421,8 @@ export default function DataEntryV2({
     const conAtaque = ganadorActual
       ? calcularSubtiposAtaque(conDefensa, ganadorActual)
       : conDefensa;
-    return conAtaque.filter((l) => !l.oculta);
+    const conErroresRival = calcularErroresRival(conAtaque);
+    return conErroresRival.filter((l) => !l.oculta);
   }, [lineas]);
 
   const nombreDeJugador = (id: string | null): string => {
@@ -906,7 +908,8 @@ export default function DataEntryV2({
         lineasConDefensa,
         pc.ganador
       );
-      const acciones = lineasAAcciones(lineasConAtaque);
+      const lineasConErroresRival = calcularErroresRival(lineasConAtaque);
+      const acciones = lineasAAcciones(lineasConErroresRival);
 
       const res = await guardarPuntoV2(partidoId, puntoData, acciones);
       if (!res.ok) {
@@ -976,8 +979,6 @@ export default function DataEntryV2({
       if (idx < 0) return prev;
       const copia = [...prev];
 
-      // Si el usuario eligió un tipo pero no jugador, mantenemos el jugador
-      // por defecto que ya habíamos asignado en crearLinea.
       const lineaActual = copia[idx];
       const jugadorFinal = jugadorId ?? lineaActual.jugadorId ?? null;
 

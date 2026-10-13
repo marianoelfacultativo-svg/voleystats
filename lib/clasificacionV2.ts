@@ -49,7 +49,6 @@ export interface LineaInput {
   origen: PuntoV2;
   destino: PuntoV2;
   desvios?: PuntoV2[];
-  /** Posición previa del jugador (estrella). null = no hubo desplazamiento. */
   posicionInicial?: PuntoV2 | null;
 }
 
@@ -63,10 +62,6 @@ export interface LineaClasificada {
   desvios?: PuntoV2[];
   subtipo?: string | number | null;
   variante?: VarianteAtaque | null;
-  /**
-   * Posición previa del jugador (estrella) antes de hacer la acción.
-   * null = no hubo desplazamiento (siempre estuvo en el origen).
-   */
   posicionInicial?: PuntoV2 | null;
   oculta?: boolean;
 }
@@ -312,10 +307,6 @@ function jugadorQueRecibe(
 
 // ============================================================
 // RESOLUCIÓN DE JUGADOR — DEFENSA (por defecto, sin estrella)
-// ============================================================
-//
-// Mismo mapeo por columna que recepción. Devuelve el jugador que
-// por defecto cubre esa posición según POSICIONES_JUEGO + rotación.
 // ============================================================
 
 export function resolverJugadorDefensa(
@@ -612,11 +603,6 @@ export function calcularSubtiposAtaque(
 // ============================================================
 // SUBTIPOS DE DEFENSA (para "defensa normal" sin tipo asignado)
 // ============================================================
-//
-// Se aplica sólo a defensas propias que NO tengan subtipo asignado.
-//  - Si la defensa es la última acción visible → "buena_rival"
-//  - Si la jugada sigue (hay acciones después) → "neutro"
-// ============================================================
 
 export function calcularSubtiposDefensa(
   lineas: LineaClasificada[]
@@ -637,13 +623,11 @@ export function calcularSubtiposDefensa(
 
   return lineas.map((l, i) => {
     if (l.tipo !== "defensa" || l.esRival) return l;
-    // Sólo aplicamos a defensas sin subtipo real (null o "defensa_normal").
     if (l.subtipo && l.subtipo !== "defensa_normal") return l;
     const esUltima = i === ultimoVisible;
     return {
       ...l,
       subtipo: esUltima ? "buena_rival" : "neutro",
-      // Mantenemos la marca para saber que originalmente era "defensa_normal"
       variante: "defensa_normal" as any,
     };
   });
@@ -661,9 +645,9 @@ export function calcularSubtiposDefensa(
 //       · si es la última visible → ataque rival = "buena_rival"
 //       · si la jugada sigue       → ataque rival = "simple"
 //
-// IMPORTANTE: esta función se debe llamar ANTES de
-// calcularSubtiposDefensa, porque lee el subtipo crudo de la defensa
-// ("defensa_normal" = sin elegir) antes de que ese paso lo reemplace.
+// IMPORTANTE: esta función corre ANTES de calcularSubtiposDefensa.
+// La marca de "es error rival" (fuera/red/cancha propia) la sobreescribe
+// después calcularErroresRival.
 // ============================================================
 
 export function calcularSubtiposAtaqueRival(
@@ -671,7 +655,6 @@ export function calcularSubtiposAtaqueRival(
 ): LineaClasificada[] {
   if (lineas.length === 0) return lineas;
 
-  // Índice de la última línea visible (para saber si la defensa cierra).
   let ultimoVisible = -1;
   for (let i = lineas.length - 1; i >= 0; i--) {
     if (!lineas[i].oculta) {
@@ -686,13 +669,25 @@ export function calcularSubtiposAtaqueRival(
     const l = resultado[i];
     if (l.tipo !== "ataque" || !l.esRival) continue;
 
-    // Buscar la siguiente línea visible después del ataque rival.
     let j = i + 1;
     while (j < resultado.length && resultado[j].oculta) j++;
-    if (j >= resultado.length) continue;
+
+    if (j >= resultado.length) {
+      // Última acción visible: es el ataque rival → buena_rival
+      // (calcularErroresRival después lo pisa a error_rival si corresponde)
+      if (i === ultimoVisible) {
+        resultado[i] = { ...l, subtipo: "buena_rival" };
+      }
+      continue;
+    }
 
     const siguiente = resultado[j];
-    if (siguiente.tipo !== "defensa" || siguiente.esRival) continue;
+    if (siguiente.tipo !== "defensa" || siguiente.esRival) {
+      if (i === ultimoVisible) {
+        resultado[i] = { ...l, subtipo: "buena_rival" };
+      }
+      continue;
+    }
 
     const subtipoDef = siguiente.subtipo;
     let nuevoSub: string;
@@ -704,7 +699,6 @@ export function calcularSubtiposAtaqueRival(
     } else if (subtipoDef === "libre") {
       nuevoSub = "libre";
     } else {
-      // Sin elegir: defensa_normal o null.
       nuevoSub = j === ultimoVisible ? "buena_rival" : "simple";
     }
 
@@ -712,6 +706,52 @@ export function calcularSubtiposAtaqueRival(
   }
 
   return resultado;
+}
+
+// ============================================================
+// ERRORES RIVALES (unificados)
+// ============================================================
+//
+// Corre al FINAL del pipeline. Recorre todas las líneas rivales y,
+// si la acción es un error, le pone subtipo "error_rival".
+//
+// Reglas:
+//   - Roce-red rival → siempre error_rival.
+//   - Saque rival con destino en FUERA-*, RED-*, o cancha propia
+//     del rival (F4/5/6) → error_rival.
+//   - Ataque rival con destino en FUERA-*, RED-*, o cancha propia
+//     del rival (F4/5/6) → error_rival.
+//
+// Sobreescribe cualquier subtipo previo (buena_rival, simple, etc.).
+// ============================================================
+
+export function calcularErroresRival(
+  lineas: LineaClasificada[]
+): LineaClasificada[] {
+  return lineas.map((l) => {
+    if (!l.esRival) return l;
+
+    // Roce-red rival → siempre error.
+    if (l.tipo === "roce-red") {
+      return { ...l, subtipo: "error_rival" };
+    }
+
+    // Saque rival o ataque rival: error si cae afuera, en la red,
+    // o en su propia cancha (F4/5/6 reales, sin las C1/C5 que ya
+    // cubre esFuera).
+    if (l.tipo === "saque" || l.tipo === "ataque") {
+      const d = l.destino.celda;
+      const esError =
+        esFuera(d) ||
+        d.startsWith("RED-") ||
+        esCanchaRival(d);
+      if (esError) {
+        return { ...l, subtipo: "error_rival" };
+      }
+    }
+
+    return l;
+  });
 }
 
 // ============================================================
