@@ -439,30 +439,25 @@ export function PopupArmado({ pos, onConfirmar, onCancelar }: PopupArmadoProps) 
 }
 
 // ============================================================
-// POPUP DEFENSA
+// POPUP DEFENSA (simplificado: solo tipo)
 // ============================================================
 
 interface PopupDefensaProps {
   pos: PopupPos;
-  jugadores: JugadorEnCancha[];
   onConfirmar: (subtipo: TipoDefensa, jugadorId: string | null) => void;
   onCancelar: () => void;
 }
 
 export function PopupDefensa({
   pos,
-  jugadores,
   onConfirmar,
   onCancelar,
 }: PopupDefensaProps) {
   const tipos: TipoDefensa[] = ["toque", "gran-defensa", "libre"];
   const pad = 8;
-  const ancho = 310;
+  const ancho = 250;
+  const alto = 70;
   const btnTipoW = (ancho - pad * 2 - 4 * 2) / 3;
-
-  const maxJugadores = Math.min(jugadores.length, 6);
-  const filasJugadores = Math.ceil(maxJugadores / 3);
-  const alto = 20 + 22 + 6 + 12 + filasJugadores * 24 + 6 + 14 + 8;
 
   return (
     <PopupWrapper
@@ -478,96 +473,19 @@ export function PopupDefensa({
             x={pad + i * (btnTipoW + 4)}
             y={0}
             w={btnTipoW}
-            h={22}
+            h={28}
             texto={ETIQ_DEFENSA[t]}
             color={COL_DEFENSA[t]}
-            fontSize={9}
+            fontSize={10}
             onClick={() => onConfirmar(t, null)}
           />
         ))}
 
-        <text
-          x={pad}
-          y={38}
-          fontSize={9}
-          fontWeight={600}
-          fill="#64748b"
-          pointerEvents="none"
-        >
-          ¿Quién la hizo? (opcional)
-        </text>
-
-        <g transform="translate(0, 46)">
-          {jugadores.slice(0, maxJugadores).map((j, i) => {
-            const col = i % 3;
-            const row = Math.floor(i / 3);
-            const wCol = (ancho - pad * 2 - 2 * 4) / 3;
-            const c = colorDeRol(j.rol);
-            const x = pad + col * (wCol + 4);
-            const y = row * 24;
-
-            return (
-              <g
-                key={j.id}
-                style={{ cursor: "pointer", pointerEvents: "auto" }}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  onConfirmar("toque", j.id);
-                }}
-              >
-                <rect
-                  x={x}
-                  y={y}
-                  width={wCol}
-                  height={22}
-                  rx={4}
-                  fill={c.bg}
-                  stroke={c.borde}
-                  strokeWidth={1.5}
-                />
-                <text
-                  x={x + 4}
-                  y={y + 15}
-                  fontSize={10}
-                  fontWeight={800}
-                  fill={c.texto}
-                  pointerEvents="none"
-                >
-                  {j.rol ?? "?"}
-                </text>
-                {j.zona !== undefined && (
-                  <text
-                    x={x + 17}
-                    y={y + 15}
-                    fontSize={8}
-                    fontWeight={600}
-                    fill={c.texto}
-                    opacity={0.65}
-                    pointerEvents="none"
-                  >
-                    Z{j.zona}
-                  </text>
-                )}
-                <text
-                  x={x + 34}
-                  y={y + 15}
-                  fontSize={8}
-                  fontWeight={600}
-                  fill={c.texto}
-                  pointerEvents="none"
-                >
-                  {textoCortoNombre(j.nombre)}
-                </text>
-              </g>
-            );
-          })}
-        </g>
-
         <BotonSvg
           x={pad}
-          y={46 + filasJugadores * 24 + 4}
+          y={36}
           w={ancho - pad * 2}
-          h={14}
+          h={16}
           texto="Saltar (Esc)"
           color="#e2e8f0"
           colorTexto="#475569"
