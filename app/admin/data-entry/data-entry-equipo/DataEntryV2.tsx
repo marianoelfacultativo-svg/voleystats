@@ -13,6 +13,8 @@ import PopupsV2 from "./PopupsV2";
 import SecuenciaV2 from "./SecuenciaV2";
 import SetupInicialV2 from "./SetupInicialV2";
 
+import { supabase } from "@/lib/supabase";
+
 import {
   aLineaV2,
   calcularRecepcionOverrides,
@@ -37,6 +39,7 @@ import {
 import {
   girarRotacionPunto,
   numeroRotacionDesdePosiciones,
+  rotacionVacia,
   type Libero,
   type RotacionPunto,
   type SaqueEquipo,
@@ -55,18 +58,82 @@ import {
   esCanchaPropia,
   esCanchaRival,
   ganadorDelPunto,
+  ladoDeCelda,
   resolverJugadorDefensa,
   resolverRolAJugador,
   type EstadoClasificacion,
   type LineaClasificada,
+  type PopupRequerido,
   type Situacion,
 } from "@/lib/clasificacionV2";
+import { jugadorQueAtacaDesdeCelda } from "@/lib/mapeoV2";
 import {
   guardarPuntoV2,
-  type AccionV2Data,
   type PuntoV2Data,
 } from "@/lib/dbV2";
 import { borrarPuntoV1DeTablas } from "@/lib/db";
+
+import type { CambioPendiente } from "./PanelRotacionV2";
+
+// ============================================================
+// HELPERS MODO ESPEJO
+// ============================================================
+
+/** Invierte una celda de un lado al otro (F1↔F4, F2↔F5, etc.). */
+function invertirCelda(celda: string): string {
+  if (celda.startsWith("F1-")) return "F4-" + celda.slice(3);
+  if (celda.startsWith("F2-")) return "F5-" + celda.slice(3);
+  if (celda.startsWith("F3-")) return "F6-" + celda.slice(3);
+  if (celda.startsWith("F4-")) return "F1-" + celda.slice(3);
+  if (celda.startsWith("F5-")) return "F2-" + celda.slice(3);
+  if (celda.startsWith("F6-")) return "F3-" + celda.slice(3);
+  if (celda.startsWith("BLOQ-P-")) return "BLOQ-R-" + celda.slice(7);
+  if (celda.startsWith("BLOQ-R-")) return "BLOQ-P-" + celda.slice(7);
+  if (celda.startsWith("FUERA-ARR-")) return "FUERA-ABA-" + celda.slice(10);
+  if (celda.startsWith("FUERA-ABA-")) return "FUERA-ARR-" + celda.slice(10);
+  return celda;
+}
+
+function jugadorQueSacaDeRot(rot: RotacionPunto): string | null {
+  for (const asig of Object.values(rot.posiciones)) {
+    if (asig.zona === 1) return asig.jugador_id;
+  }
+  return null;
+}
+
+function jugadorQueArmaDeRot(rot: RotacionPunto): string | null {
+  for (const asig of Object.values(rot.posiciones)) {
+    if (asig.tipo === "A") return asig.jugador_id;
+  }
+  return null;
+}
+
+function zonaRecepcionDeCelda(celda: string): 1 | 5 | 6 | null {
+  if (!/^F[123]-/.test(celda)) return null;
+  const col = celda.split("-")[1];
+  if (col === "C1" || col === "C2") return 5;
+  if (col === "C3") return 6;
+  if (col === "C4" || col === "C5") return 1;
+  return null;
+}
+
+function jugadorQueRecibeDeRot(
+  origen: PuntoV2,
+  rot: RotacionPunto,
+  situacion: Situacion,
+  overrides?: Partial<Record<Zona, string | null>>
+): string | null {
+  const zonaRec = zonaRecepcionDeCelda(origen.celda);
+  if (zonaRec === null) return null;
+  if (overrides && zonaRec in overrides) {
+    return overrides[zonaRec] ?? null;
+  }
+  const numRot = numeroRotacionDesdePosiciones(rot);
+  const fila = POSICIONES_JUEGO[numRot]?.[situacion];
+  if (!fila) return null;
+  const rol = fila[zonaRec];
+  return resolverRolAJugador(rot, rol);
+}
 
 // ============================================================
 // COMPONENTE
@@ -79,6 +146,7 @@ export default function DataEntryV2({
   nombreRival,
   jugadores,
   rotacionInicial,
+  equiposDisponibles,
 }: Props) {
   const [puntosCerrados, setPuntosCerrados] = useState<
     Record<number, PuntoCerrado>
@@ -101,13 +169,28 @@ export default function DataEntryV2({
   const [posicionesPunto, setPosicionesPunto] = useState<Record<Zona, string>>(
     () => ({ ...POSICIONES_VACIAS })
   );
-  const [cambiosPendientes, setCambiosPendientes] = useState<
-    import("./PanelRotacionV2").CambioPendiente[]
-  >([]);
+  const [cambiosPendientes, setCambiosPendientes] = useState<CambioPendiente[]>(
+    []
+  );
 
   const [posicionesFijas, setPosicionesFijas] = useState<PosicionesFijasMap>(
     {}
   );
+
+  // ---------- MODO ESPEJO ----------
+  const [modoEspejo, setModoEspejo] = useState(false);
+  const [equipoRivalId, setEquipoRivalId] = useState<string | null>(null);
+  const [jugadoresRival, setJugadoresRival] = useState<Jugador[]>([]);
+  const [rotacionRival, setRotacionRival] = useState<RotacionPunto | null>(null);
+  const [liberosRival, setLiberosRival] = useState<Libero[]>([]);
+  const [posicionesPuntoRival, setPosicionesPuntoRival] = useState<
+    Record<Zona, string>
+  >(() => ({ ...POSICIONES_VACIAS }));
+  const [cambiosPendientesRival, setCambiosPendientesRival] = useState<
+    CambioPendiente[]
+  >([]);
+  const [posicionesFijasRival, setPosicionesFijasRival] =
+    useState<PosicionesFijasMap>({});
 
   const [setActivo] = useState<number>(1);
   const [orientacion, setOrientacion] = useState<Orientacion>("vertical");
@@ -125,6 +208,9 @@ export default function DataEntryV2({
 
   const situacion: Situacion =
     saqueInicial === "propio" ? "saque" : "recepcion";
+
+  const situacionRival: Situacion =
+    saqueInicial === "rival" ? "saque" : "recepcion";
 
   const popupActivo = colaPopups[0] ?? null;
 
@@ -145,6 +231,24 @@ export default function DataEntryV2({
       liberos,
     };
   }, [rotacion, posicionesPunto, liberos]);
+
+  const rotacionRivalEfectiva = useMemo<RotacionPunto | null>(() => {
+    if (!rotacionRival) return null;
+    const zonas: Zona[] = [1, 2, 3, 4, 5, 6];
+    let cambio = false;
+    const nuevas = { ...rotacionRival.posiciones };
+    for (const z of zonas) {
+      const override = posicionesPuntoRival[z];
+      if (override && override !== nuevas[z]?.jugador_id) {
+        nuevas[z] = { ...nuevas[z], jugador_id: override };
+        cambio = true;
+      }
+    }
+    return {
+      ...(cambio ? { ...rotacionRival, posiciones: nuevas } : rotacionRival),
+      liberos: liberosRival,
+    };
+  }, [rotacionRival, posicionesPuntoRival, liberosRival]);
 
   const jugadoresEnCancha = useMemo(() => {
     if (!rotacion) return [];
@@ -204,16 +308,46 @@ export default function DataEntryV2({
     });
   }, [rotacionEfectiva, jugadores]);
 
+  const delanterosPorZonaRival = useMemo(() => {
+    if (!rotacionRivalEfectiva) return [];
+    const zonas: (4 | 3 | 2)[] = [4, 3, 2];
+    return zonas.map((z) => {
+      const asig = rotacionRivalEfectiva.posiciones[z as Zona];
+      const id = asig?.jugador_id ?? null;
+      const jugador = id ? jugadoresRival.find((j) => j.id === id) : null;
+      return {
+        zona: z,
+        jugadorId: id,
+        nombre: jugador ? jugador.nombre : "(vacío)",
+      };
+    });
+  }, [rotacionRivalEfectiva, jugadoresRival]);
+
   const clavePosicionesFijas = useMemo(() => {
     if (!rotacion) return "";
     const numRot = numeroRotacionDesdePosiciones(rotacion);
     return `${numRot}-${situacion}`;
   }, [rotacion, situacion]);
 
+  const clavePosicionesFijasRival = useMemo(() => {
+    if (!rotacionRival) return "";
+    const numRot = numeroRotacionDesdePosiciones(rotacionRival);
+    return `${numRot}-${situacionRival}`;
+  }, [rotacionRival, situacionRival]);
+
   const posicionesFijasActuales: Record<Zona, string> = useMemo(() => {
     if (!clavePosicionesFijas) return { ...POSICIONES_VACIAS };
     return posicionesFijas[clavePosicionesFijas] ?? { ...POSICIONES_VACIAS };
   }, [posicionesFijas, clavePosicionesFijas]);
+
+  const posicionesFijasActualesRival: Record<Zona, string> = useMemo(() => {
+    if (!clavePosicionesFijasRival) return { ...POSICIONES_VACIAS };
+    return (
+      posicionesFijasRival[clavePosicionesFijasRival] ?? {
+        ...POSICIONES_VACIAS,
+      }
+    );
+  }, [posicionesFijasRival, clavePosicionesFijasRival]);
 
   const recepcionOverridesEfectivos = useMemo(() => {
     return calcularRecepcionOverrides(
@@ -221,6 +355,13 @@ export default function DataEntryV2({
       posicionesPunto
     );
   }, [posicionesFijasActuales, posicionesPunto]);
+
+  const recepcionOverridesRival = useMemo(() => {
+    return calcularRecepcionOverrides(
+      posicionesFijasActualesRival,
+      posicionesPuntoRival
+    );
+  }, [posicionesFijasActualesRival, posicionesPuntoRival]);
 
   const lineasParaUI = useMemo(() => lineas.map(aLineaV2), [lineas]);
   const origenActivoParaUI: PuntoV2 | null =
@@ -252,10 +393,46 @@ export default function DataEntryV2({
   const nombreDeJugador = (id: string | null): string => {
     if (!id) return "—";
     const j = jugadores.find((x) => x.id === id);
-    if (!j) return "?";
-    return j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
+    if (j) return j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
+    const jr = jugadoresRival.find((x) => x.id === id);
+    if (jr) return jr.nombre + (jr.numero !== null ? ` #${jr.numero}` : "");
+    return "?";
   };
 
+  // ---------- CARGAR JUGADORES DEL RIVAL ----------
+  useEffect(() => {
+    if (!equipoRivalId) {
+      setJugadoresRival([]);
+      return;
+    }
+    Promise.all([
+      supabase
+        .from("jugador_equipo")
+        .select("jugador_id")
+        .eq("equipo_id", equipoRivalId)
+        .eq("activo", true),
+      supabase.from("jugadores").select("id, nombre, numero"),
+    ]).then(([a, j]) => {
+      if (!a.data || !j.data) return;
+      const ids = a.data.map((x: { jugador_id: string }) => x.jugador_id);
+      const jugs = (
+        j.data as { id: string; nombre: string; numero: number | null }[]
+      ).filter((x) => ids.includes(x.id));
+      setJugadoresRival(jugs);
+    });
+  }, [equipoRivalId]);
+
+  // ---------- ROTACIÓN INICIAL DEL RIVAL ----------
+  useEffect(() => {
+    if (!modoEspejo) return;
+    if (!equipoRivalId) return;
+    if (rotacionRival) return;
+    setRotacionRival({
+      ...rotacionVacia(1, setActivo, puntoActual, "rival"),
+    });
+  }, [modoEspejo, equipoRivalId, rotacionRival, setActivo, puntoActual]);
+
+  // ---------- CARGA PUNTO ----------
   const cargarPuntoDesde = (
     cerrados: Record<number, PuntoCerrado>,
     n: number
@@ -277,6 +454,12 @@ export default function DataEntryV2({
       setPosicionesPunto(pc.posicionesPunto);
       setCambiosPendientes(pc.cambios);
       setContadorId(maxIdLineas(pc.lineas) + 1);
+      if (pc.estadoRival) {
+        setRotacionRival(pc.estadoRival.rotacion);
+        setLiberosRival(pc.estadoRival.liberos);
+        setPosicionesPuntoRival(pc.estadoRival.posicionesPunto);
+        setCambiosPendientesRival(pc.estadoRival.cambios);
+      }
       return;
     }
 
@@ -297,6 +480,24 @@ export default function DataEntryV2({
       setLiberos(prev.liberos);
       setPosicionesPunto({ ...POSICIONES_VACIAS });
       setCambiosPendientes([]);
+
+      if (modoEspejo && prev.estadoRival?.rotacion) {
+        let rotRivalSig: RotacionPunto = prev.estadoRival.rotacion;
+        if (prev.ganador === "rival" && prev.saqueInicial === "propio") {
+          const { rotacion: rotRG } = girarRotacionPunto(
+            prev.estadoRival.rotacion,
+            1
+          );
+          rotRivalSig = rotRG;
+        }
+        setRotacionRival({
+          ...rotRivalSig,
+          saque_equipo: saqueSig === "propio" ? "rival" : "propio",
+        });
+        setLiberosRival(prev.estadoRival.liberos);
+        setPosicionesPuntoRival({ ...POSICIONES_VACIAS });
+        setCambiosPendientesRival([]);
+      }
     } else {
       setSaqueInicial("propio");
       if (rotacionInicial) setRotacion(rotacionInicial);
@@ -306,7 +507,7 @@ export default function DataEntryV2({
     }
   };
 
-  // ---------- GUARDADO LOCAL (bloqueado hasta hidratar) ----------
+  // ---------- GUARDADO LOCAL ----------
   useEffect(() => {
     if (!partidoId || !hidratado) return;
     try {
@@ -337,6 +538,12 @@ export default function DataEntryV2({
           cambiosPendientes,
           lineas,
           contadorId,
+          modoEspejo,
+          equipoRivalId,
+          rotacionRival,
+          liberosRival,
+          posicionesPuntoRival,
+          cambiosPendientesRival,
         })
       );
     } catch {
@@ -356,6 +563,12 @@ export default function DataEntryV2({
     cambiosPendientes,
     lineas,
     contadorId,
+    modoEspejo,
+    equipoRivalId,
+    rotacionRival,
+    liberosRival,
+    posicionesPuntoRival,
+    cambiosPendientesRival,
   ]);
 
   // ---------- CARGA ----------
@@ -380,6 +593,15 @@ export default function DataEntryV2({
       const data = JSON.parse(raw);
       if (data.setupCompleto !== undefined)
         setSetupCompleto(data.setupCompleto);
+      if (data.modoEspejo !== undefined) setModoEspejo(data.modoEspejo);
+      if (data.equipoRivalId !== undefined) setEquipoRivalId(data.equipoRivalId);
+      if (data.rotacionRival) setRotacionRival(data.rotacionRival);
+      if (data.liberosRival) setLiberosRival(data.liberosRival);
+      if (data.posicionesPuntoRival)
+        setPosicionesPuntoRival(data.posicionesPuntoRival);
+      if (data.cambiosPendientesRival)
+        setCambiosPendientesRival(data.cambiosPendientesRival);
+
       const cerrados: Record<number, PuntoCerrado> =
         data.puntosCerrados ?? {};
       setPuntosCerrados(cerrados);
@@ -439,6 +661,7 @@ export default function DataEntryV2({
             desviosPendientes.length > 0 ? [...desviosPendientes] : undefined,
           subtipo: null,
           posicionInicial: estrella ? { ...estrella } : null,
+          equipoId: equipoId,
         };
         setLineas((prev) => [...prev, linea]);
         setContadorId((c) => c + 1);
@@ -512,6 +735,7 @@ export default function DataEntryV2({
           oculta: true,
           subtipo: null,
           posicionInicial: estrella ? { ...estrella } : null,
+          equipoId: equipoId,
         };
         setLineas((prev) => [...prev, oculta]);
         setContadorId((c) => c + 1);
@@ -550,6 +774,12 @@ export default function DataEntryV2({
       rotacion: rotacionEfectiva,
       lineas,
       recepcionOverrides: recepcionOverridesEfectivos,
+      modoEspejo,
+      equipoPropioId: equipoId,
+      equipoRivalId: equipoRivalId,
+      rotacionRival: rotacionRivalEfectiva,
+      situacionRival,
+      recepcionOverridesRival,
     };
 
     const res = clasificarLinea(estado, {
@@ -561,7 +791,9 @@ export default function DataEntryV2({
 
     let jugadorFinal = res.jugadorId;
     let subtipoFinal = res.subtipoFijo ?? null;
-    const tipoSaqueFinal = res.tipoSaqueFijo ?? null;
+    let tipoSaqueFinal = res.tipoSaqueFijo ?? null;
+    let popupFinal: PopupRequerido = res.popup;
+    let equipoAccionFinal: string | null = equipoId;
 
     if (res.tipo === "defensa" && !res.esRival) {
       if (!jugadorFinal) {
@@ -573,6 +805,52 @@ export default function DataEntryV2({
       }
       if (!subtipoFinal) {
         subtipoFinal = "defensa_normal";
+      }
+    }
+
+    // ---------- POST-PROCESO MODO ESPEJO ----------
+    const esLineaDeRivalEspejo =
+      modoEspejo && ladoDeCelda(origen.celda) === "rival";
+
+    if (esLineaDeRivalEspejo && equipoRivalId && rotacionRivalEfectiva) {
+      equipoAccionFinal = equipoRivalId;
+      const origenInv: PuntoV2 = {
+        ...origen,
+        celda: invertirCelda(origen.celda),
+      };
+
+      if (res.tipo === "saque") {
+        jugadorFinal = jugadorQueSacaDeRot(rotacionRivalEfectiva);
+        tipoSaqueFinal = "flotado";
+        popupFinal = "tipo-saque";
+      } else if (res.tipo === "recepcion") {
+        jugadorFinal = jugadorQueRecibeDeRot(
+          origenInv,
+          rotacionRivalEfectiva,
+          situacionRival,
+          recepcionOverridesRival
+        );
+        popupFinal = "recepcion";
+      } else if (res.tipo === "armado") {
+        jugadorFinal = jugadorQueArmaDeRot(rotacionRivalEfectiva);
+        popupFinal = "armado";
+      } else if (res.tipo === "ataque") {
+        jugadorFinal = jugadorQueAtacaDesdeCelda(
+          origenInv.celda,
+          rotacionRivalEfectiva,
+          situacionRival
+        );
+        popupFinal = "ataque-toque-libre";
+      } else if (res.tipo === "defensa") {
+        jugadorFinal = resolverJugadorDefensa(
+          origenInv,
+          rotacionRivalEfectiva,
+          situacionRival
+        );
+        if (!subtipoFinal) subtipoFinal = "defensa_normal";
+        popupFinal = "defensa";
+      } else if (res.tipo === "libre") {
+        popupFinal = "libre";
       }
     }
 
@@ -588,6 +866,7 @@ export default function DataEntryV2({
       subtipo: subtipoFinal,
       tipoSaque: tipoSaqueFinal,
       posicionInicial: estrella ? { ...estrella } : null,
+      equipoId: equipoAccionFinal,
     };
 
     setLineas((prev) => [...prev, nueva]);
@@ -599,8 +878,8 @@ export default function DataEntryV2({
 
     const cola: PopupEnCola[] = [];
     const pos = posicionPopup(destino);
-    if (res.popup) {
-      cola.push({ tipo: res.popup, pos, lineaId: nueva.id });
+    if (popupFinal) {
+      cola.push({ tipo: popupFinal, pos, lineaId: nueva.id });
     }
     if (estrella && !res.esRival) {
       cola.push({ tipo: "jugador", pos, lineaId: nueva.id });
@@ -673,6 +952,17 @@ export default function DataEntryV2({
       liberos,
       posicionesPunto,
       cambios: cambiosPendientes,
+      equipoId:
+        saqueInicial === "propio" ? equipoId : equipoRivalId ?? undefined,
+      estadoRival:
+        modoEspejo && rotacionRival
+          ? {
+              rotacion: rotacionRival,
+              liberos: liberosRival,
+              posicionesPunto: posicionesPuntoRival,
+              cambios: cambiosPendientesRival,
+            }
+          : undefined,
     };
 
     const eraCerrado = puntoActualCerrado;
@@ -725,6 +1015,9 @@ export default function DataEntryV2({
         liberos: pc.liberos as unknown as Record<string, unknown>[],
         cambios: pc.cambios as unknown as Record<string, unknown>[],
         posiciones_punto: pc.posicionesPunto,
+        equipo_id:
+          pc.equipoId ??
+          (pc.saqueInicial === "propio" ? equipoId : equipoRivalId),
       };
 
       const lineasConSaque = calcularSubtiposSaque(pc.lineas);
@@ -897,6 +1190,7 @@ export default function DataEntryV2({
         origen: { celda: "RED-C3", mini: "m1-5" },
         destino: { celda: "RED-C3", mini: "m1-5" },
         subtipo: resultado,
+        equipoId: esRival ? equipoRivalId : equipoId,
       };
       setLineas((prev) => [...prev, ficticia]);
       setContadorId((c) => c + 1);
@@ -960,6 +1254,7 @@ export default function DataEntryV2({
         destino: linea.destino,
         desvios: linea.desvios,
         subtipo: "toque",
+        equipoId: equipoRivalId,
       };
       setLineas((prev) => [...prev, ataqueRival]);
       setContadorId((c) => c + 1);
@@ -985,15 +1280,54 @@ export default function DataEntryV2({
     setCambiosPendientes([]);
   };
 
+  const handleGuardarCambiosRival = () => {
+    if (!rotacionRival) return;
+    const nueva = { ...rotacionRival };
+    for (const c of cambiosPendientesRival) {
+      if (nueva.posiciones[c.zona]) {
+        nueva.posiciones[c.zona] = {
+          ...nueva.posiciones[c.zona],
+          jugador_id: c.jugadorEntra,
+        };
+      }
+    }
+    setRotacionRival(nueva);
+    setCambiosPendientesRival([]);
+  };
+
   const handleCambioRotacion = (dir: 1 | -1) => {
     if (!rotacion) return;
     const { rotacion: nueva } = girarRotacionPunto(rotacion, dir);
     setRotacion(nueva);
   };
 
+  const handleCambioRotacionRival = (dir: 1 | -1) => {
+    if (!rotacionRival) return;
+    const { rotacion: nueva } = girarRotacionPunto(rotacionRival, dir);
+    setRotacionRival(nueva);
+  };
+
   const handleCambioSaque = (equipo: SaqueEquipo) => {
     setSaqueInicial(equipo);
     if (rotacion) setRotacion({ ...rotacion, saque_equipo: equipo });
+    if (rotacionRival) {
+      setRotacionRival({
+        ...rotacionRival,
+        saque_equipo: equipo === "propio" ? "rival" : "propio",
+      });
+    }
+  };
+
+  const handleCambioSaqueRival = (equipo: SaqueEquipo) => {
+    if (rotacionRival)
+      setRotacionRival({ ...rotacionRival, saque_equipo: equipo });
+    setSaqueInicial(equipo === "propio" ? "rival" : "propio");
+    if (rotacion) {
+      setRotacion({
+        ...rotacion,
+        saque_equipo: equipo === "propio" ? "rival" : "propio",
+      });
+    }
   };
 
   const handleFijarPosiciones = (pos: Record<Zona, string>) => {
@@ -1011,6 +1345,43 @@ export default function DataEntryV2({
       delete copia[clavePosicionesFijas];
       return copia;
     });
+  };
+
+  const handleFijarPosicionesRival = (pos: Record<Zona, string>) => {
+    if (!clavePosicionesFijasRival) return;
+    setPosicionesFijasRival((prev) => ({
+      ...prev,
+      [clavePosicionesFijasRival]: { ...pos },
+    }));
+  };
+
+  const handleLimpiarFijadasRival = () => {
+    if (!clavePosicionesFijasRival) return;
+    setPosicionesFijasRival((prev) => {
+      const copia = { ...prev };
+      delete copia[clavePosicionesFijasRival];
+      return copia;
+    });
+  };
+
+  const handleToggleModoEspejo = (v: boolean) => {
+    setModoEspejo(v);
+    if (!v) {
+      setEquipoRivalId(null);
+      setJugadoresRival([]);
+      setRotacionRival(null);
+      setLiberosRival([]);
+      setPosicionesPuntoRival({ ...POSICIONES_VACIAS });
+      setCambiosPendientesRival([]);
+      setPosicionesFijasRival({});
+    }
+  };
+
+  const handleSetEquipoRivalId = (id: string | null) => {
+    setEquipoRivalId(id);
+    if (id && !rotacionRival) {
+      setRotacionRival(rotacionVacia(1, setActivo, puntoActual, "rival"));
+    }
   };
 
   const irAPunto = (n: number) => {
@@ -1082,16 +1453,33 @@ export default function DataEntryV2({
       alert("Necesitás una rotación antes de comenzar.");
       return;
     }
+    if (modoEspejo && !equipoRivalId) {
+      alert("Elegí un equipo rival o desactivá el modo espejo.");
+      return;
+    }
+    if (modoEspejo && !rotacionRival) {
+      alert("Falta la rotación del equipo rival.");
+      return;
+    }
     setSetupCompleto(true);
   };
 
   const lineasVisibles = lineas.filter((l) => !l.oculta).length;
 
+  const nombreEquipoRivalSeleccionado = useMemo(() => {
+    if (!equipoRivalId) return "";
+    return equiposDisponibles.find((e) => e.id === equipoRivalId)?.nombre ?? "";
+  }, [equipoRivalId, equiposDisponibles]);
+
   return (
     <div className="space-y-3">
       <BarraMarcadorV2
         nombreMiEquipo={nombreMiEquipo}
-        nombreRival={nombreRival}
+        nombreRival={
+          modoEspejo && nombreEquipoRivalSeleccionado
+            ? nombreEquipoRivalSeleccionado
+            : nombreRival
+        }
         setActivo={setActivo}
         marcador={marcador}
         visibleNavegacion={!necesitaSetup}
@@ -1117,6 +1505,16 @@ export default function DataEntryV2({
           saqueInicial={saqueInicial}
           nombreMiEquipo={nombreMiEquipo}
           nombreRival={nombreRival}
+          modoEspejo={modoEspejo}
+          equiposDisponibles={equiposDisponibles}
+          equipoRivalId={equipoRivalId}
+          nombreEquipoRival={nombreEquipoRivalSeleccionado}
+          rotacionRival={rotacionRival}
+          jugadoresRival={jugadoresRival}
+          liberosRival={liberosRival}
+          posicionesPuntoRival={posicionesPuntoRival}
+          posicionesFijasActualesRival={posicionesFijasActualesRival}
+          cambiosPendientesRival={cambiosPendientesRival}
           onFijarPosiciones={handleFijarPosiciones}
           onLimpiarFijadas={handleLimpiarFijadas}
           onSetLiberos={setLiberos}
@@ -1125,6 +1523,16 @@ export default function DataEntryV2({
           onGuardarCambios={handleGuardarCambios}
           onCambioRotacion={handleCambioRotacion}
           onCambioSaque={handleCambioSaque}
+          onToggleModoEspejo={handleToggleModoEspejo}
+          onSetEquipoRivalId={handleSetEquipoRivalId}
+          onFijarPosicionesRival={handleFijarPosicionesRival}
+          onLimpiarFijadasRival={handleLimpiarFijadasRival}
+          onSetLiberosRival={setLiberosRival}
+          onSetPosicionesPuntoRival={setPosicionesPuntoRival}
+          onSetCambiosPendientesRival={setCambiosPendientesRival}
+          onGuardarCambiosRival={handleGuardarCambiosRival}
+          onCambioRotacionRival={handleCambioRotacionRival}
+          onCambioSaqueRival={handleCambioSaqueRival}
           onComenzar={handleComenzar}
         />
       )}
@@ -1145,6 +1553,16 @@ export default function DataEntryV2({
                   saqueInicial={saqueInicial}
                   nombreMiEquipo={nombreMiEquipo}
                   nombreRival={nombreRival}
+                  modoEspejo={modoEspejo}
+                  equiposDisponibles={equiposDisponibles}
+                  equipoRivalId={equipoRivalId}
+                  nombreEquipoRival={nombreEquipoRivalSeleccionado}
+                  rotacionRival={rotacionRival}
+                  jugadoresRival={jugadoresRival}
+                  liberosRival={liberosRival}
+                  posicionesPuntoRival={posicionesPuntoRival}
+                  posicionesFijasActualesRival={posicionesFijasActualesRival}
+                  cambiosPendientesRival={cambiosPendientesRival}
                   onFijarPosiciones={handleFijarPosiciones}
                   onLimpiarFijadas={handleLimpiarFijadas}
                   onSetLiberos={setLiberos}
@@ -1153,6 +1571,16 @@ export default function DataEntryV2({
                   onGuardarCambios={handleGuardarCambios}
                   onCambioRotacion={handleCambioRotacion}
                   onCambioSaque={handleCambioSaque}
+                  onToggleModoEspejo={handleToggleModoEspejo}
+                  onSetEquipoRivalId={handleSetEquipoRivalId}
+                  onFijarPosicionesRival={handleFijarPosicionesRival}
+                  onLimpiarFijadasRival={handleLimpiarFijadasRival}
+                  onSetLiberosRival={setLiberosRival}
+                  onSetPosicionesPuntoRival={setPosicionesPuntoRival}
+                  onSetCambiosPendientesRival={setCambiosPendientesRival}
+                  onGuardarCambiosRival={handleGuardarCambiosRival}
+                  onCambioRotacionRival={handleCambioRotacionRival}
+                  onCambioSaqueRival={handleCambioSaqueRival}
                   onComenzar={handleComenzar}
                 />
               )}
@@ -1208,7 +1636,13 @@ export default function DataEntryV2({
                 <PopupsV2
                   popupActivo={popupActivo}
                   jugadoresEnCancha={jugadoresEnCancha}
-                  delanterosPorZona={delanterosPorZona}
+                  delanterosPorZona={
+                    popupActivo &&
+                    lineas.find((l) => l.id === popupActivo.lineaId)
+                      ?.equipoId === equipoRivalId
+                      ? delanterosPorZonaRival
+                      : delanterosPorZona
+                  }
                   onSaqueConfirmar={handleSaqueConfirmar}
                   onTipoSaqueConfirmar={handleTipoSaqueConfirmar}
                   onRecepcionConfirmar={handleRecepcionConfirmar}
