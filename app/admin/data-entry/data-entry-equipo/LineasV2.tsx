@@ -1,7 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
-import { getRectMiniLayout, type Orientacion } from "./CanchaV2";
+import React, { useContext, useMemo } from "react";
+import {
+  getRectMiniLayout,
+  CanchaStretchContext,
+  type Orientacion,
+} from "./CanchaV2";
 
 // ============================================================
 // TIPOS
@@ -102,6 +106,12 @@ export default function LineasV2({
   radioCirculoActivo = 12,
   radioCirculoUsado = 5,
 }: Props) {
+  // Factor de estiramiento: contrarrestamos para que círculos/estrellas
+  // no se deformen cuando la cancha está estirada.
+  const { sx, sy } = useContext(CanchaStretchContext);
+  const invSx = sx !== 0 ? 1 / sx : 1;
+  const invSy = sy !== 0 ? 1 / sy : 1;
+
   const circulos = useMemo(() => {
     const map = new Map<string, PuntoV2>();
     for (const l of lineas) {
@@ -173,6 +183,7 @@ export default function LineasV2({
             fill="none"
             opacity={1}
             pointerEvents="none"
+            vectorEffect="non-scaling-stroke"
           />
         );
       })}
@@ -200,6 +211,7 @@ export default function LineasV2({
               fill="none"
               opacity={0.9}
               pointerEvents="none"
+              vectorEffect="non-scaling-stroke"
             />
           );
         })}
@@ -209,29 +221,38 @@ export default function LineasV2({
         const p = centroLayout(c.celda, c.mini);
         if (!p) return null;
         return (
-          <circle
+          <g
             key={`${c.celda}-${c.mini}-${i}`}
-            cx={p.x}
-            cy={p.y}
-            r={radioCirculoUsado}
-            fill="#cbd5e1"
-            stroke="#64748b"
-            strokeWidth={0.8}
-            opacity={0.85}
+            transform={`translate(${p.x} ${p.y}) scale(${invSx} ${invSy})`}
             pointerEvents="none"
-          />
+          >
+            <circle
+              cx={0}
+              cy={0}
+              r={radioCirculoUsado}
+              fill="#cbd5e1"
+              stroke="#64748b"
+              strokeWidth={0.8}
+              opacity={0.85}
+              vectorEffect="non-scaling-stroke"
+            />
+          </g>
         );
       })}
 
       {/* ---------- ESTRELLA ---------- */}
       {posEstrella && (
-        <g pointerEvents="none">
+        <g
+          pointerEvents="none"
+          transform={`translate(${posEstrella.x} ${posEstrella.y}) scale(${invSx} ${invSy})`}
+        >
           <polygon
-            points={estrellaPts(posEstrella.x, posEstrella.y, 9, 4)}
+            points={estrellaPts(0, 0, 9, 4)}
             fill="#fbbf24"
             stroke="#78350f"
             strokeWidth={1.2}
             opacity={0.9}
+            vectorEffect="non-scaling-stroke"
           />
         </g>
       )}
@@ -246,15 +267,17 @@ export default function LineasV2({
             onClickCirculo();
           }}
           pointerEvents={onClickCirculo ? "auto" : "none"}
+          transform={`translate(${posOrigen.x} ${posOrigen.y}) scale(${invSx} ${invSy})`}
         >
           <circle
-            cx={posOrigen.x}
-            cy={posOrigen.y}
+            cx={0}
+            cy={0}
             r={radioCirculoActivo + radioExtra}
             fill="none"
             stroke={colorHalo}
             strokeWidth={grosorHalo}
             opacity={0.65}
+            vectorEffect="non-scaling-stroke"
           >
             <animate
               attributeName="r"
@@ -271,18 +294,19 @@ export default function LineasV2({
           </circle>
 
           <circle
-            cx={posOrigen.x}
-            cy={posOrigen.y}
+            cx={0}
+            cy={0}
             r={radioCirculoActivo}
             fill={colorRelleno}
             stroke={colorBorde}
             strokeWidth={grosorBorde}
+            vectorEffect="non-scaling-stroke"
           />
 
           {armado && (
             <text
-              x={posOrigen.x}
-              y={posOrigen.y + 4}
+              x={0}
+              y={4}
               textAnchor="middle"
               fontSize={12}
               fontWeight="bold"

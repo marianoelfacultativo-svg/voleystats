@@ -3,6 +3,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 // ============================================================
+// CONTEXTO DE ESTIRAMIENTO (para círculos/líneas hijos)
+// ============================================================
+
+export const CanchaStretchContext = React.createContext<{
+  sx: number;
+  sy: number;
+}>({ sx: 1, sy: 1 });
+
+// ============================================================
 // TIPOS
 // ============================================================
 
@@ -66,7 +75,6 @@ function generarCeldas(): CeldaDef[] {
   const out: CeldaDef[] = [];
   let y = 0;
 
-  // FUERA ARRIBA
   COLS.forEach((c, i) => {
     out.push({
       id: `FUERA-ARR-${c}`,
@@ -81,7 +89,6 @@ function generarCeldas(): CeldaDef[] {
   });
   y += ALTO_FUERA;
 
-  // CANCHA RIVAL (F6, F5, F4)
   (["F6", "F5", "F4"] as const).forEach((f) => {
     COLS.forEach((c, i) => {
       const esCancha = c === "C2" || c === "C3" || c === "C4";
@@ -99,7 +106,6 @@ function generarCeldas(): CeldaDef[] {
     y += ALTO_CANCHA;
   });
 
-  // BLOQUEO RIVAL
   COLS.forEach((c, i) => {
     const esBloqueo = c === "C2" || c === "C3" || c === "C4";
     out.push({
@@ -115,7 +121,6 @@ function generarCeldas(): CeldaDef[] {
   });
   y += ALTO_BLOQUEO;
 
-  // RED
   COLS.forEach((c, i) => {
     const esRed = c === "C2" || c === "C3" || c === "C4";
     out.push({
@@ -131,7 +136,6 @@ function generarCeldas(): CeldaDef[] {
   });
   y += ALTO_RED;
 
-  // BLOQUEO PROPIO
   COLS.forEach((c, i) => {
     const esBloqueo = c === "C2" || c === "C3" || c === "C4";
     out.push({
@@ -147,7 +151,6 @@ function generarCeldas(): CeldaDef[] {
   });
   y += ALTO_BLOQUEO;
 
-  // CANCHA PROPIA (F1, F2, F3)
   (["F1", "F2", "F3"] as const).forEach((f) => {
     COLS.forEach((c, i) => {
       const esCancha = c === "C2" || c === "C3" || c === "C4";
@@ -165,7 +168,6 @@ function generarCeldas(): CeldaDef[] {
     y += ALTO_CANCHA;
   });
 
-  // FUERA ABAJO
   COLS.forEach((c, i) => {
     out.push({
       id: `FUERA-ABA-${c}`,
@@ -186,7 +188,6 @@ const CELDAS = generarCeldas();
 const TOTAL_ANCHO = 5 * ANCHO_CELDA;
 const TOTAL_ALTO = CELDAS.reduce((max, c) => Math.max(max, c.y + c.alto), 0);
 
-// ---------- MARCO EXTERIOR ----------
 const MARGEN = ALTO_CANCHA;
 
 const TOTAL_ANCHO_EXT = TOTAL_ANCHO + 2 * MARGEN;
@@ -215,7 +216,6 @@ const COLORES_ZONA: Record<
   "cancha-propia": { fondo: "#bbf7d0", borde: "#22c55e", texto: "#14532d" },
 };
 
-// Marco exterior: celeste claro
 const COLOR_MARCO = "#bae6fd";
 
 // ============================================================
@@ -349,7 +349,6 @@ export default function CanchaV2({
       document.removeEventListener("fullscreenchange", onFsChange);
   }, []);
 
-  // Al entrar en fullscreen, calculamos un fit óptimo
   useEffect(() => {
     if (!enPantallaCompleta) return;
     const vw = window.innerWidth;
@@ -395,8 +394,6 @@ export default function CanchaV2({
     );
   };
 
-  // Restablecer: vuelve a 100% ancho y alto. Si está en fullscreen,
-  // además recalcula el fit para pantalla completa.
   const reestablecer = () => {
     if (enPantallaCompleta) {
       const vw = window.innerWidth;
@@ -481,6 +478,17 @@ export default function CanchaV2({
 
   const hayStretch = escalaAncho !== escalaAlto;
 
+  // Factores efectivos de estiramiento para el sistema de coordenadas
+  // de "layout" (el que ven los children).
+  // En vertical, layout x se estira por escalaAncho, layout y por escalaAlto.
+  // En horizontal, el <g> rota 90°, así que se invierten.
+  const stretch = useMemo(() => {
+    if (orientacion === "vertical") {
+      return { sx: escalaAncho, sy: escalaAlto };
+    }
+    return { sx: escalaAlto, sy: escalaAncho };
+  }, [orientacion, escalaAncho, escalaAlto]);
+
   return (
     <div
       ref={containerRef}
@@ -500,7 +508,6 @@ export default function CanchaV2({
         className="sticky top-2 z-20 flex flex-col items-end gap-1 ml-auto mr-2"
         style={{ pointerEvents: "auto", alignSelf: "flex-start" }}
       >
-        {/* Fila: Ancho */}
         <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
           <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
             Ancho
@@ -526,7 +533,6 @@ export default function CanchaV2({
           </button>
         </div>
 
-        {/* Fila: Alto */}
         <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
           <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
             Alto
@@ -552,7 +558,6 @@ export default function CanchaV2({
           </button>
         </div>
 
-        {/* Fila: acciones */}
         <div className="flex items-center gap-1">
           <button
             onClick={reestablecer}
@@ -601,7 +606,6 @@ export default function CanchaV2({
         onPointerLeave={handleLeave}
         onPointerDown={handleClick}
       >
-        {/* MARCO EXTERIOR (celeste claro) */}
         <rect
           x={0}
           y={0}
@@ -701,7 +705,9 @@ export default function CanchaV2({
             />
           )}
 
-          {children}
+          <CanchaStretchContext.Provider value={stretch}>
+            {children}
+          </CanchaStretchContext.Provider>
 
           <rect
             x={0}
