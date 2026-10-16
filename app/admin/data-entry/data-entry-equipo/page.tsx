@@ -197,6 +197,10 @@ export default function DataEntryEquipoPage() {
                 numero: j.numero,
               }))}
               rotacionInicial={rotacionVacia(1, 1, 1, "propio")}
+              equiposDisponibles={equipos.map((e) => ({
+                id: e.id,
+                nombre: e.nombre,
+              }))}
             />
           </div>
         )}

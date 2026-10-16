@@ -16,6 +16,20 @@ export interface Jugador {
   numero: number | null;
 }
 
+/** Equipo disponible para elegir como rival en modo espejo. */
+export interface EquipoOpcion {
+  id: string;
+  nombre: string;
+}
+
+/** Estado del equipo rival guardado junto a cada punto (modo espejo). */
+export interface EstadoRivalPunto {
+  rotacion: RotacionPunto;
+  liberos: Libero[];
+  posicionesPunto: Record<Zona, string>;
+  cambios: CambioPendiente[];
+}
+
 export interface PopupEnCola {
   tipo: Exclude<PopupRequerido, null> | "velocidad";
   pos: PopupPos;
@@ -33,6 +47,10 @@ export interface PuntoCerrado {
   liberos: Libero[];
   posicionesPunto: Record<Zona, string>;
   cambios: CambioPendiente[];
+  /** Equipo dueño del punto (el que sacó). Opcional para compat con puntos viejos. */
+  equipoId?: string;
+  /** Estado del equipo rival al cerrar el punto (solo en modo espejo). */
+  estadoRival?: EstadoRivalPunto;
 }
 
 export interface Props {
@@ -42,6 +60,8 @@ export interface Props {
   nombreRival: string;
   jugadores: Jugador[];
   rotacionInicial?: RotacionPunto;
+  /** Lista de equipos cargados en Supabase (para elegir rival en modo espejo). */
+  equiposDisponibles: EquipoOpcion[];
 }
 
 export const CLAVE_V2 = "voleystats_dataentry_v2_";
