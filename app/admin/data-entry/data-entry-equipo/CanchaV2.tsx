@@ -182,10 +182,18 @@ const CELDAS = generarCeldas();
 const TOTAL_ANCHO = 5 * ANCHO_CELDA;
 const TOTAL_ALTO = CELDAS.reduce((max, c) => Math.max(max, c.y + c.alto), 0);
 
+// ---------- MARCO EXTERIOR ----------
+// Grosor del marco = alto de una celda de cancha (42px)
+const MARGEN = ALTO_CANCHA;
+
+const TOTAL_ANCHO_EXT = TOTAL_ANCHO + 2 * MARGEN;
+const TOTAL_ALTO_EXT = TOTAL_ALTO + 2 * MARGEN;
+
 export const CANCHA_V2_DIMS = {
   ancho: TOTAL_ANCHO,
   alto: TOTAL_ALTO,
   anchoCelda: ANCHO_CELDA,
+  margen: MARGEN,
 };
 
 // ============================================================
@@ -228,6 +236,9 @@ const COLORES_ZONA: Record<
   },
 };
 
+// Color del marco
+const COLOR_MARCO = "#0f172a";
+
 // ============================================================
 // HELPERS GEOMÉTRICOS
 // ============================================================
@@ -251,8 +262,14 @@ function svgToLayoutCoords(
   sy: number,
   orientacion: Orientacion
 ): { x: number; y: number } {
-  if (orientacion === "vertical") return { x: sx, y: sy };
-  return { x: sy, y: TOTAL_ALTO - sx };
+  if (orientacion === "vertical") {
+    return { x: sx - MARGEN, y: sy - MARGEN };
+  }
+  // horizontal: outer = (MARGEN + TOTAL_ALTO - y, MARGEN + x)
+  return {
+    x: sy - MARGEN,
+    y: MARGEN + TOTAL_ALTO - sx,
+  };
 }
 
 function buscarCelda(x: number, y: number): CeldaDef | null {
@@ -343,7 +360,7 @@ export default function CanchaV2({
   onMiniClick,
   celdasAtenuadas,
   celdasResaltadas,
-  maxAlto = 720,
+  maxAlto = 900,
   children,
 }: Props) {
   const [hover, setHover] = useState<{ celda: string; mini: string } | null>(
@@ -385,8 +402,10 @@ export default function CanchaV2({
     onMiniClick({ zona: celda.zona, celda: celda.id, mini });
   };
 
-  const anchoRender = orientacion === "vertical" ? TOTAL_ANCHO : TOTAL_ALTO;
-  const altoRender = orientacion === "vertical" ? TOTAL_ALTO : TOTAL_ANCHO;
+  const anchoRender =
+    orientacion === "vertical" ? TOTAL_ANCHO_EXT : TOTAL_ALTO_EXT;
+  const altoRender =
+    orientacion === "vertical" ? TOTAL_ALTO_EXT : TOTAL_ANCHO_EXT;
 
   const hoverCelda = useMemo(
     () => (hover ? CELDAS.find((c) => c.id === hover.celda) : null),
@@ -418,8 +437,8 @@ export default function CanchaV2({
         height={altoRender}
         viewBox={
           orientacion === "vertical"
-            ? `0 0 ${TOTAL_ANCHO} ${TOTAL_ALTO}`
-            : `0 0 ${TOTAL_ALTO} ${TOTAL_ANCHO}`
+            ? `0 0 ${TOTAL_ANCHO_EXT} ${TOTAL_ALTO_EXT}`
+            : `0 0 ${TOTAL_ALTO_EXT} ${TOTAL_ANCHO_EXT}`
         }
         style={{
           userSelect: "none",
@@ -431,11 +450,21 @@ export default function CanchaV2({
         onPointerLeave={handleLeave}
         onPointerDown={handleClick}
       >
+        {/* MARCO EXTERIOR (fondo grueso que rodea la cancha) */}
+        <rect
+          x={0}
+          y={0}
+          width={anchoRender}
+          height={altoRender}
+          fill={COLOR_MARCO}
+          pointerEvents="none"
+        />
+
         <g
           transform={
             orientacion === "horizontal"
-              ? `translate(${TOTAL_ALTO} 0) rotate(90)`
-              : undefined
+              ? `translate(${MARGEN + TOTAL_ALTO} ${MARGEN}) rotate(90)`
+              : `translate(${MARGEN} ${MARGEN})`
           }
         >
           {CELDAS.map((c) => {
@@ -525,15 +554,15 @@ export default function CanchaV2({
           {/* Children: capa de líneas y círculos */}
           {children}
 
-          {/* MARCO EXTERIOR: rodea todo el grid (C1..C5, FUERA-ARR..FUERA-ABA) */}
+          {/* Borde fino sobre el canto interno del marco */}
           <rect
             x={0}
             y={0}
             width={TOTAL_ANCHO}
             height={TOTAL_ALTO}
             fill="none"
-            stroke="#0f172a"
-            strokeWidth={3}
+            stroke="#1e293b"
+            strokeWidth={1.5}
             pointerEvents="none"
           />
         </g>
