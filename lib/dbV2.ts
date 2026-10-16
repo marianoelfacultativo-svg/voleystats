@@ -27,6 +27,8 @@ export interface PuntoV2Data {
   liberos: Record<string, unknown>[];
   cambios: Record<string, unknown>[];
   posiciones_punto: Record<string, string>;
+  // Equipo dueño del punto (modo espejo). null = comportamiento clásico.
+  equipo_id?: string | null;
 }
 
 export interface AccionV2Data {
@@ -49,6 +51,8 @@ export interface AccionV2Data {
   velocidad?: number | null;
   // Tipo de saque (potencia / flotado). Solo en saques propios.
   tipo_saque?: string | null;
+  // Equipo dueño de la acción (modo espejo). null = comportamiento clásico.
+  equipo_id?: string | null;
 }
 
 export interface PuntoV2Row extends PuntoV2Data {
@@ -131,6 +135,7 @@ export async function guardarPuntoV2(
     liberos: punto.liberos,
     cambios: punto.cambios,
     posiciones_punto: punto.posiciones_punto,
+    equipo_id: punto.equipo_id ?? null,
   };
 
   const { data: inserted, error: errPunto } = await supabase
@@ -170,6 +175,7 @@ export async function guardarPuntoV2(
       posicion_inicial_mini: a.posicion_inicial_mini ?? null,
       velocidad: a.velocidad ?? null,
       tipo_saque: a.tipo_saque ?? null,
+      equipo_id: a.equipo_id ?? null,
     }));
 
     const { error: errAcc } = await supabase

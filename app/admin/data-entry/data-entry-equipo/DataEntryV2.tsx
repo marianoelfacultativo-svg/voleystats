@@ -2,40 +2,37 @@
 
 import { useEffect, useMemo, useState } from "react";
 import CanchaV2, {
-  getRectMiniLayout,
   type CoordsV2,
   type Orientacion,
 } from "./CanchaV2";
-import LineasV2, { type PuntoV2, type LineaV2 } from "./LineasV2";
-import PanelRotacionV2, {
-  type CambioPendiente,
-} from "./PanelRotacionV2";
+import LineasV2, { type PuntoV2 } from "./LineasV2";
+
+import BarraMarcadorV2 from "./BarraMarcadorV2";
+import BotonesAccionV2 from "./BotonesAccionV2";
+import PopupsV2 from "./PopupsV2";
+import SecuenciaV2 from "./SecuenciaV2";
+import SetupInicialV2 from "./SetupInicialV2";
+
 import {
-  PopupArmado,
-  PopupAtaqueToqueLibre,
-  PopupBloqueo,
-  PopupDefensa,
-  PopupJugador,
-  PopupLibre,
-  PopupRecepcion,
-  PopupRemateSegunda,
-  PopupRoceRed,
-  PopupSaque,
-  PopupTipoSaque,
-  PopupVelocidad,
-  type ValorArmado,
-  type ValorRecepcion,
-  type ValorSaque,
-  type ValorTipoSaque,
-  type ValorVelocidad,
-  type TipoDefensa,
-  type ResultadoRoceRed,
-  type VarianteAtaquePopup,
-  type VarianteRemateSegunda,
-  type JugadorEnCancha,
-  type JugadorZona,
-  type PopupPos,
-} from "./PopupValoracion";
+  aLineaV2,
+  calcularRecepcionOverrides,
+  esCeldaBloqueo,
+  lineasAAcciones,
+  maxIdLineas,
+  mismaMini,
+  posicionPopup,
+  rolCortoParaUI,
+} from "./helpersV2";
+import {
+  CLAVE_POSICIONES_FIJAS,
+  CLAVE_V2,
+  POSICIONES_VACIAS,
+  type Jugador,
+  type PopupEnCola,
+  type PosicionesFijasMap,
+  type Props,
+  type PuntoCerrado,
+} from "./tiposV2";
 
 import {
   girarRotacionPunto,
@@ -62,7 +59,6 @@ import {
   resolverRolAJugador,
   type EstadoClasificacion,
   type LineaClasificada,
-  type PopupRequerido,
   type Situacion,
 } from "@/lib/clasificacionV2";
 import {
@@ -71,194 +67,6 @@ import {
   type PuntoV2Data,
 } from "@/lib/dbV2";
 import { borrarPuntoV1DeTablas } from "@/lib/db";
-
-// ============================================================
-// TIPOS
-// ============================================================
-
-type Lado = "propio" | "rival";
-
-interface Jugador {
-  id: string;
-  nombre: string;
-  numero: number | null;
-}
-
-interface PopupEnCola {
-  tipo: Exclude<PopupRequerido, null> | "velocidad";
-  pos: PopupPos;
-  lineaId: string;
-  indiceDesvio?: number;
-}
-
-interface PuntoCerrado {
-  numero: number;
-  lineas: LineaClasificada[];
-  saqueInicial: Lado;
-  situacion: Situacion;
-  ganador: Lado;
-  rotacion: RotacionPunto;
-  liberos: Libero[];
-  posicionesPunto: Record<Zona, string>;
-  cambios: CambioPendiente[];
-}
-
-interface Props {
-  partidoId: string;
-  equipoId: string;
-  nombreMiEquipo: string;
-  nombreRival: string;
-  jugadores: Jugador[];
-  rotacionInicial?: RotacionPunto;
-}
-
-const CLAVE_V2 = "voleystats_dataentry_v2_";
-const CLAVE_POSICIONES_FIJAS = "voleystats_posiciones_fijas_";
-
-const POSICIONES_VACIAS: Record<Zona, string> = {
-  1: "",
-  2: "",
-  3: "",
-  4: "",
-  5: "",
-  6: "",
-};
-
-type PosicionesFijasMap = Record<string, Record<Zona, string>>;
-
-// ============================================================
-// HELPERS
-// ============================================================
-
-function centroDePunto(p: PuntoV2): { x: number; y: number } {
-  const r = getRectMiniLayout(p.celda, p.mini);
-  if (!r) return { x: 0, y: 0 };
-  return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
-}
-
-function posicionPopup(p: PuntoV2): PopupPos {
-  const c = centroDePunto(p);
-  return { x: c.x, y: c.y - 4 };
-}
-
-function aLineaV2(l: LineaClasificada): LineaV2 {
-  return {
-    id: l.id,
-    origen: l.origen,
-    destino: l.destino,
-    desvios: l.desvios,
-    tipo: l.tipo,
-    esRival: l.esRival,
-    oculta: l.oculta,
-  };
-}
-
-function aAccionV2(
-  l: LineaClasificada,
-  orden: number,
-  override?: { jugadorId?: string | null; subtipo?: string | null }
-): AccionV2Data {
-  let subtipoFinal =
-    override?.subtipo !== undefined ? override.subtipo : l.subtipo ?? null;
-
-  if (
-    override?.subtipo === undefined &&
-    l.tipo === "ataque" &&
-    l.variante === "toque" &&
-    subtipoFinal !== null
-  ) {
-    subtipoFinal = `toque:${subtipoFinal}`;
-  }
-
-  const jugadorFinal =
-    override?.jugadorId !== undefined ? override.jugadorId : l.jugadorId;
-  return {
-    orden,
-    tipo: l.tipo,
-    subtipo: subtipoFinal,
-    es_rival: l.esRival,
-    jugador_id: jugadorFinal,
-    lado: l.esRival ? "rival" : "propio",
-    origen_celda: l.origen.celda,
-    origen_mini: l.origen.mini,
-    destino_celda: l.destino.celda,
-    destino_mini: l.destino.mini,
-    desvios: (l.desvios ?? []).map((d) => ({ celda: d.celda, mini: d.mini })),
-    zona: null,
-    posicion_inicial_celda: l.posicionInicial?.celda ?? null,
-    posicion_inicial_mini: l.posicionInicial?.mini ?? null,
-    velocidad: l.velocidad ?? null,
-    tipo_saque: l.tipoSaque ?? null,
-  };
-}
-
-function lineasAAcciones(lineas: LineaClasificada[]): AccionV2Data[] {
-  const acciones: AccionV2Data[] = [];
-  let orden = 1;
-  for (const l of lineas) {
-    if (l.tipo === "bloqueo" && !l.esRival) {
-      const desviosBLOQP = (l.desvios ?? []).filter((d) =>
-        d.celda.startsWith("BLOQ-P-")
-      );
-      if (desviosBLOQP.length > 1) {
-        const base = (l.subtipo ?? "positivo") as string;
-        const esPositiva =
-          base === "punto" || base === "positivo_mas" || base === "positivo";
-        const sub = esPositiva ? "positivo" : "neutro";
-        for (const d of desviosBLOQP) {
-          acciones.push(
-            aAccionV2(l, orden++, {
-              jugadorId: d.jugadorId ?? null,
-              subtipo: sub,
-            })
-          );
-        }
-        continue;
-      }
-    }
-    acciones.push(aAccionV2(l, orden++));
-  }
-  return acciones;
-}
-
-function esCeldaBloqueo(celda: string): boolean {
-  return celda.startsWith("BLOQ-P-") || celda.startsWith("BLOQ-R-");
-}
-
-function mismaMini(a: PuntoV2, b: PuntoV2): boolean {
-  return a.celda === b.celda && a.mini === b.mini;
-}
-
-function maxIdLineas(lineas: LineaClasificada[]): number {
-  let max = 0;
-  for (const l of lineas) {
-    const m = l.id.match(/^l-(\d+)$/);
-    if (m) max = Math.max(max, parseInt(m[1]));
-  }
-  return max;
-}
-
-function calcularRecepcionOverrides(
-  posicionesFijas: Record<Zona, string>,
-  posicionesPunto: Record<Zona, string>
-): Partial<Record<Zona, string | null>> {
-  const out: Partial<Record<Zona, string | null>> = {};
-  for (const z of [5, 6, 1] as Zona[]) {
-    const fijo = posicionesFijas[z];
-    if (fijo) out[z] = fijo;
-  }
-  for (const z of [5, 6, 1] as Zona[]) {
-    const pto = posicionesPunto[z];
-    if (pto) out[z] = pto;
-  }
-  return out;
-}
-
-function rolCortoParaUI(rol: string): string {
-  if (rol === "C1" || rol === "C2") return "C";
-  if (rol === "P1" || rol === "P2") return "P";
-  return rol;
-}
 
 // ============================================================
 // COMPONENTE
@@ -285,7 +93,7 @@ export default function DataEntryV2({
   const [colaPopups, setColaPopups] = useState<PopupEnCola[]>([]);
   const [contadorId, setContadorId] = useState(1);
 
-  const [saqueInicial, setSaqueInicial] = useState<Lado>("propio");
+  const [saqueInicial, setSaqueInicial] = useState<"propio" | "rival">("propio");
   const [rotacion, setRotacion] = useState<RotacionPunto | null>(
     rotacionInicial ?? null
   );
@@ -293,15 +101,15 @@ export default function DataEntryV2({
   const [posicionesPunto, setPosicionesPunto] = useState<Record<Zona, string>>(
     () => ({ ...POSICIONES_VACIAS })
   );
-  const [cambiosPendientes, setCambiosPendientes] = useState<CambioPendiente[]>(
-    []
-  );
+  const [cambiosPendientes, setCambiosPendientes] = useState<
+    import("./PanelRotacionV2").CambioPendiente[]
+  >([]);
 
   const [posicionesFijas, setPosicionesFijas] = useState<PosicionesFijasMap>(
     {}
   );
 
-  const [setActivo, setSetActivo] = useState<number>(1);
+  const [setActivo] = useState<number>(1);
   const [orientacion, setOrientacion] = useState<Orientacion>("vertical");
   const [guardando, setGuardando] = useState(false);
   const [setupCompleto, setSetupCompleto] = useState(false);
@@ -338,7 +146,7 @@ export default function DataEntryV2({
     };
   }, [rotacion, posicionesPunto, liberos]);
 
-  const jugadoresEnCancha: JugadorEnCancha[] = useMemo(() => {
+  const jugadoresEnCancha = useMemo(() => {
     if (!rotacion) return [];
 
     const numeroRot = numeroRotacionDesdePosiciones(rotacion);
@@ -346,7 +154,12 @@ export default function DataEntryV2({
     const rotConLib: RotacionPunto = { ...rotacion, liberos };
 
     const zonasOrden: Zona[] = [1, 2, 3, 4, 5, 6];
-    const out: JugadorEnCancha[] = [];
+    const out: {
+      id: string;
+      nombre: string;
+      rol: string;
+      zona: number;
+    }[] = [];
 
     for (const z of zonasOrden) {
       const rol = fila?.[z];
@@ -376,7 +189,7 @@ export default function DataEntryV2({
     return out;
   }, [rotacion, situacion, liberos, posicionesPunto, jugadores]);
 
-  const delanterosPorZona: JugadorZona[] = useMemo(() => {
+  const delanterosPorZona = useMemo(() => {
     if (!rotacionEfectiva) return [];
     const zonas: (4 | 3 | 2)[] = [4, 3, 2];
     return zonas.map((z) => {
@@ -409,7 +222,7 @@ export default function DataEntryV2({
     );
   }, [posicionesFijasActuales, posicionesPunto]);
 
-  const lineasParaUI: LineaV2[] = useMemo(() => lineas.map(aLineaV2), [lineas]);
+  const lineasParaUI = useMemo(() => lineas.map(aLineaV2), [lineas]);
   const origenActivoParaUI: PuntoV2 | null =
     circuloSinArmar ?? circuloArmado;
 
@@ -474,7 +287,7 @@ export default function DataEntryV2({
 
     if (prev) {
       let rotSig: RotacionPunto = prev.rotacion;
-      const saqueSig: Lado = prev.ganador;
+      const saqueSig: "propio" | "rival" = prev.ganador;
       if (prev.ganador === "propio" && prev.saqueInicial === "rival") {
         const { rotacion: rotG } = girarRotacionPunto(prev.rotacion, 1);
         rotSig = rotG;
@@ -493,7 +306,7 @@ export default function DataEntryV2({
     }
   };
 
-  // ---------- GUARDADO (bloqueado hasta hidratar) ----------
+  // ---------- GUARDADO LOCAL (bloqueado hasta hidratar) ----------
   useEffect(() => {
     if (!partidoId || !hidratado) return;
     try {
@@ -565,7 +378,6 @@ export default function DataEntryV2({
     }
     try {
       const data = JSON.parse(raw);
-      if (data.setActivo) setSetActivo(data.setActivo);
       if (data.setupCompleto !== undefined)
         setSetupCompleto(data.setupCompleto);
       const cerrados: Record<number, PuntoCerrado> =
@@ -591,6 +403,10 @@ export default function DataEntryV2({
     setHidratado(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partidoId]);
+
+  // ------------------------------------------------------------
+  // CLICKS EN CANCHA
+  // ------------------------------------------------------------
 
   const handleMiniClick = (coords: CoordsV2) => {
     if (!setupCompleto) return;
@@ -964,21 +780,21 @@ export default function DataEntryV2({
     );
   };
 
-  const handleSaqueConfirmar = (_v: ValorSaque) => {
+  const handleSaqueConfirmar = () => {
     popupSiguiente();
   };
 
-  const handleTipoSaqueConfirmar = (v: ValorTipoSaque) => {
+  const handleTipoSaqueConfirmar = (v: "potencia" | "flotado") => {
     actualizarLineaPopup({ tipoSaque: v });
     popupSiguiente();
   };
 
-  const handleRecepcionConfirmar = (v: ValorRecepcion) => {
+  const handleRecepcionConfirmar = (v: 1 | 2 | 3 | 4 | 5 | 6) => {
     actualizarLineaPopup({ subtipo: v });
     popupSiguiente();
   };
 
-  const handleArmadoConfirmar = (v: ValorArmado) => {
+  const handleArmadoConfirmar = (v: 1 | 2 | 3 | 4 | 5 | 6 | "R") => {
     if (!popupActivo?.lineaId) {
       popupSiguiente();
       return;
@@ -997,7 +813,7 @@ export default function DataEntryV2({
     ]);
   };
 
-  const handleVelocidadConfirmar = (v: ValorVelocidad) => {
+  const handleVelocidadConfirmar = (v: 1 | 1.5 | 2 | 3 | 5) => {
     if (!popupActivo?.lineaId) {
       popupSiguiente();
       return;
@@ -1011,7 +827,7 @@ export default function DataEntryV2({
   };
 
   const handleDefensaConfirmar = (
-    subtipo: TipoDefensa | null,
+    subtipo: "toque" | "gran-defensa" | "libre" | null,
     jugadorId: string | null,
     x2: boolean
   ) => {
@@ -1061,7 +877,11 @@ export default function DataEntryV2({
   };
 
   const handleRoceRedConfirmar = (
-    resultado: ResultadoRoceRed,
+    resultado:
+      | "ofensivo-propio"
+      | "invasion-zaguero"
+      | "invasion-delantero"
+      | "roce-red-rival",
     jugadorId: string | null
   ) => {
     if (!popupActivo) return;
@@ -1086,15 +906,13 @@ export default function DataEntryV2({
     popupSiguiente();
   };
 
-  const handleAtaqueToqueLibreConfirmar = (v: VarianteAtaquePopup) => {
+  const handleAtaqueToqueLibreConfirmar = (v: "toque" | "libre") => {
     if (!popupActivo) return;
 
     if (v === "toque") {
       setLineas((prev) =>
         prev.map((l) =>
-          l.id === popupActivo.lineaId
-            ? { ...l, variante: "toque" }
-            : l
+          l.id === popupActivo.lineaId ? { ...l, variante: "toque" } : l
         )
       );
     } else if (v === "libre") {
@@ -1109,7 +927,7 @@ export default function DataEntryV2({
     popupSiguiente();
   };
 
-  const handleRemateSegundaConfirmar = (_v: VarianteRemateSegunda) => {
+  const handleRemateSegundaConfirmar = () => {
     if (!popupActivo?.lineaId) {
       popupSiguiente();
       return;
@@ -1267,142 +1085,48 @@ export default function DataEntryV2({
     setSetupCompleto(true);
   };
 
+  const lineasVisibles = lineas.filter((l) => !l.oculta).length;
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-center gap-6 bg-slate-900 text-white rounded-2xl px-6 py-3">
-        <div className="text-center">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase">
-            {nombreMiEquipo}
-          </p>
-          <p className="text-3xl font-bold tabular-nums">{marcador.propio}</p>
-        </div>
-        <div className="text-center">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase">
-            SET
-          </p>
-          <p className="text-xl font-bold tabular-nums">{setActivo}</p>
-        </div>
-        <div className="text-center">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase">
-            {nombreRival}
-          </p>
-          <p className="text-3xl font-bold tabular-nums">{marcador.rival}</p>
-        </div>
-      </div>
+      <BarraMarcadorV2
+        nombreMiEquipo={nombreMiEquipo}
+        nombreRival={nombreRival}
+        setActivo={setActivo}
+        marcador={marcador}
+        visibleNavegacion={!necesitaSetup}
+        puntoActual={puntoActual}
+        puntoActualCerrado={puntoActualCerrado}
+        saqueInicial={saqueInicial}
+        lineasVisibles={lineasVisibles}
+        circuloArmado={!!circuloArmado}
+        circuloSinArmar={!!circuloSinArmar}
+        puedeIrAnterior={puntoActual > 1}
+        puedeIrSiguiente={puntoActual + 1 <= maxNavegable}
+        onIrPunto={irAPunto}
+      />
 
       {necesitaSetup && (
-        <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 space-y-3">
-          <h2 className="text-lg font-bold text-amber-900">
-            🎬 Antes de empezar el partido
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4">
-            <div>
-              {rotacion && (
-                <PanelRotacionV2
-                  rotacion={rotacion}
-                  jugadoresEnCancha={jugadores.map((j) => ({
-                    id: j.id,
-                    nombre: j.nombre,
-                    numero: j.numero,
-                  }))}
-                  jugadoresDisponibles={jugadores.map((j) => ({
-                    id: j.id,
-                    nombre: j.nombre,
-                    numero: j.numero,
-                  }))}
-                  liberos={liberos}
-                  posicionesPunto={posicionesPunto}
-                  posicionesFijas={posicionesFijasActuales}
-                  cambiosPendientes={cambiosPendientes}
-                  onFijarPosiciones={handleFijarPosiciones}
-                  onLimpiarFijadas={handleLimpiarFijadas}
-                  onSetLiberos={setLiberos}
-                  onSetPosicionesPunto={setPosicionesPunto}
-                  onSetCambiosPendientes={setCambiosPendientes}
-                  onGuardarCambios={handleGuardarCambios}
-                  onCambioRotacion={handleCambioRotacion}
-                  onCambioSaque={handleCambioSaque}
-                />
-              )}
-            </div>
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs font-bold text-amber-800 uppercase mb-1">
-                  ¿Quién saca el primer punto?
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleCambioSaque("propio")}
-                    className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                      saqueInicial === "propio"
-                        ? "bg-emerald-500 text-white"
-                        : "bg-white text-slate-700 border border-slate-300"
-                    }`}
-                  >
-                    {nombreMiEquipo}
-                  </button>
-                  <button
-                    onClick={() => handleCambioSaque("rival")}
-                    className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                      saqueInicial === "rival"
-                        ? "bg-orange-500 text-white"
-                        : "bg-white text-slate-700 border border-slate-300"
-                    }`}
-                  >
-                    {nombreRival}
-                  </button>
-                </div>
-              </div>
-              <button
-                onClick={handleComenzar}
-                className="w-full px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-lg text-lg"
-              >
-                ✓ Comenzar partido
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!necesitaSetup && (
-        <div className="flex items-center justify-between text-sm text-slate-600 bg-white border border-slate-200 rounded-xl px-4 py-2">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => irAPunto(puntoActual - 1)}
-              disabled={puntoActual === 1}
-              className="w-7 h-7 flex items-center justify-center rounded border border-slate-300 hover:bg-slate-50 disabled:opacity-30"
-            >
-              ◀
-            </button>
-            <span>
-              <strong>Set {setActivo}</strong> · Punto{" "}
-              <strong>{puntoActual}</strong>
-              {puntoActualCerrado && (
-                <span className="ml-1 text-emerald-600 text-xs">✓ cerrado</span>
-              )}
-              {" · "}Saca:{" "}
-              <strong>
-                {saqueInicial === "propio" ? nombreMiEquipo : nombreRival}
-              </strong>
-            </span>
-            <button
-              onClick={() => irAPunto(puntoActual + 1)}
-              disabled={puntoActual + 1 > maxNavegable}
-              className="w-7 h-7 flex items-center justify-center rounded border border-slate-300 hover:bg-slate-50 disabled:opacity-30"
-            >
-              ▶
-            </button>
-          </div>
-          <span className="text-xs text-slate-400">
-            {lineas.filter((l) => !l.oculta).length} línea
-            {lineas.filter((l) => !l.oculta).length !== 1 ? "s" : ""}
-            {circuloArmado
-              ? " · armado (naranja)"
-              : circuloSinArmar
-              ? " · click en el círculo"
-              : ""}
-          </span>
-        </div>
+        <SetupInicialV2
+          rotacion={rotacion}
+          jugadores={jugadores}
+          liberos={liberos}
+          posicionesPunto={posicionesPunto}
+          posicionesFijasActuales={posicionesFijasActuales}
+          cambiosPendientes={cambiosPendientes}
+          saqueInicial={saqueInicial}
+          nombreMiEquipo={nombreMiEquipo}
+          nombreRival={nombreRival}
+          onFijarPosiciones={handleFijarPosiciones}
+          onLimpiarFijadas={handleLimpiarFijadas}
+          onSetLiberos={setLiberos}
+          onSetPosicionesPunto={setPosicionesPunto}
+          onSetCambiosPendientes={setCambiosPendientes}
+          onGuardarCambios={handleGuardarCambios}
+          onCambioRotacion={handleCambioRotacion}
+          onCambioSaque={handleCambioSaque}
+          onComenzar={handleComenzar}
+        />
       )}
 
       {!necesitaSetup && (
@@ -1410,22 +1134,17 @@ export default function DataEntryV2({
           <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-3">
             <div className="space-y-2">
               {rotacion && (
-                <PanelRotacionV2
+                <SetupInicialV2
+                  modo="carga"
                   rotacion={rotacion}
-                  jugadoresEnCancha={jugadores.map((j) => ({
-                    id: j.id,
-                    nombre: j.nombre,
-                    numero: j.numero,
-                  }))}
-                  jugadoresDisponibles={jugadores.map((j) => ({
-                    id: j.id,
-                    nombre: j.nombre,
-                    numero: j.numero,
-                  }))}
+                  jugadores={jugadores}
                   liberos={liberos}
                   posicionesPunto={posicionesPunto}
-                  posicionesFijas={posicionesFijasActuales}
+                  posicionesFijasActuales={posicionesFijasActuales}
                   cambiosPendientes={cambiosPendientes}
+                  saqueInicial={saqueInicial}
+                  nombreMiEquipo={nombreMiEquipo}
+                  nombreRival={nombreRival}
                   onFijarPosiciones={handleFijarPosiciones}
                   onLimpiarFijadas={handleLimpiarFijadas}
                   onSetLiberos={setLiberos}
@@ -1434,116 +1153,13 @@ export default function DataEntryV2({
                   onGuardarCambios={handleGuardarCambios}
                   onCambioRotacion={handleCambioRotacion}
                   onCambioSaque={handleCambioSaque}
+                  onComenzar={handleComenzar}
                 />
               )}
-              <div className="bg-white border border-slate-200 rounded-lg p-2">
-                <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">
-                  Secuencia
-                </p>
-                <div className="max-h-[420px] overflow-y-auto pr-1">
-                  <ol className="text-[11px] text-slate-700 space-y-1.5">
-                    {secuenciaConValores.length === 0 && (
-                      <li className="text-slate-400 italic text-[10px]">
-                        (sin acciones)
-                      </li>
-                    )}
-                    {secuenciaConValores.map((l, i) => {
-                      const partes: string[] = [];
-                      if (l.posicionInicial) {
-                        partes.push(
-                          `⭐${l.posicionInicial.celda}${
-                            l.posicionInicial.mini
-                              ? `-${l.posicionInicial.mini}`
-                              : ""
-                          }`
-                        );
-                      }
-                      partes.push(
-                        `${l.origen.celda}${
-                          l.origen.mini ? `-${l.origen.mini}` : ""
-                        }`
-                      );
-                      for (const d of l.desvios ?? []) {
-                        partes.push(
-                          `${d.celda}${d.mini ? `-${d.mini}` : ""}`
-                        );
-                      }
-                      partes.push(
-                        `${l.destino.celda}${
-                          l.destino.mini ? `-${l.destino.mini}` : ""
-                        }`
-                      );
-                      const coord = partes.join(" → ");
-
-                      const val =
-                        l.subtipo !== undefined && l.subtipo !== null
-                          ? String(l.subtipo)
-                          : "";
-                      const esToqueAtaque =
-                        l.tipo === "ataque" && l.variante === "toque";
-                      return (
-                        <li
-                          key={l.id}
-                          className="border-l-2 border-slate-300 pl-2"
-                        >
-                          <div className="font-semibold text-slate-800 flex items-center gap-1 flex-wrap">
-                            <span>{i + 1}.</span>
-                            <span>{l.tipo}</span>
-                            {val && (
-                              <span className="text-emerald-700 bg-emerald-50 px-1 rounded text-[10px] font-bold uppercase">
-                                {val}
-                              </span>
-                            )}
-                            {l.tipoSaque && (
-                              <span className="text-orange-700 bg-orange-50 px-1 rounded text-[10px] font-bold uppercase">
-                                {l.tipoSaque === "potencia" ? "P" : "F"}
-                              </span>
-                            )}
-                            {l.velocidad !== undefined &&
-                              l.velocidad !== null && (
-                                <span className="text-sky-700 bg-sky-50 px-1 rounded text-[10px] font-bold">
-                                  v{l.velocidad}
-                                </span>
-                              )}
-                            {l.x2 && (
-                              <span className="text-violet-700 bg-violet-50 px-1 rounded text-[10px] font-bold uppercase">
-                                x2
-                              </span>
-                            )}
-                            {esToqueAtaque && (
-                              <span className="text-amber-700 bg-amber-50 px-1 rounded text-[10px] font-bold uppercase">
-                                toque
-                              </span>
-                            )}
-                            {l.esRival && (
-                              <span className="text-[9px] text-slate-400 italic">
-                                (rival)
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[10px] text-slate-600 truncate">
-                            👤{" "}
-                            {l.jugadorId
-                              ? nombreDeJugador(l.jugadorId)
-                              : l.esRival
-                              ? "—"
-                              : "(sin asignar)"}
-                          </div>
-                          <div className="text-[10px] text-slate-400 font-mono truncate">
-                            {coord}
-                          </div>
-                          {l.desvios && l.desvios.length > 0 && (
-                            <div className="text-[10px] text-orange-600">
-                              ↳ {l.desvios.length} desvío
-                              {l.desvios.length !== 1 ? "s" : ""}
-                            </div>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </div>
-              </div>
+              <SecuenciaV2
+                lineas={secuenciaConValores}
+                nombreDeJugador={nombreDeJugador}
+              />
             </div>
 
             <div className="relative bg-white rounded-2xl shadow-sm border border-slate-200 p-3">
@@ -1589,147 +1205,42 @@ export default function DataEntryV2({
                   onClickCirculo={handleClickCirculo}
                 />
 
-                {popupActivo?.tipo === "saque" && (
-                  <PopupSaque
-                    pos={popupActivo.pos}
-                    onConfirmar={handleSaqueConfirmar}
-                    onCancelar={cerrarPopup}
-                  />
-                )}
-                {popupActivo?.tipo === "tipo-saque" && (
-                  <PopupTipoSaque
-                    pos={popupActivo.pos}
-                    onConfirmar={handleTipoSaqueConfirmar}
-                    onCancelar={popupSiguiente}
-                  />
-                )}
-                {popupActivo?.tipo === "recepcion" && (
-                  <PopupRecepcion
-                    pos={popupActivo.pos}
-                    onConfirmar={handleRecepcionConfirmar}
-                    onCancelar={cerrarPopup}
-                  />
-                )}
-                {popupActivo?.tipo === "armado" && (
-                  <PopupArmado
-                    pos={popupActivo.pos}
-                    onConfirmar={handleArmadoConfirmar}
-                    onCancelar={cerrarPopup}
-                  />
-                )}
-                {popupActivo?.tipo === "velocidad" && (
-                  <PopupVelocidad
-                    pos={popupActivo.pos}
-                    onConfirmar={handleVelocidadConfirmar}
-                    onCancelar={cerrarPopup}
-                  />
-                )}
-                {popupActivo?.tipo === "defensa" && (
-                  <PopupDefensa
-                    pos={popupActivo.pos}
-                    onConfirmar={handleDefensaConfirmar}
-                    onCancelar={cerrarPopup}
-                  />
-                )}
-                {popupActivo?.tipo === "libre" && (
-                  <PopupLibre
-                    pos={popupActivo.pos}
-                    jugadores={jugadoresEnCancha}
-                    onConfirmar={handleLibreConfirmar}
-                    onCancelar={cerrarPopup}
-                  />
-                )}
-                {popupActivo?.tipo === "jugador" && (
-                  <PopupJugador
-                    pos={popupActivo.pos}
-                    jugadores={jugadoresEnCancha}
-                    onConfirmar={handleJugadorConfirmar}
-                    onCancelar={cerrarPopup}
-                  />
-                )}
-                {popupActivo?.tipo === "roce-red" && (
-                  <PopupRoceRed
-                    pos={popupActivo.pos}
-                    jugadores={jugadoresEnCancha}
-                    onConfirmar={handleRoceRedConfirmar}
-                    onCancelar={cerrarPopup}
-                  />
-                )}
-                {popupActivo?.tipo === "ataque-toque-libre" && (
-                  <PopupAtaqueToqueLibre
-                    pos={popupActivo.pos}
-                    onConfirmar={handleAtaqueToqueLibreConfirmar}
-                    onCancelar={cerrarPopup}
-                  />
-                )}
-                {popupActivo?.tipo === "remate-segunda" && (
-                  <PopupRemateSegunda
-                    pos={popupActivo.pos}
-                    onConfirmar={handleRemateSegundaConfirmar}
-                    onCancelar={cerrarPopup}
-                  />
-                )}
-                {popupActivo?.tipo === "bloqueo" && (
-                  <PopupBloqueo
-                    pos={popupActivo.pos}
-                    jugadores={delanterosPorZona}
-                    onConfirmar={handleBloqueoConfirmar}
-                    onCancelar={cerrarPopup}
-                  />
-                )}
+                <PopupsV2
+                  popupActivo={popupActivo}
+                  jugadoresEnCancha={jugadoresEnCancha}
+                  delanterosPorZona={delanterosPorZona}
+                  onSaqueConfirmar={handleSaqueConfirmar}
+                  onTipoSaqueConfirmar={handleTipoSaqueConfirmar}
+                  onRecepcionConfirmar={handleRecepcionConfirmar}
+                  onArmadoConfirmar={handleArmadoConfirmar}
+                  onVelocidadConfirmar={handleVelocidadConfirmar}
+                  onDefensaConfirmar={handleDefensaConfirmar}
+                  onLibreConfirmar={handleLibreConfirmar}
+                  onJugadorConfirmar={handleJugadorConfirmar}
+                  onBloqueoConfirmar={handleBloqueoConfirmar}
+                  onRoceRedConfirmar={handleRoceRedConfirmar}
+                  onAtaqueToqueLibreConfirmar={handleAtaqueToqueLibreConfirmar}
+                  onRemateSegundaConfirmar={handleRemateSegundaConfirmar}
+                  onCerrar={cerrarPopup}
+                  onSiguiente={popupSiguiente}
+                />
               </CanchaV2>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl p-3">
-            <div className="flex gap-2">
-              <button
-                onClick={handleBorrarUltima}
-                disabled={
-                  lineas.length === 0 && !circuloArmado && !circuloSinArmar
-                }
-                className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-sm font-medium disabled:opacity-40"
-              >
-                ↩ Borrar última (D)
-              </button>
-              <button
-                onClick={handleBorrarPunto}
-                disabled={lineas.length === 0}
-                className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 rounded-lg text-sm font-medium disabled:opacity-40"
-              >
-                ✕ Borrar punto
-              </button>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={handleGuardarSupabase}
-                disabled={
-                  guardando || Object.keys(puntosCerrados).length === 0
-                }
-                className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg disabled:opacity-40"
-              >
-                {guardando ? "Guardando..." : "💾 Guardar en Supabase"}
-              </button>
-              <button
-                onClick={handleCerrarPunto}
-                disabled={lineas.length === 0}
-                className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg disabled:opacity-40"
-              >
-                ✓ Cerrar punto (Enter)
-              </button>
-            </div>
-          </div>
-
-          <p className="text-xs text-slate-400 text-center">
-            Click en mini → círculo blanco. Click en el círculo → armado
-            (naranja ✓).
-            <br />
-            Sin armar: click propia = ⭐, click rival = rompe línea (libre).
-            Armado: click en bloqueo = desvío, click en cualquier otra = línea.
-            <br />
-            <strong>Atajos:</strong> Esc (desarmar/borrar desvío) · Enter
-            (cerrar) · D (borrar última) · Ctrl+G (guardar en Supabase)
-          </p>
+          <BotonesAccionV2
+            guardando={guardando}
+            puedeBorrarUltima={
+              lineas.length > 0 || !!circuloArmado || !!circuloSinArmar
+            }
+            puedeBorrarPunto={lineas.length > 0}
+            puedeGuardar={Object.keys(puntosCerrados).length > 0}
+            puedeCerrarPunto={lineas.length > 0}
+            onBorrarUltima={handleBorrarUltima}
+            onBorrarPunto={handleBorrarPunto}
+            onGuardar={handleGuardarSupabase}
+            onCerrarPunto={handleCerrarPunto}
+          />
         </>
       )}
     </div>

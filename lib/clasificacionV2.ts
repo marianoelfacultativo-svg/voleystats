@@ -79,6 +79,8 @@ export interface LineaClasificada {
   /** Tipo de saque: "potencia" | "flotado". Solo en saques propios.
       Se mapea a la columna `tipo_saque` de `acciones_v2`. */
   tipoSaque?: TipoSaque | null;
+  /** Equipo dueño de esta línea (modo espejo). null = comportamiento clásico. */
+  equipoId?: string | null;
 }
 
 export interface EstadoClasificacion {
@@ -87,6 +89,13 @@ export interface EstadoClasificacion {
   rotacion: RotacionPunto;
   lineas: LineaClasificada[];
   recepcionOverrides?: Partial<Record<Zona, string | null>>;
+  // ---------- Modo espejo ----------
+  modoEspejo?: boolean;
+  equipoPropioId?: string | null;
+  equipoRivalId?: string | null;
+  rotacionRival?: RotacionPunto | null;
+  situacionRival?: Situacion | null;
+  recepcionOverridesRival?: Partial<Record<Zona, string | null>>;
 }
 
 export interface ResultadoClasificacion {
@@ -98,6 +107,8 @@ export interface ResultadoClasificacion {
   desvios?: PuntoV2[];
   subtipoFijo?: string | number;
   tipoSaqueFijo?: TipoSaque;
+  /** Equipo dueño de esta acción (modo espejo). null = comportamiento clásico. */
+  equipoId?: string | null;
 }
 
 // ============================================================
