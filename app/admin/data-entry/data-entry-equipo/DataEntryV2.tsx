@@ -1548,7 +1548,20 @@ export default function DataEntryV2({
                 </button>
               </div>
 
-              <CanchaV2 orientacion={orientacion} onMiniClick={handleMiniClick}>
+              <CanchaV2
+                orientacion={orientacion}
+                onMiniClick={handleMiniClick}
+                onCerrarPunto={handleCerrarPunto}
+                onPuntoSiguiente={() => irAPunto(puntoActual + 1)}
+                onBorrarPunto={handleBorrarPunto}
+                onBorrarLinea={handleBorrarUltima}
+                puedeCerrarPunto={lineas.length > 0}
+                puedeIrSiguiente={puntoActual + 1 <= maxNavegable}
+                puedeBorrarPunto={lineas.length > 0}
+                puedeBorrarLinea={
+                  lineas.length > 0 || !!circuloArmado || !!circuloSinArmar
+                }
+              >
                 <LineasV2
                   lineas={lineasParaUI}
                   origenActivo={origenActivoParaUI}

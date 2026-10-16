@@ -40,6 +40,15 @@ interface Props {
   celdasResaltadas?: Set<string>;
   maxAlto?: number;
   children?: React.ReactNode;
+  // Acciones extra para pantalla completa
+  onCerrarPunto?: () => void;
+  onPuntoSiguiente?: () => void;
+  onBorrarPunto?: () => void;
+  onBorrarLinea?: () => void;
+  puedeCerrarPunto?: boolean;
+  puedeIrSiguiente?: boolean;
+  puedeBorrarPunto?: boolean;
+  puedeBorrarLinea?: boolean;
 }
 
 // ============================================================
@@ -330,6 +339,14 @@ export default function CanchaV2({
   celdasResaltadas,
   maxAlto = 900,
   children,
+  onCerrarPunto,
+  onPuntoSiguiente,
+  onBorrarPunto,
+  onBorrarLinea,
+  puedeCerrarPunto,
+  puedeIrSiguiente,
+  puedeBorrarPunto,
+  puedeBorrarLinea,
 }: Props) {
   const [hover, setHover] = useState<{ celda: string; mini: string } | null>(
     null
@@ -501,6 +518,12 @@ export default function CanchaV2({
     [stretch.sx, stretch.sy, popupZoom, circleZoom]
   );
 
+  const hayAcciones =
+    !!onCerrarPunto ||
+    !!onPuntoSiguiente ||
+    !!onBorrarPunto ||
+    !!onBorrarLinea;
+
   return (
     <div
       ref={containerRef}
@@ -640,6 +663,44 @@ export default function CanchaV2({
             {enPantallaCompleta ? "⤢ Salir" : "⛶ Pantalla completa"}
           </button>
         </div>
+
+        {/* Acciones chicas, SOLO en pantalla completa */}
+        {enPantallaCompleta && hayAcciones && (
+          <div className="flex items-center gap-1 mt-1">
+            <button
+              onClick={onCerrarPunto}
+              disabled={puedeCerrarPunto === false}
+              className="px-2 h-6 rounded bg-emerald-500 text-white text-[10px] font-semibold hover:bg-emerald-600 disabled:opacity-40 shadow"
+              title="Cerrar punto (Enter)"
+            >
+              ✓ Cerrar
+            </button>
+            <button
+              onClick={onPuntoSiguiente}
+              disabled={puedeIrSiguiente === false}
+              className="px-2 h-6 rounded bg-slate-700 text-white text-[10px] font-semibold hover:bg-slate-800 disabled:opacity-40 shadow"
+              title="Punto siguiente"
+            >
+              ▶ Siguiente
+            </button>
+            <button
+              onClick={onBorrarPunto}
+              disabled={puedeBorrarPunto === false}
+              className="px-2 h-6 rounded bg-red-500 text-white text-[10px] font-semibold hover:bg-red-600 disabled:opacity-40 shadow"
+              title="Borrar punto"
+            >
+              ✕ Borrar punto
+            </button>
+            <button
+              onClick={onBorrarLinea}
+              disabled={puedeBorrarLinea === false}
+              className="px-2 h-6 rounded bg-red-300 text-red-900 text-[10px] font-semibold hover:bg-red-400 disabled:opacity-40 shadow"
+              title="Borrar última línea (D)"
+            >
+              ↩ Borrar línea
+            </button>
+          </div>
+        )}
 
         {hayStretch && (
           <span className="text-[9px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
