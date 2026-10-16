@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 // ============================================================
 // TIPOS
@@ -42,6 +42,10 @@ const ALTO_BLOQUEO = 14;
 const ALTO_RED = 14;
 
 const COLS = ["C1", "C2", "C3", "C4", "C5"] as const;
+
+const ZOOM_MIN = 0.3;
+const ZOOM_MAX = 3;
+const ZOOM_STEP = 0.15;
 
 // ============================================================
 // DEFINICIÓN DE CELDAS
@@ -183,7 +187,6 @@ const TOTAL_ANCHO = 5 * ANCHO_CELDA;
 const TOTAL_ALTO = CELDAS.reduce((max, c) => Math.max(max, c.y + c.alto), 0);
 
 // ---------- MARCO EXTERIOR ----------
-// Grosor del marco = alto de una celda de cancha (42px)
 const MARGEN = ALTO_CANCHA;
 
 const TOTAL_ANCHO_EXT = TOTAL_ANCHO + 2 * MARGEN;
@@ -236,7 +239,6 @@ const COLORES_ZONA: Record<
   },
 };
 
-// Color del marco
 const COLOR_MARCO = "#0f172a";
 
 // ============================================================
@@ -265,7 +267,6 @@ function svgToLayoutCoords(
   if (orientacion === "vertical") {
     return { x: sx - MARGEN, y: sy - MARGEN };
   }
-  // horizontal: outer = (MARGEN + TOTAL_ALTO - y, MARGEN + x)
   return {
     x: sy - MARGEN,
     y: MARGEN + TOTAL_ALTO - sx,
@@ -316,11 +317,6 @@ function rectMini(
 // EXPORTS PARA LA CAPA DE LÍNEAS
 // ============================================================
 
-/**
- * Devuelve el rect de una mini en coordenadas del LAYOUT interno
- * (siempre vertical, sin la rotación aplicada al <g>).
- * Ideal para dibujar elementos como children dentro del <g>.
- */
 export function getRectMiniLayout(
   celdaId: string,
   mini: string
@@ -334,10 +330,6 @@ export function getRectMiniLayout(
   return rectMini(c, fil, col);
 }
 
-/**
- * Dado un punto en coordenadas del SVG raíz (post-CTM) y la orientación,
- * devuelve la celda + mini que contiene ese punto, o null.
- */
 export function hitTestV2(
   sx: number,
   sy: number,
@@ -366,6 +358,58 @@ export default function CanchaV2({
   const [hover, setHover] = useState<{ celda: string; mini: string } | null>(
     null
   );
+  const [zoom, setZoom] = useState(1);
+  const [enPantallaCompleta, setEnPantallaCompleta] = useState(false);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Detectar cambios de fullscreen (por si el usuario sale con Esc)
+  useEffect(() => {
+    const onFsChange = () => {
+      const activo = document.fullscreenElement === containerRef.current;
+      setEnPantallaCompleta(activo);
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () =>
+      document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  // Al entrar en pantalla completa: calcular zoom óptimo para que entre
+  useEffect(() => {
+    if (!enPantallaCompleta) return;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const anchoBase =
+      orientacion === "vertical" ? TOTAL_ANCHO_EXT : TOTAL_ALTO_EXT;
+    const altoBase =
+      orientacion === "vertical" ? TOTAL_ALTO_EXT : TOTAL_ANCHO_EXT;
+    const padding = 80;
+    const z = Math.min(
+      (vw - padding) / anchoBase,
+      (vh - padding) / altoBase
+    );
+    setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z)));
+  }, [enPantallaCompleta, orientacion]);
+
+  const togglePantallaCompleta = async () => {
+    const el = containerRef.current;
+    if (!el) return;
+    try {
+      if (!document.fullscreenElement) {
+        await el.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch {
+      /* noop */
+    }
+  };
+
+  const zoomIn = () =>
+    setZoom((z) => Math.min(ZOOM_MAX, +(z + ZOOM_STEP).toFixed(2)));
+  const zoomOut = () =>
+    setZoom((z) => Math.max(ZOOM_MIN, +(z - ZOOM_STEP).toFixed(2)));
+  const zoomReset = () => setZoom(1);
 
   const handleMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const sp = svgCoordsDesdeMouse(e);
@@ -402,10 +446,13 @@ export default function CanchaV2({
     onMiniClick({ zona: celda.zona, celda: celda.id, mini });
   };
 
-  const anchoRender =
+  const anchoBase =
     orientacion === "vertical" ? TOTAL_ANCHO_EXT : TOTAL_ALTO_EXT;
-  const altoRender =
+  const altoBase =
     orientacion === "vertical" ? TOTAL_ALTO_EXT : TOTAL_ANCHO_EXT;
+
+  const anchoRender = anchoBase * zoom;
+  const altoRender = altoBase * zoom;
 
   const hoverCelda = useMemo(
     () => (hover ? CELDAS.find((c) => c.id === hover.celda) : null),
@@ -423,15 +470,59 @@ export default function CanchaV2({
 
   return (
     <div
+      ref={containerRef}
+      className="relative"
       style={{
         width: "100%",
-        maxHeight: maxAlto,
+        maxHeight: enPantallaCompleta ? "100vh" : maxAlto,
         overflow: "auto",
+        background: enPantallaCompleta ? "#0b1220" : "transparent",
         display: "flex",
         justifyContent: "center",
-        alignItems: "flex-start",
+        alignItems: enPantallaCompleta ? "center" : "flex-start",
       }}
     >
+      {/* Toolbar flotante */}
+      <div
+        className="sticky top-2 right-2 self-start z-20 flex items-center gap-1 flex-wrap ml-auto"
+        style={{ pointerEvents: "auto" }}
+      >
+        <button
+          onClick={zoomOut}
+          disabled={zoom <= ZOOM_MIN}
+          className="w-7 h-7 rounded bg-white/95 border border-slate-300 text-slate-700 font-bold hover:bg-white disabled:opacity-40 shadow"
+          title="Achicar"
+        >
+          −
+        </button>
+        <button
+          onClick={zoomReset}
+          className="px-2 h-7 rounded bg-white/95 border border-slate-300 text-slate-700 text-[11px] font-semibold hover:bg-white shadow"
+          title="Restablecer zoom"
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+        <button
+          onClick={zoomIn}
+          disabled={zoom >= ZOOM_MAX}
+          className="w-7 h-7 rounded bg-white/95 border border-slate-300 text-slate-700 font-bold hover:bg-white disabled:opacity-40 shadow"
+          title="Agrandar"
+        >
+          +
+        </button>
+        <button
+          onClick={togglePantallaCompleta}
+          className="px-2 h-7 rounded bg-white/95 border border-slate-300 text-slate-700 text-[11px] font-semibold hover:bg-white shadow"
+          title={
+            enPantallaCompleta
+              ? "Salir de pantalla completa"
+              : "Pantalla completa"
+          }
+        >
+          {enPantallaCompleta ? "⤢ Salir" : "⛶ Pantalla completa"}
+        </button>
+      </div>
+
       <svg
         width={anchoRender}
         height={altoRender}
@@ -445,17 +536,18 @@ export default function CanchaV2({
           touchAction: "manipulation",
           cursor: onMiniClick ? "crosshair" : "default",
           flexShrink: 0,
+          margin: "auto",
         }}
         onPointerMove={handleMove}
         onPointerLeave={handleLeave}
         onPointerDown={handleClick}
       >
-        {/* MARCO EXTERIOR (fondo grueso que rodea la cancha) */}
+        {/* MARCO EXTERIOR */}
         <rect
           x={0}
           y={0}
-          width={anchoRender}
-          height={altoRender}
+          width={anchoBase}
+          height={altoBase}
           fill={COLOR_MARCO}
           pointerEvents="none"
         />
@@ -536,7 +628,6 @@ export default function CanchaV2({
             );
           })}
 
-          {/* Hover highlight */}
           {hoverMiniRect && (
             <rect
               x={hoverMiniRect.x}
@@ -551,10 +642,8 @@ export default function CanchaV2({
             />
           )}
 
-          {/* Children: capa de líneas y círculos */}
           {children}
 
-          {/* Borde fino sobre el canto interno del marco */}
           <rect
             x={0}
             y={0}
