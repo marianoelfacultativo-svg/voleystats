@@ -524,6 +524,18 @@ export default function CanchaV2({
 
           {/* Children: capa de líneas y círculos */}
           {children}
+
+          {/* MARCO EXTERIOR: rodea todo el grid (C1..C5, FUERA-ARR..FUERA-ABA) */}
+          <rect
+            x={0}
+            y={0}
+            width={TOTAL_ANCHO}
+            height={TOTAL_ALTO}
+            fill="none"
+            stroke="#0f172a"
+            strokeWidth={3}
+            pointerEvents="none"
+          />
         </g>
       </svg>
     </div>
