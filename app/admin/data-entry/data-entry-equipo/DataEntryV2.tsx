@@ -1553,10 +1553,12 @@ export default function DataEntryV2({
                 onMiniClick={handleMiniClick}
                 onCerrarPunto={handleCerrarPunto}
                 onPuntoSiguiente={() => irAPunto(puntoActual + 1)}
+                onPuntoAnterior={() => irAPunto(puntoActual - 1)}
                 onBorrarPunto={handleBorrarPunto}
                 onBorrarLinea={handleBorrarUltima}
                 puedeCerrarPunto={lineas.length > 0}
                 puedeIrSiguiente={puntoActual + 1 <= maxNavegable}
+                puedeIrAnterior={puntoActual > 1}
                 puedeBorrarPunto={lineas.length > 0}
                 puedeBorrarLinea={
                   lineas.length > 0 || !!circuloArmado || !!circuloSinArmar

@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 // ============================================================
-// CONTEXTO DE ESTIRAMIENTO + ZOOMS (para círculos/líneas/popups)
+// CONTEXTO DE ESTIRAMIENTO + ZOOMS
 // ============================================================
 
 export const CanchaStretchContext = React.createContext<{
@@ -40,13 +40,15 @@ interface Props {
   celdasResaltadas?: Set<string>;
   maxAlto?: number;
   children?: React.ReactNode;
-  // Acciones extra para pantalla completa
+  // Acciones extra (para pantalla completa)
   onCerrarPunto?: () => void;
   onPuntoSiguiente?: () => void;
+  onPuntoAnterior?: () => void;
   onBorrarPunto?: () => void;
   onBorrarLinea?: () => void;
   puedeCerrarPunto?: boolean;
   puedeIrSiguiente?: boolean;
+  puedeIrAnterior?: boolean;
   puedeBorrarPunto?: boolean;
   puedeBorrarLinea?: boolean;
 }
@@ -341,10 +343,12 @@ export default function CanchaV2({
   children,
   onCerrarPunto,
   onPuntoSiguiente,
+  onPuntoAnterior,
   onBorrarPunto,
   onBorrarLinea,
   puedeCerrarPunto,
   puedeIrSiguiente,
+  puedeIrAnterior,
   puedeBorrarPunto,
   puedeBorrarLinea,
 }: Props) {
@@ -521,8 +525,189 @@ export default function CanchaV2({
   const hayAcciones =
     !!onCerrarPunto ||
     !!onPuntoSiguiente ||
+    !!onPuntoAnterior ||
     !!onBorrarPunto ||
     !!onBorrarLinea;
+
+  // ------------------------------------------------------------
+  // CONTENIDO DE LA TOOLBAR (reutilizado en los 2 layouts)
+  // ------------------------------------------------------------
+  const toolbarContent = (
+    <>
+      <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
+        <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
+          Ancho
+        </span>
+        <button
+          onClick={() => cambiar(setEscalaAncho, -1)}
+          disabled={escalaAncho <= ZOOM_MIN}
+          className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+          title="Achicar ancho"
+        >
+          −
+        </button>
+        <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
+          {Math.round(escalaAncho * 100)}%
+        </span>
+        <button
+          onClick={() => cambiar(setEscalaAncho, 1)}
+          disabled={escalaAncho >= ZOOM_MAX}
+          className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+          title="Agrandar ancho"
+        >
+          +
+        </button>
+      </div>
+
+      <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
+        <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
+          Alto
+        </span>
+        <button
+          onClick={() => cambiar(setEscalaAlto, -1)}
+          disabled={escalaAlto <= ZOOM_MIN}
+          className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+          title="Achicar alto"
+        >
+          −
+        </button>
+        <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
+          {Math.round(escalaAlto * 100)}%
+        </span>
+        <button
+          onClick={() => cambiar(setEscalaAlto, 1)}
+          disabled={escalaAlto >= ZOOM_MAX}
+          className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+          title="Agrandar alto"
+        >
+          +
+        </button>
+      </div>
+
+      <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
+        <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
+          Popups
+        </span>
+        <button
+          onClick={() => cambiar(setPopupZoom, -1)}
+          disabled={popupZoom <= ZOOM_MIN}
+          className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+          title="Achicar popups"
+        >
+          −
+        </button>
+        <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
+          {Math.round(popupZoom * 100)}%
+        </span>
+        <button
+          onClick={() => cambiar(setPopupZoom, 1)}
+          disabled={popupZoom >= ZOOM_MAX}
+          className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+          title="Agrandar popups"
+        >
+          +
+        </button>
+      </div>
+
+      <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
+        <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
+          Círculos
+        </span>
+        <button
+          onClick={() => cambiar(setCircleZoom, -1)}
+          disabled={circleZoom <= ZOOM_MIN}
+          className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+          title="Achicar círculos"
+        >
+          −
+        </button>
+        <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
+          {Math.round(circleZoom * 100)}%
+        </span>
+        <button
+          onClick={() => cambiar(setCircleZoom, 1)}
+          disabled={circleZoom >= ZOOM_MAX}
+          className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+          title="Agrandar círculos"
+        >
+          +
+        </button>
+      </div>
+
+      <div className="flex items-center gap-1">
+        <button
+          onClick={reestablecer}
+          className="px-2 h-7 rounded bg-white/95 border border-slate-300 text-slate-700 text-[11px] font-semibold hover:bg-white shadow"
+          title="Restablecer ancho, alto, popups y círculos"
+        >
+          ↺ Restablecer
+        </button>
+        <button
+          onClick={togglePantallaCompleta}
+          className="px-2 h-7 rounded bg-white/95 border border-slate-300 text-slate-700 text-[11px] font-semibold hover:bg-white shadow"
+          title={
+            enPantallaCompleta
+              ? "Salir de pantalla completa"
+              : "Pantalla completa"
+          }
+        >
+          {enPantallaCompleta ? "⤢ Salir" : "⛶ Pantalla completa"}
+        </button>
+      </div>
+
+      {/* Acciones chicas, SOLO en pantalla completa */}
+      {enPantallaCompleta && hayAcciones && (
+        <div className="flex items-center gap-1 flex-wrap justify-end max-w-[220px]">
+          <button
+            onClick={onPuntoAnterior}
+            disabled={puedeIrAnterior === false}
+            className="px-2 h-6 rounded bg-slate-600 text-white text-[10px] font-semibold hover:bg-slate-700 disabled:opacity-40 shadow"
+            title="Punto anterior"
+          >
+            ◀ Ant
+          </button>
+          <button
+            onClick={onCerrarPunto}
+            disabled={puedeCerrarPunto === false}
+            className="px-2 h-6 rounded bg-emerald-500 text-white text-[10px] font-semibold hover:bg-emerald-600 disabled:opacity-40 shadow"
+            title="Cerrar punto (Enter)"
+          >
+            ✓ Cerrar
+          </button>
+          <button
+            onClick={onPuntoSiguiente}
+            disabled={puedeIrSiguiente === false}
+            className="px-2 h-6 rounded bg-slate-700 text-white text-[10px] font-semibold hover:bg-slate-800 disabled:opacity-40 shadow"
+            title="Punto siguiente"
+          >
+            ▶ Sig
+          </button>
+          <button
+            onClick={onBorrarPunto}
+            disabled={puedeBorrarPunto === false}
+            className="px-2 h-6 rounded bg-red-500 text-white text-[10px] font-semibold hover:bg-red-600 disabled:opacity-40 shadow"
+            title="Borrar punto"
+          >
+            ✕ Borrar punto
+          </button>
+          <button
+            onClick={onBorrarLinea}
+            disabled={puedeBorrarLinea === false}
+            className="px-2 h-6 rounded bg-red-300 text-red-900 text-[10px] font-semibold hover:bg-red-400 disabled:opacity-40 shadow"
+            title="Borrar última línea (D)"
+          >
+            ↩ Borrar línea
+          </button>
+        </div>
+      )}
+
+      {hayStretch && (
+        <span className="text-[9px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+          ⚠️ Estirado (ancho ≠ alto)
+        </span>
+      )}
+    </>
+  );
 
   return (
     <div
@@ -534,180 +719,35 @@ export default function CanchaV2({
         overflow: "auto",
         background: enPantallaCompleta ? "#0b1220" : "transparent",
         display: "flex",
-        justifyContent: "center",
+        justifyContent: enPantallaCompleta ? "center" : "center",
         alignItems: enPantallaCompleta ? "center" : "flex-start",
       }}
     >
-      {/* Toolbar flotante */}
-      <div
-        className="sticky top-2 z-20 flex flex-col items-end gap-1 ml-auto mr-2"
-        style={{ pointerEvents: "auto", alignSelf: "flex-start" }}
-      >
-        <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
-          <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
-            Ancho
-          </span>
-          <button
-            onClick={() => cambiar(setEscalaAncho, -1)}
-            disabled={escalaAncho <= ZOOM_MIN}
-            className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
-            title="Achicar ancho"
-          >
-            −
-          </button>
-          <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
-            {Math.round(escalaAncho * 100)}%
-          </span>
-          <button
-            onClick={() => cambiar(setEscalaAncho, 1)}
-            disabled={escalaAncho >= ZOOM_MAX}
-            className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
-            title="Agrandar ancho"
-          >
-            +
-          </button>
+      {enPantallaCompleta ? (
+        // Toolbar fija arriba a la derecha del fullscreen
+        <div
+          className="z-30 flex flex-col items-end gap-1"
+          style={{
+            position: "fixed",
+            top: 8,
+            right: 8,
+            pointerEvents: "auto",
+            maxHeight: "calc(100vh - 16px)",
+            overflowY: "auto",
+            overflowX: "hidden",
+          }}
+        >
+          {toolbarContent}
         </div>
-
-        <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
-          <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
-            Alto
-          </span>
-          <button
-            onClick={() => cambiar(setEscalaAlto, -1)}
-            disabled={escalaAlto <= ZOOM_MIN}
-            className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
-            title="Achicar alto"
-          >
-            −
-          </button>
-          <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
-            {Math.round(escalaAlto * 100)}%
-          </span>
-          <button
-            onClick={() => cambiar(setEscalaAlto, 1)}
-            disabled={escalaAlto >= ZOOM_MAX}
-            className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
-            title="Agrandar alto"
-          >
-            +
-          </button>
+      ) : (
+        // Toolbar sticky dentro del contenedor
+        <div
+          className="sticky top-2 z-20 flex flex-col items-end gap-1 ml-auto mr-2"
+          style={{ pointerEvents: "auto", alignSelf: "flex-start" }}
+        >
+          {toolbarContent}
         </div>
-
-        <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
-          <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
-            Popups
-          </span>
-          <button
-            onClick={() => cambiar(setPopupZoom, -1)}
-            disabled={popupZoom <= ZOOM_MIN}
-            className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
-            title="Achicar popups"
-          >
-            −
-          </button>
-          <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
-            {Math.round(popupZoom * 100)}%
-          </span>
-          <button
-            onClick={() => cambiar(setPopupZoom, 1)}
-            disabled={popupZoom >= ZOOM_MAX}
-            className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
-            title="Agrandar popups"
-          >
-            +
-          </button>
-        </div>
-
-        <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
-          <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
-            Círculos
-          </span>
-          <button
-            onClick={() => cambiar(setCircleZoom, -1)}
-            disabled={circleZoom <= ZOOM_MIN}
-            className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
-            title="Achicar círculos"
-          >
-            −
-          </button>
-          <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
-            {Math.round(circleZoom * 100)}%
-          </span>
-          <button
-            onClick={() => cambiar(setCircleZoom, 1)}
-            disabled={circleZoom >= ZOOM_MAX}
-            className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
-            title="Agrandar círculos"
-          >
-            +
-          </button>
-        </div>
-
-        <div className="flex items-center gap-1">
-          <button
-            onClick={reestablecer}
-            className="px-2 h-7 rounded bg-white/95 border border-slate-300 text-slate-700 text-[11px] font-semibold hover:bg-white shadow"
-            title="Restablecer ancho, alto, popups y círculos"
-          >
-            ↺ Restablecer
-          </button>
-          <button
-            onClick={togglePantallaCompleta}
-            className="px-2 h-7 rounded bg-white/95 border border-slate-300 text-slate-700 text-[11px] font-semibold hover:bg-white shadow"
-            title={
-              enPantallaCompleta
-                ? "Salir de pantalla completa"
-                : "Pantalla completa"
-            }
-          >
-            {enPantallaCompleta ? "⤢ Salir" : "⛶ Pantalla completa"}
-          </button>
-        </div>
-
-        {/* Acciones chicas, SOLO en pantalla completa */}
-        {enPantallaCompleta && hayAcciones && (
-          <div className="flex items-center gap-1 mt-1">
-            <button
-              onClick={onCerrarPunto}
-              disabled={puedeCerrarPunto === false}
-              className="px-2 h-6 rounded bg-emerald-500 text-white text-[10px] font-semibold hover:bg-emerald-600 disabled:opacity-40 shadow"
-              title="Cerrar punto (Enter)"
-            >
-              ✓ Cerrar
-            </button>
-            <button
-              onClick={onPuntoSiguiente}
-              disabled={puedeIrSiguiente === false}
-              className="px-2 h-6 rounded bg-slate-700 text-white text-[10px] font-semibold hover:bg-slate-800 disabled:opacity-40 shadow"
-              title="Punto siguiente"
-            >
-              ▶ Siguiente
-            </button>
-            <button
-              onClick={onBorrarPunto}
-              disabled={puedeBorrarPunto === false}
-              className="px-2 h-6 rounded bg-red-500 text-white text-[10px] font-semibold hover:bg-red-600 disabled:opacity-40 shadow"
-              title="Borrar punto"
-            >
-              ✕ Borrar punto
-            </button>
-            <button
-              onClick={onBorrarLinea}
-              disabled={puedeBorrarLinea === false}
-              className="px-2 h-6 rounded bg-red-300 text-red-900 text-[10px] font-semibold hover:bg-red-400 disabled:opacity-40 shadow"
-              title="Borrar última línea (D)"
-            >
-              ↩ Borrar línea
-            </button>
-          </div>
-        )}
-
-        {hayStretch && (
-          <span className="text-[9px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
-            ⚠️ Estirado (ancho ≠ alto)
-          </span>
-        )}
-      </div>
+      )}
 
       <svg
         width={anchoRender}
