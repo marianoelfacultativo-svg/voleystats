@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { CANCHA_V2_DIMS } from "./CanchaV2";
+import React, { useContext, useState } from "react";
+import { CANCHA_V2_DIMS, CanchaStretchContext } from "./CanchaV2";
 
 // ============================================================
 // TIPOS
@@ -30,7 +30,6 @@ export type VarianteAtaquePopup = "toque" | "libre";
 
 export type VarianteRemateSegunda = "remate-segunda";
 
-/** Velocidad del armado. */
 export type ValorVelocidad = 1 | 1.5 | 2 | 3 | 5;
 
 export interface JugadorEnCancha {
@@ -221,6 +220,11 @@ interface WrapperProps {
 
 function PopupWrapper({ pos, ancho, alto, titulo, children }: WrapperProps) {
   const { ancho: W, alto: H } = CANCHA_V2_DIMS;
+  const { sx, sy, popupZoom } = useContext(CanchaStretchContext);
+  const invSx = sx !== 0 ? 1 / sx : 1;
+  const invSy = sy !== 0 ? 1 / sy : 1;
+  const escX = invSx * popupZoom;
+  const escY = invSy * popupZoom;
 
   let x = pos.x - ancho / 2;
   if (x < 2) x = 2;
@@ -230,8 +234,14 @@ function PopupWrapper({ pos, ancho, alto, titulo, children }: WrapperProps) {
   if (y < 2) y = pos.y + 6;
   if (y + alto > H - 2) y = H - alto - 2;
 
+  const cx = x + ancho / 2;
+  const cy = y + alto / 2;
+
   return (
-    <g style={{ pointerEvents: "auto" }}>
+    <g
+      style={{ pointerEvents: "auto" }}
+      transform={`translate(${cx} ${cy}) scale(${escX} ${escY}) translate(${-cx} ${-cy})`}
+    >
       <rect
         x={x + 2}
         y={y + 3}
@@ -433,7 +443,7 @@ export function PopupRecepcion({
 }
 
 // ============================================================
-// POPUP ARMADO  (etiquetas H / M / F / C / P / G / R)
+// POPUP ARMADO
 // ============================================================
 
 interface PopupArmadoProps {
@@ -488,7 +498,7 @@ export function PopupArmado({ pos, onConfirmar, onCancelar }: PopupArmadoProps) 
 }
 
 // ============================================================
-// POPUP VELOCIDAD (del armado)
+// POPUP VELOCIDAD
 // ============================================================
 
 interface PopupVelocidadProps {
@@ -558,7 +568,7 @@ export function PopupVelocidad({
 }
 
 // ============================================================
-// POPUP DEFENSA (con toggle x2)
+// POPUP DEFENSA
 // ============================================================
 
 interface PopupDefensaProps {
@@ -631,7 +641,9 @@ export function PopupDefensa({
             fill={x2 ? "#ffffff" : "#475569"}
             pointerEvents="none"
           >
-            {x2 ? "✓ x2 — la próxima también es defensa" : "x2 (dos defensas seguidas)"}
+            {x2
+              ? "✓ x2 — la próxima también es defensa"
+              : "x2 (dos defensas seguidas)"}
           </text>
         </g>
 
@@ -733,7 +745,7 @@ export function PopupLibre({
 }
 
 // ============================================================
-// POPUP JUGADOR (solo lista)
+// POPUP JUGADOR
 // ============================================================
 
 interface PopupJugadorProps {
@@ -845,7 +857,7 @@ export function PopupJugador({
 }
 
 // ============================================================
-// POPUP ROCE DE RED / INVASIÓN
+// POPUP ROCE DE RED
 // ============================================================
 
 interface PopupRoceRedProps {
@@ -1006,7 +1018,7 @@ export function PopupAtaqueToqueLibre({
 }
 
 // ============================================================
-// POPUP REMATE DE SEGUNDA (rival)
+// POPUP REMATE DE SEGUNDA
 // ============================================================
 
 interface PopupRemateSegundaProps {
@@ -1080,7 +1092,9 @@ export function PopupBloqueo({
   const btnW = 54;
   const gap = 4;
   const ancho =
-    jugadores.length * btnW + Math.max(0, jugadores.length - 1) * gap + pad * 2;
+    jugadores.length * btnW +
+    Math.max(0, jugadores.length - 1) * gap +
+    pad * 2;
   const alto = 56;
 
   return (

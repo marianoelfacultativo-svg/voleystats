@@ -3,13 +3,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 // ============================================================
-// CONTEXTO DE ESTIRAMIENTO (para círculos/líneas hijos)
+// CONTEXTO DE ESTIRAMIENTO + ZOOMS (para círculos/líneas/popups)
 // ============================================================
 
 export const CanchaStretchContext = React.createContext<{
   sx: number;
   sy: number;
-}>({ sx: 1, sy: 1 });
+  popupZoom: number;
+  circleZoom: number;
+}>({ sx: 1, sy: 1, popupZoom: 1, circleZoom: 1 });
 
 // ============================================================
 // TIPOS
@@ -334,6 +336,8 @@ export default function CanchaV2({
   );
   const [escalaAncho, setEscalaAncho] = useState(1);
   const [escalaAlto, setEscalaAlto] = useState(1);
+  const [popupZoom, setPopupZoom] = useState(1);
+  const [circleZoom, setCircleZoom] = useState(1);
   const [enPantallaCompleta, setEnPantallaCompleta] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -395,6 +399,8 @@ export default function CanchaV2({
   };
 
   const reestablecer = () => {
+    setPopupZoom(1);
+    setCircleZoom(1);
     if (enPantallaCompleta) {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
@@ -478,16 +484,22 @@ export default function CanchaV2({
 
   const hayStretch = escalaAncho !== escalaAlto;
 
-  // Factores efectivos de estiramiento para el sistema de coordenadas
-  // de "layout" (el que ven los children).
-  // En vertical, layout x se estira por escalaAncho, layout y por escalaAlto.
-  // En horizontal, el <g> rota 90°, así que se invierten.
   const stretch = useMemo(() => {
     if (orientacion === "vertical") {
       return { sx: escalaAncho, sy: escalaAlto };
     }
     return { sx: escalaAlto, sy: escalaAncho };
   }, [orientacion, escalaAncho, escalaAlto]);
+
+  const ctxValue = useMemo(
+    () => ({
+      sx: stretch.sx,
+      sy: stretch.sy,
+      popupZoom,
+      circleZoom,
+    }),
+    [stretch.sx, stretch.sy, popupZoom, circleZoom]
+  );
 
   return (
     <div
@@ -558,11 +570,61 @@ export default function CanchaV2({
           </button>
         </div>
 
+        <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
+          <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
+            Popups
+          </span>
+          <button
+            onClick={() => cambiar(setPopupZoom, -1)}
+            disabled={popupZoom <= ZOOM_MIN}
+            className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+            title="Achicar popups"
+          >
+            −
+          </button>
+          <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
+            {Math.round(popupZoom * 100)}%
+          </span>
+          <button
+            onClick={() => cambiar(setPopupZoom, 1)}
+            disabled={popupZoom >= ZOOM_MAX}
+            className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+            title="Agrandar popups"
+          >
+            +
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
+          <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
+            Círculos
+          </span>
+          <button
+            onClick={() => cambiar(setCircleZoom, -1)}
+            disabled={circleZoom <= ZOOM_MIN}
+            className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+            title="Achicar círculos"
+          >
+            −
+          </button>
+          <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
+            {Math.round(circleZoom * 100)}%
+          </span>
+          <button
+            onClick={() => cambiar(setCircleZoom, 1)}
+            disabled={circleZoom >= ZOOM_MAX}
+            className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+            title="Agrandar círculos"
+          >
+            +
+          </button>
+        </div>
+
         <div className="flex items-center gap-1">
           <button
             onClick={reestablecer}
             className="px-2 h-7 rounded bg-white/95 border border-slate-300 text-slate-700 text-[11px] font-semibold hover:bg-white shadow"
-            title="Restablecer ancho y alto"
+            title="Restablecer ancho, alto, popups y círculos"
           >
             ↺ Restablecer
           </button>
@@ -705,7 +767,7 @@ export default function CanchaV2({
             />
           )}
 
-          <CanchaStretchContext.Provider value={stretch}>
+          <CanchaStretchContext.Provider value={ctxValue}>
             {children}
           </CanchaStretchContext.Provider>
 

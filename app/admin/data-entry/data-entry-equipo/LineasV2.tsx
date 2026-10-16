@@ -106,11 +106,12 @@ export default function LineasV2({
   radioCirculoActivo = 12,
   radioCirculoUsado = 5,
 }: Props) {
-  // Factor de estiramiento: contrarrestamos para que círculos/estrellas
-  // no se deformen cuando la cancha está estirada.
-  const { sx, sy } = useContext(CanchaStretchContext);
+  // Contrarrestamos estiramiento y aplicamos el zoom de círculos.
+  const { sx, sy, circleZoom } = useContext(CanchaStretchContext);
   const invSx = sx !== 0 ? 1 / sx : 1;
   const invSy = sy !== 0 ? 1 / sy : 1;
+  const escX = invSx * circleZoom;
+  const escY = invSy * circleZoom;
 
   const circulos = useMemo(() => {
     const map = new Map<string, PuntoV2>();
@@ -223,7 +224,7 @@ export default function LineasV2({
         return (
           <g
             key={`${c.celda}-${c.mini}-${i}`}
-            transform={`translate(${p.x} ${p.y}) scale(${invSx} ${invSy})`}
+            transform={`translate(${p.x} ${p.y}) scale(${escX} ${escY})`}
             pointerEvents="none"
           >
             <circle
@@ -244,7 +245,7 @@ export default function LineasV2({
       {posEstrella && (
         <g
           pointerEvents="none"
-          transform={`translate(${posEstrella.x} ${posEstrella.y}) scale(${invSx} ${invSy})`}
+          transform={`translate(${posEstrella.x} ${posEstrella.y}) scale(${escX} ${escY})`}
         >
           <polygon
             points={estrellaPts(0, 0, 9, 4)}
@@ -267,7 +268,7 @@ export default function LineasV2({
             onClickCirculo();
           }}
           pointerEvents={onClickCirculo ? "auto" : "none"}
-          transform={`translate(${posOrigen.x} ${posOrigen.y}) scale(${invSx} ${invSy})`}
+          transform={`translate(${posOrigen.x} ${posOrigen.y}) scale(${escX} ${escY})`}
         >
           <circle
             cx={0}
