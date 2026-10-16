@@ -384,7 +384,7 @@ export function PopupSaque({ pos, onConfirmar, onCancelar }: PopupSaqueProps) {
 }
 
 // ============================================================
-// POPUP TIPO DE SAQUE (P / F)
+// POPUP TIPO DE SAQUE (solo P — Potencia)
 // ============================================================
 
 interface PopupTipoSaqueProps {
@@ -401,7 +401,6 @@ export function PopupTipoSaque({
   const pad = 8;
   const ancho = 180;
   const alto = 82;
-  const btnW = (ancho - pad * 2 - 4) / 2;
 
   return (
     <PopupWrapper pos={pos} ancho={ancho} alto={alto} titulo="SAQUE — Tipo">
@@ -409,27 +408,17 @@ export function PopupTipoSaque({
         <BotonSvg
           x={pad}
           y={0}
-          w={btnW}
-          h={26}
+          w={ancho - pad * 2}
+          h={28}
           texto="P — Potencia"
           color="#ea580c"
-          fontSize={11}
+          fontSize={12}
           onClick={() => onConfirmar("potencia")}
-        />
-        <BotonSvg
-          x={pad + btnW + 4}
-          y={0}
-          w={btnW}
-          h={26}
-          texto="F — Flotado"
-          color="#3b82f6"
-          fontSize={11}
-          onClick={() => onConfirmar("flotado")}
         />
 
         <BotonSvg
           x={pad}
-          y={34}
+          y={36}
           w={ancho - pad * 2}
           h={16}
           texto="Flotado (default, Esc)"
