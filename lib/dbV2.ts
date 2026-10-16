@@ -45,6 +45,8 @@ export interface AccionV2Data {
   // Posición previa del jugador (estrella). null si no hubo desplazamiento.
   posicion_inicial_celda?: string | null;
   posicion_inicial_mini?: string | null;
+  // Velocidad del armado (opcional). null si no se eligió.
+  velocidad?: number | null;
 }
 
 export interface PuntoV2Row extends PuntoV2Data {
@@ -164,6 +166,7 @@ export async function guardarPuntoV2(
       zona: a.zona ?? null,
       posicion_inicial_celda: a.posicion_inicial_celda ?? null,
       posicion_inicial_mini: a.posicion_inicial_mini ?? null,
+      velocidad: a.velocidad ?? null,
     }));
 
     const { error: errAcc } = await supabase

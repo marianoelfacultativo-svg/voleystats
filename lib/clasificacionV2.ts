@@ -36,6 +36,7 @@ export type PopupRequerido =
   | "roce-red"
   | "bloqueo"
   | "ataque-toque-libre"
+  | "remate-segunda"
   | null;
 
 export type VarianteAtaque = "remate" | "toque";
@@ -67,6 +68,9 @@ export interface LineaClasificada {
   oculta?: boolean;
   /** Marca interna (no se persiste): la próxima línea también es defensa. */
   x2?: boolean;
+  /** Velocidad del armado (solo armados). Se mapea a la columna
+      `velocidad` de `acciones_v2`. */
+  velocidad?: number | null;
 }
 
 export interface EstadoClasificacion {
@@ -288,21 +292,6 @@ function buscarCentralDelantero(rotacion: RotacionPunto): string | null {
   return null;
 }
 
-// ============================================================
-// LÍBERO ACTIVO
-// ============================================================
-//
-// Regla:
-//   - Si no hay líberos cargados → no hay líbero.
-//   - Si hay 1 solo líbero → siempre juega él (sin importar el tipo).
-//   - Si hay 2 líberos:
-//       · recepción → el de tipo "recepcion"
-//       · saque     → el de tipo "defensa"
-//
-// La excepción "central en 1 al saque juega el central" ya está
-// reflejada en POSICIONES_JUEGO (en esas rotaciones no aparece "L").
-// ============================================================
-
 function buscarLiberoActivo(rotacion: RotacionPunto): string | null {
   const liberos: Libero[] = rotacion.liberos ?? [];
   if (liberos.length === 0) return null;
@@ -469,11 +458,13 @@ export function clasificarLinea(
     const primerJugador =
       (linea.desvios ?? []).find((d) => d.celda.startsWith("BLOQ-P-"))
         ?.jugadorId ?? null;
+    const esRemateSegunda =
+      ultima.tipo === "defensa" && ultima.esRival === true;
     return {
       tipo: comoAtaque ? "ataque" : "bloqueo",
       esRival: false,
       jugadorId: primerJugador,
-      popup: null,
+      popup: esRemateSegunda ? "remate-segunda" : null,
     };
   }
 
@@ -536,7 +527,7 @@ export function clasificarLinea(
           tipo: "libre",
           esRival,
           jugadorId: null,
-          popup: esRival ? null : "libre",
+          popup: esRival ? "remate-segunda" : "libre",
         }
       : {
           tipo: "armado",
@@ -786,6 +777,8 @@ export function calcularSubtiposAtaqueRival(
   for (let i = 0; i < resultado.length; i++) {
     const l = resultado[i];
     if (l.tipo !== "ataque" || !l.esRival) continue;
+    // El remate de segunda ya tiene subtipo fijo "toque"; no lo pisamos.
+    if (l.subtipo === "toque") continue;
 
     let j = i + 1;
     while (j < resultado.length && resultado[j].oculta) j++;

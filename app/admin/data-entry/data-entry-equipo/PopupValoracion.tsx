@@ -26,8 +26,12 @@ export type ResultadoRoceRed =
   | "invasion-delantero"
   | "roce-red-rival";
 
-/** Variante de ataque elegida por el usuario en el popup nuevo. */
 export type VarianteAtaquePopup = "toque" | "libre";
+
+export type VarianteRemateSegunda = "remate-segunda";
+
+/** Velocidad del armado. */
+export type ValorVelocidad = 1 | 1.5 | 2 | 3 | 5;
 
 export interface JugadorEnCancha {
   id: string;
@@ -59,6 +63,16 @@ const COL_ARMADO: Record<ValorArmado, string> = {
   5: "#16a34a",
   6: "#059669",
   R: "#334155",
+};
+
+const ETIQ_ARMADO: Record<ValorArmado, string> = {
+  1: "H",
+  2: "M",
+  3: "F",
+  4: "C",
+  5: "P",
+  6: "G",
+  R: "R",
 };
 
 const COL_SAQUE: Record<ValorSaque, string> = {
@@ -94,6 +108,15 @@ const COL_RECEPCION: Record<ValorRecepcion, string> = {
   6: "#16a34a",
 };
 
+const ETIQ_RECEPCION: Record<ValorRecepcion, string> = {
+  1: "A",
+  2: "3n",
+  3: "2n",
+  4: "N",
+  5: "P",
+  6: "2p",
+};
+
 const ORDEN_RECEPCION: ValorRecepcion[] = [1, 2, 3, 4, 5, 6];
 
 const COL_DEFENSA: Record<TipoDefensa, string> = {
@@ -127,6 +150,32 @@ const OPCIONES_ROCE_RED: {
   { id: "invasion-delantero", label: "Invasión delantero", color: "#f59e0b" },
   { id: "roce-red-rival", label: "Roce red rival", color: "#0284c7" },
 ];
+
+const ORDEN_VELOCIDAD: ValorVelocidad[] = [1, 1.5, 2, 3, 5];
+
+const ETIQ_VELOCIDAD: Record<ValorVelocidad, string> = {
+  1: "1",
+  1.5: "1.5",
+  2: "2",
+  3: "3",
+  5: "5",
+};
+
+const DESC_VELOCIDAD: Record<ValorVelocidad, string> = {
+  1: "Primer tiempo",
+  1.5: "Semi",
+  2: "Segundo tiempo",
+  3: "Tercer tiempo",
+  5: "Alta",
+};
+
+const COL_VELOCIDAD: Record<ValorVelocidad, string> = {
+  1: "#dc2626",
+  1.5: "#ea580c",
+  2: "#eab308",
+  3: "#84cc16",
+  5: "#16a34a",
+};
 
 // ============================================================
 // HELPER: color por rol
@@ -361,7 +410,7 @@ export function PopupRecepcion({
             y={0}
             w={btnW}
             h={24}
-            texto={String(v)}
+            texto={ETIQ_RECEPCION[v]}
             color={COL_RECEPCION[v]}
             fontSize={11}
             onClick={() => onConfirmar(v)}
@@ -384,7 +433,7 @@ export function PopupRecepcion({
 }
 
 // ============================================================
-// POPUP ARMADO  (T → R: remate de segunda)
+// POPUP ARMADO  (etiquetas H / M / F / C / P / G / R)
 // ============================================================
 
 interface PopupArmadoProps {
@@ -395,7 +444,7 @@ interface PopupArmadoProps {
 
 export function PopupArmado({ pos, onConfirmar, onCancelar }: PopupArmadoProps) {
   const botones: ValorArmado[] = [1, 2, 3, 4, 5, 6, "R"];
-  const btnW = 24;
+  const btnW = 26;
   const gap = 4;
   const pad = 8;
   const ancho = botones.length * btnW + (botones.length - 1) * gap + pad * 2;
@@ -416,9 +465,9 @@ export function PopupArmado({ pos, onConfirmar, onCancelar }: PopupArmadoProps) 
             y={0}
             w={btnW}
             h={24}
-            texto={String(v)}
+            texto={ETIQ_ARMADO[v]}
             color={COL_ARMADO[v]}
-            fontSize={11}
+            fontSize={12}
             onClick={() => onConfirmar(v)}
           />
         ))}
@@ -428,6 +477,76 @@ export function PopupArmado({ pos, onConfirmar, onCancelar }: PopupArmadoProps) 
           w={ancho - pad * 2}
           h={14}
           texto="Cancelar (Esc)"
+          color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP VELOCIDAD (del armado)
+// ============================================================
+
+interface PopupVelocidadProps {
+  pos: PopupPos;
+  onConfirmar: (v: ValorVelocidad) => void;
+  onCancelar: () => void;
+}
+
+export function PopupVelocidad({
+  pos,
+  onConfirmar,
+  onCancelar,
+}: PopupVelocidadProps) {
+  const pad = 8;
+  const ancho = 260;
+  const alto = 96;
+  const btnW = (ancho - pad * 2 - 4 * 4) / 5;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="ARMADO — Velocidad (opcional)"
+    >
+      <g>
+        {ORDEN_VELOCIDAD.map((v, i) => (
+          <g key={String(v)}>
+            <BotonSvg
+              x={pad + i * (btnW + 4)}
+              y={0}
+              w={btnW}
+              h={28}
+              texto={ETIQ_VELOCIDAD[v]}
+              color={COL_VELOCIDAD[v]}
+              fontSize={13}
+              onClick={() => onConfirmar(v)}
+            />
+            <text
+              x={pad + i * (btnW + 4) + btnW / 2}
+              y={42}
+              textAnchor="middle"
+              fontSize={7}
+              fontWeight={600}
+              fill="#64748b"
+              pointerEvents="none"
+            >
+              {DESC_VELOCIDAD[v]}
+            </text>
+          </g>
+        ))}
+
+        <BotonSvg
+          x={pad}
+          y={54}
+          w={ancho - pad * 2}
+          h={16}
+          texto="Saltar (Esc)"
           color="#e2e8f0"
           colorTexto="#475569"
           fontSize={9}
@@ -876,6 +995,60 @@ export function PopupAtaqueToqueLibre({
           w={ancho - pad * 2}
           h={16}
           texto="Remate (default, Esc)"
+          color="#f1f5f9"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP REMATE DE SEGUNDA (rival)
+// ============================================================
+
+interface PopupRemateSegundaProps {
+  pos: PopupPos;
+  onConfirmar: (v: VarianteRemateSegunda) => void;
+  onCancelar: () => void;
+}
+
+export function PopupRemateSegunda({
+  pos,
+  onConfirmar,
+  onCancelar,
+}: PopupRemateSegundaProps) {
+  const pad = 8;
+  const ancho = 200;
+  const alto = 82;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="REMATE DE SEGUNDA"
+    >
+      <g>
+        <BotonSvg
+          x={pad}
+          y={0}
+          w={ancho - pad * 2}
+          h={26}
+          texto="R — Remate de segunda"
+          color="#dc2626"
+          fontSize={11}
+          onClick={() => onConfirmar("remate-segunda")}
+        />
+
+        <BotonSvg
+          x={pad}
+          y={32}
+          w={ancho - pad * 2}
+          h={16}
+          texto="No, es libre (Esc)"
           color="#f1f5f9"
           colorTexto="#475569"
           fontSize={9}

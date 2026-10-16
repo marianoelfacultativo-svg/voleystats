@@ -18,14 +18,18 @@ import {
   PopupJugador,
   PopupLibre,
   PopupRecepcion,
+  PopupRemateSegunda,
   PopupRoceRed,
   PopupSaque,
+  PopupVelocidad,
   type ValorArmado,
   type ValorRecepcion,
   type ValorSaque,
+  type ValorVelocidad,
   type TipoDefensa,
   type ResultadoRoceRed,
   type VarianteAtaquePopup,
+  type VarianteRemateSegunda,
   type JugadorEnCancha,
   type JugadorZona,
   type PopupPos,
@@ -79,7 +83,7 @@ interface Jugador {
 }
 
 interface PopupEnCola {
-  tipo: Exclude<PopupRequerido, null>;
+  tipo: Exclude<PopupRequerido, null> | "velocidad";
   pos: PopupPos;
   lineaId: string;
   indiceDesvio?: number;
@@ -181,6 +185,7 @@ function aAccionV2(
     zona: null,
     posicion_inicial_celda: l.posicionInicial?.celda ?? null,
     posicion_inicial_mini: l.posicionInicial?.mini ?? null,
+    velocidad: l.velocidad ?? null,
   };
 }
 
@@ -735,7 +740,6 @@ export default function DataEntryV2({
         desviosPendientes.length > 0 ? [...desviosPendientes] : undefined,
     });
 
-    // ---------- Regla: defensa propia sin jugador → asignar por defecto ----------
     let jugadorFinal = res.jugadorId;
     let subtipoFinal = res.subtipoFijo ?? null;
 
@@ -965,7 +969,34 @@ export default function DataEntryV2({
   };
 
   const handleArmadoConfirmar = (v: ValorArmado) => {
-    actualizarLineaPopup({ subtipo: v });
+    if (!popupActivo?.lineaId) {
+      popupSiguiente();
+      return;
+    }
+
+    const lineaId = popupActivo.lineaId;
+    const pos = popupActivo.pos;
+
+    setLineas((prev) =>
+      prev.map((l) => (l.id === lineaId ? { ...l, subtipo: v } : l))
+    );
+
+    setColaPopups((prev) => [
+      { tipo: "velocidad", pos, lineaId },
+      ...prev.slice(1),
+    ]);
+  };
+
+  const handleVelocidadConfirmar = (v: ValorVelocidad) => {
+    if (!popupActivo?.lineaId) {
+      popupSiguiente();
+      return;
+    }
+    setLineas((prev) =>
+      prev.map((l) =>
+        l.id === popupActivo.lineaId ? { ...l, velocidad: v } : l
+      )
+    );
     popupSiguiente();
   };
 
@@ -1065,6 +1096,47 @@ export default function DataEntryV2({
         )
       );
     }
+    popupSiguiente();
+  };
+
+  const handleRemateSegundaConfirmar = (_v: VarianteRemateSegunda) => {
+    if (!popupActivo?.lineaId) {
+      popupSiguiente();
+      return;
+    }
+
+    const idx = lineas.findIndex((l) => l.id === popupActivo.lineaId);
+    if (idx < 0) {
+      popupSiguiente();
+      return;
+    }
+
+    const linea = lineas[idx];
+
+    if (linea.tipo === "libre" && linea.esRival) {
+      setLineas((prev) =>
+        prev.map((l) =>
+          l.id === popupActivo.lineaId
+            ? { ...l, tipo: "ataque", subtipo: "toque" }
+            : l
+        )
+      );
+    } else if (linea.tipo === "bloqueo" && !linea.esRival) {
+      const nuevoId = `l-${contadorId}`;
+      const ataqueRival: LineaClasificada = {
+        id: nuevoId,
+        tipo: "ataque",
+        esRival: true,
+        jugadorId: null,
+        origen: linea.origen,
+        destino: linea.destino,
+        desvios: linea.desvios,
+        subtipo: "toque",
+      };
+      setLineas((prev) => [...prev, ataqueRival]);
+      setContadorId((c) => c + 1);
+    }
+
     popupSiguiente();
   };
 
@@ -1412,6 +1484,12 @@ export default function DataEntryV2({
                                 {val}
                               </span>
                             )}
+                            {l.velocidad !== undefined &&
+                              l.velocidad !== null && (
+                                <span className="text-sky-700 bg-sky-50 px-1 rounded text-[10px] font-bold">
+                                  v{l.velocidad}
+                                </span>
+                              )}
                             {l.x2 && (
                               <span className="text-violet-700 bg-violet-50 px-1 rounded text-[10px] font-bold uppercase">
                                 x2
@@ -1502,6 +1580,13 @@ export default function DataEntryV2({
                     onCancelar={cerrarPopup}
                   />
                 )}
+                {popupActivo?.tipo === "velocidad" && (
+                  <PopupVelocidad
+                    pos={popupActivo.pos}
+                    onConfirmar={handleVelocidadConfirmar}
+                    onCancelar={cerrarPopup}
+                  />
+                )}
                 {popupActivo?.tipo === "defensa" && (
                   <PopupDefensa
                     pos={popupActivo.pos}
@@ -1537,6 +1622,13 @@ export default function DataEntryV2({
                   <PopupAtaqueToqueLibre
                     pos={popupActivo.pos}
                     onConfirmar={handleAtaqueToqueLibreConfirmar}
+                    onCancelar={cerrarPopup}
+                  />
+                )}
+                {popupActivo?.tipo === "remate-segunda" && (
+                  <PopupRemateSegunda
+                    pos={popupActivo.pos}
+                    onConfirmar={handleRemateSegundaConfirmar}
                     onCancelar={cerrarPopup}
                   />
                 )}
