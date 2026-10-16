@@ -28,6 +28,7 @@ export type Lado = "propio" | "rival";
 export type Situacion = "saque" | "recepcion";
 export type PopupRequerido =
   | "saque"
+  | "tipo-saque"
   | "recepcion"
   | "armado"
   | "defensa"
@@ -40,6 +41,10 @@ export type PopupRequerido =
   | null;
 
 export type VarianteAtaque = "remate" | "toque";
+
+/** Tipo de saque: P (potencia) o F (flotado). No confundir con la calidad
+ *  del saque (ace/positivo/etc.), que va en `subtipo`. */
+export type TipoSaque = "potencia" | "flotado";
 
 export interface PuntoV2 {
   celda: string;
@@ -71,6 +76,9 @@ export interface LineaClasificada {
   /** Velocidad del armado (solo armados). Se mapea a la columna
       `velocidad` de `acciones_v2`. */
   velocidad?: number | null;
+  /** Tipo de saque: "potencia" | "flotado". Solo en saques propios.
+      Se mapea a la columna `tipo_saque` de `acciones_v2`. */
+  tipoSaque?: TipoSaque | null;
 }
 
 export interface EstadoClasificacion {
@@ -89,6 +97,7 @@ export interface ResultadoClasificacion {
   cierraPunto?: Lado;
   desvios?: PuntoV2[];
   subtipoFijo?: string | number;
+  tipoSaqueFijo?: TipoSaque;
 }
 
 // ============================================================
@@ -350,7 +359,7 @@ function jugadorQueRecibe(
 }
 
 // ============================================================
-// RESOLUCIÓN DE JUGADOR — DEFENSA (por defecto, sin estrella)
+// RESOLUCIÓN DE JUGADOR — DEFENSA
 // ============================================================
 
 export function resolverJugadorDefensa(
@@ -419,7 +428,9 @@ export function clasificarLinea(
       tipo: "saque",
       esRival,
       jugadorId: esRival ? null : jugadorQueSaca(estado.rotacion),
-      popup: null,
+      popup: esRival ? null : "tipo-saque",
+      // El tipo por defecto es flotado. El popup puede pisarlo con "potencia".
+      tipoSaqueFijo: esRival ? undefined : "flotado",
     };
   }
 
@@ -537,7 +548,6 @@ export function clasificarLinea(
         };
 
   if (ultima!.tipo === "defensa") {
-    // ---------- CASO x2 ----------
     if (!ultima!.esRival && ultima!.x2 === true) {
       return {
         tipo: "defensa",
@@ -571,7 +581,6 @@ export function clasificarLinea(
       };
     }
 
-    // ---------- Regla: si el armador defendió, no puede armar ----------
     if (!ultima!.esRival && !cruzaNet) {
       const ultimaVis = ultimaVisible(estado.lineas);
       const armador = jugadorQueArma(estado.rotacion);
@@ -777,7 +786,6 @@ export function calcularSubtiposAtaqueRival(
   for (let i = 0; i < resultado.length; i++) {
     const l = resultado[i];
     if (l.tipo !== "ataque" || !l.esRival) continue;
-    // El remate de segunda ya tiene subtipo fijo "toque"; no lo pisamos.
     if (l.subtipo === "toque") continue;
 
     let j = i + 1;
@@ -902,8 +910,10 @@ export function calcularSubtiposBloqueo(
 }
 
 // ============================================================
-// SUBTIPOS DE SAQUE
+// SUBTIPOS DE SAQUE (calidad)
 // ============================================================
+// Importante: esta función escribe `subtipo` (calidad del saque).
+// NO toca `tipoSaque`, que se persiste aparte en `tipo_saque`.
 
 function valorarSaqueSinRecepcion(destino: string): string {
   if (

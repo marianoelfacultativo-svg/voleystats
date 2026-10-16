@@ -47,6 +47,8 @@ export interface AccionV2Data {
   posicion_inicial_mini?: string | null;
   // Velocidad del armado (opcional). null si no se eligió.
   velocidad?: number | null;
+  // Tipo de saque (potencia / flotado). Solo en saques propios.
+  tipo_saque?: string | null;
 }
 
 export interface PuntoV2Row extends PuntoV2Data {
@@ -167,6 +169,7 @@ export async function guardarPuntoV2(
       posicion_inicial_celda: a.posicion_inicial_celda ?? null,
       posicion_inicial_mini: a.posicion_inicial_mini ?? null,
       velocidad: a.velocidad ?? null,
+      tipo_saque: a.tipo_saque ?? null,
     }));
 
     const { error: errAcc } = await supabase

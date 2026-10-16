@@ -21,10 +21,12 @@ import {
   PopupRemateSegunda,
   PopupRoceRed,
   PopupSaque,
+  PopupTipoSaque,
   PopupVelocidad,
   type ValorArmado,
   type ValorRecepcion,
   type ValorSaque,
+  type ValorTipoSaque,
   type ValorVelocidad,
   type TipoDefensa,
   type ResultadoRoceRed,
@@ -186,6 +188,7 @@ function aAccionV2(
     posicion_inicial_celda: l.posicionInicial?.celda ?? null,
     posicion_inicial_mini: l.posicionInicial?.mini ?? null,
     velocidad: l.velocidad ?? null,
+    tipo_saque: l.tipoSaque ?? null,
   };
 }
 
@@ -742,6 +745,7 @@ export default function DataEntryV2({
 
     let jugadorFinal = res.jugadorId;
     let subtipoFinal = res.subtipoFijo ?? null;
+    const tipoSaqueFinal = res.tipoSaqueFijo ?? null;
 
     if (res.tipo === "defensa" && !res.esRival) {
       if (!jugadorFinal) {
@@ -766,6 +770,7 @@ export default function DataEntryV2({
       desvios:
         desviosPendientes.length > 0 ? [...desviosPendientes] : undefined,
       subtipo: subtipoFinal,
+      tipoSaque: tipoSaqueFinal,
       posicionInicial: estrella ? { ...estrella } : null,
     };
 
@@ -960,6 +965,11 @@ export default function DataEntryV2({
   };
 
   const handleSaqueConfirmar = (_v: ValorSaque) => {
+    popupSiguiente();
+  };
+
+  const handleTipoSaqueConfirmar = (v: ValorTipoSaque) => {
+    actualizarLineaPopup({ tipoSaque: v });
     popupSiguiente();
   };
 
@@ -1484,6 +1494,11 @@ export default function DataEntryV2({
                                 {val}
                               </span>
                             )}
+                            {l.tipoSaque && (
+                              <span className="text-orange-700 bg-orange-50 px-1 rounded text-[10px] font-bold uppercase">
+                                {l.tipoSaque === "potencia" ? "P" : "F"}
+                              </span>
+                            )}
                             {l.velocidad !== undefined &&
                               l.velocidad !== null && (
                                 <span className="text-sky-700 bg-sky-50 px-1 rounded text-[10px] font-bold">
@@ -1579,6 +1594,13 @@ export default function DataEntryV2({
                     pos={popupActivo.pos}
                     onConfirmar={handleSaqueConfirmar}
                     onCancelar={cerrarPopup}
+                  />
+                )}
+                {popupActivo?.tipo === "tipo-saque" && (
+                  <PopupTipoSaque
+                    pos={popupActivo.pos}
+                    onConfirmar={handleTipoSaqueConfirmar}
+                    onCancelar={popupSiguiente}
                   />
                 )}
                 {popupActivo?.tipo === "recepcion" && (

@@ -16,6 +16,8 @@ export type ValorSaque =
   | "neutro"
   | "negativo";
 
+export type ValorTipoSaque = "potencia" | "flotado";
+
 export type ValorRecepcion = 1 | 2 | 3 | 4 | 5 | 6;
 
 export type TipoDefensa = "toque" | "gran-defensa" | "libre";
@@ -332,7 +334,7 @@ function BotonSvg({
 }
 
 // ============================================================
-// POPUP SAQUE
+// POPUP SAQUE (calidad)
 // ============================================================
 
 interface PopupSaqueProps {
@@ -372,6 +374,66 @@ export function PopupSaque({ pos, onConfirmar, onCancelar }: PopupSaqueProps) {
           h={14}
           texto="Cancelar (Esc)"
           color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP TIPO DE SAQUE (P / F)
+// ============================================================
+
+interface PopupTipoSaqueProps {
+  pos: PopupPos;
+  onConfirmar: (v: ValorTipoSaque) => void;
+  onCancelar: () => void;
+}
+
+export function PopupTipoSaque({
+  pos,
+  onConfirmar,
+  onCancelar,
+}: PopupTipoSaqueProps) {
+  const pad = 8;
+  const ancho = 180;
+  const alto = 82;
+  const btnW = (ancho - pad * 2 - 4) / 2;
+
+  return (
+    <PopupWrapper pos={pos} ancho={ancho} alto={alto} titulo="SAQUE — Tipo">
+      <g>
+        <BotonSvg
+          x={pad}
+          y={0}
+          w={btnW}
+          h={26}
+          texto="P — Potencia"
+          color="#ea580c"
+          fontSize={11}
+          onClick={() => onConfirmar("potencia")}
+        />
+        <BotonSvg
+          x={pad + btnW + 4}
+          y={0}
+          w={btnW}
+          h={26}
+          texto="F — Flotado"
+          color="#3b82f6"
+          fontSize={11}
+          onClick={() => onConfirmar("flotado")}
+        />
+
+        <BotonSvg
+          x={pad}
+          y={34}
+          w={ancho - pad * 2}
+          h={16}
+          texto="Flotado (default, Esc)"
+          color="#f1f5f9"
           colorTexto="#475569"
           fontSize={9}
           onClick={onCancelar}
