@@ -48,6 +48,7 @@ interface Partido {
   errores_rivales: number | null;
   buenas_rivales: number | null;
   notas: string | null;
+  equipo_rival_id: string | null;
 }
 
 interface Acceso {
@@ -107,6 +108,7 @@ export default function AdminPage() {
   const [nuevoPartido, setNuevoPartido] = useState({
     equipo_id: "",
     rival: "",
+    equipo_rival_id: "",
     fecha: "",
     set1: "",
     set2: "",
@@ -425,6 +427,7 @@ export default function AdminPage() {
     const { error } = await supabase.from("partidos").insert({
       equipo_id: nuevoPartido.equipo_id,
       rival: nuevoPartido.rival.trim(),
+      equipo_rival_id: nuevoPartido.equipo_rival_id || null,
       fecha: nuevoPartido.fecha,
       set1: nuevoPartido.set1.trim() || null,
       set2: nuevoPartido.set2.trim() || null,
@@ -453,6 +456,7 @@ export default function AdminPage() {
     setNuevoPartido({
       equipo_id: "",
       rival: "",
+      equipo_rival_id: "",
       fecha: "",
       set1: "",
       set2: "",
@@ -487,6 +491,7 @@ export default function AdminPage() {
       .update({
         equipo_id: editPartido.equipo_id,
         rival: editPartido.rival.trim(),
+        equipo_rival_id: editPartido.equipo_rival_id || null,
         fecha: editPartido.fecha,
         set1: editPartido.set1?.trim() || null,
         set2: editPartido.set2?.trim() || null,
@@ -1190,6 +1195,10 @@ export default function AdminPage() {
                       setNuevoPartido({
                         ...nuevoPartido,
                         equipo_id: e.target.value,
+                        equipo_rival_id:
+                          nuevoPartido.equipo_rival_id === e.target.value
+                            ? ""
+                            : nuevoPartido.equipo_rival_id,
                       })
                     }
                     className={inputBase}
@@ -1210,9 +1219,28 @@ export default function AdminPage() {
                         rival: e.target.value,
                       })
                     }
-                    placeholder="Rival"
+                    placeholder="Rival (texto)"
                     className={inputBase}
                   />
+                  <select
+                    value={nuevoPartido.equipo_rival_id}
+                    onChange={(e) =>
+                      setNuevoPartido({
+                        ...nuevoPartido,
+                        equipo_rival_id: e.target.value,
+                      })
+                    }
+                    className={`col-span-2 ${inputBase}`}
+                  >
+                    <option value="">Equipo rival (opcional, para modo espejo)</option>
+                    {equipos
+                      .filter((eq) => eq.id !== nuevoPartido.equipo_id)
+                      .map((eq) => (
+                        <option key={eq.id} value={eq.id}>
+                          {eq.nombre}
+                        </option>
+                      ))}
+                  </select>
                   <input
                     type="date"
                     value={nuevoPartido.fecha}
@@ -1386,6 +1414,11 @@ export default function AdminPage() {
                                 setEditPartido({
                                   ...editPartido,
                                   equipo_id: e.target.value,
+                                  equipo_rival_id:
+                                    editPartido.equipo_rival_id ===
+                                    e.target.value
+                                      ? null
+                                      : editPartido.equipo_rival_id,
                                 })
                               }
                               className={inputBase}
@@ -1408,6 +1441,29 @@ export default function AdminPage() {
                               placeholder="Rival"
                               className={inputBase}
                             />
+                            <select
+                              value={editPartido.equipo_rival_id ?? ""}
+                              onChange={(e) =>
+                                setEditPartido({
+                                  ...editPartido,
+                                  equipo_rival_id: e.target.value || null,
+                                })
+                              }
+                              className={`col-span-2 ${inputBase}`}
+                            >
+                              <option value="">
+                                Equipo rival (opcional, para modo espejo)
+                              </option>
+                              {equipos
+                                .filter(
+                                  (eq) => eq.id !== editPartido.equipo_id
+                                )
+                                .map((eq) => (
+                                  <option key={eq.id} value={eq.id}>
+                                    {eq.nombre}
+                                  </option>
+                                ))}
+                            </select>
                             <input
                               type="date"
                               value={editPartido.fecha}
@@ -1579,7 +1635,7 @@ export default function AdminPage() {
                       ) : (
                         <div className="flex items-start gap-3">
                           <div className="flex-1">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <p className="font-medium text-slate-800">
                                 🏐 {nombreEquipoPartido(p.equipo_id)} vs{" "}
                                 {p.rival}
@@ -1592,6 +1648,12 @@ export default function AdminPage() {
                               {p.resultado_partido === "perdido" && (
                                 <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-semibold">
                                   Perdido
+                                </span>
+                              )}
+                              {p.equipo_rival_id && (
+                                <span className="text-[10px] bg-fuchsia-100 text-fuchsia-700 px-2 py-0.5 rounded-full font-medium">
+                                  🔀 Rival real:{" "}
+                                  {nombreEquipoPartido(p.equipo_rival_id)}
                                 </span>
                               )}
                             </div>

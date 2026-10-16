@@ -1,9 +1,10 @@
 // ============================================
-// ACCESO A DATOS — 7 tablas de detalle
+// ACCESO A DATOS — 7 tablas de detalle + V2
 // Correlación: solo armado → ataque (pila FIFO)
 // ============================================
 
 import { supabase } from "./supabase";
+import { cargarPuntosV2 } from "./dbV2";
 import type { RotacionPunto } from "./rotaciones";
 import { puntajeBase, ajustarPorContexto } from "./estadisticas";
 
@@ -254,12 +255,6 @@ export async function borrarDetalles(partidoId: string) {
 // ============================================================
 // BORRAR UN PUNTO ESPECÍFICO DE V1 (por partido + set + punto)
 // ============================================================
-//
-// Se usa cuando la consola V2 guarda y hay que eliminar el mismo
-// punto de las tablas V1, para que no queden datos duplicados.
-//
-// Tablas afectadas: armados_detalle + las 7 de detalle.
-// ============================================================
 
 export async function borrarPuntoV1DeTablas(
   partidoId: string,
@@ -296,7 +291,6 @@ export async function borrarPuntoV1DeTablas(
 
 // ============================================
 // ADAPTADOR: tablas nuevas → formato AccionDB
-// Correlación: armado → ataque (uno a uno)
 // ============================================
 
 export interface AccionDB {
@@ -356,6 +350,126 @@ interface AccionIndividual {
   valoracion: string;
   created_at: string;
 }
+
+// ------------------------------------------------------------
+// TRADUCCIÓN V2 → V1 (para que el motor de stats las entienda)
+// ------------------------------------------------------------
+
+function fundamentoV2aV1(tipo: string): string | null {
+  switch (tipo) {
+    case "saque":
+      return "saque";
+    case "recepcion":
+      return "recepcion";
+    case "armado":
+      return "armados";
+    case "ataque":
+      return "ataque";
+    case "bloqueo":
+      return "bloqueo";
+    case "defensa":
+      return "defensa";
+    default:
+      // "libre" y "roce-red" no tienen equivalente en V1
+      return null;
+  }
+}
+
+function valoracionV2aV1(
+  tipo: string,
+  subtipo: string | number | null
+): string | null {
+  if (subtipo === null || subtipo === undefined) return null;
+
+  if (tipo === "saque") {
+    const validos = [
+      "ace",
+      "positivo_mas",
+      "positivo",
+      "neutro",
+      "negativo",
+    ];
+    return typeof subtipo === "string" && validos.includes(subtipo)
+      ? subtipo
+      : null;
+  }
+
+  if (tipo === "recepcion") {
+    const n = typeof subtipo === "number" ? subtipo : parseInt(String(subtipo));
+    return RECEPCION_NUM_A_STR[n] ?? null;
+  }
+
+  if (tipo === "armado") {
+    if (subtipo === "R") return null;
+    const n = typeof subtipo === "number" ? subtipo : parseInt(String(subtipo));
+    return CALIDAD_A_STR[n] ?? null;
+  }
+
+  if (tipo === "ataque") {
+    let s = String(subtipo);
+    if (s.startsWith("toque:")) s = s.slice(6);
+    if (s === "punto" || s === "error" || s === "neutro") return s;
+    return null;
+  }
+
+  if (tipo === "bloqueo") {
+    const validos = [
+      "punto",
+      "positivo_mas",
+      "positivo",
+      "use_rival",
+      "red",
+      "filtrada",
+    ];
+    return typeof subtipo === "string" && validos.includes(subtipo)
+      ? subtipo
+      : null;
+  }
+
+  if (tipo === "defensa") {
+    const s = String(subtipo);
+    if (s === "toque") return "toque_positiva";
+    if (s === "gran-defensa") return "gran_def";
+    if (s === "libre") return "mala_libre";
+    if (s === "cobertura") return "cobertura_positiva";
+    if (s === "buena_rival") return "gran_def";
+    if (s === "neutro") return "error_def";
+    return null;
+  }
+
+  return null;
+}
+
+async function traducirAccionesV2(
+  partidoId: string
+): Promise<AccionIndividual[]> {
+  const res = await cargarPuntosV2(partidoId);
+  if (!res.ok || !res.puntos) return [];
+
+  const out: AccionIndividual[] = [];
+  for (const p of res.puntos) {
+    for (const a of p.acciones) {
+      const fund = fundamentoV2aV1(a.tipo);
+      if (!fund) continue;
+      const val = valoracionV2aV1(a.tipo, a.subtipo ?? null);
+      if (!val) continue;
+      if (!a.jugador_id) continue;
+      out.push({
+        jugador_id: a.jugador_id,
+        set_numero: p.set_numero,
+        punto_numero: p.punto_numero,
+        fundamento: fund,
+        valoracion: val,
+        created_at: a.created_at ?? p.created_at ?? "",
+      });
+    }
+  }
+  return out;
+}
+
+// ------------------------------------------------------------
+// CARGA COMPATIBLE (V1 + V2)
+// ------------------------------------------------------------
 
 export async function cargarAccionesCompatibles(
   partidoId: string
@@ -481,6 +595,10 @@ export async function cargarAccionesCompatibles(
       created_at: a.created_at ?? "",
     });
   });
+
+  // ---------- V2 ----------
+  const v2 = await traducirAccionesV2(partidoId);
+  for (const a of v2) acciones.push(a);
 
   acciones.sort((a, b) => {
     if (a.set_numero !== b.set_numero) return a.set_numero - b.set_numero;
