@@ -228,12 +228,29 @@ function generarRecepcionesAceContra(params: {
       celdaReceptora = linea.destino.celda; // ya en coordenadas del equipo local
     }
 
-    const jugador = jugadorQueRecibeDeRot(
+    let jugador = jugadorQueRecibeDeRot(
       { celda: celdaReceptora, mini: linea.destino.mini },
       rotReceptora,
       situacionReceptora,
       overrides
     );
+
+    // Fallback: si el mapeo de recepción no resuelve jugador (por ejemplo,
+    // porque la zona pide líbero y no hay líbero asignado), usamos el jugador
+    // que la rotación / posiciones tiene en la zona del receptor.
+    if (!jugador) {
+      const zonaRec = zonaRecepcionDeCelda(celdaReceptora);
+      if (zonaRec !== null) {
+        const posicionesReceptor = esPropio
+          ? pc.estadoRival?.posicionesPunto
+          : pc.posicionesPunto;
+        jugador =
+          overrides?.[zonaRec] ??
+          posicionesReceptor?.[zonaRec] ??
+          rotReceptora.posiciones[zonaRec as Zona]?.jugador_id ??
+          null;
+      }
+    }
     if (!jugador) continue;
 
     acciones.push({
