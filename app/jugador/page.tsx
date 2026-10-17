@@ -47,6 +47,8 @@ interface Partido {
   id: string;
   rival: string;
   fecha: string;
+  equipo_id: string;
+  equipo_rival_id: string | null;
 }
 
 type Vista = "general" | "por-partido";
@@ -88,6 +90,7 @@ export default function JugadorPage() {
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [jugador, setJugador] = useState<Jugador | null>(null);
   const [nombreEquipo, setNombreEquipo] = useState("");
+  const [equipoId, setEquipoId] = useState("");
   const [partidos, setPartidos] = useState<Partido[]>([]);
   const [acciones, setAcciones] = useState<AccionDB[]>([]);
   const [idsJugadoresEquipo, setIdsJugadoresEquipo] = useState<string[]>([]);
@@ -147,6 +150,7 @@ export default function JugadorPage() {
               return;
             }
             const asig = asigData as JugadorEquipo;
+            setEquipoId(asig.equipo_id);
 
             supabase
               .from("equipos")
@@ -159,8 +163,10 @@ export default function JugadorPage() {
 
             const { data: partRes } = await supabase
               .from("partidos")
-              .select("id, rival, fecha")
-              .eq("equipo_id", asig.equipo_id)
+              .select("id, rival, fecha, equipo_id, equipo_rival_id")
+              .or(
+                `equipo_id.eq.${asig.equipo_id},equipo_rival_id.eq.${asig.equipo_id}`
+              )
               .order("fecha", { ascending: false });
 
             if (!partRes || partRes.length === 0) {
@@ -171,9 +177,11 @@ export default function JugadorPage() {
             setPartidos(partRes);
             const idsPartidos = partRes.map((p) => p.id);
 
-            // Cargar acciones desde las tablas nuevas, por partido
+            // Cargar acciones desde las tablas V1 + V2, filtrando por equipo.
             const resultados = await Promise.all(
-              idsPartidos.map((pid) => cargarAccionesCompatibles(pid))
+              idsPartidos.map((pid) =>
+                cargarAccionesCompatibles(pid, asig.equipo_id)
+              )
             );
 
             const { data: jugRes } = await supabase
