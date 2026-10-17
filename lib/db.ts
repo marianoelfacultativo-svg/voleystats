@@ -449,10 +449,9 @@ async function traducirAccionesV2(
 
   const out: AccionIndividual[] = [];
   for (const p of res.puntos) {
-    // Filtro por equipo: si nos piden un equipo, solo contamos sus puntos.
-    // Puntos sin equipo_id (datos viejos) se dejan pasar siempre.
-    if (equipoId && p.equipo_id && p.equipo_id !== equipoId) continue;
-
+    // OJO: ya NO filtramos por el equipo dueño del punto.
+    // Un punto puede tener acciones de AMBOS equipos (modo espejo),
+    // y cada acción trae su propio equipo_id. Filtramos por acción.
     for (const a of p.acciones) {
       if (equipoId && a.equipo_id && a.equipo_id !== equipoId) continue;
       const fund = fundamentoV2aV1(a.tipo);
