@@ -37,6 +37,8 @@ interface Partido {
   errores_rivales: number | null;
   buenas_rivales: number | null;
   notas: string | null;
+  equipo_id: string;
+  equipo_rival_id: string | null;
 }
 
 interface Jugador {
@@ -104,7 +106,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       supabase
         .from("partidos")
         .select("*")
-        .eq("equipo_id", equipoId)
+        .or(`equipo_id.eq.${equipoId},equipo_rival_id.eq.${equipoId}`)
         .order("fecha", { ascending: false }),
       supabase
         .from("jugadores")
@@ -126,7 +128,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       }
 
       const resultados = await Promise.all(
-        ids.map((pid) => cargarAccionesCompatibles(pid))
+        ids.map((pid) => cargarAccionesCompatibles(pid, equipoId))
       );
 
       setAcciones(resultados.flat());

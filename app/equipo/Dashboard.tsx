@@ -23,6 +23,8 @@ interface Partido {
   set3: string | null;
   set4: string | null;
   set5: string | null;
+  equipo_id: string;
+  equipo_rival_id: string | null;
 }
 
 interface Jugador {
@@ -79,8 +81,10 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
     Promise.all([
       supabase
         .from("partidos")
-        .select("id, rival, fecha, set1, set2, set3, set4, set5")
-        .eq("equipo_id", equipoId)
+        .select(
+          "id, rival, fecha, set1, set2, set3, set4, set5, equipo_id, equipo_rival_id"
+        )
+        .or(`equipo_id.eq.${equipoId},equipo_rival_id.eq.${equipoId}`)
         .order("fecha", { ascending: false }),
       supabase
         .from("jugadores")
@@ -102,7 +106,7 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
       }
 
       const resultados = await Promise.all(
-        ids.map((pid) => cargarAccionesCompatibles(pid))
+        ids.map((pid) => cargarAccionesCompatibles(pid, equipoId))
       );
 
       setAcciones(resultados.flat());
@@ -116,6 +120,7 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
 
   const ultimoPartido = partidos[0];
 
+  // Solo mostramos jugadores que tengan acciones en lo que ve este equipo
   const jugadoresDelEquipo = jugadores.filter((j) =>
     acciones.some((a) => a.jugador_id === j.id)
   );

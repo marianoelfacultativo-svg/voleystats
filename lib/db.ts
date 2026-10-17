@@ -441,14 +441,20 @@ function valoracionV2aV1(
 }
 
 async function traducirAccionesV2(
-  partidoId: string
+  partidoId: string,
+  equipoId?: string
 ): Promise<AccionIndividual[]> {
   const res = await cargarPuntosV2(partidoId);
   if (!res.ok || !res.puntos) return [];
 
   const out: AccionIndividual[] = [];
   for (const p of res.puntos) {
+    // Filtro por equipo: si nos piden un equipo, solo contamos sus puntos.
+    // Puntos sin equipo_id (datos viejos) se dejan pasar siempre.
+    if (equipoId && p.equipo_id && p.equipo_id !== equipoId) continue;
+
     for (const a of p.acciones) {
+      if (equipoId && a.equipo_id && a.equipo_id !== equipoId) continue;
       const fund = fundamentoV2aV1(a.tipo);
       if (!fund) continue;
       const val = valoracionV2aV1(a.tipo, a.subtipo ?? null);
@@ -472,7 +478,8 @@ async function traducirAccionesV2(
 // ------------------------------------------------------------
 
 export async function cargarAccionesCompatibles(
-  partidoId: string
+  partidoId: string,
+  equipoId?: string
 ): Promise<AccionDB[]> {
   const [ataques, defensas, bloqueos, saques, recepciones, armados] =
     await Promise.all([
@@ -597,7 +604,7 @@ export async function cargarAccionesCompatibles(
   });
 
   // ---------- V2 ----------
-  const v2 = await traducirAccionesV2(partidoId);
+  const v2 = await traducirAccionesV2(partidoId, equipoId);
   for (const a of v2) acciones.push(a);
 
   acciones.sort((a, b) => {

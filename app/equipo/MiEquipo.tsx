@@ -84,7 +84,10 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
 
     Promise.all([
       supabase.from("jugadores").select("*").order("nombre"),
-      supabase.from("partidos").select("id").eq("equipo_id", equipoId),
+      supabase
+        .from("partidos")
+        .select("id, equipo_id, equipo_rival_id")
+        .or(`equipo_id.eq.${equipoId},equipo_rival_id.eq.${equipoId}`),
     ]).then(async ([jugRes, partRes]) => {
       if (!jugRes.data || !partRes.data) {
         setCargando(false);
@@ -100,7 +103,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
       }
 
       const resultados = await Promise.all(
-        idsPartidos.map((pid) => cargarAccionesCompatibles(pid))
+        idsPartidos.map((pid) => cargarAccionesCompatibles(pid, equipoId))
       );
 
       setJugadores(jugRes.data);
