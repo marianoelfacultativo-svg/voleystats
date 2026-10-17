@@ -69,6 +69,7 @@ import {
 import { jugadorQueAtacaDesdeCelda } from "@/lib/mapeoV2";
 import {
   guardarPuntoV2,
+  type AccionV2Data,
   type PuntoV2Data,
 } from "@/lib/dbV2";
 import { borrarPuntoV1DeTablas } from "@/lib/db";
@@ -133,6 +134,124 @@ function jugadorQueRecibeDeRot(
   if (!fila) return null;
   const rol = fila[zonaRec];
   return resolverRolAJugador(rot, rol);
+}
+
+/**
+ * Genera acciones sintéticas de recepción "ace_contra" cuando un saque
+ * termina en ace (cae dentro de la cancha real del receptor sin que nadie
+ * la toque). Solo en modo espejo. El jugador que "recibe" se resuelve con
+ * el mapeo de recepción del equipo receptor.
+ */
+function generarRecepcionesAceContra(params: {
+  pc: PuntoCerrado;
+  lineas: LineaClasificada[];
+  acciones: AccionV2Data[];
+  equipoId: string;
+  equipoRivalId: string | null;
+  posicionesFijas: PosicionesFijasMap;
+  posicionesFijasRival: PosicionesFijasMap;
+  modoEspejo: boolean;
+}): void {
+  const {
+    pc,
+    lineas,
+    acciones,
+    equipoId,
+    equipoRivalId,
+    posicionesFijas,
+    posicionesFijasRival,
+    modoEspejo,
+  } = params;
+
+  if (!modoEspejo || !pc.estadoRival || !equipoRivalId) return;
+
+  for (const linea of lineas) {
+    if (linea.tipo !== "saque" || linea.oculta) continue;
+
+    const esPropio = !linea.esRival;
+    const equipoSacador = esPropio ? equipoId : equipoRivalId;
+    if (!equipoSacador) continue;
+
+    // ¿Es un ace?
+    let esAce = false;
+    if (esPropio) {
+      // Saque propio: el subtipo ya lo puso calcularSubtiposSaque.
+      esAce = linea.subtipo === "ace";
+    } else {
+      // Saque rival: chequeo manual (no se le calcula subtipo en el motor).
+      const d = linea.destino.celda;
+      if (/^F[123]-/.test(d)) {
+        const col = d.split("-")[1];
+        if (col === "C2" || col === "C3" || col === "C4") {
+          // ¿Hubo recepción del equipo receptor después? (no debería haber)
+          const huboRecepcion = lineas.some(
+            (l) => l.tipo === "recepcion" && l.equipoId === equipoId
+          );
+          esAce = !huboRecepcion;
+        }
+      }
+    }
+    if (!esAce) continue;
+
+    const equipoReceptor = esPropio ? equipoRivalId : equipoId;
+
+    // ¿Ya hay una recepción del receptor en este punto?
+    const yaHay = acciones.some(
+      (a) => a.tipo === "recepcion" && a.equipo_id === equipoReceptor
+    );
+    if (yaHay) continue;
+
+    let rotReceptora: RotacionPunto;
+    let situacionReceptora: Situacion;
+    let overrides: Partial<Record<Zona, string | null>>;
+    let celdaReceptora: string;
+
+    if (esPropio) {
+      // Receptor = B (el rival real)
+      rotReceptora = pc.estadoRival.rotacion;
+      situacionReceptora =
+        pc.saqueInicial === "propio" ? "recepcion" : "saque";
+      const clave = `${numeroRotacionDesdePosiciones(rotReceptora)}-${situacionReceptora}`;
+      const fijas = posicionesFijasRival[clave] ?? POSICIONES_VACIAS;
+      overrides = calcularRecepcionOverrides(
+        fijas,
+        pc.estadoRival.posicionesPunto
+      );
+      celdaReceptora = invertirCelda(linea.destino.celda);
+    } else {
+      // Receptor = A (el equipo local)
+      rotReceptora = pc.rotacion;
+      situacionReceptora = pc.situacion;
+      const clave = `${numeroRotacionDesdePosiciones(rotReceptora)}-${situacionReceptora}`;
+      const fijas = posicionesFijas[clave] ?? POSICIONES_VACIAS;
+      overrides = calcularRecepcionOverrides(fijas, pc.posicionesPunto);
+      celdaReceptora = linea.destino.celda; // ya en coordenadas del equipo local
+    }
+
+    const jugador = jugadorQueRecibeDeRot(
+      { celda: celdaReceptora, mini: linea.destino.mini },
+      rotReceptora,
+      situacionReceptora,
+      overrides
+    );
+    if (!jugador) continue;
+
+    acciones.push({
+      orden: acciones.length + 1,
+      tipo: "recepcion",
+      subtipo: 1, // 1 = ace_contra en V2
+      es_rival: !esPropio,
+      jugador_id: jugador,
+      lado: esPropio ? "rival" : "propio",
+      origen_celda: celdaReceptora,
+      origen_mini: linea.destino.mini,
+      destino_celda: celdaReceptora,
+      destino_mini: linea.destino.mini,
+      desvios: [],
+      zona: null,
+      equipo_id: equipoReceptor,
+    });
+  }
 }
 
 // ============================================================
@@ -1031,6 +1150,18 @@ export default function DataEntryV2({
       );
       const lineasConErroresRival = calcularErroresRival(lineasConAtaque);
       const acciones = lineasAAcciones(lineasConErroresRival);
+
+      // ---------- MODO ESPEJO: recepciones sintéticas de ace_contra ----------
+      generarRecepcionesAceContra({
+        pc,
+        lineas: lineasConErroresRival,
+        acciones,
+        equipoId,
+        equipoRivalId,
+        posicionesFijas,
+        posicionesFijasRival,
+        modoEspejo,
+      });
 
       const res = await guardarPuntoV2(partidoId, puntoData, acciones);
       if (!res.ok) {
