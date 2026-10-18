@@ -1181,6 +1181,64 @@ export default function DataEntryV2({
     }
   };
 
+  const handleBorrarLocal = () => {
+    if (
+      !confirm(
+        "¿Borrar los datos guardados en ESTE navegador para este partido?\n\nNO toca Supabase. Si ya guardaste en Supabase, al recargar se recupera desde ahí."
+      )
+    )
+      return;
+
+    try {
+      localStorage.removeItem(CLAVE_V2 + partidoId);
+      localStorage.removeItem(CLAVE_POSICIONES_FIJAS + partidoId);
+    } catch {
+      /* noop */
+    }
+
+    // Reset completo del estado del componente
+    setPuntosCerrados({});
+    setPuntoActual(1);
+    setLineas([]);
+    setCirculoSinArmar(null);
+    setCirculoArmado(null);
+    setDesviosPendientes([]);
+    setEstrella(null);
+    setColaPopups([]);
+    setContadorId(1);
+    setSaqueInicial("propio");
+    setRotacion(rotacionInicial ?? null);
+    setLiberos([]);
+    setPosicionesPunto({ ...POSICIONES_VACIAS });
+    setCambiosPendientes([]);
+    setPosicionesFijas({});
+    setModoEspejo(false);
+    setEquipoRivalId(null);
+    setJugadoresRival([]);
+    setRotacionRival(null);
+    setLiberosRival([]);
+    setPosicionesPuntoRival({ ...POSICIONES_VACIAS });
+    setCambiosPendientesRival([]);
+    setPosicionesFijasRival({});
+    setSetupCompleto(false);
+
+    // Reintenta cargar desde Supabase (por si ya había guardado)
+    (async () => {
+      try {
+        const cerrados = await cargarPuntosCerradosDesdeDB(partidoId, 1);
+        setPuntosCerrados(cerrados);
+        const numeros = Object.keys(cerrados).map((k) => parseInt(k));
+        const siguiente =
+          numeros.length > 0 ? Math.max(...numeros) + 1 : 1;
+        setPuntoActual(siguiente);
+        cargarPuntoDesde(cerrados, siguiente);
+        if (numeros.length > 0) setSetupCompleto(true);
+      } catch (e) {
+        console.error("Error recargando desde Supabase:", e);
+      }
+    })();
+  };
+
   const handleCerrarPunto = () => {
     if (lineas.length === 0) return;
     if (!rotacion) {
@@ -1938,6 +1996,7 @@ export default function DataEntryV2({
             onBorrarPunto={handleBorrarPunto}
             onGuardar={handleGuardarSupabase}
             onCerrarPunto={handleCerrarPunto}
+            onBorrarLocal={handleBorrarLocal}
           />
         </>
       )}
