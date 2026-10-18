@@ -69,6 +69,7 @@ import {
 import { jugadorQueAtacaDesdeCelda } from "@/lib/mapeoV2";
 import {
   guardarPuntoV2,
+  cargarPuntosV2,
   type AccionV2Data,
   type PuntoV2Data,
 } from "@/lib/dbV2";
@@ -175,15 +176,12 @@ function generarRecepcionesAceContra(params: {
     // ¿Es un ace?
     let esAce = false;
     if (esPropio) {
-      // Saque propio: el subtipo ya lo puso calcularSubtiposSaque.
       esAce = linea.subtipo === "ace";
     } else {
-      // Saque rival: chequeo manual (no se le calcula subtipo en el motor).
       const d = linea.destino.celda;
       if (/^F[123]-/.test(d)) {
         const col = d.split("-")[1];
         if (col === "C2" || col === "C3" || col === "C4") {
-          // ¿Hubo recepción del equipo receptor después? (no debería haber)
           const huboRecepcion = lineas.some(
             (l) => l.tipo === "recepcion" && l.equipoId === equipoId
           );
@@ -195,7 +193,6 @@ function generarRecepcionesAceContra(params: {
 
     const equipoReceptor = esPropio ? equipoRivalId : equipoId;
 
-    // ¿Ya hay una recepción del receptor en este punto?
     const yaHay = acciones.some(
       (a) => a.tipo === "recepcion" && a.equipo_id === equipoReceptor
     );
@@ -207,7 +204,6 @@ function generarRecepcionesAceContra(params: {
     let celdaReceptora: string;
 
     if (esPropio) {
-      // Receptor = B (el rival real)
       rotReceptora = pc.estadoRival.rotacion;
       situacionReceptora =
         pc.saqueInicial === "propio" ? "recepcion" : "saque";
@@ -219,13 +215,12 @@ function generarRecepcionesAceContra(params: {
       );
       celdaReceptora = invertirCelda(linea.destino.celda);
     } else {
-      // Receptor = A (el equipo local)
       rotReceptora = pc.rotacion;
       situacionReceptora = pc.situacion;
       const clave = `${numeroRotacionDesdePosiciones(rotReceptora)}-${situacionReceptora}`;
       const fijas = posicionesFijas[clave] ?? POSICIONES_VACIAS;
       overrides = calcularRecepcionOverrides(fijas, pc.posicionesPunto);
-      celdaReceptora = linea.destino.celda; // ya en coordenadas del equipo local
+      celdaReceptora = linea.destino.celda;
     }
 
     let jugador = jugadorQueRecibeDeRot(
@@ -235,10 +230,6 @@ function generarRecepcionesAceContra(params: {
       overrides
     );
 
-    // Fallback: si el mapeo de recepción no resuelve jugador (por ejemplo,
-    // porque la zona pide líbero y no hay líbero asignado), usamos el jugador
-    // que la rotación / posiciones tiene en la zona del receptor.
-    // Usamos || (no ??) porque un "" vacío también debe caer al siguiente.
     if (!jugador) {
       const zonaRec = zonaRecepcionDeCelda(celdaReceptora);
       if (zonaRec !== null) {
@@ -257,7 +248,7 @@ function generarRecepcionesAceContra(params: {
     acciones.push({
       orden: acciones.length + 1,
       tipo: "recepcion",
-      subtipo: 1, // 1 = ace_contra en V2
+      subtipo: 1,
       es_rival: !esPropio,
       jugador_id: jugador,
       lado: esPropio ? "rival" : "propio",
@@ -270,6 +261,105 @@ function generarRecepcionesAceContra(params: {
       equipo_id: equipoReceptor,
     });
   }
+}
+
+// ============================================================
+// HELPERS CARGA DESDE DB
+// ============================================================
+
+/** Qué subtipos se conservan al recargar (los que eligió el usuario). */
+function subtipoPreservado(tipo: string, subtipo: any): any {
+  if (tipo === "recepcion") return subtipo;
+  if (tipo === "armado") return subtipo;
+  if (tipo === "roce-red") return subtipo;
+  if (tipo === "defensa") {
+    if (
+      subtipo === "toque" ||
+      subtipo === "gran-defensa" ||
+      subtipo === "libre" ||
+      subtipo === "cobertura"
+    ) {
+      return subtipo;
+    }
+    return null;
+  }
+  return null;
+}
+
+/** Reconstruye los PuntoCerrado a partir de puntos_v2 + acciones_v2. */
+async function cargarPuntosCerradosDesdeDB(
+  partidoId: string,
+  setActivo: number
+): Promise<Record<number, PuntoCerrado>> {
+  const res = await cargarPuntosV2(partidoId);
+  if (!res.ok || !res.puntos) return {};
+
+  const cerrados: Record<number, PuntoCerrado> = {};
+
+  for (const p of res.puntos) {
+    if (p.set_numero !== setActivo) continue;
+    if (p.ganador !== "propio" && p.ganador !== "rival") continue;
+
+    const acciones = [...p.acciones].sort((a, b) => a.orden - b.orden);
+
+    const lineas: LineaClasificada[] = acciones.map((a) => {
+      let variante: any = a.variante ?? null;
+      let subtipoRaw: any = a.subtipo;
+      if (typeof subtipoRaw === "string" && subtipoRaw.startsWith("toque:")) {
+        variante = variante ?? "toque";
+        subtipoRaw = subtipoRaw.slice(6);
+      }
+
+      return {
+        id: `db-${a.id}`,
+        tipo: a.tipo as any,
+        esRival: a.es_rival,
+        jugadorId: a.jugador_id ?? null,
+        origen: {
+          celda: a.origen_celda ?? "",
+          mini: a.origen_mini ?? "",
+        },
+        destino: {
+          celda: a.destino_celda ?? "",
+          mini: a.destino_mini ?? "",
+        },
+        desvios: (a.desvios ?? []).map((d: any) => ({
+          celda: d.celda,
+          mini: d.mini,
+          jugadorId: d.jugador_id ?? null,
+        })),
+        subtipo: subtipoPreservado(a.tipo, subtipoRaw),
+        variante,
+        velocidad: a.velocidad ?? null,
+        tipoSaque: (a.tipo_saque as any) ?? null,
+        x2: a.x2 ?? undefined,
+        oculta: a.oculta ?? undefined,
+        posicionInicial: a.posicion_inicial_celda
+          ? {
+              celda: a.posicion_inicial_celda,
+              mini: a.posicion_inicial_mini ?? "",
+            }
+          : null,
+        equipoId: a.equipo_id ?? null,
+      };
+    });
+
+    cerrados[p.punto_numero] = {
+      numero: p.punto_numero,
+      lineas,
+      saqueInicial: p.saque_equipo as any,
+      situacion: p.situacion as any,
+      ganador: p.ganador as any,
+      rotacion: p.rotacion as any,
+      liberos: (p.liberos ?? []) as any,
+      posicionesPunto: (p.posiciones_punto ?? {}) as any,
+      cambios: (p.cambios ?? []) as any,
+      equipoId: p.equipo_id ?? undefined,
+      estadoRival: p.estado_rival ? (p.estado_rival as any) : undefined,
+    };
+  }
+
+  return cerrados;
 }
 
 // ============================================================
@@ -722,44 +812,69 @@ export default function DataEntryV2({
     }
 
     const raw = localStorage.getItem(CLAVE_V2 + partidoId);
-    if (!raw) {
-      setHidratado(true);
-      return;
-    }
-    try {
-      const data = JSON.parse(raw);
-      if (data.setupCompleto !== undefined)
-        setSetupCompleto(data.setupCompleto);
-      if (data.modoEspejo !== undefined) setModoEspejo(data.modoEspejo);
-      if (data.equipoRivalId !== undefined) setEquipoRivalId(data.equipoRivalId);
-      if (data.rotacionRival) setRotacionRival(data.rotacionRival);
-      if (data.liberosRival) setLiberosRival(data.liberosRival);
-      if (data.posicionesPuntoRival)
-        setPosicionesPuntoRival(data.posicionesPuntoRival);
-      if (data.cambiosPendientesRival)
-        setCambiosPendientesRival(data.cambiosPendientesRival);
 
-      const cerrados: Record<number, PuntoCerrado> =
-        data.puntosCerrados ?? {};
-      setPuntosCerrados(cerrados);
-      const pto = data.puntoActual ?? 1;
-      setPuntoActual(pto);
-      cargarPuntoDesde(cerrados, pto);
+    // ---------- LOCALSTORAGE ----------
+    if (raw) {
+      try {
+        const data = JSON.parse(raw);
+        if (data.setupCompleto !== undefined)
+          setSetupCompleto(data.setupCompleto);
+        if (data.modoEspejo !== undefined) setModoEspejo(data.modoEspejo);
+        if (data.equipoRivalId !== undefined)
+          setEquipoRivalId(data.equipoRivalId);
+        if (data.rotacionRival) setRotacionRival(data.rotacionRival);
+        if (data.liberosRival) setLiberosRival(data.liberosRival);
+        if (data.posicionesPuntoRival)
+          setPosicionesPuntoRival(data.posicionesPuntoRival);
+        if (data.cambiosPendientesRival)
+          setCambiosPendientesRival(data.cambiosPendientesRival);
 
-      if (!cerrados[pto]) {
-        if (data.rotacion) setRotacion(data.rotacion);
-        if (data.saqueInicial) setSaqueInicial(data.saqueInicial);
-        if (data.liberos) setLiberos(data.liberos);
-        if (data.posicionesPunto) setPosicionesPunto(data.posicionesPunto);
-        if (data.cambiosPendientes)
-          setCambiosPendientes(data.cambiosPendientes);
-        if (data.lineas) setLineas(data.lineas);
-        if (data.contadorId) setContadorId(data.contadorId);
+        const cerrados: Record<number, PuntoCerrado> =
+          data.puntosCerrados ?? {};
+        setPuntosCerrados(cerrados);
+        const pto = data.puntoActual ?? 1;
+        setPuntoActual(pto);
+        cargarPuntoDesde(cerrados, pto);
+
+        if (!cerrados[pto]) {
+          if (data.rotacion) setRotacion(data.rotacion);
+          if (data.saqueInicial) setSaqueInicial(data.saqueInicial);
+          if (data.liberos) setLiberos(data.liberos);
+          if (data.posicionesPunto)
+            setPosicionesPunto(data.posicionesPunto);
+          if (data.cambiosPendientes)
+            setCambiosPendientes(data.cambiosPendientes);
+          if (data.lineas) setLineas(data.lineas);
+          if (data.contadorId) setContadorId(data.contadorId);
+        }
+        setHidratado(true);
+        return;
+      } catch {
+        /* fallthrough a DB */
       }
-    } catch {
-      /* noop */
     }
-    setHidratado(true);
+
+    // ---------- SUPABASE (sin localStorage) ----------
+    (async () => {
+      try {
+        const cerrados = await cargarPuntosCerradosDesdeDB(partidoId, 1);
+        setPuntosCerrados(cerrados);
+
+        const numeros = Object.keys(cerrados).map((k) => parseInt(k));
+        const siguiente =
+          numeros.length > 0 ? Math.max(...numeros) + 1 : 1;
+
+        setPuntoActual(siguiente);
+        cargarPuntoDesde(cerrados, siguiente);
+
+        if (numeros.length > 0) {
+          setSetupCompleto(true);
+        }
+      } catch (e) {
+        console.error("Error cargando puntos desde Supabase:", e);
+      }
+      setHidratado(true);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partidoId]);
 

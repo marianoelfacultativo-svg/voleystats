@@ -72,12 +72,19 @@ export function aAccionV2(
     origen_mini: l.origen.mini,
     destino_celda: l.destino.celda,
     destino_mini: l.destino.mini,
-    desvios: (l.desvios ?? []).map((d) => ({ celda: d.celda, mini: d.mini })),
+    desvios: (l.desvios ?? []).map((d) => ({
+      celda: d.celda,
+      mini: d.mini,
+      jugador_id: d.jugadorId ?? null,
+    })),
     zona: null,
     posicion_inicial_celda: l.posicionInicial?.celda ?? null,
     posicion_inicial_mini: l.posicionInicial?.mini ?? null,
     velocidad: l.velocidad ?? null,
     tipo_saque: l.tipoSaque ?? null,
+    variante: l.variante ?? null,
+    x2: l.x2 ?? false,
+    oculta: l.oculta ?? false,
     equipo_id: l.equipoId ?? null,
   };
 }

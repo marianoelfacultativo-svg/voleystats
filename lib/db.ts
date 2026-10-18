@@ -1,6 +1,6 @@
 // ============================================
 // ACCESO A DATOS — 7 tablas de detalle + V2
-// Correlación: solo armado → ataque (pila FIFO)
+// Correlación: cadena lineal + armado → ataque extra
 // ============================================
 
 import { supabase } from "./supabase";
@@ -615,12 +615,19 @@ export async function cargarAccionesCompatibles(
 
   const procesadas: AccionDB[] = [];
   let puntoAnterior = "";
-  let pilaArmados: number[] = [];
+  // Cadena lineal dentro del punto:
+  // - anteriorFinal: puntaje final de la acción anterior (con sus ajustes)
+  // - ultimoArmadoFinal: puntaje final del último armado (para el ajuste extra
+  //   armado → ataque, que solo aplica si el ataque viene justo después del
+  //   armado, sin otra acción en el medio)
+  let anteriorFinal: number | null = null;
+  let ultimoArmadoFinal: number | null = null;
 
   for (const acc of acciones) {
     const puntoKey = `${acc.set_numero}-${acc.punto_numero}`;
     if (puntoKey !== puntoAnterior) {
-      pilaArmados = [];
+      anteriorFinal = null;
+      ultimoArmadoFinal = null;
       puntoAnterior = puntoKey;
     }
 
@@ -629,18 +636,14 @@ export async function cargarAccionesCompatibles(
 
     let final = base;
 
-    if (acc.fundamento === "armados") {
-      pilaArmados.push(base);
-      final = base;
-    } else if (acc.fundamento === "ataque") {
-      if (pilaArmados.length > 0) {
-        const armadoReciente = pilaArmados.pop()!;
-        final = ajustarPorContexto(base, armadoReciente);
-      } else {
-        final = base;
-      }
-    } else {
-      final = base;
+    // (1) Correlación general: cada acción depende de la anterior
+    if (anteriorFinal !== null) {
+      final = ajustarPorContexto(final, anteriorFinal);
+    }
+
+    // (2) Correlación específica armado → ataque: se ajusta de nuevo
+    if (acc.fundamento === "ataque" && ultimoArmadoFinal !== null) {
+      final = ajustarPorContexto(final, ultimoArmadoFinal);
     }
 
     procesadas.push({
@@ -654,6 +657,17 @@ export async function cargarAccionesCompatibles(
       puntaje: final,
       puntajeBase: base,
     });
+
+    anteriorFinal = final;
+
+    // Actualizar/limpiar el "último armado" para el ajuste extra.
+    if (acc.fundamento === "armados") {
+      ultimoArmadoFinal = final;
+    } else if (acc.fundamento !== "ataque") {
+      // Si aparece otra acción distinta a armado o ataque en el medio,
+      // se rompe la correlación específica armado → ataque.
+      ultimoArmadoFinal = null;
+    }
   }
 
   (armados.data ?? []).forEach((a: any) => {

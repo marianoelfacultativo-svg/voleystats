@@ -15,6 +15,8 @@ export type SituacionV2 = "saque" | "recepcion";
 export interface DesvioV2 {
   celda: string;
   mini: string | null;
+  // Jugador que hizo el desvío (bloqueador), si se conoce.
+  jugador_id?: string | null;
 }
 
 export interface PuntoV2Data {
@@ -29,6 +31,9 @@ export interface PuntoV2Data {
   posiciones_punto: Record<string, string>;
   // Equipo dueño del punto (modo espejo). null = comportamiento clásico.
   equipo_id?: string | null;
+  // Estado del equipo rival al cerrar el punto (solo modo espejo).
+  // Guarda rotación, liberos, posiciones del punto y cambios pendientes.
+  estado_rival?: Record<string, unknown> | null;
 }
 
 export interface AccionV2Data {
@@ -51,6 +56,12 @@ export interface AccionV2Data {
   velocidad?: number | null;
   // Tipo de saque (potencia / flotado). Solo en saques propios.
   tipo_saque?: string | null;
+  // Variante del ataque: "toque" | null (null = remate por defecto).
+  variante?: string | null;
+  // Defensa doble (x2): la próxima acción del mismo lado también es defensa.
+  x2?: boolean | null;
+  // Línea interna que rompe flujo (libre oculta). Para filtrar en analítica.
+  oculta?: boolean | null;
   // Equipo dueño de la acción (modo espejo). null = comportamiento clásico.
   equipo_id?: string | null;
 }
@@ -136,6 +147,7 @@ export async function guardarPuntoV2(
     cambios: punto.cambios,
     posiciones_punto: punto.posiciones_punto,
     equipo_id: punto.equipo_id ?? null,
+    estado_rival: punto.estado_rival ?? null,
   };
 
   const { data: inserted, error: errPunto } = await supabase
@@ -175,6 +187,9 @@ export async function guardarPuntoV2(
       posicion_inicial_mini: a.posicion_inicial_mini ?? null,
       velocidad: a.velocidad ?? null,
       tipo_saque: a.tipo_saque ?? null,
+      variante: a.variante ?? null,
+      x2: a.x2 ?? false,
+      oculta: a.oculta ?? false,
       equipo_id: a.equipo_id ?? null,
     }));
 
