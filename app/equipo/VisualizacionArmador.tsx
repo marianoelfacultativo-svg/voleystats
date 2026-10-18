@@ -9,6 +9,12 @@ import type {
 } from "./CanchaArmador3D";
 import VisualizacionFundamento from "./VisualizacionFundamento";
 import type { SaqueRow, RecepcionRow, AtaqueRow } from "@/lib/db";
+import {
+  cargarArmadosV2,
+  cargarSaquesV2,
+  cargarRecepcionesV2,
+  cargarAtaquesV2,
+} from "./adaptadorModelosV2";
 
 interface ArmadorProps {
   armados: ArmadoDetalle[];
@@ -160,62 +166,30 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
     (async () => {
       const pid = partidoSeleccionado;
 
-      let qArmados = supabase
-        .from("armados_detalle")
-        .select("*")
-        .eq("partido_id", pid)
-        .eq("tipo", "armado")
-        .order("set_numero")
-        .order("punto_numero")
-        .order("created_at");
+      const [armV2, saqV2, recV2, atqV2] = await Promise.all([
+        cargarArmadosV2(pid, equipoId),
+        cargarSaquesV2(pid, equipoId),
+        cargarRecepcionesV2(pid, equipoId),
+        cargarAtaquesV2(pid, equipoId),
+      ]);
 
-      if (jugadorId) qArmados = qArmados.eq("jugador_id", jugadorId);
-
-      const { data: armRes } = await qArmados;
-      setArmados((armRes ?? []) as ArmadoDetalle[]);
-
-      let qSaques = supabase
-        .from("saque_detalle")
-        .select("*")
-        .eq("partido_id", pid)
-        .order("set_numero")
-        .order("punto_numero")
-        .order("created_at");
-
-      if (jugadorId) qSaques = qSaques.eq("jugador_id", jugadorId);
-
-      const { data: saqRes } = await qSaques;
-      setSaques((saqRes ?? []) as SaqueRow[]);
-
-      let qReceps = supabase
-        .from("recepcion_detalle")
-        .select("*")
-        .eq("partido_id", pid)
-        .order("set_numero")
-        .order("punto_numero")
-        .order("created_at");
-
-      if (jugadorId) qReceps = qReceps.eq("jugador_id", jugadorId);
-
-      const { data: recRes } = await qReceps;
-      setRecepciones((recRes ?? []) as RecepcionRow[]);
-
-      let qAtqs = supabase
-        .from("ataques_detalle")
-        .select("*")
-        .eq("partido_id", pid)
-        .order("set_numero")
-        .order("punto_numero")
-        .order("created_at");
-
-      if (jugadorId) qAtqs = qAtqs.eq("jugador_id", jugadorId);
-
-      const { data: atqRes } = await qAtqs;
-      setAtaques((atqRes ?? []) as AtaqueRow[]);
+      // Si el portal pide un jugador específico, filtramos por jugador
+      setArmados(
+        jugadorId ? armV2.filter((a) => a.jugador_id === jugadorId) : armV2
+      );
+      setSaques(
+        jugadorId ? saqV2.filter((s) => s.jugador_id === jugadorId) : saqV2
+      );
+      setRecepciones(
+        jugadorId ? recV2.filter((r) => r.jugador_id === jugadorId) : recV2
+      );
+      setAtaques(
+        jugadorId ? atqV2.filter((a) => a.jugador_id === jugadorId) : atqV2
+      );
 
       setCargando(false);
     })();
-  }, [partidoSeleccionado, jugadorId]);
+  }, [partidoSeleccionado, jugadorId, equipoId]);
 
   const setsDisponibles = useMemo(() => {
     const sets = new Set<number>();
@@ -252,7 +226,6 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* SELECTOR DE PARTIDO - siempre visible arriba */}
       <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-4">
         <label className="block text-sm font-bold text-emerald-900 mb-2">
           📅 Elegí un partido para visualizar
@@ -282,7 +255,6 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
         )}
       </div>
 
-      {/* Si no hay partido, mostrar mensaje y no cargar nada más */}
       {!partidoSeleccionado && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
           <p className="text-5xl mb-4">🔭</p>
@@ -295,7 +267,6 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
         </div>
       )}
 
-      {/* Solo cuando hay partido seleccionado */}
       {partidoSeleccionado && (
         <>
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 flex flex-wrap gap-1">
