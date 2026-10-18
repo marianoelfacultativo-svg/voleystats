@@ -238,6 +238,7 @@ function generarRecepcionesAceContra(params: {
     // Fallback: si el mapeo de recepción no resuelve jugador (por ejemplo,
     // porque la zona pide líbero y no hay líbero asignado), usamos el jugador
     // que la rotación / posiciones tiene en la zona del receptor.
+    // Usamos || (no ??) porque un "" vacío también debe caer al siguiente.
     if (!jugador) {
       const zonaRec = zonaRecepcionDeCelda(celdaReceptora);
       if (zonaRec !== null) {
@@ -245,9 +246,9 @@ function generarRecepcionesAceContra(params: {
           ? pc.estadoRival?.posicionesPunto
           : pc.posicionesPunto;
         jugador =
-          overrides?.[zonaRec] ??
-          posicionesReceptor?.[zonaRec] ??
-          rotReceptora.posiciones[zonaRec as Zona]?.jugador_id ??
+          overrides?.[zonaRec] ||
+          posicionesReceptor?.[zonaRec] ||
+          rotReceptora.posiciones[zonaRec as Zona]?.jugador_id ||
           null;
       }
     }
