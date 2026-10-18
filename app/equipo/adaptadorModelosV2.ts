@@ -10,6 +10,52 @@ import type { AtaqueRow, RecepcionRow, SaqueRow } from "@/lib/db";
 import type { ArmadoDetalle } from "./CanchaArmador3D";
 
 // ------------------------------------------------------------
+// HELPERS DE CONVERSIÓN V2 → V1
+// ------------------------------------------------------------
+
+/**
+ * Convierte celdas V2 (FUERA-ARR-*, FUERA-ABA-*, BLOQ-*, RED-*)
+ * a celdas V1 aproximadas (F1..F6) para que los visualizadores
+ * puedan dibujarlas.
+ */
+function normalizarCelda(celda: string | null): string {
+  if (!celda) return "";
+  if (celda.startsWith("FUERA-ARR-")) return "F6-" + celda.slice(10);
+  if (celda.startsWith("FUERA-ABA-")) return "F3-" + celda.slice(10);
+  if (celda.startsWith("BLOQ-P-")) return "F1-" + celda.slice(7);
+  if (celda.startsWith("BLOQ-R-")) return "F4-" + celda.slice(7);
+  if (celda.startsWith("RED-")) return "F4-" + celda.slice(4);
+  return celda;
+}
+
+/**
+ * Convierte minis V2 (m1-5, grid 9×9) a minis V1 (fXcY, grid 3×3
+ * o 3×2) aproximando el cuadrante. Si ya es f-format, lo deja igual.
+ */
+function convertirMiniV1(
+  mini: string | null,
+  celda: string
+): string | null {
+  if (!mini) return null;
+  const match = mini.match(/^m(\d+)-(\d+)$/);
+  if (!match) return mini;
+  const fil = parseInt(match[1]);
+  const col = parseInt(match[2]);
+  const celdaCol = celda.split("-").slice(-1)[0] ?? "C3";
+  const numCols = celdaCol === "C1" || celdaCol === "C5" ? 2 : 3;
+  const numFils = 3;
+  const f = Math.min(
+    numFils,
+    Math.max(1, Math.ceil((fil / 9) * numFils))
+  );
+  const c = Math.min(
+    numCols,
+    Math.max(1, Math.ceil((col / 9) * numCols))
+  );
+  return `f${f}c${c}`;
+}
+
+// ------------------------------------------------------------
 // Helper interno: carga todas las acciones V2 del partido,
 // filtrando por equipo si se pasa equipoId.
 // ------------------------------------------------------------
@@ -32,7 +78,6 @@ async function cargarAccionesV2(
 
 // ------------------------------------------------------------
 // Zona de tendencia a partir del destino del armado
-// (misma lógica que TableroArmadorPunto)
 // ------------------------------------------------------------
 function calcularZonaTendencia(celda: string | null): number | null {
   if (!celda) return null;
@@ -71,7 +116,7 @@ export async function cargarArmadosV2(
   for (const a of acciones) {
     if (a.tipo !== "armado") continue;
     if (a.subtipo === null || a.subtipo === undefined) continue;
-    if (a.subtipo === "R") continue; // recepción de segunda, no es armado
+    if (a.subtipo === "R") continue;
     if (!a.jugador_id) continue;
 
     const calidad =
@@ -80,15 +125,18 @@ export async function cargarArmadosV2(
         : parseInt(String(a.subtipo), 10);
     if (isNaN(calidad) || calidad < 1 || calidad > 6) continue;
 
+    const origenCelda = normalizarCelda(a.origen_celda);
+    const destinoCelda = normalizarCelda(a.destino_celda);
+
     out.push({
       id: a.id,
       jugador_id: a.jugador_id,
       set_numero: a.set_numero,
       punto_numero: a.punto_numero,
-      origen_celda: a.origen_celda ?? "",
-      origen_mini: a.origen_mini,
-      destino_celda: a.destino_celda ?? "",
-      destino_mini: a.destino_mini,
+      origen_celda: origenCelda,
+      origen_mini: convertirMiniV1(a.origen_mini, origenCelda),
+      destino_celda: destinoCelda,
+      destino_mini: convertirMiniV1(a.destino_mini, destinoCelda),
       zona_tendencia: calcularZonaTendencia(a.destino_celda),
       calidad,
       atacante_derecho: "arriba",
@@ -123,15 +171,18 @@ export async function cargarSaquesV2(
     if (!a.jugador_id) continue;
     if (!valoracionesValidas.includes(a.subtipo)) continue;
 
+    const origenCelda = normalizarCelda(a.origen_celda);
+    const destinoCelda = normalizarCelda(a.destino_celda);
+
     out.push({
       id: a.id,
       partido_id: a.partido_id,
       jugador_id: a.jugador_id,
       set_numero: a.set_numero,
       punto_numero: a.punto_numero,
-      origen_celda: a.origen_celda ?? "",
-      destino_celda: a.destino_celda ?? "",
-      destino_mini: a.destino_mini,
+      origen_celda: origenCelda,
+      destino_celda: destinoCelda,
+      destino_mini: convertirMiniV1(a.destino_mini, destinoCelda),
       tipo:
         (a.tipo_saque as "flotado" | "potencia" | null | undefined) ?? null,
       valoracion: a.subtipo as SaqueRow["valoracion"],
@@ -162,16 +213,19 @@ export async function cargarRecepcionesV2(
         : parseInt(String(a.subtipo), 10);
     if (isNaN(valoracion) || valoracion < 1 || valoracion > 6) continue;
 
+    const origenCelda = normalizarCelda(a.origen_celda);
+    const destinoCelda = normalizarCelda(a.destino_celda);
+
     out.push({
       id: a.id,
       partido_id: a.partido_id,
       jugador_id: a.jugador_id,
       set_numero: a.set_numero,
       punto_numero: a.punto_numero,
-      origen_celda: a.origen_celda ?? "",
-      origen_mini: a.origen_mini,
-      destino_celda: a.destino_celda ?? "",
-      destino_mini: a.destino_mini,
+      origen_celda: origenCelda,
+      origen_mini: convertirMiniV1(a.origen_mini, origenCelda),
+      destino_celda: destinoCelda,
+      destino_mini: convertirMiniV1(a.destino_mini, destinoCelda),
       valoracion,
     });
   }
@@ -195,11 +249,11 @@ export async function cargarAtaquesV2(
     if (!a.jugador_id) continue;
 
     let subtipo = String(a.subtipo);
-    // Ataque con toque: "toque:punto", "toque:error", "toque:neutro"
     if (subtipo.startsWith("toque:")) subtipo = subtipo.slice(6);
-
-    // El visualizador entiende solo estos 3 valores para ataque propio
     if (!["punto", "neutro", "error"].includes(subtipo)) continue;
+
+    const origenCelda = normalizarCelda(a.origen_celda);
+    const destinoCelda = normalizarCelda(a.destino_celda);
 
     out.push({
       id: a.id,
@@ -207,11 +261,17 @@ export async function cargarAtaquesV2(
       jugador_id: a.jugador_id,
       set_numero: a.set_numero,
       punto_numero: a.punto_numero,
-      origen_celda: a.origen_celda ?? "",
-      origen_mini: a.origen_mini,
-      destino_celda: a.destino_celda ?? "",
-      destino_mini: a.destino_mini,
-      desvios: a.desvios ?? [],
+      origen_celda: origenCelda,
+      origen_mini: convertirMiniV1(a.origen_mini, origenCelda),
+      destino_celda: destinoCelda,
+      destino_mini: convertirMiniV1(a.destino_mini, destinoCelda),
+      desvios: (a.desvios ?? []).map((d) => {
+        const dc = normalizarCelda(d.celda);
+        return {
+          celda: dc,
+          mini: convertirMiniV1(d.mini, dc),
+        };
+      }),
       zona: a.zona ?? null,
       valoracion: subtipo as "punto" | "error" | "neutro",
     });
