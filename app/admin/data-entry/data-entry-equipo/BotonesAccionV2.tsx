@@ -14,6 +14,7 @@ interface Props {
   onBorrarPunto: () => void;
   onGuardar: () => void;
   onCerrarPunto: () => void;
+  onBorrarLocal: () => void;
 }
 
 export default function BotonesAccionV2({
@@ -26,6 +27,7 @@ export default function BotonesAccionV2({
   onBorrarPunto,
   onGuardar,
   onCerrarPunto,
+  onBorrarLocal,
 }: Props) {
   return (
     <>
@@ -44,6 +46,13 @@ export default function BotonesAccionV2({
             className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 rounded-lg text-sm font-medium disabled:opacity-40"
           >
             ✕ Borrar punto
+          </button>
+          <button
+            onClick={onBorrarLocal}
+            className="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-sm font-medium"
+            title="Borra los datos guardados en este navegador para este partido (NO toca Supabase)"
+          >
+            🧹 Borrar local
           </button>
         </div>
         <div className="flex gap-2">
