@@ -193,6 +193,52 @@ export function crearHandlersCancha(params: Params) {
       equipoId: equipoAccionFinal,
     };
 
+    // --- SPLIT: Si es bloqueo propio y el origen es rival, separar en ataque + bloqueo
+    if (
+      res.tipo === "bloqueo" &&
+      !res.esRival &&
+      /^F[456]-/.test(origen.celda)
+    ) {
+      const desvioBloqueo = desviosPendientes.find((d) =>
+        d.celda.startsWith("BLOQ-P-")
+      );
+
+      if (desvioBloqueo) {
+        const ataqueRival: LineaClasificada = {
+          id: `l-${contadorId}`,
+          tipo: "ataque",
+          esRival: true,
+          jugadorId: null,
+          origen: origen,
+          destino: { celda: desvioBloqueo.celda, mini: desvioBloqueo.mini },
+          desvios: [],
+          subtipo: "buena_rival",
+          equipoId: equipoRivalId,
+        };
+
+        const bloqueoPropio: LineaClasificada = {
+          id: `l-${contadorId + 1}`,
+          tipo: "bloqueo",
+          esRival: false,
+          jugadorId: jugadorFinal,
+          origen: { celda: desvioBloqueo.celda, mini: desvioBloqueo.mini },
+          destino: destino,
+          desvios: [],
+          subtipo: "positivo",
+          equipoId: equipoId,
+        };
+
+        setLineas((prev) => [...prev, ataqueRival, bloqueoPropio]);
+        setContadorId((c) => c + 2);
+        setDesviosPendientes([]);
+        setCirculoSinArmar(destino);
+        setCirculoArmado(null);
+        setEstrella(null);
+        setColaPopups([]);
+        return;
+      }
+    }
+
     setLineas((prev) => [...prev, nueva]);
     setContadorId((c) => c + 1);
     setDesviosPendientes([]);
