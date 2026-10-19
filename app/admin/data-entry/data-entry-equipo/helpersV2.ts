@@ -97,6 +97,71 @@ export function lineasAAcciones(lineas: LineaClasificada[]): AccionV2Data[] {
       const desviosBLOQP = (l.desvios ?? []).filter((d) =>
         d.celda.startsWith("BLOQ-P-")
       );
+
+      if (desviosBLOQP.length > 0) {
+        const esOrigenRival = /^F[456]-/.test(l.origen.celda);
+
+        if (esOrigenRival) {
+          // 1. Ataque rival
+          acciones.push(
+            aAccionV2(
+              {
+                ...l,
+                tipo: "ataque",
+                esRival: true,
+                jugadorId: null,
+                destino: desviosBLOQP[0],
+                desvios: [],
+                subtipo: "neutro", // el ataque del rival que fue bloqueado y cayó en nuestra cancha
+              },
+              orden++
+            )
+          );
+
+          // 2. Bloqueo propio
+          if (desviosBLOQP.length > 1) {
+            const base = (l.subtipo ?? "positivo") as string;
+            const esPositiva =
+              base === "punto" || base === "positivo_mas" || base === "positivo";
+            const sub = esPositiva ? "positivo" : "neutro";
+            for (const d of desviosBLOQP) {
+              acciones.push(
+                aAccionV2(
+                  {
+                    ...l,
+                    tipo: "bloqueo",
+                    esRival: false,
+                    origen: d,
+                    desvios: [],
+                  },
+                  orden++,
+                  {
+                    jugadorId: d.jugadorId ?? null,
+                    subtipo: sub,
+                  }
+                )
+              );
+            }
+          } else {
+            acciones.push(
+              aAccionV2(
+                {
+                  ...l,
+                  tipo: "bloqueo",
+                  esRival: false,
+                  origen: desviosBLOQP[0],
+                  desvios: [],
+                },
+                orden++
+              )
+            );
+          }
+
+          continue;
+        }
+      }
+
+      // Lógica existente para múltiples bloqueos propios seguidos
       if (desviosBLOQP.length > 1) {
         const base = (l.subtipo ?? "positivo") as string;
         const esPositiva =
