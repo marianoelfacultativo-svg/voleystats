@@ -629,12 +629,14 @@ interface PopupDefensaProps {
     jugadorId: string | null,
     x2: boolean
   ) => void;
+  onX2Change?: (x2: boolean) => void;
   onCancelar: () => void;
 }
 
 export function PopupDefensa({
   pos,
   onConfirmar,
+  onX2Change,
   onCancelar,
 }: PopupDefensaProps) {
   const [x2, setX2] = useState(false);
@@ -643,6 +645,12 @@ export function PopupDefensa({
   const ancho = 260;
   const alto = 96;
   const btnTipoW = (ancho - pad * 2 - 4 * 2) / 3;
+
+  const toggleX2 = () => {
+    const nuevo = !x2;
+    setX2(nuevo);
+    onX2Change?.(nuevo);
+  };
 
   return (
     <PopupWrapper
@@ -670,7 +678,7 @@ export function PopupDefensa({
           style={{ cursor: "pointer", pointerEvents: "auto" }}
           onPointerDown={(e) => {
             e.stopPropagation();
-            setX2((v) => !v);
+            toggleX2();
           }}
         >
           <rect

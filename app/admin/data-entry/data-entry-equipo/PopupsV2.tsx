@@ -49,6 +49,7 @@ interface Props {
     jugadorId: string | null,
     x2: boolean
   ) => void;
+  onDefensaX2Change?: (x2: boolean) => void;
   onLibreConfirmar: (jugadorId: string | null) => void;
   onJugadorConfirmar: (jugadorId: string | null) => void;
   onBloqueoConfirmar: (jugadorId: string | null) => void;
@@ -72,6 +73,7 @@ export default function PopupsV2({
   onArmadoConfirmar,
   onVelocidadConfirmar,
   onDefensaConfirmar,
+  onDefensaX2Change,
   onLibreConfirmar,
   onJugadorConfirmar,
   onBloqueoConfirmar,
@@ -133,6 +135,7 @@ export default function PopupsV2({
       <PopupDefensa
         pos={popupActivo.pos}
         onConfirmar={onDefensaConfirmar}
+        onX2Change={onDefensaX2Change}
         onCancelar={onCerrar}
       />
     );
