@@ -106,8 +106,9 @@ export default function RadarJugador({
   const primera = seriesFinales[0];
 
   const datos = fundamentos.map((f) => {
+    const count = primera?.jugador.porFundamento[f]?.total ?? 0;
     const row: Record<string, string | number> = {
-      fundamento: ETIQUETAS[f],
+      fundamento: `${ETIQUETAS[f]} (${count})`,
       key: f,
     };
     for (const s of seriesFinales) {
@@ -175,6 +176,7 @@ export default function RadarJugador({
           const count = primera?.jugador.porFundamento[f]?.total ?? 0;
           const valorPrimera =
             primera?.jugador.valoracionPonderadaPorFundamento[f] ?? 0;
+          const evaluadoPrimera = valorPrimera > 0;
           const nivelPrimera = nivelDeValoracion(f, valorPrimera);
 
           return (
@@ -184,30 +186,42 @@ export default function RadarJugador({
               style={{
                 backgroundColor: esMultiple
                   ? "#f8fafc"
-                  : BG_NIVEL[nivelPrimera],
+                  : evaluadoPrimera
+                  ? BG_NIVEL[nivelPrimera]
+                  : "#f1f5f9",
                 borderColor: esMultiple
                   ? "#cbd5e1"
-                  : TEXTO_NIVEL[nivelPrimera],
+                  : evaluadoPrimera
+                  ? TEXTO_NIVEL[nivelPrimera]
+                  : "#cbd5e1",
               }}
             >
-              <p className="text-xs text-slate-500 font-medium">
+              <p
+                className={`text-xs font-medium ${
+                  evaluadoPrimera ? "text-slate-500" : "text-slate-400"
+                }`}
+              >
                 {ETIQUETAS[f]}
-                <span className="text-slate-400 ml-1">({count})</span>
+                <span className="ml-1">{`(${count})`}</span>
               </p>
               {seriesFinales.map((s) => {
                 const val =
                   s.jugador.valoracionPonderadaPorFundamento[f] ?? 0;
-                const colorText = esMultiple
-                  ? s.color
-                  : TEXTO_NIVEL[nivelDeValoracion(f, val)];
+                const evaluado = val > 0;
+                const colorText = evaluado
+                  ? esMultiple
+                    ? s.color
+                    : TEXTO_NIVEL[nivelDeValoracion(f, val)]
+                  : "#94a3b8";
                 return (
                   <p
                     key={s.id}
                     className="font-bold text-sm"
                     style={{ color: colorText }}
                   >
-                    {val > 0 ? "+" : ""}
-                    {val.toFixed(2)}
+                    {evaluado
+                      ? `${val > 0 ? "+" : ""}${val.toFixed(2)}`
+                      : "—"}
                   </p>
                 );
               })}
