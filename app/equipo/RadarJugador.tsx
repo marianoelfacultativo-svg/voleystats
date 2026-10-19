@@ -54,10 +54,6 @@ const TEXTO_NIVEL: Record<NivelValoracion, string> = {
 
 // ------------------------------------------------------------
 // Escala no lineal: 0-6 ocupa 35% del radio, 6-10 ocupa 65%.
-// Trabajamos con "visual" en dominio [0, 10]:
-//   real 0  -> visual 0
-//   real 6  -> visual 3.5
-//   real 10 -> visual 10
 // ------------------------------------------------------------
 
 const VISUAL_MAX = 10;
@@ -155,12 +151,8 @@ export default function RadarJugador({
                 fill={s.color}
                 fillOpacity={0.15}
                 strokeWidth={2}
-                dot={{
-                  r: 5,
-                  fill: s.color,
-                  stroke: "#ffffff",
-                  strokeWidth: 2,
-                }}
+                dot={false}
+                activeDot={false}
                 isAnimationActive={false}
               />
             ))}
