@@ -138,8 +138,10 @@ export default function RadarJugador({
             <PolarRadiusAxis
               angle={90}
               domain={[0, VISUAL_MAX]}
-              ticks={TICKS_VISUALES}
-              tickFormatter={(v) => String(Math.round(visualAReal(Number(v))))}
+              ticks={TICKS_VISUALES as unknown as number[]}
+              tickFormatter={(v) =>
+                String(Math.round(visualAReal(Number(v))))
+              }
               tick={{ fill: "#94a3b8", fontSize: 10 }}
               axisLine={false}
               tickLine={false}
