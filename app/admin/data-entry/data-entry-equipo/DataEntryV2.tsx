@@ -81,6 +81,7 @@ import type { CambioPendiente } from "./PanelRotacionV2";
 // HELPERS MODO ESPEJO
 // ============================================================
 
+/** Invierte una celda de un lado al otro (F1↔F4, F2↔F5, etc.). */
 function invertirCelda(celda: string): string {
   if (celda.startsWith("F1-")) return "F4-" + celda.slice(3);
   if (celda.startsWith("F2-")) return "F5-" + celda.slice(3);
@@ -136,6 +137,12 @@ function jugadorQueRecibeDeRot(
   return resolverRolAJugador(rot, rol);
 }
 
+/**
+ * Genera acciones sintéticas de recepción "ace_contra" cuando un saque
+ * termina en ace (cae dentro de la cancha real del receptor sin que nadie
+ * la toque). Solo en modo espejo. El jugador que "recibe" se resuelve con
+ * el mapeo de recepción del equipo receptor.
+ */
 function generarRecepcionesAceContra(params: {
   pc: PuntoCerrado;
   lineas: LineaClasificada[];
@@ -166,6 +173,7 @@ function generarRecepcionesAceContra(params: {
     const equipoSacador = esPropio ? equipoId : equipoRivalId;
     if (!equipoSacador) continue;
 
+    // ¿Es un ace?
     let esAce = false;
     if (esPropio) {
       esAce = linea.subtipo === "ace";
@@ -259,6 +267,7 @@ function generarRecepcionesAceContra(params: {
 // HELPERS CARGA DESDE DB
 // ============================================================
 
+/** Qué subtipos se conservan al recargar (los que eligió el usuario). */
 function subtipoPreservado(tipo: string, subtipo: any): any {
   if (tipo === "recepcion") return subtipo;
   if (tipo === "armado") return subtipo;
@@ -277,6 +286,7 @@ function subtipoPreservado(tipo: string, subtipo: any): any {
   return null;
 }
 
+/** Reconstruye los PuntoCerrado a partir de puntos_v2 + acciones_v2. */
 async function cargarPuntosCerradosDesdeDB(
   partidoId: string,
   setActivo: number
@@ -394,6 +404,7 @@ export default function DataEntryV2({
     {}
   );
 
+  // ---------- MODO ESPEJO ----------
   const [modoEspejo, setModoEspejo] = useState(false);
   const [equipoRivalId, setEquipoRivalId] = useState<string | null>(null);
   const [jugadoresRival, setJugadoresRival] = useState<Jugador[]>([]);
@@ -430,6 +441,9 @@ export default function DataEntryV2({
 
   const popupActivo = colaPopups[0] ?? null;
 
+  // ---------- CLAVES Y POSICIONES FIJAS ----------
+  // (movidas ANTES de rotacionEfectiva para usarse como fallback)
+
   const clavePosicionesFijas = useMemo(() => {
     if (!rotacion) return "";
     const numRot = numeroRotacionDesdePosiciones(rotacion);
@@ -455,6 +469,10 @@ export default function DataEntryV2({
       }
     );
   }, [posicionesFijasRival, clavePosicionesFijasRival]);
+
+  // ---------- ROTACIONES EFECTIVAS ----------
+  // Aplican override del punto actual, con fallback a las posiciones fijas
+  // de esta rotación + situación (Pendiente 1).
 
   const rotacionEfectiva = useMemo<RotacionPunto | null>(() => {
     if (!rotacion) return null;
@@ -622,6 +640,7 @@ export default function DataEntryV2({
     return "?";
   };
 
+  // ---------- CARGAR JUGADORES DEL RIVAL ----------
   useEffect(() => {
     if (!equipoRivalId) {
       setJugadoresRival([]);
@@ -644,6 +663,7 @@ export default function DataEntryV2({
     });
   }, [equipoRivalId]);
 
+  // ---------- ROTACIÓN INICIAL DEL RIVAL ----------
   useEffect(() => {
     if (!modoEspejo) return;
     if (!equipoRivalId) return;
@@ -653,6 +673,7 @@ export default function DataEntryV2({
     });
   }, [modoEspejo, equipoRivalId, rotacionRival, setActivo, puntoActual]);
 
+  // ---------- CARGA PUNTO ----------
   const cargarPuntoDesde = (
     cerrados: Record<number, PuntoCerrado>,
     n: number
@@ -727,6 +748,7 @@ export default function DataEntryV2({
     }
   };
 
+  // ---------- GUARDADO LOCAL ----------
   useEffect(() => {
     if (!partidoId || !hidratado) return;
     try {
@@ -790,6 +812,7 @@ export default function DataEntryV2({
     cambiosPendientesRival,
   ]);
 
+  // ---------- CARGA ----------
   useEffect(() => {
     if (!partidoId) return;
 
@@ -804,6 +827,7 @@ export default function DataEntryV2({
 
     const raw = localStorage.getItem(CLAVE_V2 + partidoId);
 
+    // ---------- LOCALSTORAGE ----------
     if (raw) {
       try {
         const data = JSON.parse(raw);
@@ -844,6 +868,7 @@ export default function DataEntryV2({
       }
     }
 
+    // ---------- SUPABASE (sin localStorage) ----------
     (async () => {
       try {
         const cerrados = await cargarPuntosCerradosDesdeDB(partidoId, 1);
@@ -866,6 +891,10 @@ export default function DataEntryV2({
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partidoId]);
+
+  // ------------------------------------------------------------
+  // CLICKS EN CANCHA
+  // ------------------------------------------------------------
 
   const handleMiniClick = (coords: CoordsV2) => {
     if (!setupCompleto) return;
@@ -1045,6 +1074,7 @@ export default function DataEntryV2({
       }
     }
 
+    // ---------- POST-PROCESO MODO ESPEJO ----------
     const esLineaDeRivalEspejo =
       modoEspejo && ladoDeCelda(origen.celda) === "rival";
 
@@ -1180,6 +1210,7 @@ export default function DataEntryV2({
       /* noop */
     }
 
+    // Reset completo del estado del componente
     setPuntosCerrados({});
     setPuntoActual(1);
     setLineas([]);
@@ -1205,6 +1236,7 @@ export default function DataEntryV2({
     setPosicionesFijasRival({});
     setSetupCompleto(false);
 
+    // Reintenta cargar desde Supabase (por si ya había guardado)
     (async () => {
       try {
         const cerrados = await cargarPuntosCerradosDesdeDB(partidoId, 1);
@@ -1324,6 +1356,7 @@ export default function DataEntryV2({
       const lineasConErroresRival = calcularErroresRival(lineasConAtaque);
       const acciones = lineasAAcciones(lineasConErroresRival);
 
+      // ---------- MODO ESPEJO: recepciones sintéticas de ace_contra ----------
       generarRecepcionesAceContra({
         pc,
         lineas: lineasConErroresRival,
@@ -1855,4 +1888,144 @@ export default function DataEntryV2({
         <>
           <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-3">
             <div className="space-y-2">
-              {rotacion &&
+              {rotacion && (
+                <SetupInicialV2
+                  modo="carga"
+                  rotacion={rotacion}
+                  jugadores={jugadores}
+                  liberos={liberos}
+                  posicionesPunto={posicionesPunto}
+                  posicionesFijasActuales={posicionesFijasActuales}
+                  cambiosPendientes={cambiosPendientes}
+                  saqueInicial={saqueInicial}
+                  nombreMiEquipo={nombreMiEquipo}
+                  nombreRival={nombreRival}
+                  modoEspejo={modoEspejo}
+                  equiposDisponibles={equiposDisponibles}
+                  equipoRivalId={equipoRivalId}
+                  nombreEquipoRival={nombreEquipoRivalSeleccionado}
+                  rotacionRival={rotacionRival}
+                  jugadoresRival={jugadoresRival}
+                  liberosRival={liberosRival}
+                  posicionesPuntoRival={posicionesPuntoRival}
+                  posicionesFijasActualesRival={posicionesFijasActualesRival}
+                  cambiosPendientesRival={cambiosPendientesRival}
+                  onFijarPosiciones={handleFijarPosiciones}
+                  onLimpiarFijadas={handleLimpiarFijadas}
+                  onSetLiberos={setLiberos}
+                  onSetPosicionesPunto={setPosicionesPunto}
+                  onSetCambiosPendientes={setCambiosPendientes}
+                  onGuardarCambios={handleGuardarCambios}
+                  onCambioRotacion={handleCambioRotacion}
+                  onCambioSaque={handleCambioSaque}
+                  onToggleModoEspejo={handleToggleModoEspejo}
+                  onSetEquipoRivalId={handleSetEquipoRivalId}
+                  onFijarPosicionesRival={handleFijarPosicionesRival}
+                  onLimpiarFijadasRival={handleLimpiarFijadasRival}
+                  onSetLiberosRival={setLiberosRival}
+                  onSetPosicionesPuntoRival={setPosicionesPuntoRival}
+                  onSetCambiosPendientesRival={setCambiosPendientesRival}
+                  onGuardarCambiosRival={handleGuardarCambiosRival}
+                  onCambioRotacionRival={handleCambioRotacionRival}
+                  onCambioSaqueRival={handleCambioSaqueRival}
+                  onComenzar={handleComenzar}
+                />
+              )}
+              <SecuenciaV2
+                lineas={secuenciaConValores}
+                nombreDeJugador={nombreDeJugador}
+              />
+            </div>
+
+            <div className="relative bg-white rounded-2xl shadow-sm border border-slate-200 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-bold text-slate-500 uppercase">
+                  Punto {puntoActual} · Set {setActivo}
+                </p>
+                <button
+                  onClick={() =>
+                    setOrientacion((o) =>
+                      o === "vertical" ? "horizontal" : "vertical"
+                    )
+                  }
+                  className="px-2 py-0.5 text-[10px] rounded border border-slate-300 hover:bg-slate-50 text-slate-600"
+                >
+                  🔄 {orientacion === "vertical" ? "Horizontal" : "Vertical"}
+                </button>
+              </div>
+
+              <CanchaV2
+                orientacion={orientacion}
+                onMiniClick={handleMiniClick}
+                onCerrarPunto={handleCerrarPunto}
+                onPuntoSiguiente={() => irAPunto(puntoActual + 1)}
+                onPuntoAnterior={() => irAPunto(puntoActual - 1)}
+                onBorrarPunto={handleBorrarPunto}
+                onBorrarLinea={handleBorrarUltima}
+                puedeCerrarPunto={lineas.length > 0}
+                puedeIrSiguiente={puntoActual + 1 <= maxNavegable}
+                puedeIrAnterior={puntoActual > 1}
+                puedeBorrarPunto={lineas.length > 0}
+                puedeBorrarLinea={
+                  lineas.length > 0 || !!circuloArmado || !!circuloSinArmar
+                }
+              >
+                <LineasV2
+                  lineas={lineasParaUI}
+                  origenActivo={origenActivoParaUI}
+                  armado={!!circuloArmado}
+                  desviosPendientes={desviosPendientes}
+                  estrella={estrella}
+                  orientacion={orientacion}
+                  onClickCirculo={handleClickCirculo}
+                />
+
+                <PopupsV2
+                  popupActivo={popupActivo}
+                  jugadoresEnCancha={jugadoresEnCancha}
+                  delanterosPorZona={
+                    popupActivo &&
+                    lineas.find((l) => l.id === popupActivo.lineaId)
+                      ?.equipoId === equipoRivalId
+                      ? delanterosPorZonaRival
+                      : delanterosPorZona
+                  }
+                  onSaqueConfirmar={handleSaqueConfirmar}
+                  onTipoSaqueConfirmar={handleTipoSaqueConfirmar}
+                  onRecepcionConfirmar={handleRecepcionConfirmar}
+                  onArmadoConfirmar={handleArmadoConfirmar}
+                  onVelocidadConfirmar={handleVelocidadConfirmar}
+                  onDefensaConfirmar={handleDefensaConfirmar}
+                  onDefensaX2Change={handleDefensaX2Change}
+                  onLibreConfirmar={handleLibreConfirmar}
+                  onJugadorConfirmar={handleJugadorConfirmar}
+                  onBloqueoConfirmar={handleBloqueoConfirmar}
+                  onRoceRedConfirmar={handleRoceRedConfirmar}
+                  onAtaqueToqueLibreConfirmar={handleAtaqueToqueLibreConfirmar}
+                  onRemateSegundaConfirmar={handleRemateSegundaConfirmar}
+                  onCerrar={cerrarPopup}
+                  onSiguiente={popupSiguiente}
+                />
+              </CanchaV2>
+            </div>
+          </div>
+
+          <BotonesAccionV2
+            guardando={guardando}
+            puedeBorrarUltima={
+              lineas.length > 0 || !!circuloArmado || !!circuloSinArmar
+            }
+            puedeBorrarPunto={lineas.length > 0}
+            puedeGuardar={Object.keys(puntosCerrados).length > 0}
+            puedeCerrarPunto={lineas.length > 0}
+            onBorrarUltima={handleBorrarUltima}
+            onBorrarPunto={handleBorrarPunto}
+            onGuardar={handleGuardarSupabase}
+            onCerrarPunto={handleCerrarPunto}
+            onBorrarLocal={handleBorrarLocal}
+          />
+        </>
+      )}
+    </div>
+  );
+}
