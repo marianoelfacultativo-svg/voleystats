@@ -130,7 +130,7 @@ export default function RadarJugador({
   const renderTick = (props: any) => {
     const { x, y, textAnchor, index } = props;
     const fila = datos[index];
-    if (!fila) return null;
+    if (!fila) return <g />;
 
     const nombre = fila.fundamento as string;
     const count = fila.count as number;
