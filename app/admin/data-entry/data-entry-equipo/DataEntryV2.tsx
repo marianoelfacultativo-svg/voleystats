@@ -441,13 +441,47 @@ export default function DataEntryV2({
 
   const popupActivo = colaPopups[0] ?? null;
 
+  // ---------- CLAVES Y POSICIONES FIJAS ----------
+  // (movidas ANTES de rotacionEfectiva para usarse como fallback)
+
+  const clavePosicionesFijas = useMemo(() => {
+    if (!rotacion) return "";
+    const numRot = numeroRotacionDesdePosiciones(rotacion);
+    return `${numRot}-${situacion}`;
+  }, [rotacion, situacion]);
+
+  const clavePosicionesFijasRival = useMemo(() => {
+    if (!rotacionRival) return "";
+    const numRot = numeroRotacionDesdePosiciones(rotacionRival);
+    return `${numRot}-${situacionRival}`;
+  }, [rotacionRival, situacionRival]);
+
+  const posicionesFijasActuales: Record<Zona, string> = useMemo(() => {
+    if (!clavePosicionesFijas) return { ...POSICIONES_VACIAS };
+    return posicionesFijas[clavePosicionesFijas] ?? { ...POSICIONES_VACIAS };
+  }, [posicionesFijas, clavePosicionesFijas]);
+
+  const posicionesFijasActualesRival: Record<Zona, string> = useMemo(() => {
+    if (!clavePosicionesFijasRival) return { ...POSICIONES_VACIAS };
+    return (
+      posicionesFijasRival[clavePosicionesFijasRival] ?? {
+        ...POSICIONES_VACIAS,
+      }
+    );
+  }, [posicionesFijasRival, clavePosicionesFijasRival]);
+
+  // ---------- ROTACIONES EFECTIVAS ----------
+  // Aplican override del punto actual, con fallback a las posiciones fijas
+  // de esta rotación + situación (Pendiente 1).
+
   const rotacionEfectiva = useMemo<RotacionPunto | null>(() => {
     if (!rotacion) return null;
     const zonas: Zona[] = [1, 2, 3, 4, 5, 6];
     let cambio = false;
     const nuevas = { ...rotacion.posiciones };
     for (const z of zonas) {
-      const override = posicionesPunto[z];
+      const override =
+        posicionesPunto[z] || posicionesFijasActuales[z];
       if (override && override !== nuevas[z]?.jugador_id) {
         nuevas[z] = { ...nuevas[z], jugador_id: override };
         cambio = true;
@@ -457,7 +491,7 @@ export default function DataEntryV2({
       ...(cambio ? { ...rotacion, posiciones: nuevas } : rotacion),
       liberos,
     };
-  }, [rotacion, posicionesPunto, liberos]);
+  }, [rotacion, posicionesPunto, liberos, posicionesFijasActuales]);
 
   const rotacionRivalEfectiva = useMemo<RotacionPunto | null>(() => {
     if (!rotacionRival) return null;
@@ -465,7 +499,8 @@ export default function DataEntryV2({
     let cambio = false;
     const nuevas = { ...rotacionRival.posiciones };
     for (const z of zonas) {
-      const override = posicionesPuntoRival[z];
+      const override =
+        posicionesPuntoRival[z] || posicionesFijasActualesRival[z];
       if (override && override !== nuevas[z]?.jugador_id) {
         nuevas[z] = { ...nuevas[z], jugador_id: override };
         cambio = true;
@@ -475,7 +510,12 @@ export default function DataEntryV2({
       ...(cambio ? { ...rotacionRival, posiciones: nuevas } : rotacionRival),
       liberos: liberosRival,
     };
-  }, [rotacionRival, posicionesPuntoRival, liberosRival]);
+  }, [
+    rotacionRival,
+    posicionesPuntoRival,
+    liberosRival,
+    posicionesFijasActualesRival,
+  ]);
 
   const jugadoresEnCancha = useMemo(() => {
     if (!rotacion) return [];
@@ -549,32 +589,6 @@ export default function DataEntryV2({
       };
     });
   }, [rotacionRivalEfectiva, jugadoresRival]);
-
-  const clavePosicionesFijas = useMemo(() => {
-    if (!rotacion) return "";
-    const numRot = numeroRotacionDesdePosiciones(rotacion);
-    return `${numRot}-${situacion}`;
-  }, [rotacion, situacion]);
-
-  const clavePosicionesFijasRival = useMemo(() => {
-    if (!rotacionRival) return "";
-    const numRot = numeroRotacionDesdePosiciones(rotacionRival);
-    return `${numRot}-${situacionRival}`;
-  }, [rotacionRival, situacionRival]);
-
-  const posicionesFijasActuales: Record<Zona, string> = useMemo(() => {
-    if (!clavePosicionesFijas) return { ...POSICIONES_VACIAS };
-    return posicionesFijas[clavePosicionesFijas] ?? { ...POSICIONES_VACIAS };
-  }, [posicionesFijas, clavePosicionesFijas]);
-
-  const posicionesFijasActualesRival: Record<Zona, string> = useMemo(() => {
-    if (!clavePosicionesFijasRival) return { ...POSICIONES_VACIAS };
-    return (
-      posicionesFijasRival[clavePosicionesFijasRival] ?? {
-        ...POSICIONES_VACIAS,
-      }
-    );
-  }, [posicionesFijasRival, clavePosicionesFijasRival]);
 
   const recepcionOverridesEfectivos = useMemo(() => {
     return calcularRecepcionOverrides(
