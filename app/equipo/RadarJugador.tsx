@@ -80,34 +80,6 @@ function visualAReal(v: number): number {
 const TICKS_REALES = [0, 2, 4, 6, 8, 10];
 const TICKS_VISUALES = TICKS_REALES.map(realAVisual);
 
-// ------------------------------------------------------------
-// Tick custom del eje de categorías: nombre + (N) con color.
-// ------------------------------------------------------------
-
-function TickFundamento(props: any) {
-  const { x, y, textAnchor, payload } = props;
-  const fila = payload?.payload ?? payload ?? {};
-  const nombre = payload?.value ?? ETIQUETAS[fila.key] ?? "";
-  const count: number = fila.count ?? 0;
-  const nivel: NivelValoracion | null = fila.nivel ?? null;
-
-  const colorNombre = nivel ? TEXTO_NIVEL[nivel] : "#475569";
-  const colorNumero = nivel ? TEXTO_NIVEL[nivel] : "#94a3b8";
-
-  return (
-    <text
-      x={x}
-      y={y}
-      textAnchor={textAnchor}
-      fontSize={12}
-      fontWeight={600}
-    >
-      <tspan fill={colorNombre}>{nombre}</tspan>
-      <tspan fill={colorNumero}> ({count})</tspan>
-    </text>
-  );
-}
-
 export default function RadarJugador({
   jugador,
   series,
@@ -155,6 +127,32 @@ export default function RadarJugador({
     return row;
   });
 
+  const renderTick = (props: any) => {
+    const { x, y, textAnchor, index } = props;
+    const fila = datos[index];
+    if (!fila) return null;
+
+    const nombre = fila.fundamento as string;
+    const count = fila.count as number;
+    const nivel = fila.nivel as NivelValoracion | null;
+
+    const colorNombre = nivel ? TEXTO_NIVEL[nivel] : "#475569";
+    const colorNumero = nivel ? TEXTO_NIVEL[nivel] : "#94a3b8";
+
+    return (
+      <text
+        x={x}
+        y={y}
+        textAnchor={textAnchor}
+        fontSize={12}
+        fontWeight={600}
+      >
+        <tspan fill={colorNombre}>{nombre}</tspan>
+        <tspan fill={colorNumero}> ({count})</tspan>
+      </text>
+    );
+  };
+
   return (
     <div>
       <div className="w-full" style={{ height: 380 }}>
@@ -163,7 +161,7 @@ export default function RadarJugador({
             <PolarGrid stroke="#cbd5e1" gridType="polygon" />
             <PolarAngleAxis
               dataKey="fundamento"
-              tick={TickFundamento}
+              tick={renderTick}
             />
             <PolarRadiusAxis
               angle={90}
