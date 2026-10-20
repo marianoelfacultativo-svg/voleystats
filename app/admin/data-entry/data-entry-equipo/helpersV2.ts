@@ -12,7 +12,7 @@ import {
   type RotacionPunto,
   type Zona,
 } from "@/lib/rotaciones";
-import { zonaCrudaDeCelda } from "@/lib/cancha";
+import { zonaCrudaDeCelda } from "@/lib/mapeoV2";
 
 // ------------------------------------------------------------
 // Coordenadas / popups
@@ -215,20 +215,10 @@ function construirAccion(
   // Rotación de referencia (del equipo que hizo la acción)
   const rotacionRef = l.esRival ? ctx.rotacionRival : ctx.rotacionPropia;
 
-  // Zona del origen: normalizada al sistema del que hace la acción
-  const zona_origen = l.esRival
-    ? zonaDeCeldaNormalizada(l.origen.celda)
-    : zonaDeCeldaNormalizada(l.origen.celda);
+  // Zona del origen: normalizada al sistema propio
+  const zona_origen = zonaDeCeldaNormalizada(l.origen.celda);
 
-  // Zona del destino: la celda cruda; si está en el lado opuesto al que
-  // hace la acción, invertir para traerla al sistema del receptor.
-  // → Convención: `zona_destino` = zona donde cayó, en el sistema del
-  //   equipo RECEPTOR (el que defiende el destino).
-  //   Si la acción es propia, el destino suele estar en cancha rival →
-  //   invertimos para "traerlo" al sistema propio.
-  //   Si es rival, el destino suele estar en cancha propia → ya está en
-  //   sistema propio.
-  //   Regla simple: normalizar SIEMPRE al sistema propio (F1-F3).
+  // Zona del destino: normalizada al sistema propio
   const zona_destino = zonaDeCeldaNormalizada(l.destino.celda);
 
   const rotacion_numero = rotacionRef
