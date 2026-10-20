@@ -678,9 +678,7 @@ export default function AdminPage() {
           </div>
           <div className="flex gap-2 flex-wrap">
             <button
-              onClick={() =>
-                router.push("/admin/data-entry/data-entry-equipo")
-              }
+              onClick={() => router.push("/admin/data-entry")}
               className="px-4 py-2 text-sm bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-medium rounded-lg transition"
             >
               🧪 Consola por equipo
