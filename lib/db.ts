@@ -370,7 +370,6 @@ function fundamentoV2aV1(tipo: string): string | null {
     case "defensa":
       return "defensa";
     default:
-      // "libre" y "roce-red" no tienen equivalente en V1
       return null;
   }
 }
@@ -433,7 +432,15 @@ function valoracionV2aV1(
     if (s === "libre") return "mala_libre";
     if (s === "cobertura") return "cobertura_positiva";
     if (s === "buena_rival") return "gran_def";
-    if (s === "neutro") return "error_def";
+    
+    // Nuevos subtipos generados por clasificacionV2
+    if (s === "toque_positiva") return "toque_positiva";
+    if (s === "toque_negativa") return "toque_negativa";
+    if (s === "gran_def") return "gran_def";
+    if (s === "mala_libre") return "mala_libre";
+    if (s === "error_def") return "error_def";
+    if (s === "neutro") return "toque_positiva";
+    
     return null;
   }
 
@@ -449,9 +456,6 @@ async function traducirAccionesV2(
 
   const out: AccionIndividual[] = [];
   for (const p of res.puntos) {
-    // OJO: ya NO filtramos por el equipo dueño del punto.
-    // Un punto puede tener acciones de AMBOS equipos (modo espejo),
-    // y cada acción trae su propio equipo_id. Filtramos por acción.
     for (const a of p.acciones) {
       if (equipoId && a.equipo_id && a.equipo_id !== equipoId) continue;
       const fund = fundamentoV2aV1(a.tipo);
@@ -615,11 +619,6 @@ export async function cargarAccionesCompatibles(
 
   const procesadas: AccionDB[] = [];
   let puntoAnterior = "";
-  // Cadena lineal dentro del punto:
-  // - anteriorFinal: puntaje final de la acción anterior (con sus ajustes)
-  // - ultimoArmadoFinal: puntaje final del último armado (para el ajuste extra
-  //   armado → ataque, que solo aplica si el ataque viene justo después del
-  //   armado, sin otra acción en el medio)
   let anteriorFinal: number | null = null;
   let ultimoArmadoFinal: number | null = null;
 
@@ -636,12 +635,10 @@ export async function cargarAccionesCompatibles(
 
     let final = base;
 
-    // (1) Correlación general: cada acción depende de la anterior
     if (anteriorFinal !== null) {
       final = ajustarPorContexto(final, anteriorFinal);
     }
 
-    // (2) Correlación específica armado → ataque: se ajusta de nuevo
     if (acc.fundamento === "ataque" && ultimoArmadoFinal !== null) {
       final = ajustarPorContexto(final, ultimoArmadoFinal);
     }
@@ -660,12 +657,9 @@ export async function cargarAccionesCompatibles(
 
     anteriorFinal = final;
 
-    // Actualizar/limpiar el "último armado" para el ajuste extra.
     if (acc.fundamento === "armados") {
       ultimoArmadoFinal = final;
     } else if (acc.fundamento !== "ataque") {
-      // Si aparece otra acción distinta a armado o ataque en el medio,
-      // se rompe la correlación específica armado → ataque.
       ultimoArmadoFinal = null;
     }
   }

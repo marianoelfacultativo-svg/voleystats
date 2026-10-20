@@ -41,9 +41,6 @@ export type PopupRequerido =
   | null;
 
 export type VarianteAtaque = "remate" | "toque";
-
-/** Tipo de saque: P (potencia) o F (flotado). No confundir con la calidad
- *  del saque (ace/positivo/etc.), que va en `subtipo`. */
 export type TipoSaque = "potencia" | "flotado";
 
 export interface PuntoV2 {
@@ -71,15 +68,9 @@ export interface LineaClasificada {
   variante?: VarianteAtaque | null;
   posicionInicial?: PuntoV2 | null;
   oculta?: boolean;
-  /** Marca interna (no se persiste): la próxima línea también es defensa. */
   x2?: boolean;
-  /** Velocidad del armado (solo armados). Se mapea a la columna
-      `velocidad` de `acciones_v2`. */
   velocidad?: number | null;
-  /** Tipo de saque: "potencia" | "flotado". Solo en saques propios.
-      Se mapea a la columna `tipo_saque` de `acciones_v2`. */
   tipoSaque?: TipoSaque | null;
-  /** Equipo dueño de esta línea (modo espejo). null = comportamiento clásico. */
   equipoId?: string | null;
 }
 
@@ -89,7 +80,6 @@ export interface EstadoClasificacion {
   rotacion: RotacionPunto;
   lineas: LineaClasificada[];
   recepcionOverrides?: Partial<Record<Zona, string | null>>;
-  // ---------- Modo espejo ----------
   modoEspejo?: boolean;
   equipoPropioId?: string | null;
   equipoRivalId?: string | null;
@@ -107,7 +97,6 @@ export interface ResultadoClasificacion {
   desvios?: PuntoV2[];
   subtipoFijo?: string | number;
   tipoSaqueFijo?: TipoSaque;
-  /** Equipo dueño de esta acción (modo espejo). null = comportamiento clásico. */
   equipoId?: string | null;
 }
 
@@ -179,7 +168,12 @@ export function esCeldaBloqueoPropioLateral(celda: string): boolean {
   return celda === "BLOQ-P-C1" || celda === "BLOQ-P-C5";
 }
 
-function bloqueoSeValoraComoAtaque(ultima: LineaClasificada): boolean {
+function bloqueoSeValoraComoAtaque(
+  ultima: LineaClasificada,
+  destinoActual: string
+): boolean {
+  if (esCanchaPropiaReal(destinoActual)) return false;
+
   if (ultima.tipo === "defensa" && ultima.esRival) return true;
   if (
     ultima.tipo === "armado" &&
@@ -440,7 +434,6 @@ export function clasificarLinea(
       esRival,
       jugadorId: esRival ? null : jugadorQueSaca(estado.rotacion),
       popup: esRival ? null : "tipo-saque",
-      // El tipo por defecto es flotado. El popup puede pisarlo con "potencia".
       tipoSaqueFijo: esRival ? undefined : "flotado",
     };
   }
@@ -476,7 +469,7 @@ export function clasificarLinea(
   const cruzaNet = ladoO !== null && ladoD !== null && ladoO !== ladoD;
 
   if (tieneDesvioBloqueoPropio(linea) && ultima) {
-    const comoAtaque = bloqueoSeValoraComoAtaque(ultima);
+    const comoAtaque = bloqueoSeValoraComoAtaque(ultima, linea.destino.celda);
     const primerJugador =
       (linea.desvios ?? []).find((d) => d.celda.startsWith("BLOQ-P-"))
         ?.jugadorId ?? null;
@@ -743,7 +736,7 @@ export function calcularSubtiposAtaque(
 }
 
 // ============================================================
-// SUBTIPOS DE DEFENSA (para "defensa normal" sin tipo asignado)
+// SUBTIPOS DE DEFENSA
 // ============================================================
 
 export function calcularSubtiposDefensa(
@@ -765,18 +758,47 @@ export function calcularSubtiposDefensa(
 
   return lineas.map((l, i) => {
     if (l.tipo !== "defensa" || l.esRival) return l;
-    if (l.subtipo && l.subtipo !== "defensa_normal") return l;
+
     const esUltima = i === ultimoVisibleIdx;
+    const subActual = l.subtipo;
+    let nuevoSubtipo = subActual;
+
+    if (esUltima) {
+      if (!subActual || subActual === "defensa_normal") {
+        nuevoSubtipo = "buena_rival";
+      } else if (subActual === "toque") {
+        nuevoSubtipo = "toque_negativa";
+      } else if (subActual === "gran-defensa") {
+        nuevoSubtipo = "error_def";
+      } else if (subActual === "libre") {
+        nuevoSubtipo = "error_def";
+      }
+    } else {
+      if (!subActual || subActual === "defensa_normal") {
+        nuevoSubtipo = "neutro";
+      } else if (subActual === "toque") {
+        nuevoSubtipo = "toque_positiva";
+      } else if (subActual === "gran-defensa") {
+        nuevoSubtipo = "gran_def";
+      } else if (subActual === "libre") {
+        if (l.destino.celda === "F1-C3") {
+          nuevoSubtipo = "toque_positiva";
+        } else {
+          nuevoSubtipo = "mala_libre";
+        }
+      }
+    }
+
     return {
       ...l,
-      subtipo: esUltima ? "buena_rival" : "neutro",
+      subtipo: nuevoSubtipo,
       variante: "defensa_normal" as any,
     };
   });
 }
 
 // ============================================================
-// SUBTIPOS DE ATAQUE RIVAL (según defensa propia siguiente)
+// SUBTIPOS DE ATAQUE RIVAL
 // ============================================================
 
 export function calcularSubtiposAtaqueRival(
@@ -820,11 +842,21 @@ export function calcularSubtiposAtaqueRival(
     const subtipoDef = siguiente.subtipo;
     let nuevoSub: string;
 
-    if (subtipoDef === "toque") {
+    if (
+      subtipoDef === "toque" ||
+      subtipoDef === "toque_positiva" ||
+      subtipoDef === "toque_negativa"
+    ) {
       nuevoSub = "toque";
-    } else if (subtipoDef === "gran-defensa") {
+    } else if (
+      subtipoDef === "gran-defensa" ||
+      subtipoDef === "gran_def"
+    ) {
       nuevoSub = "peligroso";
-    } else if (subtipoDef === "libre") {
+    } else if (
+      subtipoDef === "libre" ||
+      subtipoDef === "mala_libre"
+    ) {
       nuevoSub = "libre";
     } else {
       nuevoSub = j === ultimoVisibleIdx ? "buena_rival" : "simple";
@@ -837,7 +869,7 @@ export function calcularSubtiposAtaqueRival(
 }
 
 // ============================================================
-// ERRORES RIVALES (unificados)
+// ERRORES RIVALES
 // ============================================================
 
 export function calcularErroresRival(
@@ -923,8 +955,6 @@ export function calcularSubtiposBloqueo(
 // ============================================================
 // SUBTIPOS DE SAQUE (calidad)
 // ============================================================
-// Importante: esta función escribe `subtipo` (calidad del saque).
-// NO toca `tipoSaque`, que se persiste aparte en `tipo_saque`.
 
 function valorarSaqueSinRecepcion(destino: string): string {
   if (
