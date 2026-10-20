@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import Dashboard from "./Dashboard";
 import MiEquipo from "./MiEquipo";
 import Partidos from "./Partidos";
-import VisualizacionArmador from "./VisualizacionArmador";
+import VisualizacionUnificada from "./VisualizacionUnificada";
 
 type Seccion = "dashboard" | "mi-equipo" | "partidos" | "modelos";
 
@@ -48,7 +48,7 @@ export default function EquipoPage() {
     { id: "dashboard", nombre: "Dashboard", icono: "📊" },
     { id: "mi-equipo", nombre: "Mi Equipo", icono: "👥" },
     { id: "partidos", nombre: "Partidos", icono: "📅" },
-    { id: "modelos", nombre: "Modelos", icono: "🔭" },
+    { id: "modelos", nombre: "Visualización 3D", icono: "🔭" },
   ];
 
   return (
@@ -100,7 +100,10 @@ export default function EquipoPage() {
         )}
 
         {seccion === "modelos" && (
-          <VisualizacionArmador equipoId={sesion.equipo_id} />
+          <VisualizacionUnificada
+            equipoId={sesion.equipo_id}
+            nombreEquipo={nombreEquipo}
+          />
         )}
       </div>
     </main>
