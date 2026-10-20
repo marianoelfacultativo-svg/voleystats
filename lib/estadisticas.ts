@@ -13,6 +13,12 @@ export interface AccionDB {
   cantidad: number;
   puntaje?: number;
   puntajeBase?: number;
+  /**
+   * Variante del ataque (de `acciones_v2.variante`). "toque" indica que
+   * fue un remate de toque / remate de segunda. Se usa para que el motor
+   * trate esos ataques del ARMADOR como "toque" (fundamento separado).
+   */
+  variante?: string | null;
 }
 
 export const BASE_SCORES: Record<string, Record<string, number>> = {
@@ -697,7 +703,19 @@ export function calcularEstadisticasJugador(
   maxAccionesEquipo?: number,
   minAccionesRadar: number = MIN_ACCIONES_RADAR
 ): EstadisticasJugador {
-  const propias = acciones.filter((a) => a.jugador_id === jugadorId);
+  let propias = acciones.filter((a) => a.jugador_id === jugadorId);
+
+  // ----------------------------------------------------------
+  // ARMADOR: remate de segunda (ataque + variante "toque")
+  // se cuenta como fundamento "toque" (punto / neutro / error).
+  // ----------------------------------------------------------
+  if (esArmador) {
+    propias = propias.map((a) =>
+      a.fundamento === "ataque" && a.variante === "toque"
+        ? { ...a, fundamento: "toque" }
+        : a
+    );
+  }
 
   const fundamentosDisplay = esArmador
     ? ["saque", "bloqueo", "defensa"]
@@ -834,13 +852,23 @@ export function calcularEstadisticasEquipo(
   porJugador: Record<string, EstadisticasJugador>;
   totales: EstadisticasJugador;
 } {
+  // Para calcular los máximos (factor volumen) excluimos los ataques
+  // con variante "toque" hechos por ARMADORES, porque el motor los va a
+  // contar como fundamento "toque" (no como ataque).
+  const accionesParaMax = acciones.filter((a) => {
+    if (a.fundamento === "ataque" && a.variante === "toque") {
+      return !jugadoresArmadores.has(a.jugador_id);
+    }
+    return true;
+  });
+
   const maxPorFund = calcularMaxAccionesPorFundamento(
-    acciones,
+    accionesParaMax,
     jugadoresIds
   );
   let maxAccionesEquipo = 1;
   for (const id of jugadoresIds) {
-    const totalAcc = acciones
+    const totalAcc = accionesParaMax
       .filter((a) => a.jugador_id === id)
       .reduce((suma, a) => suma + a.cantidad, 0);
     if (totalAcc > maxAccionesEquipo) maxAccionesEquipo = totalAcc;

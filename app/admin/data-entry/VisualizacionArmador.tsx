@@ -5,12 +5,13 @@ import dynamic from "next/dynamic";
 import { supabase } from "@/lib/supabase";
 import type { ArmadoDetalle, Vista } from "./CanchaArmador3D";
 import VisualizacionFundamento from "./VisualizacionFundamento";
+import type { SaqueRow, RecepcionRow, AtaqueRow } from "@/lib/db";
 import {
-  cargarDetalles,
-  type SaqueRow,
-  type RecepcionRow,
-  type AtaqueRow,
-} from "@/lib/db";
+  cargarArmadosV2,
+  cargarSaquesV2,
+  cargarRecepcionesV2,
+  cargarAtaquesV2,
+} from "./adaptadorModelosV2";
 
 interface ArmadorProps {
   armados: ArmadoDetalle[];
@@ -82,10 +83,7 @@ function detectarWebGL(): boolean {
   }
 }
 
-export default function VisualizacionArmadorV1({
-  equipoId,
-  jugadorId,
-}: Props) {
+export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
   const [tab, setTab] = useState<Tab>("armados");
   const [cargando, setCargando] = useState(false);
 
@@ -165,54 +163,24 @@ export default function VisualizacionArmadorV1({
     (async () => {
       const pid = partidoSeleccionado;
 
-      const [armadosRes, detalles] = await Promise.all([
-        supabase
-          .from("armados_detalle")
-          .select("*")
-          .eq("partido_id", pid)
-          .order("created_at"),
-        cargarDetalles(pid),
+      const [armV2, saqV2, recV2, atqV2] = await Promise.all([
+        cargarArmadosV2(pid, equipoId),
+        cargarSaquesV2(pid, equipoId),
+        cargarRecepcionesV2(pid, equipoId),
+        cargarAtaquesV2(pid, equipoId),
       ]);
 
-      const armV1: ArmadoDetalle[] = (armadosRes.data ?? [])
-        .filter(
-          (a: any) =>
-            a.tipo === "armado" && a.calidad !== null && a.calidad !== undefined
-        )
-        .map((a: any) => ({
-          id: a.id,
-          jugador_id: a.jugador_id,
-          set_numero: a.set_numero,
-          punto_numero: a.punto_numero,
-          origen_celda: a.origen_celda,
-          origen_mini: a.origen_mini,
-          destino_celda: a.destino_celda,
-          destino_mini: a.destino_mini,
-          zona_tendencia: a.zona_tendencia,
-          calidad: a.calidad,
-          atacante_derecho: a.atacante_derecho ?? "arriba",
-          armador_numero: a.armador_numero ?? 1,
-        }));
-
       setArmados(
-        jugadorId
-          ? armV1.filter((a) => a.jugador_id === jugadorId)
-          : armV1
+        jugadorId ? armV2.filter((a) => a.jugador_id === jugadorId) : armV2
       );
       setSaques(
-        jugadorId
-          ? detalles.saques.filter((s) => s.jugador_id === jugadorId)
-          : detalles.saques
+        jugadorId ? saqV2.filter((s) => s.jugador_id === jugadorId) : saqV2
       );
       setRecepciones(
-        jugadorId
-          ? detalles.recepciones.filter((r) => r.jugador_id === jugadorId)
-          : detalles.recepciones
+        jugadorId ? recV2.filter((r) => r.jugador_id === jugadorId) : recV2
       );
       setAtaques(
-        jugadorId
-          ? detalles.ataques.filter((a) => a.jugador_id === jugadorId)
-          : detalles.ataques
+        jugadorId ? atqV2.filter((a) => a.jugador_id === jugadorId) : atqV2
       );
 
       setCargando(false);
@@ -578,8 +546,8 @@ export default function VisualizacionArmadorV1({
 
                     <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
                       <span>
-                        Mostrando {armadosFiltrados.length} de{" "}
-                        {armados.length} armados
+                        Mostrando {armadosFiltrados.length} de {armados.length}{" "}
+                        armados
                       </span>
                     </div>
                   </div>
@@ -600,9 +568,9 @@ export default function VisualizacionArmadorV1({
                     ) : (
                       <div className="w-full">
                         <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-                          ⚠️ Tu navegador no soporta WebGL, mostrando versión
-                          2D. Para ver la versión 3D, activá la aceleración
-                          por hardware en la configuración de tu navegador.
+                          ⚠️ Tu navegador no soporta WebGL, mostrando versión 2D.
+                          Para ver la versión 3D, activá la aceleración por
+                          hardware en la configuración de tu navegador.
                         </div>
                         <CanchaArmadorSVG
                           armados={armadosFiltrados}

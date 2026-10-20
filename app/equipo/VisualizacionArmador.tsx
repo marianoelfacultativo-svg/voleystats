@@ -5,7 +5,6 @@ import dynamic from "next/dynamic";
 import { supabase } from "@/lib/supabase";
 import type { ArmadoDetalle, Vista } from "./CanchaArmador3D";
 import VisualizacionFundamento from "./VisualizacionFundamento";
-import VisualizacionArmadorV1 from "./VisualizacionArmadorV1";
 import type { SaqueRow, RecepcionRow, AtaqueRow } from "@/lib/db";
 import {
   cargarArmadosV2,
@@ -44,7 +43,6 @@ interface Partido {
 }
 
 type Tab = "armados" | "saque" | "recepcion" | "ataque";
-type Modo = "v1" | "v2";
 
 const TABS: { id: Tab; label: string; icono: string }[] = [
   { id: "armados", label: "Armados", icono: "🎯" },
@@ -86,8 +84,6 @@ function detectarWebGL(): boolean {
 }
 
 export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
-  const [modo, setModo] = useState<Modo>("v2");
-
   const [tab, setTab] = useState<Tab>("armados");
   const [cargando, setCargando] = useState(false);
 
@@ -224,45 +220,8 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
 
   const partidoActual = partidos.find((p) => p.id === partidoSeleccionado);
 
-  // ---------- TOGGLE V1 / V2 ----------
-  const toggle = (
-    <div className="flex justify-end gap-2">
-      <button
-        onClick={() => setModo("v1")}
-        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
-          modo === "v1"
-            ? "bg-slate-800 text-white border-slate-800"
-            : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
-        }`}
-      >
-        📦 V1 (tablas viejas)
-      </button>
-      <button
-        onClick={() => setModo("v2")}
-        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
-          modo === "v2"
-            ? "bg-fuchsia-600 text-white border-fuchsia-600"
-            : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
-        }`}
-      >
-        🆕 V2 (acciones_v2)
-      </button>
-    </div>
-  );
-
-  if (modo === "v1") {
-    return (
-      <div className="space-y-4">
-        {toggle}
-        <VisualizacionArmadorV1 equipoId={equipoId} jugadorId={jugadorId} />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
-      {toggle}
-
       <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-4">
         <label className="block text-sm font-bold text-emerald-900 mb-2">
           📅 Elegí un partido para visualizar

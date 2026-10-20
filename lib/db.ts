@@ -1,5 +1,5 @@
 // ============================================
-// ACCESO A DATOS — 7 tablas de detalle + V2
+// ACCESO A DATOS — SOLO V2
 // Correlación: cadena lineal + armado → ataque extra
 // ============================================
 
@@ -7,6 +7,10 @@ import { supabase } from "./supabase";
 import { cargarPuntosV2 } from "./dbV2";
 import type { RotacionPunto } from "./rotaciones";
 import { puntajeBase, ajustarPorContexto } from "./estadisticas";
+
+// ------------------------------------------------------------
+// Interfaces V1 (compat con visualizadores antiguos)
+// ------------------------------------------------------------
 
 export interface AtaqueRow {
   id?: string;
@@ -91,6 +95,10 @@ export interface CambioRow {
   sale_id: string;
   rol: string | null;
 }
+
+// ------------------------------------------------------------
+// CRUD V1 (código muerto hasta borrar data-entry-jugador)
+// ------------------------------------------------------------
 
 export async function guardarDetalles(
   partidoId: string,
@@ -252,9 +260,9 @@ export async function borrarDetalles(partidoId: string) {
   }
 }
 
-// ============================================================
-// BORRAR UN PUNTO ESPECÍFICO DE V1 (por partido + set + punto)
-// ============================================================
+// ------------------------------------------------------------
+// Borrar punto V1 (mantenido por compat, se elimina en paso 3)
+// ------------------------------------------------------------
 
 export async function borrarPuntoV1DeTablas(
   partidoId: string,
@@ -290,7 +298,7 @@ export async function borrarPuntoV1DeTablas(
 }
 
 // ============================================
-// ADAPTADOR: tablas nuevas → formato AccionDB
+// ADAPTADOR: acciones_v2 → AccionDB
 // ============================================
 
 export interface AccionDB {
@@ -303,6 +311,7 @@ export interface AccionDB {
   cantidad: number;
   puntaje?: number;
   puntajeBase?: number;
+  variante?: string | null;
 }
 
 const RECEPCION_NUM_A_STR: Record<number, string> = {
@@ -323,36 +332,18 @@ const CALIDAD_A_STR: Record<number, string> = {
   6: "genial",
 };
 
-function mapDefensa(
-  tipo: string | null,
-  resultado: string | null
-): string | null {
-  if (!tipo || !resultado) return null;
-  if (tipo === "toque") {
-    return resultado === "salvada" ? "toque_positiva" : "toque_negativa";
-  }
-  if (tipo === "defensa") {
-    return resultado === "salvada" ? "gran_def" : "error_def";
-  }
-  if (tipo === "cobertura") {
-    return resultado === "salvada"
-      ? "cobertura_positiva"
-      : "cobertura_negativa";
-  }
-  return null;
-}
-
 interface AccionIndividual {
   jugador_id: string;
   set_numero: number;
   punto_numero: number;
   fundamento: string;
   valoracion: string;
+  variante?: string | null;
   created_at: string;
 }
 
 // ------------------------------------------------------------
-// TRADUCCIÓN V2 → V1 (para que el motor de stats las entienda)
+// Traducción V2 → V1 (para que el motor de stats las entienda)
 // ------------------------------------------------------------
 
 function fundamentoV2aV1(tipo: string): string | null {
@@ -394,13 +385,15 @@ function valoracionV2aV1(
   }
 
   if (tipo === "recepcion") {
-    const n = typeof subtipo === "number" ? subtipo : parseInt(String(subtipo));
+    const n =
+      typeof subtipo === "number" ? subtipo : parseInt(String(subtipo));
     return RECEPCION_NUM_A_STR[n] ?? null;
   }
 
   if (tipo === "armado") {
     if (subtipo === "R") return null;
-    const n = typeof subtipo === "number" ? subtipo : parseInt(String(subtipo));
+    const n =
+      typeof subtipo === "number" ? subtipo : parseInt(String(subtipo));
     return CALIDAD_A_STR[n] ?? null;
   }
 
@@ -432,29 +425,62 @@ function valoracionV2aV1(
     if (s === "libre") return "mala_libre";
     if (s === "cobertura") return "cobertura_positiva";
     if (s === "buena_rival") return "gran_def";
-    
-    // Nuevos subtipos generados por clasificacionV2
+
+    // Subtipos finales generados por clasificacionV2
     if (s === "toque_positiva") return "toque_positiva";
     if (s === "toque_negativa") return "toque_negativa";
     if (s === "gran_def") return "gran_def";
     if (s === "mala_libre") return "mala_libre";
     if (s === "error_def") return "error_def";
     if (s === "neutro") return "toque_positiva";
-    
+
     return null;
   }
 
   return null;
 }
 
-async function traducirAccionesV2(
+// ------------------------------------------------------------
+// Zona de tendencia desde el destino del armado
+// ------------------------------------------------------------
+
+function zonaTendenciaDeCelda(celda: string | null): number | null {
+  if (!celda) return null;
+  switch (celda) {
+    case "F1-C1":
+    case "F1-C2":
+      return 4;
+    case "F1-C3":
+      return 3;
+    case "F1-C4":
+    case "F1-C5":
+      return 2;
+    case "F2-C3":
+    case "F3-C3":
+      return 6;
+    case "F2-C4":
+    case "F2-C5":
+    case "F3-C4":
+    case "F3-C5":
+      return 2;
+    default:
+      return null;
+  }
+}
+
+// ------------------------------------------------------------
+// CARGA COMPATIBLE (solo V2)
+// ------------------------------------------------------------
+
+export async function cargarAccionesCompatibles(
   partidoId: string,
   equipoId?: string
-): Promise<AccionIndividual[]> {
+): Promise<AccionDB[]> {
   const res = await cargarPuntosV2(partidoId);
   if (!res.ok || !res.puntos) return [];
 
-  const out: AccionIndividual[] = [];
+  // ---------- 1. Traducir acciones_v2 → AccionIndividual ----------
+  const acciones: AccionIndividual[] = [];
   for (const p of res.puntos) {
     for (const a of p.acciones) {
       if (equipoId && a.equipo_id && a.equipo_id !== equipoId) continue;
@@ -463,153 +489,19 @@ async function traducirAccionesV2(
       const val = valoracionV2aV1(a.tipo, a.subtipo ?? null);
       if (!val) continue;
       if (!a.jugador_id) continue;
-      out.push({
+      acciones.push({
         jugador_id: a.jugador_id,
         set_numero: p.set_numero,
         punto_numero: p.punto_numero,
         fundamento: fund,
         valoracion: val,
+        variante: a.variante ?? null,
         created_at: a.created_at ?? p.created_at ?? "",
       });
     }
   }
-  return out;
-}
 
-// ------------------------------------------------------------
-// CARGA COMPATIBLE (V1 + V2)
-// ------------------------------------------------------------
-
-export async function cargarAccionesCompatibles(
-  partidoId: string,
-  equipoId?: string
-): Promise<AccionDB[]> {
-  const [ataques, defensas, bloqueos, saques, recepciones, armados] =
-    await Promise.all([
-      supabase
-        .from("ataques_detalle")
-        .select("jugador_id, set_numero, punto_numero, valoracion, created_at")
-        .eq("partido_id", partidoId),
-      supabase
-        .from("defensa_detalle")
-        .select(
-          "jugador_id, set_numero, punto_numero, tipo_accion, resultado, created_at"
-        )
-        .eq("partido_id", partidoId),
-      supabase
-        .from("bloqueo_detalle")
-        .select("jugador_id, set_numero, punto_numero, valoracion, created_at")
-        .eq("partido_id", partidoId),
-      supabase
-        .from("saque_detalle")
-        .select("jugador_id, set_numero, punto_numero, valoracion, created_at")
-        .eq("partido_id", partidoId),
-      supabase
-        .from("recepcion_detalle")
-        .select("jugador_id, set_numero, punto_numero, valoracion, created_at")
-        .eq("partido_id", partidoId),
-      supabase
-        .from("armados_detalle")
-        .select(
-          "jugador_id, set_numero, punto_numero, calidad, zona_tendencia, tipo, valoracion_toque, created_at"
-        )
-        .eq("partido_id", partidoId),
-    ]);
-
-  const acciones: AccionIndividual[] = [];
-
-  (ataques.data ?? []).forEach((a: any) => {
-    if (!a.valoracion) return;
-    acciones.push({
-      jugador_id: a.jugador_id,
-      set_numero: a.set_numero,
-      punto_numero: a.punto_numero ?? 1,
-      fundamento: "ataque",
-      valoracion: a.valoracion,
-      created_at: a.created_at ?? "",
-    });
-  });
-
-  (defensas.data ?? []).forEach((d: any) => {
-    const val = mapDefensa(d.tipo_accion, d.resultado);
-    if (!val) return;
-    acciones.push({
-      jugador_id: d.jugador_id,
-      set_numero: d.set_numero,
-      punto_numero: d.punto_numero ?? 1,
-      fundamento: "defensa",
-      valoracion: val,
-      created_at: d.created_at ?? "",
-    });
-  });
-
-  (bloqueos.data ?? []).forEach((b: any) => {
-    if (!b.valoracion) return;
-    acciones.push({
-      jugador_id: b.jugador_id,
-      set_numero: b.set_numero,
-      punto_numero: b.punto_numero ?? 1,
-      fundamento: "bloqueo",
-      valoracion: b.valoracion,
-      created_at: b.created_at ?? "",
-    });
-  });
-
-  (saques.data ?? []).forEach((s: any) => {
-    if (!s.valoracion) return;
-    acciones.push({
-      jugador_id: s.jugador_id,
-      set_numero: s.set_numero,
-      punto_numero: s.punto_numero ?? 1,
-      fundamento: "saque",
-      valoracion: s.valoracion,
-      created_at: s.created_at ?? "",
-    });
-  });
-
-  (recepciones.data ?? []).forEach((r: any) => {
-    const val = RECEPCION_NUM_A_STR[r.valoracion];
-    if (!val) return;
-    acciones.push({
-      jugador_id: r.jugador_id,
-      set_numero: r.set_numero,
-      punto_numero: r.punto_numero ?? 1,
-      fundamento: "recepcion",
-      valoracion: val,
-      created_at: r.created_at ?? "",
-    });
-  });
-
-  (armados.data ?? []).forEach((a: any) => {
-    if (a.tipo === "toque") {
-      if (!a.valoracion_toque) return;
-      acciones.push({
-        jugador_id: a.jugador_id,
-        set_numero: a.set_numero,
-        punto_numero: a.punto_numero ?? 1,
-        fundamento: "toque",
-        valoracion: a.valoracion_toque,
-        created_at: a.created_at ?? "",
-      });
-      return;
-    }
-
-    const val = CALIDAD_A_STR[a.calidad];
-    if (!val) return;
-    acciones.push({
-      jugador_id: a.jugador_id,
-      set_numero: a.set_numero,
-      punto_numero: a.punto_numero ?? 1,
-      fundamento: "armados",
-      valoracion: val,
-      created_at: a.created_at ?? "",
-    });
-  });
-
-  // ---------- V2 ----------
-  const v2 = await traducirAccionesV2(partidoId, equipoId);
-  for (const a of v2) acciones.push(a);
-
+  // ---------- 2. Ordenar cronológicamente ----------
   acciones.sort((a, b) => {
     if (a.set_numero !== b.set_numero) return a.set_numero - b.set_numero;
     if (a.punto_numero !== b.punto_numero)
@@ -617,6 +509,7 @@ export async function cargarAccionesCompatibles(
     return a.created_at.localeCompare(b.created_at);
   });
 
+  // ---------- 3. Procesar cadena de puntajes ----------
   const procesadas: AccionDB[] = [];
   let puntoAnterior = "";
   let anteriorFinal: number | null = null;
@@ -653,6 +546,7 @@ export async function cargarAccionesCompatibles(
       cantidad: 1,
       puntaje: final,
       puntajeBase: base,
+      variante: acc.variante ?? null,
     });
 
     anteriorFinal = final;
@@ -664,22 +558,29 @@ export async function cargarAccionesCompatibles(
     }
   }
 
-  (armados.data ?? []).forEach((a: any) => {
-    if (a.tipo === "toque") return;
-    if (a.zona_tendencia === null || a.zona_tendencia === undefined) return;
-    procesadas.push({
-      jugador_id: a.jugador_id,
-      partido_id: partidoId,
-      set_numero: a.set_numero,
-      punto_numero: a.punto_numero ?? 1,
-      fundamento: "tendencia",
-      valoracion: `zona_${a.zona_tendencia}`,
-      cantidad: 1,
-      puntaje: 5,
-      puntajeBase: 5,
-    });
-  });
+  // ---------- 4. Tendencia: derivar de armados (destino_celda) ----------
+  for (const p of res.puntos) {
+    for (const a of p.acciones) {
+      if (a.tipo !== "armado") continue;
+      if (!a.jugador_id) continue;
+      if (equipoId && a.equipo_id && a.equipo_id !== equipoId) continue;
+      const zona = zonaTendenciaDeCelda(a.destino_celda);
+      if (zona === null) continue;
+      procesadas.push({
+        jugador_id: a.jugador_id,
+        partido_id: partidoId,
+        set_numero: p.set_numero,
+        punto_numero: p.punto_numero,
+        fundamento: "tendencia",
+        valoracion: `zona_${zona}`,
+        cantidad: 1,
+        puntaje: 5,
+        puntajeBase: 5,
+      });
+    }
+  }
 
+  // ---------- 5. Agrupar ----------
   const agrupado = new Map<string, AccionDB>();
   for (const r of procesadas) {
     const pRed = Math.round((r.puntaje ?? 5) * 10) / 10;
