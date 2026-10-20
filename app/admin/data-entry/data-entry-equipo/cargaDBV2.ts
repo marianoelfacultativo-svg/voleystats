@@ -2,27 +2,50 @@
 // CARGA DB V2 — DataEntryV2
 // Funciones para reconstruir el estado de la consola a partir
 // de los datos guardados en Supabase (puntos_v2 + acciones_v2).
+//
+// NOTA: los 12 campos analíticos (es_error, zona_origen,
+// zona_destino, rotacion_numero, rol_jugador, zona_jugador,
+// origen_x/y, destino_x/y, posicion_inicial_x/y) se calculan
+// al GUARDAR (en guardarSupabaseV2.ts) y NO se necesitan
+// reconstruir acá para la edición. Siguen persistidos en DB y
+// disponibles para consultas SQL / panel de filtros.
 // ============================================================
 
 import { cargarPuntosV2 } from "@/lib/dbV2";
 import type { LineaClasificada } from "@/lib/clasificacionV2";
 import type { PuntoCerrado } from "./tiposV2";
 
-/** Qué subtipos se conservan al recargar (los que eligió el usuario). */
+/** Qué subtipos se conservan al recargar. */
 export function subtipoPreservado(tipo: string, subtipo: any): any {
   if (tipo === "recepcion") return subtipo;
   if (tipo === "armado") return subtipo;
   if (tipo === "roce-red") return subtipo;
   if (tipo === "defensa") {
-    if (
-      subtipo === "toque" ||
-      subtipo === "gran-defensa" ||
-      subtipo === "libre" ||
-      subtipo === "cobertura"
-    ) {
-      return subtipo;
-    }
-    return null;
+    // Preserva tanto los "raw" (elegidos por el usuario en el popup) como
+    // los "finales" (ya calculados por la pipeline). El recálculo de
+    // calcularSubtiposDefensa en guardarSupabaseV2 es idempotente para los
+    // valores finales, así que es seguro.
+    const validos = new Set<string>([
+      // raw
+      "toque",
+      "gran-defensa",
+      "libre",
+      "cobertura",
+      // finales
+      "toque_positiva",
+      "toque_negativa",
+      "gran_def",
+      "error_def",
+      "mala_libre",
+      "buena_rival",
+      "neutro",
+      "cobertura_positiva",
+      "cobertura_negativa",
+      "errores_graves",
+    ]);
+    return typeof subtipo === "string" && validos.has(subtipo)
+      ? subtipo
+      : null;
   }
   return null;
 }

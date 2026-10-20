@@ -16,9 +16,10 @@ import {
   type Situacion,
 } from "@/lib/clasificacionV2";
 import type { AccionV2Data } from "@/lib/dbV2";
+import { zonaCrudaDeCelda } from "@/lib/mapeoV2";
 
 import type { PuntoV2 } from "./LineasV2";
-import { calcularRecepcionOverrides } from "./helpersV2";
+import { calcularRecepcionOverrides, centroDePunto } from "./helpersV2";
 import {
   POSICIONES_VACIAS,
   type PuntoCerrado,
@@ -82,10 +83,35 @@ export function jugadorQueRecibeDeRot(
 }
 
 /**
+ * Devuelve el rol (A/O/C1/C2/P1/P2/L) y la zona de rotación (1-6) del
+ * jugador dentro de la rotación dada. Si es un líbero, rol = "L" y zona
+ * = null (el líbero no ocupa una zona fija de rotación).
+ */
+function infoJugadorEnRotacion(
+  rot: RotacionPunto,
+  jugadorId: string | null
+): { rol: string | null; zona: number | null } {
+  if (!jugadorId) return { rol: null, zona: null };
+  for (const asig of Object.values(rot.posiciones)) {
+    if (asig.jugador_id === jugadorId) {
+      return { rol: asig.tipo, zona: asig.zona };
+    }
+  }
+  const lib = (rot.liberos ?? []).find(
+    (l) => l.jugador_id === jugadorId
+  );
+  if (lib) return { rol: "L", zona: null };
+  return { rol: null, zona: null };
+}
+
+/**
  * Genera acciones sintéticas de recepción "ace_contra" cuando un saque
  * termina en ace (cae dentro de la cancha real del receptor sin que nadie
  * la toque). Solo en modo espejo. El jugador que "recibe" se resuelve con
  * el mapeo de recepción del equipo receptor.
+ *
+ * Nota: los 12 campos analíticos se rellenan acá porque estas acciones
+ * no pasan por `construirAccion` de helpersV2.
  */
 export function generarRecepcionesAceContra(params: {
   pc: PuntoCerrado;
@@ -189,6 +215,16 @@ export function generarRecepcionesAceContra(params: {
     }
     if (!jugador) continue;
 
+    // ---------- Campos analíticos ----------
+    const rotNum = numeroRotacionDesdePosiciones(rotReceptora);
+    const { rol: rol_jugador, zona: zona_jugador } =
+      infoJugadorEnRotacion(rotReceptora, jugador);
+    const zonaCruda = zonaCrudaDeCelda(celdaReceptora);
+    const coords = centroDePunto({
+      celda: celdaReceptora,
+      mini: linea.destino.mini,
+    });
+
     acciones.push({
       orden: acciones.length + 1,
       tipo: "recepcion",
@@ -201,8 +237,22 @@ export function generarRecepcionesAceContra(params: {
       destino_celda: celdaReceptora,
       destino_mini: linea.destino.mini,
       desvios: [],
-      zona: null,
+      zona: zonaCruda,
       equipo_id: equipoReceptor,
+
+      // Analíticos
+      es_error: true,
+      zona_origen: zonaCruda,
+      zona_destino: zonaCruda,
+      rotacion_numero: rotNum,
+      rol_jugador,
+      zona_jugador,
+      origen_x: coords.x,
+      origen_y: coords.y,
+      destino_x: coords.x,
+      destino_y: coords.y,
+      posicion_inicial_x: null,
+      posicion_inicial_y: null,
     });
   }
 }

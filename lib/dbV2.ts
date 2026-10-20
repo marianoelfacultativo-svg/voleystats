@@ -64,6 +64,31 @@ export interface AccionV2Data {
   oculta?: boolean | null;
   // Equipo dueño de la acción (modo espejo). null = comportamiento clásico.
   equipo_id?: string | null;
+
+  // ----------------------------------------------------------
+  // CAMPOS ANALÍTICOS (para filtros en el panel de equipo)
+  // ----------------------------------------------------------
+  /** ¿La acción terminó en error del que la ejecutó? */
+  es_error?: boolean | null;
+  /** Zona de rotación (1-6) de donde sale la acción. */
+  zona_origen?: number | null;
+  /** Zona de rotación (1-6) a donde llega la acción. */
+  zona_destino?: number | null;
+  /** Número de rotación (1-6) del equipo que hizo la acción. */
+  rotacion_numero?: number | null;
+  /** Rol del jugador (A / O / C1 / C2 / P1 / P2 / L). */
+  rol_jugador?: string | null;
+  /** Zona de la cancha (1-6) donde estaba parado el jugador. */
+  zona_jugador?: number | null;
+  /** Coordenadas exactas (float) del origen en la cancha virtual (0-13 × 0-9). */
+  origen_x?: number | null;
+  origen_y?: number | null;
+  /** Coordenadas exactas (float) del destino. */
+  destino_x?: number | null;
+  destino_y?: number | null;
+  /** Coordenadas exactas (float) de la posición inicial (estrella). */
+  posicion_inicial_x?: number | null;
+  posicion_inicial_y?: number | null;
 }
 
 export interface PuntoV2Row extends PuntoV2Data {
@@ -191,6 +216,20 @@ export async function guardarPuntoV2(
       x2: a.x2 ?? false,
       oculta: a.oculta ?? false,
       equipo_id: a.equipo_id ?? null,
+
+      // Analíticos
+      es_error: a.es_error ?? false,
+      zona_origen: a.zona_origen ?? null,
+      zona_destino: a.zona_destino ?? null,
+      rotacion_numero: a.rotacion_numero ?? null,
+      rol_jugador: a.rol_jugador ?? null,
+      zona_jugador: a.zona_jugador ?? null,
+      origen_x: a.origen_x ?? null,
+      origen_y: a.origen_y ?? null,
+      destino_x: a.destino_x ?? null,
+      destino_y: a.destino_y ?? null,
+      posicion_inicial_x: a.posicion_inicial_x ?? null,
+      posicion_inicial_y: a.posicion_inicial_y ?? null,
     }));
 
     const { error: errAcc } = await supabase

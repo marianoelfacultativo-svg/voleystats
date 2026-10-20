@@ -11,11 +11,12 @@ import {
   calcularSubtiposBloqueo,
   calcularSubtiposDefensa,
   calcularSubtiposSaque,
+  type Situacion,
 } from "@/lib/clasificacionV2";
 import { guardarPuntoV2, type PuntoV2Data } from "@/lib/dbV2";
 import { borrarPuntoV1DeTablas } from "@/lib/db";
 
-import { lineasAAcciones } from "./helpersV2";
+import { lineasAAcciones, type ContextoAnalitico } from "./helpersV2";
 import { generarRecepcionesAceContra } from "./helpersEspejoV2";
 import type { PuntoCerrado, PosicionesFijasMap } from "./tiposV2";
 
@@ -72,7 +73,21 @@ export async function guardarPuntosEnSupabase({
       pc.ganador
     );
     const lineasConErroresRival = calcularErroresRival(lineasConAtaque);
-    const acciones = lineasAAcciones(lineasConErroresRival);
+
+    // ---------- Contexto analítico para calcular campos extra ----------
+    const situacionRival: Situacion =
+      pc.saqueInicial === "propio" ? "recepcion" : "saque";
+
+    const contexto: ContextoAnalitico = {
+      rotacionPropia: pc.rotacion,
+      rotacionRival: pc.estadoRival?.rotacion ?? null,
+      situacionPropia: pc.situacion,
+      situacionRival,
+      equipoId,
+      equipoRivalId,
+    };
+
+    const acciones = lineasAAcciones(lineasConErroresRival, contexto);
 
     // ---------- MODO ESPEJO: recepciones sintéticas de ace_contra ----------
     generarRecepcionesAceContra({
