@@ -59,6 +59,9 @@ export interface AccionVisual {
   destino_y: number | null;
   posicion_inicial_x: number | null;
   posicion_inicial_y: number | null;
+
+  /** true = es la última acción visible del punto. Solo esa toca el piso. */
+  es_ultima_del_punto: boolean;
 }
 
 export interface PuntoConAcciones {
@@ -95,7 +98,7 @@ export async function cargarAccionesUnificadas(
   const { data, error } = await q;
   if (error || !data) return { acciones: [], puntos: [] };
 
-  const acciones: AccionVisual[] = (data as AccionV2Row[]).map((a) => ({
+  const base: AccionVisual[] = (data as AccionV2Row[]).map((a) => ({
     id: a.id,
     partido_id: a.partido_id,
     set_numero: a.set_numero,
@@ -135,7 +138,29 @@ export async function cargarAccionesUnificadas(
     destino_y: a.destino_y ?? null,
     posicion_inicial_x: a.posicion_inicial_x ?? null,
     posicion_inicial_y: a.posicion_inicial_y ?? null,
+    es_ultima_del_punto: false,
   }));
+
+  // ---------- Calcular es_ultima_del_punto ----------
+  const ultimaOrdenPorPunto = new Map<string, number>();
+  for (const a of base) {
+    if (a.oculta) continue;
+    const k = `${a.set_numero}-${a.punto_numero}`;
+    const prev = ultimaOrdenPorPunto.get(k);
+    if (prev === undefined || a.orden > prev) {
+      ultimaOrdenPorPunto.set(k, a.orden);
+    }
+  }
+
+  const acciones: AccionVisual[] = base.map((a) => {
+    if (a.oculta) return a;
+    const k = `${a.set_numero}-${a.punto_numero}`;
+    const ultima = ultimaOrdenPorPunto.get(k);
+    return {
+      ...a,
+      es_ultima_del_punto: ultima !== undefined && a.orden === ultima,
+    };
+  });
 
   const puntosMap = new Map<string, PuntoConAcciones>();
   for (const a of acciones) {
@@ -161,11 +186,11 @@ export async function cargarAccionesUnificadas(
 }
 
 // ------------------------------------------------------------
-// HELPERS
+// COLORES
 // ------------------------------------------------------------
 
 /**
- * Color por tipo de acción (consistente con el 3D de fundamentos).
+ * Color por tipo de acción (para compat con código viejo).
  */
 export function colorPorTipo(tipo: string, esRival: boolean): string {
   if (esRival) return "#94a3b8";
@@ -192,10 +217,135 @@ export function colorPorTipo(tipo: string, esRival: boolean): string {
 }
 
 /**
+ * Color según la VALORACIÓN de la acción (ace, punto, error, etc.).
+ * Verde = positivo, amarillo/naranja = neutro/medio, rojo = negativo.
+ */
+export function colorPorValoracion(a: AccionVisual): string {
+  const raw =
+    a.subtipo !== null && a.subtipo !== undefined
+      ? String(a.subtipo)
+      : "";
+  const base = raw.startsWith("toque:") ? raw.slice(6) : raw;
+
+  // Saque
+  if (a.tipo === "saque") {
+    switch (base) {
+      case "ace":
+        return "#16a34a";
+      case "positivo_mas":
+        return "#65a30d";
+      case "positivo":
+        return "#84cc16";
+      case "neutro":
+        return "#94a3b8";
+      case "negativo":
+        return "#dc2626";
+    }
+  }
+
+  // Recepción (subtipo 1-6)
+  if (a.tipo === "recepcion") {
+    const n = parseInt(base, 10);
+    const colores: Record<number, string> = {
+      1: "#991b1b",
+      2: "#dc2626",
+      3: "#ea580c",
+      4: "#eab308",
+      5: "#84cc16",
+      6: "#16a34a",
+    };
+    if (!isNaN(n) && colores[n]) return colores[n];
+  }
+
+  // Armado (subtipo 1-6 o R)
+  if (a.tipo === "armado") {
+    if (base === "R") return "#64748b";
+    const n = parseInt(base, 10);
+    const colores: Record<number, string> = {
+      1: "#dc2626",
+      2: "#ea580c",
+      3: "#eab308",
+      4: "#84cc16",
+      5: "#16a34a",
+      6: "#059669",
+    };
+    if (!isNaN(n) && colores[n]) return colores[n];
+  }
+
+  // Ataque
+  if (a.tipo === "ataque") {
+    switch (base) {
+      case "punto":
+        return "#16a34a";
+      case "neutro":
+        return "#64748b";
+      case "error":
+        return "#dc2626";
+    }
+  }
+
+  // Bloqueo
+  if (a.tipo === "bloqueo") {
+    switch (base) {
+      case "punto":
+        return "#16a34a";
+      case "positivo_mas":
+        return "#65a30d";
+      case "positivo":
+        return "#84cc16";
+      case "use_rival":
+        return "#eab308";
+      case "red":
+        return "#dc2626";
+      case "filtrada":
+        return "#ea580c";
+    }
+  }
+
+  // Defensa
+  if (a.tipo === "defensa") {
+    switch (base) {
+      case "toque_positiva":
+      case "gran_def":
+      case "cobertura_positiva":
+        return "#16a34a";
+      case "toque_negativa":
+      case "error_def":
+      case "cobertura_negativa":
+      case "errores_graves":
+        return "#dc2626";
+      case "mala_libre":
+        return "#991b1b";
+      case "neutro":
+        return "#64748b";
+    }
+  }
+
+  // Libre
+  if (a.tipo === "libre") {
+    return "#a16207";
+  }
+
+  // Roce de red
+  if (a.tipo === "roce-red") {
+    if (base === "roce-red-rival") return "#0284c7";
+    if (base === "ofensivo-propio") return "#dc2626";
+    return "#ea580c";
+  }
+
+  // Fallback
+  if (a.es_rival) return "#94a3b8";
+  return "#64748b";
+}
+
+/**
  * Etiqueta corta para mostrar en tooltip / lista.
  */
 export function etiquetaAccion(a: AccionVisual): string {
-  const st = a.subtipo !== null && a.subtipo !== undefined ? String(a.subtipo) : "";
+  const st =
+    a.subtipo !== null && a.subtipo !== undefined
+      ? String(a.subtipo)
+      : "";
   if (!st) return a.tipo;
   return `${a.tipo} · ${st}`;
 }

@@ -6,7 +6,7 @@ import { Line, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 
 import type { AccionVisual } from "./adaptadorUnificadoV2";
-import { colorPorTipo } from "./adaptadorUnificadoV2";
+import { colorPorValoracion } from "./adaptadorUnificadoV2";
 
 // ============================================================
 // TIPOS
@@ -65,10 +65,14 @@ const FILA_Z: Record<string, [number, number]> = {
 };
 
 const ALTURA_RED = 2.43;
+const ALTURA_BANDA_INFERIOR = 1.43;
 const ALTURA_TOP_ARMADO = 2.7;
 const ALTURA_DESTINO_MEDIA = 2.65;
 const ALTURA_ORIGEN_ARMADO = 2.35;
 const VARIANZA_GENERAL = 0.24;
+
+const RED_X_MIN = 2;
+const RED_X_MAX = 11;
 
 // ============================================================
 // HELPERS DE COORDENADAS
@@ -100,7 +104,6 @@ function obtenerCoords(
   if (celda.startsWith("S")) return servicioPos(celda);
   if (celda.startsWith("D")) return destinoSaquePos(celda);
 
-  // Bloqueos: usan C1..C5 y una z pegada a la red
   if (celda.startsWith("BLOQ-P-") || celda.startsWith("BLOQ-R-")) {
     const col = celda.split("-")[2] || "C3";
     const rangoX = COL_X[col];
@@ -109,7 +112,6 @@ function obtenerCoords(
     return { x: (rangoX[0] + rangoX[1]) / 2, z };
   }
 
-  // Red
   if (celda.startsWith("RED-")) {
     const col = celda.split("-")[1] || "C3";
     const rangoX = COL_X[col];
@@ -117,7 +119,6 @@ function obtenerCoords(
     return { x: (rangoX[0] + rangoX[1]) / 2, z: 0 };
   }
 
-  // Fuera
   if (celda.startsWith("FUERA-ARR-") || celda.startsWith("FUERA-ABA-")) {
     const col = celda.split("-")[2] || "C3";
     const rangoX = COL_X[col];
@@ -181,6 +182,22 @@ function obtenerCoords(
   };
 }
 
+function ladoDeCelda(celda: string | null): "propio" | "rival" | null {
+  if (!celda) return null;
+  if (/^F[123]-/.test(celda)) return "propio";
+  if (/^F[456]-/.test(celda)) return "rival";
+  if (celda.startsWith("BLOQ-P-")) return "propio";
+  if (celda.startsWith("BLOQ-R-")) return "rival";
+  if (celda.startsWith("FUERA-ARR-")) return "rival";
+  if (celda.startsWith("FUERA-ABA-")) return "propio";
+  return null;
+}
+
+function esCeldaEnRed(celda: string | null | undefined): boolean {
+  if (!celda) return false;
+  return celda.startsWith("RED-") || celda.startsWith("BLOQ-");
+}
+
 function hashSeed(str: string): number {
   let h = 5381;
   for (let i = 0; i < str.length; i++) {
@@ -196,7 +213,118 @@ function prand(seed: string, key: string): number {
 }
 
 // ============================================================
-// HELPERS DE ARMADO
+// ALTURAS POR TIPO
+// ============================================================
+
+function hOrigenPorTipo(a: AccionVisual): number {
+  switch (a.tipo) {
+    case "saque":
+      return 2.8;
+    case "recepcion":
+      return 0.3;
+    case "armado":
+      return ALTURA_ORIGEN_ARMADO;
+    case "ataque":
+      return 2.8;
+    case "bloqueo":
+      return 2.6;
+    case "defensa":
+      return 0.3;
+    case "libre":
+      return 1.5;
+    case "roce-red":
+      return ALTURA_RED;
+    default:
+      return 1.5;
+  }
+}
+
+function hDestinoDefaultPorTipo(a: AccionVisual): number {
+  switch (a.tipo) {
+    case "saque":
+      return 0.5;
+    case "recepcion":
+      return 2.0;
+    case "armado":
+      return 2.0;
+    case "ataque":
+      return 0.5;
+    case "bloqueo":
+      return 0.3;
+    case "defensa":
+      return 2.0;
+    case "libre":
+      return 1.5;
+    case "roce-red":
+      return ALTURA_RED;
+    default:
+      return 1.0;
+  }
+}
+
+function alturaDeCeldaEspecial(celda: string | null | undefined): number {
+  if (!celda) return 1.5;
+  if (celda.startsWith("RED-")) return ALTURA_RED;
+  if (celda.startsWith("BLOQ-")) return 2.6;
+  if (celda.startsWith("FUERA-ARR-") || celda.startsWith("FUERA-ABA-"))
+    return 0.5;
+  return 1.5;
+}
+
+// ============================================================
+// PARÁBOLA / CATMULLROM
+// ============================================================
+
+function parabolaSegmento(
+  w1: { x: number; z: number; h: number },
+  w2: { x: number; z: number; h: number },
+  apexExtra: number,
+  pasos: number = 30
+): [number, number, number][] {
+  const dx = w2.x - w1.x;
+  const dz = w2.z - w1.z;
+  const pts: [number, number, number][] = [];
+  for (let i = 0; i <= pasos; i++) {
+    const t = i / pasos;
+    const x = w1.x + t * dx;
+    const z = w1.z + t * dz;
+    const hBase = w1.h + t * (w2.h - w1.h);
+    const h = hBase + 4 * t * (1 - t) * apexExtra;
+    pts.push([x, Math.max(0, h), z]);
+  }
+  return pts;
+}
+
+function catmullRom3(
+  points: [number, number, number][],
+  pasos: number = 24
+): [number, number, number][] {
+  if (points.length < 2) return points;
+  if (points.length === 2) {
+    const [a, b] = points;
+    const pts: [number, number, number][] = [];
+    for (let i = 0; i <= pasos; i++) {
+      const t = i / pasos;
+      pts.push([
+        a[0] + t * (b[0] - a[0]),
+        a[1] + t * (b[1] - a[1]),
+        a[2] + t * (b[2] - a[2]),
+      ]);
+    }
+    return pts;
+  }
+  const vecs = points.map(([x, y, z]) => new THREE.Vector3(x, y, z));
+  const curve = new THREE.CatmullRomCurve3(vecs, false, "catmullrom", 0.5);
+  const pts: [number, number, number][] = [];
+  for (let i = 0; i <= pasos; i++) {
+    const v = curve.getPoint(i / pasos);
+    pts.push([v.x, v.y, v.z]);
+  }
+  return pts;
+}
+
+// ============================================================
+// ARMADOS — LÓGICA ESPECIAL (calidad, varilla)
 // ============================================================
 
 function calcularZonaTendencia(celda: string | null): number | null {
@@ -236,10 +364,6 @@ function esColumnaExterior(
   if ((zona === 2 || zona === 1) && miniCol === 3) return true;
   return false;
 }
-
-// ============================================================
-// GENERADORES DE TRAYECTORIA
-// ============================================================
 
 function generarPuntosArmado(a: AccionVisual): [number, number, number][] {
   const origen = obtenerCoords(a.origen_celda, a.origen_mini);
@@ -340,89 +464,115 @@ function generarPuntosArmado(a: AccionVisual): [number, number, number][] {
   return pts;
 }
 
-function alturaPorTipo(a: AccionVisual): {
-  hOrigen: number;
-  hDestino: number;
-  apexExtra: number;
-} {
-  if (a.tipo === "saque") return { hOrigen: 2.8, hDestino: 0, apexExtra: 1.2 };
-  if (a.tipo === "ataque")
-    return { hOrigen: 2.8, hDestino: 0, apexExtra: 0.4 };
-  if (a.tipo === "recepcion")
-    return { hOrigen: 0.3, hDestino: 2.2, apexExtra: 0.6 };
-  if (a.tipo === "bloqueo")
-    return { hOrigen: 2.6, hDestino: 0, apexExtra: 0.3 };
-  if (a.tipo === "defensa")
-    return { hOrigen: 0.3, hDestino: 2.0, apexExtra: 0.5 };
-  if (a.tipo === "libre")
-    return { hOrigen: 1.5, hDestino: 1.5, apexExtra: 0.4 };
-  if (a.tipo === "roce-red")
-    return { hOrigen: 2.4, hDestino: 2.4, apexExtra: 0.2 };
-  return { hOrigen: 0.5, hDestino: 0.5, apexExtra: 0.5 };
+// ============================================================
+// TRAYECTORIA GENERAL
+// ============================================================
+
+function calcularApexExtra(a: AccionVisual, cruzaRed: boolean): number {
+  const esToque = a.tipo === "ataque" && a.variante === "toque";
+  if (a.tipo === "libre") {
+    return cruzaRed ? 1.8 : 1.2;
+  }
+  if (esToque) {
+    return cruzaRed ? 0.2 : 0.3;
+  }
+  if (a.tipo === "saque") return 0.4;
+  if (a.tipo === "ataque") return 0.4;
+  return 0.4;
 }
 
-function generarPuntosGenerales(
-  a: AccionVisual
+function accionAPuntos(
+  a: AccionVisual,
+  hDestinoOverride?: number
 ): [number, number, number][] {
   const origen = obtenerCoords(a.origen_celda, a.origen_mini);
   const destino = obtenerCoords(a.destino_celda, a.destino_mini);
   if (!origen || !destino) return [];
 
-  const { hOrigen, hDestino, apexExtra } = alturaPorTipo(a);
+  if (a.tipo === "armado" && hDestinoOverride === undefined) {
+    return generarPuntosArmado(a);
+  }
 
-  const rx1 = prand(a.id, "-ox");
-  const rz1 = prand(a.id, "-oz");
-  const rx2 = prand(a.id, "-dx");
-  const rz2 = prand(a.id, "-dz");
+  const h0 = hOrigenPorTipo(a);
+  const hT =
+    hDestinoOverride !== undefined
+      ? hDestinoOverride
+      : a.es_ultima_del_punto
+      ? 0
+      : hDestinoDefaultPorTipo(a);
 
-  const origenR = {
-    x: origen.x + (rx1 - 0.5) * 0.4,
-    z: origen.z + (rz1 - 0.5) * 0.4,
-  };
-  const destinoR = {
-    x: destino.x + (rx2 - 0.5) * 0.4,
-    z: destino.z + (rz2 - 0.5) * 0.4,
-  };
+  const ladoO = ladoDeCelda(a.origen_celda);
+  const ladoD = ladoDeCelda(a.destino_celda);
+  const cruzaRed = ladoO !== null && ladoD !== null && ladoO !== ladoD;
 
-  // Waypoints: origen → desvios → destino
-  const waypoints: { x: number; z: number; h: number }[] = [
-    { x: origenR.x, z: origenR.z, h: hOrigen },
+  const apexExtra = calcularApexExtra(a, cruzaRed);
+
+  const waypoints: {
+    x: number;
+    z: number;
+    h: number;
+    celda: string | null;
+  }[] = [
+    {
+      x: origen.x,
+      z: origen.z,
+      h: h0,
+      celda: a.origen_celda,
+    },
   ];
 
   for (const d of a.desvios ?? []) {
     const dc = obtenerCoords(d.celda, d.mini);
     if (!dc) continue;
-    let hD = 1.5;
-    if (d.celda.startsWith("BLOQ-")) hD = 2.8;
-    else if (d.celda.startsWith("RED-")) hD = ALTURA_RED;
-    waypoints.push({ x: dc.x, z: dc.z, h: hD });
+    waypoints.push({
+      x: dc.x,
+      z: dc.z,
+      h: alturaDeCeldaEspecial(d.celda),
+      celda: d.celda,
+    });
   }
 
-  waypoints.push({ x: destinoR.x, z: destinoR.z, h: hDestino });
+  waypoints.push({
+    x: destino.x,
+    z: destino.z,
+    h: hT,
+    celda: a.destino_celda,
+  });
 
-  const nSeg = waypoints.length - 1;
-  const pasosPorSeg = Math.max(12, Math.floor(40 / nSeg));
   const pts: [number, number, number][] = [];
 
-  for (let i = 0; i < nSeg; i++) {
+  for (let i = 0; i < waypoints.length - 1; i++) {
     const w1 = waypoints[i];
     const w2 = waypoints[i + 1];
-    const inicio = i === 0 ? 0 : 1;
-    for (let s = inicio; s <= pasosPorSeg; s++) {
-      const t = s / pasosPorSeg;
-      const x = w1.x + t * (w2.x - w1.x);
-      const z = w1.z + t * (w2.z - w1.z);
-      const hBase = w1.h + t * (w2.h - w1.h);
-      const altura = hBase + 4 * t * (1 - t) * apexExtra;
-      pts.push([x, Math.max(0.05, altura), z]);
-    }
-  }
-  return pts;
-}
 
-function accionAPuntos(a: AccionVisual): [number, number, number][] {
-  if (a.tipo === "armado") return generarPuntosArmado(a);
-  return generarPuntosGenerales(a);
+    const ladoW1 = ladoDeCelda(w1.celda);
+    const ladoW2 = ladoDeCelda(w2.celda);
+    const subCross =
+      ladoW1 !== null && ladoW2 !== null && ladoW1 !== ladoW2;
+
+    let segPts: [number, number, number][];
+
+    if (subCross && !esCeldaEnRed(w1.celda) && !esCeldaEnRed(w2.celda)) {
+      const dz = w2.z - w1.z;
+      const tRed = dz !== 0 ? Math.abs(w1.z) / Math.abs(dz) : 0.5;
+      const xRed = w1.x + tRed * (w2.x - w1.x);
+      segPts = catmullRom3(
+        [
+          [w1.x, w1.h, w1.z],
+          [xRed, ALTURA_RED + 0.1, 0],
+          [w2.x, w2.h, w2.z],
+        ],
+        20
+      );
+    } else {
+      segPts = parabolaSegmento(w1, w2, apexExtra, 20);
+    }
+
+    if (i > 0 && segPts.length > 0) segPts.shift();
+    pts.push(...segPts);
+  }
+
+  return pts;
 }
 
 // ============================================================
@@ -504,6 +654,10 @@ const Trajectory = React.memo(function Trajectory({
   );
 });
 
+/**
+ * Animador de pelota. Recorre el array de puntos con interpolación lineal
+ * (para evitar overshoots de CatmullRom) y nunca baja de y=0.05.
+ */
 const BallAnimator = React.memo(function BallAnimator({
   points,
   color,
@@ -516,25 +670,23 @@ const BallAnimator = React.memo(function BallAnimator({
   const meshRef = useRef<THREE.Mesh>(null);
   const tRef = useRef(0);
 
-  const curve = useMemo(() => {
-    if (points.length < 2) return null;
-    const vecs = points.map(([x, y, z]) => new THREE.Vector3(x, y, z));
-    // Filtramos puntos consecutivos iguales para evitar NaN en CatmullRom
-    const filtrados = vecs.filter(
-      (v, i) => i === 0 || v.distanceTo(vecs[i - 1]) > 0.001
-    );
-    if (filtrados.length < 2) return null;
-    return new THREE.CatmullRomCurve3(filtrados);
-  }, [points]);
-
   useFrame((_, delta) => {
-    if (!meshRef.current || !curve) return;
+    if (!meshRef.current || points.length < 2) return;
     tRef.current = (tRef.current + delta * speed * 0.18) % 1;
-    const pos = curve.getPointAt(tRef.current);
-    meshRef.current.position.copy(pos);
-  });
 
-  if (!curve) return null;
+    const totalSeg = points.length - 1;
+    const exact = tRef.current * totalSeg;
+    const i = Math.min(totalSeg - 1, Math.floor(exact));
+    const t = exact - i;
+    const p1 = points[i];
+    const p2 = points[i + 1];
+
+    meshRef.current.position.set(
+      p1[0] + t * (p2[0] - p1[0]),
+      Math.max(0.05, p1[1] + t * (p2[1] - p1[1])),
+      p1[2] + t * (p2[2] - p1[2])
+    );
+  });
 
   return (
     <mesh ref={meshRef}>
@@ -607,58 +759,189 @@ const Court = React.memo(function Court() {
   );
 });
 
+/**
+ * RED 3D: postes + bandas + malla de líneas + panel semitransparente
+ * que le da cuerpo sólido a la red.
+ */
 const Net = React.memo(function Net() {
-  const postHeight = 2.43;
+  const postHeight = ALTURA_RED;
+  const bandaInferior = ALTURA_BANDA_INFERIOR;
+  const anchoRed = RED_X_MAX - RED_X_MIN; // 9
+  const centroX = (RED_X_MIN + RED_X_MAX) / 2; // 6.5
+  const alturaRed = postHeight - bandaInferior; // 1.0
+  const centroY = bandaInferior + alturaRed / 2;
+
   return (
     <group>
-      <mesh position={[2, postHeight / 2, 0]}>
+      {/* Postes */}
+      <mesh position={[RED_X_MIN, postHeight / 2, 0]}>
         <cylinderGeometry args={[0.06, 0.06, postHeight, 12]} />
         <meshStandardMaterial color="#f1f5f9" />
       </mesh>
-      <mesh position={[11, postHeight / 2, 0]}>
+      <mesh position={[RED_X_MAX, postHeight / 2, 0]}>
         <cylinderGeometry args={[0.06, 0.06, postHeight, 12]} />
         <meshStandardMaterial color="#f1f5f9" />
       </mesh>
 
-      <mesh position={[6.5, postHeight, 0]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.03, 0.03, 9, 8]} />
-        <meshStandardMaterial color="#f1f5f9" />
-      </mesh>
-      <mesh position={[6.5, 1.43, 0]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.03, 0.03, 9, 8]} />
-        <meshStandardMaterial color="#f1f5f9" />
+      {/* Banda superior */}
+      <mesh
+        position={[centroX, postHeight, 0]}
+        rotation={[0, 0, Math.PI / 2]}
+      >
+        <cylinderGeometry args={[0.04, 0.04, anchoRed, 10]} />
+        <meshStandardMaterial color="#f8fafc" />
       </mesh>
 
-      {Array.from({ length: 25 }).map((_, i) => {
-        const x = 2 + (i / 24) * 9;
+      {/* Banda inferior */}
+      <mesh
+        position={[centroX, bandaInferior, 0]}
+        rotation={[0, 0, Math.PI / 2]}
+      >
+        <cylinderGeometry args={[0.03, 0.03, anchoRed, 10]} />
+        <meshStandardMaterial color="#f8fafc" />
+      </mesh>
+
+      {/* PANEL SEMITRANSPARENTE: le da cuerpo a la red */}
+      <mesh position={[centroX, centroY, 0]}>
+        <planeGeometry args={[anchoRed, alturaRed]} />
+        <meshStandardMaterial
+          color="#e2e8f0"
+          transparent
+          opacity={0.18}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+
+      {/* Grilla vertical (malla) */}
+      {Array.from({ length: 37 }).map((_, i) => {
+        const x = RED_X_MIN + (i / 36) * anchoRed;
         return (
           <Line
             key={`v-${i}`}
             points={[
-              [x, 1.43, 0],
-              [x, 2.43, 0],
+              [x, bandaInferior, 0],
+              [x, postHeight, 0],
             ]}
-            color="#e2e8f0"
-            lineWidth={0.6}
+            color="#ffffff"
+            lineWidth={0.5}
             transparent
-            opacity={0.5}
+            opacity={0.55}
           />
         );
       })}
-      {Array.from({ length: 5 }).map((_, i) => {
-        const y = 1.43 + (i / 4) * 1;
+
+      {/* Grilla horizontal (malla) */}
+      {Array.from({ length: 7 }).map((_, i) => {
+        const y = bandaInferior + (i / 6) * alturaRed;
         return (
           <Line
             key={`h-${i}`}
             points={[
-              [2, y, 0],
-              [11, y, 0],
+              [RED_X_MIN, y, 0],
+              [RED_X_MAX, y, 0],
             ]}
-            color="#e2e8f0"
-            lineWidth={0.6}
+            color="#ffffff"
+            lineWidth={0.5}
             transparent
-            opacity={0.5}
+            opacity={0.55}
           />
+        );
+      })}
+    </group>
+  );
+});
+
+/**
+ * BLOQUEOS 3D: barrera con volumen (manos + brazos) en la posición de
+ * cada celda BLOQ-* que aparece en las acciones de tipo "bloqueo".
+ */
+const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
+  acciones,
+}: {
+  acciones: AccionVisual[];
+}) {
+  const items = useMemo(() => {
+    const out: {
+      key: string;
+      celda: string;
+      color: string;
+      esPropio: boolean;
+    }[] = [];
+
+    for (const a of acciones) {
+      if (a.tipo !== "bloqueo") continue;
+      const color = colorPorValoracion(a);
+
+      if (a.origen_celda?.startsWith("BLOQ-")) {
+        out.push({
+          key: `o-${a.id}`,
+          celda: a.origen_celda,
+          color,
+          esPropio: a.origen_celda.startsWith("BLOQ-P-"),
+        });
+      }
+      if (a.destino_celda?.startsWith("BLOQ-")) {
+        out.push({
+          key: `d-${a.id}`,
+          celda: a.destino_celda,
+          color,
+          esPropio: a.destino_celda.startsWith("BLOQ-P-"),
+        });
+      }
+    }
+    return out;
+  }, [acciones]);
+
+  return (
+    <group>
+      {items.map((it) => {
+        const col = it.celda.split("-")[2] || "C3";
+        const rango = COL_X[col];
+        if (!rango) return null;
+
+        // Centro X de la columna, achicado un poco para dejar aire
+        const ancho = (rango[1] - rango[0]) * 0.8;
+        const centroX = (rango[0] + rango[1]) / 2;
+        const z = it.esPropio ? 0.35 : -0.35;
+
+        // Altura del bloqueo: desde 1.9m hasta 3.0m (un poco por encima
+        // de la red)
+        const alturaMano = 1.1;
+        const centroY = 1.9 + alturaMano / 2;
+
+        return (
+          <group key={it.key}>
+            {/* Pared / manos del bloqueo */}
+            <mesh position={[centroX, centroY, z]}>
+              <boxGeometry args={[ancho, alturaMano, 0.12]} />
+              <meshStandardMaterial
+                color={it.color}
+                emissive={it.color}
+                emissiveIntensity={0.35}
+                transparent
+                opacity={0.78}
+              />
+            </mesh>
+
+            {/* Brazos: dos cilindros que suben desde el piso hasta las manos */}
+            <mesh position={[centroX - ancho * 0.25, 1.4, z]}>
+              <cylinderGeometry args={[0.05, 0.05, 1.0, 8]} />
+              <meshStandardMaterial
+                color={it.color}
+                transparent
+                opacity={0.55}
+              />
+            </mesh>
+            <mesh position={[centroX + ancho * 0.25, 1.4, z]}>
+              <cylinderGeometry args={[0.05, 0.05, 1.0, 8]} />
+              <meshStandardMaterial
+                color={it.color}
+                transparent
+                opacity={0.55}
+              />
+            </mesh>
+          </group>
         );
       })}
     </group>
@@ -726,14 +1009,12 @@ export default function CanchaUnificada3D({
   mostrarEstelas = true,
   velocidadAnimacion = 1,
 }: Props) {
-  // ---------- Resolver las acciones a mostrar ----------
   const accionesAMostrar: AccionVisual[] = useMemo(() => {
     if (modo === "armados") {
       return acciones.filter((a) => a.tipo === "armado");
     }
     if (modo === "punto-completo") {
       if (!puntoSeleccionado) {
-        // Sin punto seleccionado → mostramos el primero disponible
         if (puntos.length === 0) return [];
         return puntos[0].acciones;
       }
@@ -744,30 +1025,41 @@ export default function CanchaUnificada3D({
       );
       return grupo?.acciones ?? [];
     }
-    // modo === "fundamento"
     return acciones;
   }, [modo, acciones, puntos, puntoSeleccionado]);
 
-  // ---------- Pre-calcular puntos 3D ----------
   const trayectorias = useMemo(() => {
     if (modo === "punto-completo") {
-      // Concatenamos todas las trayectorias del punto
-      const todas: [number, number, number][] = [];
-      const colores: string[] = [];
-      for (const a of accionesAMostrar) {
-        const pts = accionAPuntos(a);
-        if (pts.length < 2) continue;
-        if (todas.length > 0) {
-          // Unir con el último punto
-          pts.shift();
-        }
-        todas.push(...pts);
-        colores.push(colorPorTipo(a.tipo, a.es_rival));
+      const heights: number[] = [];
+      for (let i = 0; i < accionesAMostrar.length; i++) {
+        const next = accionesAMostrar[i + 1];
+        heights.push(next ? hOrigenPorTipo(next) : 0);
       }
-      return { tipo: "concatenado" as const, puntos: todas, colores };
+
+      const items: {
+        id: string;
+        puntos: [number, number, number][];
+        color: string;
+      }[] = [];
+      const allPts: [number, number, number][] = [];
+      for (let i = 0; i < accionesAMostrar.length; i++) {
+        const a = accionesAMostrar[i];
+        const pts = accionAPuntos(a, heights[i]);
+        if (pts.length < 2) continue;
+        items.push({
+          id: a.id,
+          puntos: pts,
+          color: colorPorValoracion(a),
+        });
+        if (allPts.length > 0) {
+          allPts.push(...pts.slice(1));
+        } else {
+          allPts.push(...pts);
+        }
+      }
+      return { tipo: "punto-completo" as const, items, allPts };
     }
 
-    // Modos normales: cada acción independiente
     const items: {
       id: string;
       puntos: [number, number, number][];
@@ -779,13 +1071,11 @@ export default function CanchaUnificada3D({
       items.push({
         id: a.id,
         puntos: pts,
-        color: colorPorTipo(a.tipo, a.es_rival),
+        color: colorPorValoracion(a),
       });
     }
     return { tipo: "individual" as const, items };
   }, [modo, accionesAMostrar]);
-
-  const colorPrincipal = "#f59e0b";
 
   return (
     <div
@@ -802,6 +1092,7 @@ export default function CanchaUnificada3D({
 
         <Court />
         <Net />
+        <BloqueadoresVisual acciones={accionesAMostrar} />
 
         {trayectorias.tipo === "individual" &&
           trayectorias.items.map((it) => (
@@ -813,19 +1104,20 @@ export default function CanchaUnificada3D({
             />
           ))}
 
-        {trayectorias.tipo === "concatenado" && (
+        {trayectorias.tipo === "punto-completo" && (
           <>
-            {trayectorias.puntos.length >= 2 && (
+            {trayectorias.items.map((it) => (
               <Trajectory
-                points={trayectorias.puntos}
-                color={colorPrincipal}
+                key={it.id}
+                points={it.puntos}
+                color={it.color}
                 mostrarEstelas={mostrarEstelas}
               />
-            )}
-            {trayectorias.puntos.length >= 2 && (
+            ))}
+            {trayectorias.allPts.length >= 2 && (
               <BallAnimator
-                points={trayectorias.puntos}
-                color={colorPrincipal}
+                points={trayectorias.allPts}
+                color="#f59e0b"
                 speed={velocidadAnimacion}
               />
             )}
