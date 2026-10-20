@@ -71,6 +71,14 @@ export interface AccionVisual {
   /** Igual que arriba pero para el destino. */
   zona_destino_codigo: string | null;
 
+  /**
+   * Subtiipo "real" (variante técnica, no valoración). Solo aplica a:
+   *   - saque: "potencia" | "flotado" | null
+   *   - ataque: "remate" | "toque" (nunca null, remate por defecto)
+   *   - resto: null
+   */
+  subtipo_real: string | null;
+
   /** true = es la última acción visible del punto. Solo esa toca el piso. */
   es_ultima_del_punto: boolean;
 }
@@ -126,6 +134,22 @@ function codigoZonaDeCelda(
   return `${esRival ? "R" : "P"}${zona}`;
 }
 
+/**
+ * Deriva el "subtiipo real" (variante técnica, NO valoración).
+ *   - saque: tipo_saque (potencia | flotado) | null
+ *   - ataque: variante === "toque" ? "toque" : "remate"
+ *   - resto: null
+ */
+function subtiipoReal(a: AccionV2Row): string | null {
+  if (a.tipo === "saque") {
+    return a.tipo_saque ?? null;
+  }
+  if (a.tipo === "ataque") {
+    return a.variante === "toque" ? "toque" : "remate";
+  }
+  return null;
+}
+
 // ------------------------------------------------------------
 // CARGA
 // ------------------------------------------------------------
@@ -149,7 +173,9 @@ export async function cargarAccionesUnificadas(
   const { data, error } = await q;
   if (error || !data) return { acciones: [], puntos: [] };
 
-  const base: AccionVisual[] = (data as AccionV2Row[]).map((a) => ({
+  const rows = data as AccionV2Row[];
+
+  const base: AccionVisual[] = rows.map((a) => ({
     id: a.id,
     partido_id: a.partido_id,
     set_numero: a.set_numero,
@@ -191,6 +217,7 @@ export async function cargarAccionesUnificadas(
     posicion_inicial_y: a.posicion_inicial_y ?? null,
     zona_origen_codigo: codigoZonaDeCelda(a.origen_celda),
     zona_destino_codigo: codigoZonaDeCelda(a.destino_celda),
+    subtipo_real: subtiipoReal(a),
     es_ultima_del_punto: false,
   }));
 

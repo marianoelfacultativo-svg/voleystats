@@ -17,8 +17,14 @@ export interface Filtros3D {
   jugador: string | "todos";
   /** Multi-select de fundamentos (vacío = todos). */
   tipos: string[];
-  /** Multi-select de subtipos (vacío = todos). */
+  /**
+   * Multi-select de SUBTIPOS REALES (variantes técnicas):
+   *   - saque: "potencia" | "flotado"
+   *   - ataque: "remate" | "toque"
+   */
   subtipos: string[];
+  /** Multi-select de VALORACIONES (ace, pos+, pos, neu, neg, punto, error, etc.). */
+  valoraciones: string[];
   /** Multi-select de zonas de origen ("P1".."P6", "R1".."R6"). */
   zonasOrigen: string[];
   /** Multi-select de zonas de destino. */
@@ -27,6 +33,8 @@ export interface Filtros3D {
   rol: string | "todos";
   zonaJugador: number | "todas";
   soloErrores: boolean;
+  /** Por defecto false = solo acciones propias. true = también rivales. */
+  mostrarRivales: boolean;
 }
 
 export const FILTROS3D_VACIO: Filtros3D = {
@@ -35,24 +43,37 @@ export const FILTROS3D_VACIO: Filtros3D = {
   jugador: "todos",
   tipos: [],
   subtipos: [],
+  valoraciones: [],
   zonasOrigen: [],
   zonasDestino: [],
   rotacion: "todas",
   rol: "todos",
   zonaJugador: "todas",
   soloErrores: false,
+  mostrarRivales: false,
 };
 
 // ------------------------------------------------------------
-// SUBTIPOS POR TIPO
+// OPCIONES POR TIPO: subtipos reales y valoraciones
 // ------------------------------------------------------------
 
-interface SubOpcion {
+interface Opcion {
   v: string;
   label: string;
 }
 
-const SUBTIPOS_POR_TIPO: Record<string, SubOpcion[]> = {
+const SUBTIPOS_REALES_POR_TIPO: Record<string, Opcion[]> = {
+  saque: [
+    { v: "potencia", label: "Potencia" },
+    { v: "flotado", label: "Flotado" },
+  ],
+  ataque: [
+    { v: "remate", label: "Remate" },
+    { v: "toque", label: "Toque" },
+  ],
+};
+
+const VALORACIONES_POR_TIPO: Record<string, Opcion[]> = {
   saque: [
     { v: "ace", label: "Ace" },
     { v: "positivo_mas", label: "Pos+" },
@@ -131,7 +152,10 @@ const ROLES = [
 // HELPERS
 // ------------------------------------------------------------
 
-function nivelSubtipo(tipo: string, sub: string): "pos" | "neu" | "neg" {
+function nivelValoracion(
+  tipo: string,
+  sub: string
+): "pos" | "neu" | "neg" {
   if (tipo === "saque") {
     if (sub === "ace" || sub === "positivo_mas" || sub === "positivo")
       return "pos";
@@ -167,11 +191,7 @@ function nivelSubtipo(tipo: string, sub: string): "pos" | "neu" | "neg" {
     return "neu";
   }
   if (tipo === "defensa") {
-    if (
-      sub.includes("positiva") ||
-      sub === "gran_def"
-    )
-      return "pos";
+    if (sub.includes("positiva") || sub === "gran_def") return "pos";
     if (
       sub.includes("negativa") ||
       sub === "error_def" ||
@@ -200,19 +220,30 @@ export function aplicarFiltros(
 ): AccionVisual[] {
   return acciones.filter((a) => {
     if (a.oculta) return false;
+
+    // Por defecto solo acciones propias.
+    if (!f.mostrarRivales && a.es_rival) return false;
+
     if (f.set !== "todos" && a.set_numero !== f.set) return false;
     if (f.punto !== "todos" && a.punto_numero !== f.punto) return false;
     if (f.jugador !== "todos" && a.jugador_id !== f.jugador) return false;
 
     if (f.tipos.length > 0 && !f.tipos.includes(a.tipo)) return false;
 
+    // Subtipo real (variante técnica)
     if (f.subtipos.length > 0) {
+      const sr = a.subtipo_real ?? "";
+      if (!f.subtipos.includes(sr)) return false;
+    }
+
+    // Valoración
+    if (f.valoraciones.length > 0) {
       const s =
         a.subtipo !== null && a.subtipo !== undefined
           ? String(a.subtipo)
           : "";
       const base = s.startsWith("toque:") ? s.slice(6) : s;
-      if (!f.subtipos.includes(base)) return false;
+      if (!f.valoraciones.includes(base)) return false;
     }
 
     if (f.zonasOrigen.length > 0) {
@@ -243,7 +274,7 @@ interface Props {
   setsDisponibles: number[];
   puntosDisponibles: number[];
   jugadores: { id: string; nombre: string }[];
-  /** @deprecated — ya no se usa, los subtipos vienen de SUBTIPOS_POR_TIPO */
+  /** @deprecated — ya no se usa */
   valoracionesDisponibles?: string[];
 
   totalAcciones: number;
@@ -288,7 +319,18 @@ export default function PanelFiltros3D({
     if (filtros.tipos.length === 0) return [];
     const out: { tipo: string; v: string; label: string }[] = [];
     for (const tipo of filtros.tipos) {
-      for (const s of SUBTIPOS_POR_TIPO[tipo] ?? []) {
+      for (const s of SUBTIPOS_REALES_POR_TIPO[tipo] ?? []) {
+        out.push({ tipo, v: s.v, label: s.label });
+      }
+    }
+    return out;
+  }, [filtros.tipos]);
+
+  const valoracionesDisponibles = useMemo(() => {
+    if (filtros.tipos.length === 0) return [];
+    const out: { tipo: string; v: string; label: string }[] = [];
+    for (const tipo of filtros.tipos) {
+      for (const s of VALORACIONES_POR_TIPO[tipo] ?? []) {
         out.push({ tipo, v: s.v, label: s.label });
       }
     }
@@ -301,12 +343,14 @@ export default function PanelFiltros3D({
     filtros.jugador !== "todos" ||
     filtros.tipos.length > 0 ||
     filtros.subtipos.length > 0 ||
+    filtros.valoraciones.length > 0 ||
     filtros.zonasOrigen.length > 0 ||
     filtros.zonasDestino.length > 0 ||
     filtros.rotacion !== "todas" ||
     filtros.rol !== "todos" ||
     filtros.zonaJugador !== "todas" ||
-    filtros.soloErrores;
+    filtros.soloErrores ||
+    filtros.mostrarRivales;
 
   const cantFiltros =
     (filtros.set !== "todos" ? 1 : 0) +
@@ -314,12 +358,14 @@ export default function PanelFiltros3D({
     (filtros.jugador !== "todos" ? 1 : 0) +
     filtros.tipos.length +
     filtros.subtipos.length +
+    filtros.valoraciones.length +
     filtros.zonasOrigen.length +
     filtros.zonasDestino.length +
     (filtros.rotacion !== "todas" ? 1 : 0) +
     (filtros.rol !== "todos" ? 1 : 0) +
     (filtros.zonaJugador !== "todas" ? 1 : 0) +
-    (filtros.soloErrores ? 1 : 0);
+    (filtros.soloErrores ? 1 : 0) +
+    (filtros.mostrarRivales ? 1 : 0);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 space-y-3">
@@ -409,8 +455,8 @@ export default function PanelFiltros3D({
         </div>
       </div>
 
-      {/* Fila 2: Rotación, Rol, Zona jugador, Solo errores */}
-      <div className="grid grid-cols-4 gap-2 items-end">
+      {/* Fila 2: Rotación, Rol, Zona jugador, Solo errores, Mostrar rivales */}
+      <div className="grid grid-cols-3 md:grid-cols-5 gap-2 items-end">
         <div>
           <label className={labelCls}>Rotación</label>
           <select
@@ -491,6 +537,18 @@ export default function PanelFiltros3D({
         >
           {filtros.soloErrores ? "✓ Solo errores" : "⚠️ Solo errores"}
         </button>
+
+        <button
+          onClick={() => set("mostrarRivales", !filtros.mostrarRivales)}
+          className={`h-[30px] text-xs font-semibold rounded-lg border-2 transition ${
+            filtros.mostrarRivales
+              ? "bg-orange-500 text-white border-orange-500"
+              : "bg-white text-orange-600 border-orange-300 hover:bg-orange-50"
+          }`}
+          title="Por defecto solo se muestran las acciones propias"
+        >
+          {filtros.mostrarRivales ? "✓ Rivales ON" : "🔒 Solo propias"}
+        </button>
       </div>
 
       {/* Fila 3: Fundamento (multi) */}
@@ -507,15 +565,25 @@ export default function PanelFiltros3D({
                 key={t.v}
                 onClick={() => {
                   const nuevos = toggleArrayValue(filtros.tipos, t.v);
+                  // Limpiar subtipos/valoraciones que ya no aplican
                   const subsValidos = new Set(
                     nuevos.flatMap((ti) =>
-                      (SUBTIPOS_POR_TIPO[ti] ?? []).map((s) => s.v)
+                      (SUBTIPOS_REALES_POR_TIPO[ti] ?? []).map((s) => s.v)
                     )
                   );
-                  setFiltrosMulti({
+                  const valsValidas = new Set(
+                    nuevos.flatMap((ti) =>
+                      (VALORACIONES_POR_TIPO[ti] ?? []).map((s) => s.v)
+                    )
+                  );
+                  onChange({
+                    ...filtros,
                     tipos: nuevos,
                     subtipos: filtros.subtipos.filter((s) =>
                       subsValidos.has(s)
+                    ),
+                    valoraciones: filtros.valoraciones.filter((s) =>
+                      valsValidas.has(s)
                     ),
                   });
                 }}
@@ -532,26 +600,67 @@ export default function PanelFiltros3D({
         </div>
       </div>
 
-      {/* Fila 4: Subtipo (multi, depende de tipos) */}
+      {/* Fila 4: Subtipo real (multi, depende de tipos) */}
       <div>
         <label className={labelCls}>
           Subtipo (multi){" "}
           {filtros.subtipos.length > 0 && `· ${filtros.subtipos.length}`}
         </label>
-        {filtros.tipos.length === 0 ? (
+        {filtros.tipos.length === 0 || subtiposDisponibles.length === 0 ? (
           <p className="text-[10px] text-slate-400 italic">
-            Elegí al menos un fundamento para filtrar subtipos.
+            Solo aplica a saque (potencia/flotado) y ataque (remate/toque).
           </p>
         ) : (
           <div className="flex flex-wrap gap-1">
             {subtiposDisponibles.map((s) => {
               const activo = filtros.subtipos.includes(s.v);
-              const nivel = nivelSubtipo(s.tipo, s.v);
+              return (
+                <button
+                  key={`sub-${s.tipo}-${s.v}`}
+                  onClick={() =>
+                    set("subtipos", toggleArrayValue(filtros.subtipos, s.v))
+                  }
+                  className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border-2 transition ${
+                    activo
+                      ? "bg-emerald-500 text-white border-emerald-600"
+                      : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                  }`}
+                  title={`${s.tipo} · ${s.label}`}
+                >
+                  {`${s.tipo.slice(0, 3)}·${s.label}`}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Fila 5: Valoración (multi, depende de tipos) */}
+      <div>
+        <label className={labelCls}>
+          Valoración (multi){" "}
+          {filtros.valoraciones.length > 0 &&
+            `· ${filtros.valoraciones.length}`}
+        </label>
+        {filtros.tipos.length === 0 ? (
+          <p className="text-[10px] text-slate-400 italic">
+            Elegí al menos un fundamento para filtrar valoraciones.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {valoracionesDisponibles.map((s) => {
+              const activo = filtros.valoraciones.includes(s.v);
+              const nivel = nivelValoracion(s.tipo, s.v);
               const colCls = COLOR_NIVEL[nivel];
               return (
                 <button
-                  key={`${s.tipo}-${s.v}`}
-                  onClick={() => set("subtipos", toggleArrayValue(filtros.subtipos, s.v))}
+                  key={`val-${s.tipo}-${s.v}`}
+                  onClick={() =>
+                    set(
+                      "valoraciones",
+                      toggleArrayValue(filtros.valoraciones, s.v)
+                    )
+                  }
                   className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border-2 transition ${
                     activo
                       ? "bg-emerald-500 text-white border-emerald-600"
@@ -569,14 +678,14 @@ export default function PanelFiltros3D({
         )}
       </div>
 
-      {/* Fila 5: Zona origen (multi, P y R) */}
+      {/* Fila 6: Zona origen (multi, P y R) */}
       <ZonasMultiSelector
         label="Zona origen"
         seleccionadas={filtros.zonasOrigen}
         onChange={(z) => set("zonasOrigen", z)}
       />
 
-      {/* Fila 6: Zona destino (multi, P y R) */}
+      {/* Fila 7: Zona destino (multi, P y R) */}
       <ZonasMultiSelector
         label="Zona destino"
         seleccionadas={filtros.zonasDestino}
@@ -584,10 +693,6 @@ export default function PanelFiltros3D({
       />
     </div>
   );
-
-  function setFiltrosMulti(patch: Partial<Filtros3D>) {
-    onChange({ ...filtros, ...patch });
-  }
 }
 
 // ============================================================

@@ -275,10 +275,16 @@ function alturaDeCeldaEspecial(celda: string | null | undefined): number {
 // PARÁBOLA / CATMULLROM
 // ============================================================
 
+/**
+ * Parábola entre dos waypoints.
+ * `curvatura` > 1 hace la curva más "picuda" (sube y baja más rápido).
+ * `curvatura` = 1 → parábola clásica.
+ */
 function parabolaSegmento(
   w1: { x: number; z: number; h: number },
   w2: { x: number; z: number; h: number },
   apexExtra: number,
+  curvatura: number = 1,
   pasos: number = 30
 ): [number, number, number][] {
   const dx = w2.x - w1.x;
@@ -289,7 +295,8 @@ function parabolaSegmento(
     const x = w1.x + t * dx;
     const z = w1.z + t * dz;
     const hBase = w1.h + t * (w2.h - w1.h);
-    const h = hBase + 4 * t * (1 - t) * apexExtra;
+    const arco = Math.pow(4 * t * (1 - t), curvatura);
+    const h = hBase + arco * apexExtra;
     pts.push([x, Math.max(0, h), z]);
   }
   return pts;
@@ -470,15 +477,27 @@ function generarPuntosArmado(a: AccionVisual): [number, number, number][] {
 
 function calcularApexExtra(a: AccionVisual, cruzaRed: boolean): number {
   const esToque = a.tipo === "ataque" && a.variante === "toque";
+
+  // LIBRE: parábola muy pronunciada
   if (a.tipo === "libre") {
-    return cruzaRed ? 1.8 : 1.2;
+    return cruzaRed ? 4.2 : 3.6;
   }
+  // TOQUE: parábola muy chata
   if (esToque) {
     return cruzaRed ? 0.2 : 0.3;
   }
   if (a.tipo === "saque") return 0.4;
   if (a.tipo === "ataque") return 0.4;
   return 0.4;
+}
+
+/**
+ * Curvatura de la parábola: >1 la hace más picuda.
+ * Libre usa 1.8 para que suba y baje más agresivamente.
+ */
+function calcularCurvatura(a: AccionVisual): number {
+  if (a.tipo === "libre") return 1.8;
+  return 1;
 }
 
 function accionAPuntos(
@@ -506,6 +525,7 @@ function accionAPuntos(
   const cruzaRed = ladoO !== null && ladoD !== null && ladoO !== ladoD;
 
   const apexExtra = calcularApexExtra(a, cruzaRed);
+  const curvatura = calcularCurvatura(a);
 
   const waypoints: {
     x: number;
@@ -565,7 +585,7 @@ function accionAPuntos(
         20
       );
     } else {
-      segPts = parabolaSegmento(w1, w2, apexExtra, 20);
+      segPts = parabolaSegmento(w1, w2, apexExtra, curvatura, 20);
     }
 
     if (i > 0 && segPts.length > 0) segPts.shift();
@@ -900,19 +920,15 @@ const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
         const rango = COL_X[col];
         if (!rango) return null;
 
-        // Centro X de la columna, achicado un poco para dejar aire
         const ancho = (rango[1] - rango[0]) * 0.8;
         const centroX = (rango[0] + rango[1]) / 2;
         const z = it.esPropio ? 0.35 : -0.35;
 
-        // Altura del bloqueo: desde 1.9m hasta 3.0m (un poco por encima
-        // de la red)
         const alturaMano = 1.1;
         const centroY = 1.9 + alturaMano / 2;
 
         return (
           <group key={it.key}>
-            {/* Pared / manos del bloqueo */}
             <mesh position={[centroX, centroY, z]}>
               <boxGeometry args={[ancho, alturaMano, 0.12]} />
               <meshStandardMaterial
@@ -924,7 +940,6 @@ const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
               />
             </mesh>
 
-            {/* Brazos: dos cilindros que suben desde el piso hasta las manos */}
             <mesh position={[centroX - ancho * 0.25, 1.4, z]}>
               <cylinderGeometry args={[0.05, 0.05, 1.0, 8]} />
               <meshStandardMaterial
