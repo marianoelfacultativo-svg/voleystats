@@ -6,6 +6,7 @@
 
 import { supabase } from "@/lib/supabase";
 import type { AccionV2Row } from "@/lib/dbV2";
+import { zonaCrudaDeCelda } from "@/lib/mapeoV2";
 
 // ------------------------------------------------------------
 // TIPOS
@@ -60,6 +61,16 @@ export interface AccionVisual {
   posicion_inicial_x: number | null;
   posicion_inicial_y: number | null;
 
+  /**
+   * Zona de la celda origen codificada con lado + zona:
+   *   "P4" = propia zona 4
+   *   "R4" = rival zona 4
+   *   null = sin zona (bloqueos, red, fuera, saques)
+   */
+  zona_origen_codigo: string | null;
+  /** Igual que arriba pero para el destino. */
+  zona_destino_codigo: string | null;
+
   /** true = es la última acción visible del punto. Solo esa toca el piso. */
   es_ultima_del_punto: boolean;
 }
@@ -73,6 +84,46 @@ export interface PuntoConAcciones {
 export interface CargaUnificadaResult {
   acciones: AccionVisual[];
   puntos: PuntoConAcciones[];
+}
+
+// ------------------------------------------------------------
+// HELPERS DE ZONA CODIFICADA
+// ------------------------------------------------------------
+
+/** true si la celda pertenece a cancha rival (F4..F6 o BLOQ-R-*). */
+function esLadoRival(celda: string | null | undefined): boolean {
+  if (!celda) return false;
+  if (/^F[456]-/.test(celda)) return true;
+  if (celda.startsWith("BLOQ-R-")) return true;
+  if (celda.startsWith("FUERA-ARR-")) return true;
+  return false;
+}
+
+/**
+ * "Espeja" la fila rival a propia (F4→F3, F5→F2, F6→F1) para poder
+ * reutilizar `zonaCrudaDeCelda`. Devuelve la celda convertida.
+ */
+function espejarFila(celda: string): string {
+  if (celda.startsWith("F4-")) return "F3-" + celda.slice(3);
+  if (celda.startsWith("F5-")) return "F2-" + celda.slice(3);
+  if (celda.startsWith("F6-")) return "F1-" + celda.slice(3);
+  return celda;
+}
+
+/**
+ * Calcula el código de zona a partir de la celda cruda.
+ * Retorna "P1".."P6" / "R1".."R6" o null si la celda no tiene zona.
+ */
+function codigoZonaDeCelda(
+  celda: string | null | undefined
+): string | null {
+  if (!celda) return null;
+  if (!/^F[1-6]-/.test(celda)) return null;
+  const esRival = esLadoRival(celda);
+  const celdaEsp = esRival ? espejarFila(celda) : celda;
+  const zona = zonaCrudaDeCelda(celdaEsp);
+  if (zona === null) return null;
+  return `${esRival ? "R" : "P"}${zona}`;
 }
 
 // ------------------------------------------------------------
@@ -138,6 +189,8 @@ export async function cargarAccionesUnificadas(
     destino_y: a.destino_y ?? null,
     posicion_inicial_x: a.posicion_inicial_x ?? null,
     posicion_inicial_y: a.posicion_inicial_y ?? null,
+    zona_origen_codigo: codigoZonaDeCelda(a.origen_celda),
+    zona_destino_codigo: codigoZonaDeCelda(a.destino_celda),
     es_ultima_del_punto: false,
   }));
 

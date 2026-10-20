@@ -4,6 +4,7 @@
 // PANEL DE FILTROS 3D — controles compartidos para CanchaUnificada3D
 // ============================================================
 
+import { useMemo } from "react";
 import type { AccionVisual } from "./adaptadorUnificadoV2";
 
 // ------------------------------------------------------------
@@ -14,82 +15,97 @@ export interface Filtros3D {
   set: number | "todos";
   punto: number | "todos";
   jugador: string | "todos";
-  tipo: string | "todos";
-  zonaOrigen: number | "todas";
-  zonaDestino: number | "todas";
+  /** Multi-select de fundamentos (vacío = todos). */
+  tipos: string[];
+  /** Multi-select de subtipos (vacío = todos). */
+  subtipos: string[];
+  /** Multi-select de zonas de origen ("P1".."P6", "R1".."R6"). */
+  zonasOrigen: string[];
+  /** Multi-select de zonas de destino. */
+  zonasDestino: string[];
   rotacion: number | "todas";
   rol: string | "todos";
   zonaJugador: number | "todas";
   soloErrores: boolean;
-  valoracion: string | "todas";
 }
 
 export const FILTROS3D_VACIO: Filtros3D = {
   set: "todos",
   punto: "todos",
   jugador: "todos",
-  tipo: "todos",
-  zonaOrigen: "todas",
-  zonaDestino: "todas",
+  tipos: [],
+  subtipos: [],
+  zonasOrigen: [],
+  zonasDestino: [],
   rotacion: "todas",
   rol: "todos",
   zonaJugador: "todas",
   soloErrores: false,
-  valoracion: "todas",
 };
 
 // ------------------------------------------------------------
-// APLICAR FILTROS
+// SUBTIPOS POR TIPO
 // ------------------------------------------------------------
 
-export function aplicarFiltros(
-  acciones: AccionVisual[],
-  f: Filtros3D
-): AccionVisual[] {
-  return acciones.filter((a) => {
-    if (a.oculta) return false;
-    if (f.set !== "todos" && a.set_numero !== f.set) return false;
-    if (f.punto !== "todos" && a.punto_numero !== f.punto) return false;
-    if (f.jugador !== "todos" && a.jugador_id !== f.jugador) return false;
-    if (f.tipo !== "todos" && a.tipo !== f.tipo) return false;
-    if (f.zonaOrigen !== "todas" && a.zona_origen !== f.zonaOrigen)
-      return false;
-    if (f.zonaDestino !== "todas" && a.zona_destino !== f.zonaDestino)
-      return false;
-    if (f.rotacion !== "todas" && a.rotacion_numero !== f.rotacion)
-      return false;
-    if (f.rol !== "todos" && a.rol_jugador !== f.rol) return false;
-    if (f.zonaJugador !== "todas" && a.zona_jugador !== f.zonaJugador)
-      return false;
-    if (f.soloErrores && !a.es_error) return false;
-    if (f.valoracion !== "todas") {
-      const s =
-        a.subtipo !== null && a.subtipo !== undefined
-          ? String(a.subtipo)
-          : "";
-      const base = s.startsWith("toque:") ? s.slice(6) : s;
-      if (base !== f.valoracion) return false;
-    }
-    return true;
-  });
+interface SubOpcion {
+  v: string;
+  label: string;
 }
 
-// ------------------------------------------------------------
-// PROPS
-// ------------------------------------------------------------
-
-interface Props {
-  filtros: Filtros3D;
-  onChange: (f: Filtros3D) => void;
-
-  setsDisponibles: number[];
-  puntosDisponibles: number[];
-  jugadores: { id: string; nombre: string }[];
-  valoracionesDisponibles: string[];
-
-  totalAcciones: number;
-  accionesFiltradas: number;
-}
+const SUBTIPOS_POR_TIPO: Record<string, SubOpcion[]> = {
+  saque: [
+    { v: "ace", label: "Ace" },
+    { v: "positivo_mas", label: "Pos+" },
+    { v: "positivo", label: "Pos" },
+    { v: "neutro", label: "Neu" },
+    { v: "negativo", label: "Neg" },
+  ],
+  recepcion: [
+    { v: "1", label: "1 (Ace c/)" },
+    { v: "2", label: "2 (3x Neg)" },
+    { v: "3", label: "3 (2x Neg)" },
+    { v: "4", label: "4 (Neg)" },
+    { v: "5", label: "5 (Pos)" },
+    { v: "6", label: "6 (2x Pos)" },
+  ],
+  armado: [
+    { v: "1", label: "1" },
+    { v: "2", label: "2" },
+    { v: "3", label: "3" },
+    { v: "4", label: "4" },
+    { v: "5", label: "5" },
+    { v: "6", label: "6" },
+    { v: "R", label: "R" },
+  ],
+  ataque: [
+    { v: "punto", label: "Punto" },
+    { v: "neutro", label: "Neutro" },
+    { v: "error", label: "Error" },
+  ],
+  bloqueo: [
+    { v: "punto", label: "Punto" },
+    { v: "positivo_mas", label: "Pos+" },
+    { v: "positivo", label: "Pos" },
+    { v: "use_rival", label: "Use Rival" },
+    { v: "red", label: "Red" },
+    { v: "filtrada", label: "Filtrada" },
+  ],
+  defensa: [
+    { v: "toque_positiva", label: "Toque +" },
+    { v: "toque_negativa", label: "Toque -" },
+    { v: "gran_def", label: "Gran Def" },
+    { v: "error_def", label: "Error Def" },
+    { v: "mala_libre", label: "Mala Libre" },
+    { v: "cobertura_positiva", label: "Cob +" },
+    { v: "cobertura_negativa", label: "Cob -" },
+    { v: "errores_graves", label: "Err Graves" },
+    { v: "neutro", label: "Neutro" },
+  ],
+  libre: [
+    { v: "toque", label: "Toque" },
+    { v: "libre", label: "Libre" },
+  ],
+};
 
 const TIPOS = [
   { v: "saque", label: "Saque" },
@@ -111,10 +127,148 @@ const ROLES = [
   { v: "L", label: "Líbero" },
 ];
 
+// ------------------------------------------------------------
+// HELPERS
+// ------------------------------------------------------------
+
+function nivelSubtipo(tipo: string, sub: string): "pos" | "neu" | "neg" {
+  if (tipo === "saque") {
+    if (sub === "ace" || sub === "positivo_mas" || sub === "positivo")
+      return "pos";
+    if (sub === "negativo") return "neg";
+    return "neu";
+  }
+  if (tipo === "recepcion") {
+    const n = parseInt(sub, 10);
+    if (!isNaN(n)) {
+      if (n >= 5) return "pos";
+      if (n <= 3) return "neg";
+    }
+    return "neu";
+  }
+  if (tipo === "armado") {
+    if (sub === "R") return "neu";
+    const n = parseInt(sub, 10);
+    if (!isNaN(n)) {
+      if (n >= 5) return "pos";
+      if (n <= 3) return "neg";
+    }
+    return "neu";
+  }
+  if (tipo === "ataque") {
+    if (sub === "punto") return "pos";
+    if (sub === "error") return "neg";
+    return "neu";
+  }
+  if (tipo === "bloqueo") {
+    if (sub === "punto" || sub === "positivo_mas" || sub === "positivo")
+      return "pos";
+    if (sub === "red" || sub === "filtrada") return "neg";
+    return "neu";
+  }
+  if (tipo === "defensa") {
+    if (
+      sub.includes("positiva") ||
+      sub === "gran_def"
+    )
+      return "pos";
+    if (
+      sub.includes("negativa") ||
+      sub === "error_def" ||
+      sub === "mala_libre" ||
+      sub === "errores_graves"
+    )
+      return "neg";
+    return "neu";
+  }
+  return "neu";
+}
+
+const COLOR_NIVEL = {
+  pos: "bg-green-100 text-green-800 border-green-400",
+  neu: "bg-slate-100 text-slate-700 border-slate-400",
+  neg: "bg-red-100 text-red-800 border-red-400",
+};
+
+// ------------------------------------------------------------
+// APLICAR FILTROS
+// ------------------------------------------------------------
+
+export function aplicarFiltros(
+  acciones: AccionVisual[],
+  f: Filtros3D
+): AccionVisual[] {
+  return acciones.filter((a) => {
+    if (a.oculta) return false;
+    if (f.set !== "todos" && a.set_numero !== f.set) return false;
+    if (f.punto !== "todos" && a.punto_numero !== f.punto) return false;
+    if (f.jugador !== "todos" && a.jugador_id !== f.jugador) return false;
+
+    if (f.tipos.length > 0 && !f.tipos.includes(a.tipo)) return false;
+
+    if (f.subtipos.length > 0) {
+      const s =
+        a.subtipo !== null && a.subtipo !== undefined
+          ? String(a.subtipo)
+          : "";
+      const base = s.startsWith("toque:") ? s.slice(6) : s;
+      if (!f.subtipos.includes(base)) return false;
+    }
+
+    if (f.zonasOrigen.length > 0) {
+      if (!f.zonasOrigen.includes(a.zona_origen_codigo ?? "")) return false;
+    }
+    if (f.zonasDestino.length > 0) {
+      if (!f.zonasDestino.includes(a.zona_destino_codigo ?? "")) return false;
+    }
+
+    if (f.rotacion !== "todas" && a.rotacion_numero !== f.rotacion)
+      return false;
+    if (f.rol !== "todos" && a.rol_jugador !== f.rol) return false;
+    if (f.zonaJugador !== "todas" && a.zona_jugador !== f.zonaJugador)
+      return false;
+    if (f.soloErrores && !a.es_error) return false;
+    return true;
+  });
+}
+
+// ------------------------------------------------------------
+// PROPS
+// ------------------------------------------------------------
+
+interface Props {
+  filtros: Filtros3D;
+  onChange: (f: Filtros3D) => void;
+
+  setsDisponibles: number[];
+  puntosDisponibles: number[];
+  jugadores: { id: string; nombre: string }[];
+  /** @deprecated — ya no se usa, los subtipos vienen de SUBTIPOS_POR_TIPO */
+  valoracionesDisponibles?: string[];
+
+  totalAcciones: number;
+  accionesFiltradas: number;
+}
+
 const selectCls =
   "w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:border-emerald-500";
 const labelCls =
   "block text-[10px] font-semibold text-slate-500 uppercase mb-1 tracking-wide";
+
+// ------------------------------------------------------------
+// TOGGLE HELPER
+// ------------------------------------------------------------
+
+function toggleArrayValue<T>(arr: T[], v: T): T[] {
+  return arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
+}
+
+const ZONAS_PROPIAS = ["P1", "P2", "P3", "P4", "P5", "P6"];
+const ZONAS_RIVALES = ["R1", "R2", "R3", "R4", "R5", "R6"];
+
+// ------------------------------------------------------------
+// COMPONENTE
+// ------------------------------------------------------------
 
 export default function PanelFiltros3D({
   filtros,
@@ -122,7 +276,6 @@ export default function PanelFiltros3D({
   setsDisponibles,
   puntosDisponibles,
   jugadores,
-  valoracionesDisponibles,
   totalAcciones,
   accionesFiltradas,
 }: Props) {
@@ -131,24 +284,48 @@ export default function PanelFiltros3D({
 
   const limpiar = () => onChange({ ...FILTROS3D_VACIO });
 
+  const subtiposDisponibles = useMemo(() => {
+    if (filtros.tipos.length === 0) return [];
+    const out: { tipo: string; v: string; label: string }[] = [];
+    for (const tipo of filtros.tipos) {
+      for (const s of SUBTIPOS_POR_TIPO[tipo] ?? []) {
+        out.push({ tipo, v: s.v, label: s.label });
+      }
+    }
+    return out;
+  }, [filtros.tipos]);
+
   const hayFiltrosActivos =
     filtros.set !== "todos" ||
     filtros.punto !== "todos" ||
     filtros.jugador !== "todos" ||
-    filtros.tipo !== "todos" ||
-    filtros.zonaOrigen !== "todas" ||
-    filtros.zonaDestino !== "todas" ||
+    filtros.tipos.length > 0 ||
+    filtros.subtipos.length > 0 ||
+    filtros.zonasOrigen.length > 0 ||
+    filtros.zonasDestino.length > 0 ||
     filtros.rotacion !== "todas" ||
     filtros.rol !== "todos" ||
     filtros.zonaJugador !== "todas" ||
-    filtros.soloErrores ||
-    filtros.valoracion !== "todas";
+    filtros.soloErrores;
+
+  const cantFiltros =
+    (filtros.set !== "todos" ? 1 : 0) +
+    (filtros.punto !== "todos" ? 1 : 0) +
+    (filtros.jugador !== "todos" ? 1 : 0) +
+    filtros.tipos.length +
+    filtros.subtipos.length +
+    filtros.zonasOrigen.length +
+    filtros.zonasDestino.length +
+    (filtros.rotacion !== "todas" ? 1 : 0) +
+    (filtros.rol !== "todos" ? 1 : 0) +
+    (filtros.zonaJugador !== "todas" ? 1 : 0) +
+    (filtros.soloErrores ? 1 : 0);
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 space-y-2">
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 space-y-3">
       <div className="flex items-center justify-between mb-1">
         <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-          🎛️ Filtros
+          🎛️ Filtros {cantFiltros > 0 && `(${cantFiltros})`}
         </p>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-slate-400">
@@ -165,7 +342,8 @@ export default function PanelFiltros3D({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+      {/* Fila 1: Set, Punto, Jugador */}
+      <div className="grid grid-cols-3 gap-2">
         <div>
           <label className={labelCls}>Set</label>
           <select
@@ -229,79 +407,10 @@ export default function PanelFiltros3D({
             ))}
           </select>
         </div>
-
-        <div>
-          <label className={labelCls}>Fundamento</label>
-          <select
-            value={filtros.tipo}
-            onChange={(e) => set("tipo", e.target.value)}
-            className={selectCls}
-          >
-            <option value="todos">Todos</option>
-            {TIPOS.map((t) => (
-              <option key={t.v} value={t.v}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-        <div>
-          <label className={labelCls}>Zona origen</label>
-          <select
-            value={
-              filtros.zonaOrigen === "todas"
-                ? "todas"
-                : String(filtros.zonaOrigen)
-            }
-            onChange={(e) =>
-              set(
-                "zonaOrigen",
-                e.target.value === "todas"
-                  ? "todas"
-                  : parseInt(e.target.value)
-              )
-            }
-            className={selectCls}
-          >
-            <option value="todas">Todas</option>
-            {[1, 2, 3, 4, 5, 6].map((z) => (
-              <option key={z} value={String(z)}>
-                Z{z}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className={labelCls}>Zona destino</label>
-          <select
-            value={
-              filtros.zonaDestino === "todas"
-                ? "todas"
-                : String(filtros.zonaDestino)
-            }
-            onChange={(e) =>
-              set(
-                "zonaDestino",
-                e.target.value === "todas"
-                  ? "todas"
-                  : parseInt(e.target.value)
-              )
-            }
-            className={selectCls}
-          >
-            <option value="todas">Todas</option>
-            {[1, 2, 3, 4, 5, 6].map((z) => (
-              <option key={z} value={String(z)}>
-                Z{z}
-              </option>
-            ))}
-          </select>
-        </div>
-
+      {/* Fila 2: Rotación, Rol, Zona jugador, Solo errores */}
+      <div className="grid grid-cols-4 gap-2 items-end">
         <div>
           <label className={labelCls}>Rotación</label>
           <select
@@ -371,36 +480,174 @@ export default function PanelFiltros3D({
             ))}
           </select>
         </div>
-      </div>
-
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="flex-1 min-w-[140px]">
-          <label className={labelCls}>Valoración</label>
-          <select
-            value={filtros.valoracion}
-            onChange={(e) => set("valoracion", e.target.value)}
-            className={selectCls}
-          >
-            <option value="todas">Todas</option>
-            {valoracionesDisponibles.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </div>
 
         <button
           onClick={() => set("soloErrores", !filtros.soloErrores)}
-          className={`px-3 py-1.5 text-xs font-semibold rounded-lg border-2 transition ${
+          className={`h-[30px] text-xs font-semibold rounded-lg border-2 transition ${
             filtros.soloErrores
               ? "bg-red-500 text-white border-red-500"
               : "bg-white text-red-600 border-red-300 hover:bg-red-50"
           }`}
-          title="Mostrar solo acciones que terminaron en error"
         >
           {filtros.soloErrores ? "✓ Solo errores" : "⚠️ Solo errores"}
         </button>
+      </div>
+
+      {/* Fila 3: Fundamento (multi) */}
+      <div>
+        <label className={labelCls}>
+          Fundamento (multi){" "}
+          {filtros.tipos.length > 0 && `· ${filtros.tipos.length}`}
+        </label>
+        <div className="flex flex-wrap gap-1">
+          {TIPOS.map((t) => {
+            const activo = filtros.tipos.includes(t.v);
+            return (
+              <button
+                key={t.v}
+                onClick={() => {
+                  const nuevos = toggleArrayValue(filtros.tipos, t.v);
+                  const subsValidos = new Set(
+                    nuevos.flatMap((ti) =>
+                      (SUBTIPOS_POR_TIPO[ti] ?? []).map((s) => s.v)
+                    )
+                  );
+                  setFiltrosMulti({
+                    tipos: nuevos,
+                    subtipos: filtros.subtipos.filter((s) =>
+                      subsValidos.has(s)
+                    ),
+                  });
+                }}
+                className={`px-2 py-1 text-[11px] font-semibold rounded border-2 transition ${
+                  activo
+                    ? "bg-emerald-500 text-white border-emerald-600"
+                    : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                }`}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Fila 4: Subtipo (multi, depende de tipos) */}
+      <div>
+        <label className={labelCls}>
+          Subtipo (multi){" "}
+          {filtros.subtipos.length > 0 && `· ${filtros.subtipos.length}`}
+        </label>
+        {filtros.tipos.length === 0 ? (
+          <p className="text-[10px] text-slate-400 italic">
+            Elegí al menos un fundamento para filtrar subtipos.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {subtiposDisponibles.map((s) => {
+              const activo = filtros.subtipos.includes(s.v);
+              const nivel = nivelSubtipo(s.tipo, s.v);
+              const colCls = COLOR_NIVEL[nivel];
+              return (
+                <button
+                  key={`${s.tipo}-${s.v}`}
+                  onClick={() => set("subtipos", toggleArrayValue(filtros.subtipos, s.v))}
+                  className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border-2 transition ${
+                    activo
+                      ? "bg-emerald-500 text-white border-emerald-600"
+                      : `${colCls} hover:brightness-95`
+                  }`}
+                  title={`${s.tipo} · ${s.label}`}
+                >
+                  {s.tipo === "armado" || s.tipo === "recepcion"
+                    ? s.label
+                    : `${s.tipo.slice(0, 3)}·${s.label}`}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Fila 5: Zona origen (multi, P y R) */}
+      <ZonasMultiSelector
+        label="Zona origen"
+        seleccionadas={filtros.zonasOrigen}
+        onChange={(z) => set("zonasOrigen", z)}
+      />
+
+      {/* Fila 6: Zona destino (multi, P y R) */}
+      <ZonasMultiSelector
+        label="Zona destino"
+        seleccionadas={filtros.zonasDestino}
+        onChange={(z) => set("zonasDestino", z)}
+      />
+    </div>
+  );
+
+  function setFiltrosMulti(patch: Partial<Filtros3D>) {
+    onChange({ ...filtros, ...patch });
+  }
+}
+
+// ============================================================
+// SUBCOMPONENTE: selector múltiple de zonas P/R
+// ============================================================
+
+function ZonasMultiSelector({
+  label,
+  seleccionadas,
+  onChange,
+}: {
+  label: string;
+  seleccionadas: string[];
+  onChange: (v: string[]) => void;
+}) {
+  return (
+    <div>
+      <label className={labelCls}>
+        {label} (multi)
+        {seleccionadas.length > 0 && ` · ${seleccionadas.length}`}
+      </label>
+      <div className="flex flex-wrap gap-1 items-center">
+        <span className="text-[9px] font-bold text-blue-700 mr-1 uppercase tracking-wider">
+          Propia
+        </span>
+        {ZONAS_PROPIAS.map((z) => {
+          const activo = seleccionadas.includes(z);
+          return (
+            <button
+              key={z}
+              onClick={() => onChange(toggleArrayValue(seleccionadas, z))}
+              className={`px-2 py-0.5 text-[10px] font-bold rounded border transition ${
+                activo
+                  ? "bg-blue-500 text-white border-blue-600"
+                  : "bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
+              }`}
+            >
+              {z.slice(1)}
+            </button>
+          );
+        })}
+        <span className="text-[9px] font-bold text-orange-700 mx-2 uppercase tracking-wider">
+          Rival
+        </span>
+        {ZONAS_RIVALES.map((z) => {
+          const activo = seleccionadas.includes(z);
+          return (
+            <button
+              key={z}
+              onClick={() => onChange(toggleArrayValue(seleccionadas, z))}
+              className={`px-2 py-0.5 text-[10px] font-bold rounded border transition ${
+                activo
+                  ? "bg-orange-500 text-white border-orange-600"
+                  : "bg-orange-50 text-orange-700 border-orange-300 hover:bg-orange-100"
+              }`}
+            >
+              {z.slice(1)}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

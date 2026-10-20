@@ -27,7 +27,7 @@ const CanchaUnificada3D = dynamic(
 interface Props {
   equipoId: string;
   nombreEquipo?: string;
-  jugadorId?: string | null; // opcional: filtra a un solo jugador
+  jugadorId?: string | null;
 }
 
 interface Partido {
@@ -158,11 +158,9 @@ export default function VisualizacionUnificada({
     setCargando(true);
 
     (async () => {
-      // Cargamos sin filtro de equipo: queremos ver ambos lados
       const res = await cargarAccionesUnificadas(partidoSeleccionado);
       setAccionesPartido(res.acciones);
 
-      // Auto-seleccionar primer set/punto
       if (res.puntos.length > 0) {
         const primero = res.puntos[0];
         setSetActivo(primero.set_numero);
@@ -188,41 +186,32 @@ export default function VisualizacionUnificada({
     return aplicarFiltros(base, filtros);
   }, [accionesPartido, filtros, jugadorId]);
 
-  // Sets/puntos/valoraciones disponibles tras aplicar filtros
+  // Sets disponibles: derivados del partido SIN filtros para que cambiar
+  // un set no haga desaparecer los demás del selector.
   const setsDisponibles = useMemo(() => {
     const s = new Set<number>();
-    accionesFiltradas.forEach((a) => s.add(a.set_numero));
+    accionesPartido.forEach((a) => s.add(a.set_numero));
     return Array.from(s).sort();
-  }, [accionesFiltradas]);
+  }, [accionesPartido]);
 
+  // Puntos disponibles: dependen solo del set (para no perder puntos
+  // si se aplican otros filtros).
   const puntosDisponibles = useMemo(() => {
     const p = new Set<number>();
-    accionesFiltradas
+    accionesPartido
       .filter(
         (a) => filtros.set === "todos" || a.set_numero === filtros.set
       )
       .forEach((a) => p.add(a.punto_numero));
     return Array.from(p).sort((a, b) => a - b);
-  }, [accionesFiltradas, filtros.set]);
-
-  const valoracionesDisponibles = useMemo(() => {
-    const v = new Set<string>();
-    for (const a of accionesFiltradas) {
-      if (a.subtipo === null || a.subtipo === undefined) continue;
-      const s = String(a.subtipo);
-      const base = s.startsWith("toque:") ? s.slice(6) : s;
-      if (base) v.add(base);
-    }
-    return Array.from(v).sort();
-  }, [accionesFiltradas]);
+  }, [accionesPartido, filtros.set]);
 
   const jugadoresParaFiltro = useMemo(
     () =>
       jugadores
         .map((j) => ({
           id: j.id,
-          nombre:
-            j.nombre + (j.numero !== null ? ` #${j.numero}` : ""),
+          nombre: j.nombre + (j.numero !== null ? ` #${j.numero}` : ""),
         }))
         .sort((a, b) => a.nombre.localeCompare(b.nombre)),
     [jugadores]
@@ -282,10 +271,7 @@ export default function VisualizacionUnificada({
     const puntosSet = puntosAgrupados
       .filter((p) => p.set_numero === setValido)
       .map((p) => p.punto_numero);
-    if (
-      puntoActivo === null ||
-      !puntosSet.includes(puntoActivo)
-    ) {
+    if (puntoActivo === null || !puntosSet.includes(puntoActivo)) {
       setPuntoActivo(puntosSet[0] ?? null);
     }
   }, [modo, puntosAgrupados, setsDelPartido, setActivo, puntoActivo]);
@@ -296,13 +282,11 @@ export default function VisualizacionUnificada({
 
   const accionesPara3D: AccionVisual[] = useMemo(() => {
     if (modo === "punto-completo") {
-      // Ya se resuelven dentro de CanchaUnificada3D vía `puntos`
       return [];
     }
     if (modo === "armados") {
       return accionesFiltradas.filter((a) => a.tipo === "armado");
     }
-    // fundamento
     return accionesFiltradas;
   }, [modo, accionesFiltradas]);
 
@@ -430,7 +414,6 @@ export default function VisualizacionUnificada({
             setsDisponibles={setsDisponibles}
             puntosDisponibles={puntosDisponibles}
             jugadores={jugadoresParaFiltro}
-            valoracionesDisponibles={valoracionesDisponibles}
             totalAcciones={accionesPartido.length}
             accionesFiltradas={accionesFiltradas.length}
           />
@@ -453,7 +436,6 @@ export default function VisualizacionUnificada({
                 </p>
               ) : (
                 <div className="flex items-center gap-2 flex-wrap">
-                  {/* Set */}
                   <select
                     value={setActivo ?? ""}
                     onChange={(e) => {
@@ -473,7 +455,6 @@ export default function VisualizacionUnificada({
                     ))}
                   </select>
 
-                  {/* Anterior / siguiente */}
                   <button
                     onClick={() => irPunto(-1)}
                     disabled={
@@ -485,7 +466,6 @@ export default function VisualizacionUnificada({
                     ◀
                   </button>
 
-                  {/* Select de punto */}
                   <select
                     value={puntoActivo ?? ""}
                     onChange={(e) =>
