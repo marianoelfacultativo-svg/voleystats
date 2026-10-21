@@ -624,13 +624,38 @@ export function clasificarLinea(
     };
   }
 
+  // ------------------------------------------------------------
+  // BLOQUEO: distinguir dónde cayó la pelota.
+  //   - Cae del lado del equipo que bloqueó → sigue en juego de
+  //     ese equipo → DEFENSA normal del bloqueador.
+  //   - Cae del lado del equipo que atacó (el otro) → el atacante
+  //     tuvo que cubrirse del bloqueo → DEFENSA del atacante
+  //     con subtipo "cobertura".
+  // ------------------------------------------------------------
   if (ultima!.tipo === "bloqueo") {
-    const esRival = ultima!.esRival;
+    const esRivalBloqueador = ultima!.esRival;
+    const ladoDestinoBloqueo = ladoDeCelda(ultima!.destino.celda);
+    const caeEnCanchaDelBloqueador =
+      (esRivalBloqueador && ladoDestinoBloqueo === "rival") ||
+      (!esRivalBloqueador && ladoDestinoBloqueo === "propio");
+
+    if (caeEnCanchaDelBloqueador) {
+      return {
+        tipo: "defensa",
+        esRival: esRivalBloqueador,
+        jugadorId: null,
+        popup: esRivalBloqueador ? null : "defensa",
+      };
+    }
+
+    // Cayó del lado del atacante → cobertura del atacante.
+    const esRivalDefensor = !esRivalBloqueador;
     return {
-      tipo: "libre",
-      esRival,
+      tipo: "defensa",
+      esRival: esRivalDefensor,
       jugadorId: null,
-      popup: esRival ? null : "libre",
+      popup: esRivalDefensor ? null : "jugador",
+      subtipoFijo: "cobertura",
     };
   }
 
