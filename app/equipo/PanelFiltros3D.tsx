@@ -99,9 +99,28 @@ const VALORACIONES_POR_TIPO: Record<string, Opcion[]> = {
     { v: "R", label: "R" },
   ],
   ataque: [
-    { v: "punto", label: "Punto" },
-    { v: "neutro", label: "Neutro" },
-    { v: "error", label: "Error" },
+    // ---- Viejos (compat con puntos cargados antes) ----
+    { v: "punto", label: "Punto (viejo)" },
+    { v: "neutro", label: "Neutro (viejo)" },
+    { v: "error", label: "Error (viejo)" },
+    // ---- Puntos ----
+    { v: "punto_directo_ataque", label: "Punto directo" },
+    { v: "punto_desviado_ataque", label: "Punto desviado" },
+    // ---- Errores ----
+    { v: "use_rival_ataque", label: "Use rival" },
+    { v: "error_red_ataque", label: "Error red" },
+    { v: "error_afuera_ataque", label: "Error afuera" },
+    { v: "gorro_ataque", label: "Gorro" },
+    // ---- Neutros ----
+    {
+      v: "neutro_bloqueo_cobertura_ataque",
+      label: "Neu bloqueo+cob",
+    },
+    {
+      v: "neutro_desvio_bloqueo_defensa_ataque",
+      label: "Neu desvío+def",
+    },
+    { v: "neutro_defensa_ataque", label: "Neu defensa" },
   ],
   bloqueo: [
     { v: "punto", label: "Punto" },
@@ -180,8 +199,22 @@ function nivelValoracion(
     return "neu";
   }
   if (tipo === "ataque") {
-    if (sub === "punto") return "pos";
-    if (sub === "error") return "neg";
+    if (
+      sub === "punto" ||
+      sub === "punto_directo_ataque" ||
+      sub === "punto_desviado_ataque" ||
+      sub === "use_rival_ataque"
+    ) {
+      return "pos";
+    }
+    if (
+      sub === "error" ||
+      sub === "error_red_ataque" ||
+      sub === "error_afuera_ataque" ||
+      sub === "gorro_ataque"
+    ) {
+      return "neg";
+    }
     return "neu";
   }
   if (tipo === "bloqueo") {

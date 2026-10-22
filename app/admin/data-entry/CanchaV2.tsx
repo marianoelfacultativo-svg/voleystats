@@ -51,6 +51,9 @@ interface Props {
   puedeIrAnterior?: boolean;
   puedeBorrarPunto?: boolean;
   puedeBorrarLinea?: boolean;
+  // Armado automático de círculos
+  armadoAutomatico?: boolean;
+  onToggleArmadoAutomatico?: () => void;
 }
 
 // ============================================================
@@ -351,6 +354,8 @@ export default function CanchaV2({
   puedeIrAnterior,
   puedeBorrarPunto,
   puedeBorrarLinea,
+  armadoAutomatico,
+  onToggleArmadoAutomatico,
 }: Props) {
   const [hover, setHover] = useState<{ celda: string; mini: string } | null>(
     null
@@ -633,6 +638,25 @@ export default function CanchaV2({
           +
         </button>
       </div>
+
+      {/* Toggle de armado automático */}
+      {onToggleArmadoAutomatico && (
+        <button
+          onClick={onToggleArmadoAutomatico}
+          className={`px-2 h-7 rounded border text-[11px] font-semibold shadow transition ${
+            armadoAutomatico
+              ? "bg-orange-500 text-white border-orange-600 hover:bg-orange-600"
+              : "bg-white/95 text-slate-700 border-slate-300 hover:bg-white"
+          }`}
+          title={
+            armadoAutomatico
+              ? "Círculos nacen armados (naranja). Click para desactivar."
+              : "Círculos nacen sin armar (blanco). Click para activar."
+          }
+        >
+          {armadoAutomatico ? "🔒 Armado auto ON" : "🔓 Armado auto OFF"}
+        </button>
+      )}
 
       <div className="flex items-center gap-1">
         <button

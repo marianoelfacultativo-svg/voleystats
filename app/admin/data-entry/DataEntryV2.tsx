@@ -120,6 +120,13 @@ export default function DataEntryV2({
   const [setupCompleto, setSetupCompleto] = useState(false);
   const [hidratado, setHidratado] = useState(false);
 
+  // ------------------------------------------------------------
+  // ARMADO AUTOMÁTICO DE CÍRCULOS
+  // ------------------------------------------------------------
+  // true  → los círculos nuevos nacen armados (naranja ✓)
+  // false → nacen sin armar (blanco, como antes)
+  const [armadoAutomatico, setArmadoAutomatico] = useState<boolean>(true);
+
   const puntoActualCerrado = !!puntosCerrados[puntoActual];
 
   const maxNavegable = useMemo(() => {
@@ -407,7 +414,9 @@ export default function DataEntryV2({
   }, [partidoId]);
 
   const { handleMiniClick, handleClickCirculo } = crearHandlersCancha({
-    setupCompleto, colaPopups, circuloSinArmar, circuloArmado,
+    setupCompleto,
+    armadoAutomatico,
+    colaPopups, circuloSinArmar, circuloArmado,
     desviosPendientes, estrella, contadorId, lineas, equipoId,
     equipoRivalId, modoEspejo, saqueInicial, situacion, situacionRival,
     rotacionEfectiva, rotacionRivalEfectiva, recepcionOverridesEfectivos,
@@ -832,6 +841,8 @@ export default function DataEntryV2({
                 puedeIrAnterior={puntoActual > 1}
                 puedeBorrarPunto={lineas.length > 0}
                 puedeBorrarLinea={lineas.length > 0 || !!circuloArmado || !!circuloSinArmar}
+                armadoAutomatico={armadoAutomatico}
+                onToggleArmadoAutomatico={() => setArmadoAutomatico((v) => !v)}
               >
                 <LineasV2
                   lineas={lineasParaUI}

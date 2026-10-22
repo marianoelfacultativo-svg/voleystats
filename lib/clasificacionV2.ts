@@ -626,11 +626,6 @@ export function clasificarLinea(
 
   // ------------------------------------------------------------
   // BLOQUEO: distinguir dónde cayó la pelota.
-  //   - Cae del lado del equipo que bloqueó → sigue en juego de
-  //     ese equipo → DEFENSA normal del bloqueador.
-  //   - Cae del lado del equipo que atacó (el otro) → el atacante
-  //     tuvo que cubrirse del bloqueo → DEFENSA del atacante
-  //     con subtipo "cobertura".
   // ------------------------------------------------------------
   if (ultima!.tipo === "bloqueo") {
     const esRivalBloqueador = ultima!.esRival;
@@ -728,10 +723,121 @@ export function ganadorDelPunto(
 // ============================================================
 // SUBTIPOS DE ATAQUE
 // ============================================================
+//
+// Subtipos nuevos (propios):
+//   puntos  → punto_directo_ataque, punto_desviado_ataque
+//   errores → use_rival_ataque, error_red_ataque, error_afuera_ataque,
+//             gorro_ataque
+//   neutros → neutro_bloqueo_cobertura_ataque,
+//             neutro_desvio_bloqueo_defensa_ataque, neutro_defensa_ataque
+//
+// Los viejos ("punto", "neutro", "error") se preservan intactos.
+// ============================================================
+
+function hayCoberturaPropiaDespues(
+  lineas: LineaClasificada[],
+  idxAtaque: number
+): boolean {
+  for (let j = idxAtaque + 1; j < lineas.length; j++) {
+    const l = lineas[j];
+    if (
+      l.tipo === "defensa" &&
+      !l.esRival &&
+      (l.subtipo === "cobertura_positiva" ||
+        l.subtipo === "cobertura" ||
+        l.subtipo === "cobertura_negativa")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function proximaVisible(
+  lineas: LineaClasificada[],
+  desdeIdx: number
+): { idx: number; linea: LineaClasificada } | null {
+  for (let j = desdeIdx + 1; j < lineas.length; j++) {
+    if (!lineas[j].oculta) return { idx: j, linea: lineas[j] };
+  }
+  return null;
+}
+
+function calcularSubtipoDeAtaque(
+  lineas: LineaClasificada[],
+  idxAtaque: number,
+  ultimoVisibleIdx: number
+): string {
+  const ataque = lineas[idxAtaque];
+  const destino = ataque.destino.celda;
+  const desvios = ataque.desvios ?? [];
+  const tocoBloqueoRival = desvios.some((d) =>
+    d.celda.startsWith("BLOQ-R-")
+  );
+
+  const ultimaVisibleLinea =
+    ultimoVisibleIdx >= 0 ? lineas[ultimoVisibleIdx] : null;
+
+  // #1 — Última visible = defensa rival → punto desviado
+  if (
+    ultimaVisibleLinea &&
+    ultimaVisibleLinea.tipo === "defensa" &&
+    ultimaVisibleLinea.esRival
+  ) {
+    return "punto_desviado_ataque";
+  }
+
+  // #2..#6 — Tocó bloqueo rival
+  if (tocoBloqueoRival) {
+    // #2 — use rival (afuera)
+    if (destino.startsWith("FUERA-")) {
+      return "use_rival_ataque";
+    }
+    // #3 — error red
+    if (destino.startsWith("RED-")) {
+      return "error_red_ataque";
+    }
+    // #4/#5 — cayó en cancha propia
+    if (/^F[123]-/.test(destino)) {
+      return hayCoberturaPropiaDespues(lineas, idxAtaque)
+        ? "neutro_bloqueo_cobertura_ataque"
+        : "gorro_ataque";
+    }
+    // #6 — cayó en cancha rival
+    if (/^F[456]-/.test(destino)) {
+      return "punto_desviado_ataque";
+    }
+    // Fallback dentro de bloqueo
+    return "neutro_desvio_bloqueo_defensa_ataque";
+  }
+
+  // #7 — Sin bloqueo, pero hay defensa rival después y NO es la última
+  const sig = proximaVisible(lineas, idxAtaque);
+  if (
+    sig &&
+    sig.linea.tipo === "defensa" &&
+    sig.linea.esRival &&
+    sig.idx !== ultimoVisibleIdx
+  ) {
+    return "neutro_defensa_ataque";
+  }
+
+  // #8..#10 — Ataque es la última visible
+  const esUltimaVisible = idxAtaque === ultimoVisibleIdx;
+  if (esUltimaVisible) {
+    if (destino.startsWith("RED-")) return "error_red_ataque";
+    if (destino.startsWith("FUERA-")) return "error_afuera_ataque";
+    if (/^F[456]-/.test(destino)) return "punto_directo_ataque";
+    return "neutro_defensa_ataque";
+  }
+
+  // #11 — Fallback
+  return "neutro_defensa_ataque";
+}
 
 export function calcularSubtiposAtaque(
   lineas: LineaClasificada[],
-  ganador: Lado
+  _ganador: Lado
 ): LineaClasificada[] {
   const idxAtaques: number[] = [];
   lineas.forEach((l, i) => {
@@ -747,21 +853,26 @@ export function calcularSubtiposAtaque(
     }
   }
 
-  const ultimoAtaque = idxAtaques[idxAtaques.length - 1];
-  const cierraElPunto = ultimoAtaque === ultimoVisibleIdx;
-
   return lineas.map((l, i) => {
     if (l.tipo !== "ataque" || l.esRival) return l;
+    // Preservar subtipos ya asignados (puntos viejos con "punto"/"neutro"/"error")
     if (l.subtipo && l.subtipo !== null) return l;
-    if (i === ultimoAtaque && cierraElPunto) {
-      return { ...l, subtipo: ganador === "propio" ? "punto" : "error" };
-    }
-    return { ...l, subtipo: "neutro" };
+    return {
+      ...l,
+      subtipo: calcularSubtipoDeAtaque(lineas, i, ultimoVisibleIdx),
+    };
   });
 }
 
 // ============================================================
 // SUBTIPOS DE DEFENSA (propias y rivales)
+// ============================================================
+//
+// Cambios v18:
+//   - defensa sin subtipo (o "defensa_normal") en ÚLTIMA posición
+//     → "neutro" (antes: "buena_rival")
+//   - "cobertura" en ÚLTIMA posición → "cobertura_negativa"
+//   - "cobertura" en posición intermedia → "cobertura_positiva"
 // ============================================================
 
 export function calcularSubtiposDefensa(
@@ -787,13 +898,15 @@ export function calcularSubtiposDefensa(
 
     if (esUltima) {
       if (!subActual || subActual === "defensa_normal") {
-        nuevoSubtipo = "buena_rival";
+        nuevoSubtipo = "neutro";
       } else if (subActual === "toque") {
         nuevoSubtipo = "toque_negativa";
       } else if (subActual === "gran-defensa") {
         nuevoSubtipo = "error_def";
       } else if (subActual === "libre") {
         nuevoSubtipo = "error_def";
+      } else if (subActual === "cobertura") {
+        nuevoSubtipo = "cobertura_negativa";
       }
     } else {
       if (!subActual || subActual === "defensa_normal") {
@@ -808,6 +921,8 @@ export function calcularSubtiposDefensa(
         } else {
           nuevoSubtipo = "mala_libre";
         }
+      } else if (subActual === "cobertura") {
+        nuevoSubtipo = "cobertura_positiva";
       }
     }
 
@@ -1026,12 +1141,6 @@ function valorarSaqueConRecepcion(destino: string): string {
   return "positivo";
 }
 
-/**
- * Evalúa la calidad de un SAQUE RIVAL (desde la perspectiva del sacador).
- * - ace       → el rival sacó perfecto (cayó en cancha propia sin toque)
- * - negativo  → el rival falló (fuera / red)
- * - con recepción nuestra → depende de dónde terminó la recepción
- */
 function valorarSaqueRival(
   destinoSaque: string,
   siguiente: LineaClasificada | undefined
@@ -1040,35 +1149,28 @@ function valorarSaqueRival(
     siguiente?.tipo === "recepcion" && !siguiente.esRival;
 
   if (!huboRecepcion) {
-    // ¿Cayó dentro de nuestra cancha (F1/F2/F3 C2/C3/C4)?
     if (esCanchaPropiaReal(destinoSaque)) {
       return "ace";
     }
-    // Cayó fuera o a la red → error del sacador rival
     return "negativo";
   }
 
-  // Hubo recepción nuestra → calidad del saque rival según dónde terminó
   const destinoRec = siguiente!.destino.celda;
 
-  // Recepción terminó fuera / red → saque muy bueno
   if (esFuera(destinoRec) || destinoRec.startsWith("RED-")) {
     return "positivo_mas";
   }
 
-  // Recepción terminó en el centro (F1-C3) → saque tranquilo
   if (destinoRec === "F1-C3") {
     return "neutro";
   }
 
-  // Recepción terminó en F1 → depende de col
   if (destinoRec.startsWith("F1-")) {
     const col = destinoRec.split("-")[1];
     if (col === "C1" || col === "C5") return "positivo";
     return "neutro";
   }
 
-  // Recepción terminó en F2/F3 → pelota tranquila
   return "negativo";
 }
 

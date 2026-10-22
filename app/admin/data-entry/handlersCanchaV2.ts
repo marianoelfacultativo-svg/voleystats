@@ -36,6 +36,8 @@ import {
 
 interface Params {
   setupCompleto: boolean;
+  /** Si true, los círculos nuevos nacen armados (naranja ✓). */
+  armadoAutomatico: boolean;
   colaPopups: PopupEnCola[];
   circuloSinArmar: PuntoV2 | null;
   circuloArmado: PuntoV2 | null;
@@ -66,6 +68,7 @@ interface Params {
 export function crearHandlersCancha(params: Params) {
   const {
     setupCompleto,
+    armadoAutomatico,
     colaPopups,
     circuloSinArmar,
     circuloArmado,
@@ -91,6 +94,17 @@ export function crearHandlersCancha(params: Params) {
     setLineas,
     setContadorId,
   } = params;
+
+  // Crea el próximo círculo respetando el toggle de armado automático.
+  const ponerCirculo = (punto: PuntoV2) => {
+    if (armadoAutomatico) {
+      setCirculoArmado(punto);
+      setCirculoSinArmar(null);
+    } else {
+      setCirculoSinArmar(punto);
+      setCirculoArmado(null);
+    }
+  };
 
   const crearLinea = (origen: PuntoV2, destino: PuntoV2) => {
     if (!rotacionEfectiva) return;
@@ -231,8 +245,7 @@ export function crearHandlersCancha(params: Params) {
         setLineas((prev) => [...prev, ataqueRival, bloqueoPropio]);
         setContadorId((c) => c + 2);
         setDesviosPendientes([]);
-        setCirculoSinArmar(destino);
-        setCirculoArmado(null);
+        ponerCirculo(destino);
         setEstrella(null);
         setColaPopups([]);
         return;
@@ -242,8 +255,7 @@ export function crearHandlersCancha(params: Params) {
     setLineas((prev) => [...prev, nueva]);
     setContadorId((c) => c + 1);
     setDesviosPendientes([]);
-    setCirculoSinArmar(destino);
-    setCirculoArmado(null);
+    ponerCirculo(destino);
 
     const cola: PopupEnCola[] = [];
     const pos = posicionPopup(destino);
@@ -291,8 +303,7 @@ export function crearHandlersCancha(params: Params) {
         setLineas((prev) => [...prev, linea]);
         setContadorId((c) => c + 1);
         setDesviosPendientes([]);
-        setCirculoSinArmar(punto);
-        setCirculoArmado(null);
+        ponerCirculo(punto);
         setEstrella(null);
         setColaPopups([
           {
@@ -364,8 +375,7 @@ export function crearHandlersCancha(params: Params) {
         };
         setLineas((prev) => [...prev, oculta]);
         setContadorId((c) => c + 1);
-        setCirculoSinArmar(punto);
-        setCirculoArmado(null);
+        ponerCirculo(punto);
         setEstrella(null);
         setDesviosPendientes([]);
         return;
@@ -373,7 +383,7 @@ export function crearHandlersCancha(params: Params) {
       return;
     }
 
-    setCirculoSinArmar(punto);
+    ponerCirculo(punto);
   };
 
   const handleClickCirculo = () => {

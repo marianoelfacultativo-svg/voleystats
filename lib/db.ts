@@ -400,7 +400,22 @@ function valoracionV2aV1(
   if (tipo === "ataque") {
     let s = String(subtipo);
     if (s.startsWith("toque:")) s = s.slice(6);
+
+    // Viejos subtipos: se mantienen tal cual.
     if (s === "punto" || s === "error" || s === "neutro") return s;
+
+    // Subtipos nuevos (v18). Los mapeamos a su valoración base para
+    // que el motor de stats los cuente con puntaje coherente.
+    if (s === "punto_directo_ataque") return "punto";
+    if (s === "punto_desviado_ataque") return "punto";
+    if (s === "use_rival_ataque") return "punto"; // touch-out tras bloqueo rival
+    if (s === "error_red_ataque") return "error";
+    if (s === "error_afuera_ataque") return "error";
+    if (s === "gorro_ataque") return "error";
+    if (s === "neutro_bloqueo_cobertura_ataque") return "neutro";
+    if (s === "neutro_desvio_bloqueo_defensa_ataque") return "neutro";
+    if (s === "neutro_defensa_ataque") return "neutro";
+
     return null;
   }
 
@@ -420,19 +435,26 @@ function valoracionV2aV1(
 
   if (tipo === "defensa") {
     const s = String(subtipo);
+
+    // Raw (elegidos en el popup)
     if (s === "toque") return "toque_positiva";
     if (s === "gran-defensa") return "gran_def";
     if (s === "libre") return "mala_libre";
     if (s === "cobertura") return "cobertura_positiva";
-    if (s === "buena_rival") return "gran_def";
 
-    // Subtipos finales generados por clasificacionV2
+    // "buena_rival" era el subtipo por defecto de la defensa última
+    // sin subtipo. Ahora esa defensa es neutra (ni suma ni resta).
+    if (s === "buena_rival") return "neutro";
+
+    // Finales (ya calculados por la pipeline)
     if (s === "toque_positiva") return "toque_positiva";
     if (s === "toque_negativa") return "toque_negativa";
     if (s === "gran_def") return "gran_def";
     if (s === "mala_libre") return "mala_libre";
     if (s === "error_def") return "error_def";
-    if (s === "neutro") return "toque_positiva";
+    if (s === "neutro") return "neutro";
+    if (s === "cobertura_positiva") return "cobertura_positiva";
+    if (s === "cobertura_negativa") return "cobertura_negativa";
 
     return null;
   }
@@ -479,7 +501,6 @@ export async function cargarAccionesCompatibles(
   const res = await cargarPuntosV2(partidoId);
   if (!res.ok || !res.puntos) return [];
 
-  // ---------- 1. Traducir acciones_v2 → AccionIndividual ----------
   const acciones: AccionIndividual[] = [];
   for (const p of res.puntos) {
     for (const a of p.acciones) {
@@ -501,7 +522,6 @@ export async function cargarAccionesCompatibles(
     }
   }
 
-  // ---------- 2. Ordenar cronológicamente ----------
   acciones.sort((a, b) => {
     if (a.set_numero !== b.set_numero) return a.set_numero - b.set_numero;
     if (a.punto_numero !== b.punto_numero)
@@ -509,7 +529,6 @@ export async function cargarAccionesCompatibles(
     return a.created_at.localeCompare(b.created_at);
   });
 
-  // ---------- 3. Procesar cadena de puntajes ----------
   const procesadas: AccionDB[] = [];
   let puntoAnterior = "";
   let anteriorFinal: number | null = null;
@@ -558,7 +577,6 @@ export async function cargarAccionesCompatibles(
     }
   }
 
-  // ---------- 4. Tendencia: derivar de armados (destino_celda) ----------
   for (const p of res.puntos) {
     for (const a of p.acciones) {
       if (a.tipo !== "armado") continue;
@@ -580,7 +598,6 @@ export async function cargarAccionesCompatibles(
     }
   }
 
-  // ---------- 5. Agrupar ----------
   const agrupado = new Map<string, AccionDB>();
   for (const r of procesadas) {
     const pRed = Math.round((r.puntaje ?? 5) * 10) / 10;

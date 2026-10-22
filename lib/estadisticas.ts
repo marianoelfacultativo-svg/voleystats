@@ -59,6 +59,7 @@ export const BASE_SCORES: Record<string, Record<string, number>> = {
     error_def: 0,
     errores_graves: 0,
     mala_libre: -2,
+    neutro: 5,
   },
   armados: {
     genial: 10,
