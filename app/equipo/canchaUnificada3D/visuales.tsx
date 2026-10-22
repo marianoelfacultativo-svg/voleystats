@@ -415,15 +415,6 @@ export const Net = React.memo(function Net() {
  *  - Palma: caja vertical.
  *  - 4 dedos: cajas verticales, apuntando hacia arriba.
  *  - Pulgar: caja lateral, apuntando hacia arriba.
- *
- * `esDerecha` espeja la posición del pulgar.
- *
- * El "centro" de la mano está a la altura de la palma. Para que el
- * bloqueo quede a la altura `ALTURA_BLOQUEO` (2.45 m), se posiciona
- * el grupo en esa Y y la palma queda centrada ahí.
- *
- * AJUSTE: tamaño ×1.4 respecto de la versión anterior. La mano ahora
- * mide ~15 cm de ancho por ~35 cm de alto (punta de dedos incluida).
  */
 const HandMesh = React.memo(function HandMesh({
   color,
@@ -476,8 +467,6 @@ const HandMesh = React.memo(function HandMesh({
 
 /**
  * Par de manos (izquierda + derecha). Ancho total ≈ 0.40 m.
- * Se rota en X para que las manos se inclinen hacia la red
- * (arriba del bloqueo), y queda bien cerca de la malla.
  */
 const HandPair = React.memo(function HandPair({
   color,
@@ -505,20 +494,15 @@ const HandPair = React.memo(function HandPair({
 
 export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
   acciones,
+  filtroAcciones,
 }: {
   acciones: AccionVisual[];
+  filtroAcciones?: "propias" | "rivales" | "ambas";
 }) {
   const items = useMemo(() => {
     // Usamos un Map por celda para evitar duplicados: si un ataque
     // tiene desvío en BLOQ-R-C4 y además hay una acción de bloqueo
     // en esa misma celda, no queremos 2 pares de manos superpuestos.
-    //
-    // Orden de prioridad:
-    //   1. Acciones tipo "bloqueo" (tienen su propio color de valoración)
-    //   2. Desvíos de cualquier acción (ataque → BLOQ-R, etc.)
-    //
-    // Los desvíos son el caso "ataque que se desvió en el bloqueo":
-    // con esto también se dibuja el bloqueador rival en el desvío.
     const porCelda = new Map<
       string,
       { key: string; celda: string; color: string; esPropio: boolean }
@@ -559,8 +543,16 @@ export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
       }
     }
 
-    return Array.from(porCelda.values());
-  }, [acciones]);
+    // Filtramos las manos según la pestaña de acciones activa.
+    // - "propias": solo manos de bloqueo propio.
+    // - "rivales": solo manos de bloqueo rival.
+    // - "ambas": todas.
+    return Array.from(porCelda.values()).filter((it) => {
+      if (filtroAcciones === "propias" && !it.esPropio) return false;
+      if (filtroAcciones === "rivales" && it.esPropio) return false;
+      return true;
+    });
+  }, [acciones, filtroAcciones]);
 
   return (
     <group>
@@ -571,8 +563,6 @@ export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
 
         const centroX = (rango[0] + rango[1]) / 2;
         // Las manos quedan muy cerca de la red: 0.28 m del plano z=0.
-        // - Propias: lado +z (nuestra cancha), inclinadas hacia -z.
-        // - Rivales: lado -z (cancha rival), inclinadas hacia +z.
         const z = it.esPropio ? 0.28 : -0.28;
         const haciaRed: 1 | -1 = it.esPropio ? -1 : 1;
 

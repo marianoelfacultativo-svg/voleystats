@@ -584,6 +584,7 @@ export default function VisualizacionUnificada({
                 height={760}
                 mostrarEstelas={mostrarEstelas}
                 velocidadAnimacion={velocidadAnimacion}
+                filtroAcciones={filtros.acciones}
               />
             ) : (
               <div className="w-full p-6 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 text-center">

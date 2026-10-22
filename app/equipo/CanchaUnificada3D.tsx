@@ -3,10 +3,6 @@
 // ============================================================
 // CANCHA UNIFICADA 3D — componente principal
 // Orquesta las trayectorias y los sub-componentes visuales.
-// La lógica pura (alturas, armado, ataque, libre) está en
-// ./canchaUnificada3D/helpers.ts
-// Los sub-componentes Three.js están en
-// ./canchaUnificada3D/visuales.tsx
 // ============================================================
 
 import React, { useMemo } from "react";
@@ -30,13 +26,8 @@ import {
   Trajectory,
 } from "./canchaUnificada3D/visuales";
 
-// ============================================================
-// TIPOS
-// ============================================================
-
 export type ModoUnificado = "fundamento" | "armados" | "punto-completo";
 
-// Re-export para compat con quienes importan desde este archivo.
 export type { PuntoConAcciones, Vista };
 
 interface Props {
@@ -49,11 +40,9 @@ interface Props {
   height?: number;
   mostrarEstelas?: boolean;
   velocidadAnimacion?: number;
+  /** Filtro actual de acciones para que el 3D sea coherente con la UI */
+  filtroAcciones?: "propias" | "rivales" | "ambas";
 }
-
-// ============================================================
-// COMPONENTE PRINCIPAL
-// ============================================================
 
 export default function CanchaUnificada3D({
   modo,
@@ -65,6 +54,7 @@ export default function CanchaUnificada3D({
   height = 760,
   mostrarEstelas = true,
   velocidadAnimacion = 1,
+  filtroAcciones = "ambas",
 }: Props) {
   const accionesAMostrar: AccionVisual[] = useMemo(() => {
     if (modo === "armados") {
@@ -143,7 +133,10 @@ export default function CanchaUnificada3D({
 
         <Court />
         <Net />
-        <BloqueadoresVisual acciones={accionesAMostrar} />
+        <BloqueadoresVisual
+          acciones={accionesAMostrar}
+          filtroAcciones={filtroAcciones}
+        />
 
         {trayectorias.tipo === "individual" &&
           trayectorias.items.map((it) => (

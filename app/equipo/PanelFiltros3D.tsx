@@ -33,8 +33,13 @@ export interface Filtros3D {
   rol: string | "todos";
   zonaJugador: number | "todas";
   soloErrores: boolean;
-  /** Por defecto false = solo acciones propias. true = también rivales. */
-  mostrarRivales: boolean;
+  /** 
+   * Qué acciones mostrar: 
+   *   "propias" (default) = solo el equipo
+   *   "rivales"           = solo el rival
+   *   "ambas"             = ambos
+   */
+  acciones: "propias" | "rivales" | "ambas";
 }
 
 export const FILTROS3D_VACIO: Filtros3D = {
@@ -50,7 +55,7 @@ export const FILTROS3D_VACIO: Filtros3D = {
   rol: "todos",
   zonaJugador: "todas",
   soloErrores: false,
-  mostrarRivales: false,
+  acciones: "propias",
 };
 
 // ------------------------------------------------------------
@@ -250,8 +255,9 @@ export function aplicarFiltros(
   const filtradas = acciones.filter((a) => {
     if (a.oculta) return false;
 
-    // Por defecto solo acciones propias.
-    if (!f.mostrarRivales && a.es_rival) return false;
+    // Qué acciones mostrar (propias / rivales / ambas)
+    if (f.acciones === "propias" && a.es_rival) return false;
+    if (f.acciones === "rivales" && !a.es_rival) return false;
 
     if (f.set !== "todos" && a.set_numero !== f.set) return false;
     if (f.punto !== "todos" && a.punto_numero !== f.punto) return false;
@@ -295,7 +301,7 @@ export function aplicarFiltros(
   // CONTEXTO VISUAL: si el filtro incluye bloqueo o defensa,
   // agregar la acción ANTERIOR (visible) de cada bloqueo/defensa
   // filtrado. Esto se hace SIEMPRE, sin importar los demás filtros
-  // (jugador, soloErrores, mostrarRivales): es solo para que la
+  // (jugador, soloErrores, acciones): es solo para que la
   // trayectoria entrante se entienda.
   // ----------------------------------------------------------
   const necesitaContexto =
@@ -436,7 +442,7 @@ export default function PanelFiltros3D({
     filtros.rol !== "todos" ||
     filtros.zonaJugador !== "todas" ||
     filtros.soloErrores ||
-    filtros.mostrarRivales;
+    filtros.acciones !== "propias";
 
   const cantFiltros =
     (filtros.set !== "todos" ? 1 : 0) +
@@ -451,7 +457,7 @@ export default function PanelFiltros3D({
     (filtros.rol !== "todos" ? 1 : 0) +
     (filtros.zonaJugador !== "todas" ? 1 : 0) +
     (filtros.soloErrores ? 1 : 0) +
-    (filtros.mostrarRivales ? 1 : 0);
+    (filtros.acciones !== "propias" ? 1 : 0);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 space-y-3">
@@ -541,7 +547,7 @@ export default function PanelFiltros3D({
         </div>
       </div>
 
-      {/* Fila 2: Rotación, Rol, Zona jugador, Solo errores, Mostrar rivales */}
+      {/* Fila 2: Rotación, Rol, Zona jugador, Solo errores, Acciones */}
       <div className="grid grid-cols-3 md:grid-cols-5 gap-2 items-end">
         <div>
           <label className={labelCls}>Rotación</label>
@@ -624,17 +630,24 @@ export default function PanelFiltros3D({
           {filtros.soloErrores ? "✓ Solo errores" : "⚠️ Solo errores"}
         </button>
 
-        <button
-          onClick={() => set("mostrarRivales", !filtros.mostrarRivales)}
-          className={`h-[30px] text-xs font-semibold rounded-lg border-2 transition ${
-            filtros.mostrarRivales
-              ? "bg-orange-500 text-white border-orange-500"
-              : "bg-white text-orange-600 border-orange-300 hover:bg-orange-50"
-          }`}
-          title="Por defecto solo se muestran las acciones propias"
-        >
-          {filtros.mostrarRivales ? "✓ Rivales ON" : "🔒 Solo propias"}
-        </button>
+        <div>
+          <label className={labelCls}>Acciones</label>
+          <select
+            value={filtros.acciones}
+            onChange={(e) =>
+              set(
+                "acciones",
+                e.target.value as "propias" | "rivales" | "ambas"
+              )
+            }
+            className={`${selectCls} font-semibold text-slate-700`}
+            title="Filtrar por acciones propias, rivales o ambas"
+          >
+            <option value="propias">👤 Solo propias</option>
+            <option value="rivales">👥 Solo rivales</option>
+            <option value="ambas">👥 Ambas</option>
+          </select>
+        </div>
       </div>
 
       {/* Fila 3: Fundamento (multi) */}
