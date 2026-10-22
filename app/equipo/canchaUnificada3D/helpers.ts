@@ -564,28 +564,30 @@ function generarPuntosArmado(
 }
 
 // ============================================================
-// ATAQUE / TOQUE — MEDIO ARCO DESCENDENTE
+// ATAQUE / TOQUE — CURVA ÚNICA SUAVE (SIN CODOS)
 // ============================================================
 //
-// Ataque y toque se dibujan como un medio arco descendente:
+// El ataque y el toque se dibujan con UNA SOLA curva suave
+// (sin cambio de dirección abrupto en la red).
 //
-// - Si el punto de contacto (h0) está por encima de 2.53 (red + 10 cm),
-//   la pelota baja desde el origen hasta el destino.
+// Tres casos:
 //
-// - Si el punto de contacto queda por debajo de 2.53, la pelota sube
-//   a 2.53 al cruzar la red y después baja al destino.
+// 1. NO cruza la red (o va a la red misma):
+//    → curva `pow` única, sin codos.
+//    → ataque: p = 0.7 (baja rápido, se achata al final → horizontal)
+//    → toque:  p = 1.8 (baja lento, cae empinado al final → vertical)
 //
-// - Excepción: si el destino es la red misma (RED-*) o el ataque no
-//   cruza la red, no se fuerza la altura de red.
+// 2. Cruza la red y el punto de contacto ya está ≥ 2.53:
+//    → si la curva `pow` ya pasa por la red a ≥ 2.53, la uso directo
+//      (suave, sin codos, con la diferencia ataque/toque por p)
+//    → si no, uso CatmullRom con un waypoint forzado en la red a 2.53
+//      (también C1, sin codo)
 //
-// El tramo descendente usa un exponente distinto para cada variante:
-//   - Ataque (p = 0.7): caída rápida al principio, achatada al final
-//     → visualmente "caída más horizontal".
-//   - Toque (p = 1.8): se mantiene alto al principio, cae empinado
-//     al final → visualmente "caída más vertical".
-//
-// En modo punto-completo, el ataque IGNORA el override del siguiente.
-// Si es la última visible cae a 0; si no, cae a 0.5 (piso).
+// 3. Cruza la red y el punto de contacto está < 2.53:
+//    → la pelota sube a 2.53 al cruzar la red y baja al destino.
+//    → uso CatmullRom con waypoints intermedios (suave).
+//    → la diferencia ataque/toque se logra moviendo el waypoint
+//      intermedio: ataque sube rápido, toque sube lento.
 //
 function generarPuntosAtaque(
   a: AccionVisual,
@@ -599,19 +601,17 @@ function generarPuntosAtaque(
   const hT = a.es_ultima_del_punto ? 0 : 0.5;
 
   const esToque = a.variante === "toque";
+  const pDesc = esToque ? 1.8 : 0.7;
   const destinoEnRed = (a.destino_celda ?? "").startsWith("RED-");
 
   const ladoO = ladoDeCelda(a.origen_celda);
   const ladoD = ladoDeCelda(a.destino_celda);
   const cruzaRed = ladoO !== null && ladoD !== null && ladoO !== ladoD;
 
-  const pDesc = esToque ? 1.8 : 0.7;
-  const pAsc = 1.2;
-
-  // Caso 1: destino en la red, o no cruza la red → arco simple descendente.
+  // ---------- Caso 1: sin red (o destino en red) ----------
   if (destinoEnRed || !cruzaRed) {
     const pts: [number, number, number][] = [];
-    const pasos = 40;
+    const pasos = 50;
     for (let i = 0; i <= pasos; i++) {
       const t = i / pasos;
       const x = origen.x + t * (destino.x - origen.x);
@@ -622,60 +622,56 @@ function generarPuntosAtaque(
     return pts;
   }
 
-  // Caso 2: cruza la red → 2 tramos para respetar el mínimo en la red.
+  // ---------- Caso 2 y 3: cruza la red ----------
   const dz = destino.z - origen.z;
   const tRed = dz !== 0 ? Math.abs(origen.z) / Math.abs(dz) : 0.5;
   const xRed = origen.x + tRed * (destino.x - origen.x);
 
-  const pasos = 50;
-  const pasosAsc = Math.max(4, Math.round(pasos * tRed));
-  const pasosDesc = Math.max(4, pasos - pasosAsc);
-
-  const pts: [number, number, number][] = [];
-
+  // Caso 2: la pelota ya está arriba del mínimo
   if (h0 >= ALTURA_MIN_RED_CRUCE) {
-    // Tramo 1: origen → red, baja de h0 a 2.53.
-    for (let i = 0; i <= pasosAsc; i++) {
-      const t = i / pasosAsc;
-      const x = origen.x + t * (xRed - origen.x);
-      const z = origen.z + t * (0 - origen.z);
-      const h =
-        h0 - (h0 - ALTURA_MIN_RED_CRUCE) * Math.pow(t, pAsc);
-      pts.push([x, Math.max(0.05, h), z]);
+    // ¿La curva pow pasa por la red a ≥ 2.53?
+    const yRedPow = h0 - (h0 - hT) * Math.pow(tRed, pDesc);
+    if (yRedPow >= ALTURA_MIN_RED_CRUCE) {
+      // Sí: usar la curva pow directamente (suave, sin codo)
+      const pts: [number, number, number][] = [];
+      const pasos = 60;
+      for (let i = 0; i <= pasos; i++) {
+        const t = i / pasos;
+        const x = origen.x + t * (destino.x - origen.x);
+        const z = origen.z + t * (destino.z - origen.z);
+        const h = h0 - (h0 - hT) * Math.pow(t, pDesc);
+        pts.push([x, Math.max(0.05, h), z]);
+      }
+      return pts;
     }
-    // Tramo 2: red → destino, baja de 2.53 a hT.
-    for (let i = 1; i <= pasosDesc; i++) {
-      const t = i / pasosDesc;
-      const x = xRed + t * (destino.x - xRed);
-      const z = 0 + t * (destino.z - 0);
-      const h =
-        ALTURA_MIN_RED_CRUCE -
-        (ALTURA_MIN_RED_CRUCE - hT) * Math.pow(t, pDesc);
-      pts.push([x, Math.max(0.05, h), z]);
-    }
-    return pts;
+    // No: forzar el paso por la red con CatmullRom (suave)
+    const waypoints: [number, number, number][] = [
+      [origen.x, h0, origen.z],
+      [xRed, ALTURA_MIN_RED_CRUCE, 0],
+      [destino.x, hT, destino.z],
+    ];
+    return catmullRom3(waypoints, 60);
   }
 
-  // h0 < 2.53: sube a 2.53 en la red y después baja al destino.
-  // Tramo 1: origen → red (ascendente lineal).
-  for (let i = 0; i <= pasosAsc; i++) {
-    const t = i / pasosAsc;
-    const x = origen.x + t * (xRed - origen.x);
-    const z = origen.z + t * (0 - origen.z);
-    const h = h0 + t * (ALTURA_MIN_RED_CRUCE - h0);
-    pts.push([x, Math.max(0.05, h), z]);
-  }
-  // Tramo 2: red → destino (descendente con pDesc).
-  for (let i = 1; i <= pasosDesc; i++) {
-    const t = i / pasosDesc;
-    const x = xRed + t * (destino.x - xRed);
-    const z = 0 + t * (destino.z - 0);
-    const h =
-      ALTURA_MIN_RED_CRUCE -
-      (ALTURA_MIN_RED_CRUCE - hT) * Math.pow(t, pDesc);
-    pts.push([x, Math.max(0.05, h), z]);
-  }
-  return pts;
+  // Caso 3: h0 < 2.53. Sube a 2.53 en la red y baja al destino.
+  // Waypoints suaves para no tener codos.
+  // La diferencia ataque/toque se logra moviendo el waypoint
+  // intermedio de la subida (entre origen y red).
+  const midX = origen.x + (xRed - origen.x) * 0.55;
+  const midZ = origen.z * 0.45;
+  // Ataque: sube rápido al principio → midH más alto.
+  // Toque:  sube lento → midH más bajo.
+  const midH = esToque
+    ? h0 + (ALTURA_MIN_RED_CRUCE - h0) * 0.35
+    : h0 + (ALTURA_MIN_RED_CRUCE - h0) * 0.7;
+
+  const waypoints: [number, number, number][] = [
+    [origen.x, h0, origen.z],
+    [midX, midH, midZ],
+    [xRed, ALTURA_MIN_RED_CRUCE, 0],
+    [destino.x, hT, destino.z],
+  ];
+  return catmullRom3(waypoints, 60);
 }
 
 // ============================================================
@@ -740,9 +736,8 @@ export function accionAPuntos(
     return generarPuntosArmado(a, hDestinoOverride);
   }
 
-  // El ataque / toque se dibuja con su lógica especial (2 tramos si
-  // cruza la red, exponente distinto para remate vs toque).
-  // Ignora el override del siguiente.
+  // El ataque / toque se dibuja con su lógica especial (curva única
+  // suave, sin codos). Ignora el override del siguiente.
   if (a.tipo === "ataque") {
     return generarPuntosAtaque(a);
   }
