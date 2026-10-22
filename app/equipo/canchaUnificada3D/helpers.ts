@@ -115,7 +115,9 @@ export function obtenerCoords(
     const col = celda.split("-")[2] || "C3";
     const rangoX = COL_X[col];
     if (!rangoX) return null;
-    const z = celda.startsWith("BLOQ-P-") ? 0.3 : -0.3;
+    // AJUSTE: El bloqueo pasa apenas al otro lado (0.1 m en vez de 0.3)
+    // para que la curva no se vaya tanto a la cancha rival.
+    const z = celda.startsWith("BLOQ-P-") ? 0.1 : -0.1;
     return { x: (rangoX[0] + rangoX[1]) / 2, z };
   }
 
@@ -593,11 +595,10 @@ function generarPuntosArmado(
 //    → la diferencia ataque/toque se logra moviendo el waypoint
 //      intermedio: ataque sube rápido, toque sube lento.
 //
-// 4. (NUEVO) Tiene desvío en bloqueo (BLOQ-P-* o BLOQ-R-*):
-//    → la pelota pasa por el bloqueo a la altura del bloqueo (2.45)
-//      y de ahí sigue al destino. Esto cubre el caso "pasa apenas
-//      al otro lado, toca el bloqueo y vuelve", y también los
-//      desvíos que terminan en rival / fuera de cualquier lado.
+// 4. Tiene desvío en bloqueo (BLOQ-P-* o BLOQ-R-*):
+//    → la pelota pasa por la red a z=0 y toca el bloqueo a z=±0.1,
+//      para que no se vaya tanto a la cancha rival.
+//    → de ahí sigue al destino.
 //
 function generarPuntosAtaque(
   a: AccionVisual,
@@ -619,8 +620,15 @@ function generarPuntosAtaque(
   if (bloqueoDesvio) {
     const bCoords = obtenerCoords(bloqueoDesvio.celda, bloqueoDesvio.mini);
     if (bCoords) {
+      // Waypoint exactamente en la red (z=0) para que la curva no
+      // se vaya mucho a la cancha rival antes de tocar el bloqueo.
+      const dz = bCoords.z - origen.z;
+      const tRed = dz !== 0 ? Math.abs(origen.z) / Math.abs(dz) : 0.5;
+      const xRed = origen.x + tRed * (bCoords.x - origen.x);
+
       const waypoints: [number, number, number][] = [
         [origen.x, h0, origen.z],
+        [xRed, ALTURA_BLOQUEO, 0],
         [bCoords.x, ALTURA_BLOQUEO, bCoords.z],
         [destino.x, hT, destino.z],
       ];

@@ -421,6 +421,9 @@ export const Net = React.memo(function Net() {
  * El "centro" de la mano está a la altura de la palma. Para que el
  * bloqueo quede a la altura `ALTURA_BLOQUEO` (2.45 m), se posiciona
  * el grupo en esa Y y la palma queda centrada ahí.
+ *
+ * AJUSTE: tamaño ×1.4 respecto de la versión anterior. La mano ahora
+ * mide ~15 cm de ancho por ~35 cm de alto (punta de dedos incluida).
  */
 const HandMesh = React.memo(function HandMesh({
   color,
@@ -429,39 +432,40 @@ const HandMesh = React.memo(function HandMesh({
   color: string;
   esDerecha: boolean;
 }) {
-  const thumbX = esDerecha ? 0.075 : -0.075;
+  const thumbX = esDerecha ? 0.105 : -0.105;
   const thumbRot = esDerecha ? -0.6 : 0.6;
 
+  // Color y transparencia: los mismos que tenía la placa original.
   const matProps = {
     color,
     emissive: color,
-    emissiveIntensity: 0.25,
+    emissiveIntensity: 0.35,
     transparent: true,
-    opacity: 0.9,
+    opacity: 0.78,
   };
 
   return (
     <group>
-      {/* Palma */}
+      {/* Palma (~15 × 20 × 6 cm) */}
       <mesh position={[0, 0, 0]}>
-        <boxGeometry args={[0.11, 0.14, 0.04]} />
+        <boxGeometry args={[0.15, 0.2, 0.06]} />
         <meshStandardMaterial {...matProps} />
       </mesh>
-      {/* Pulgar */}
+      {/* Pulgar (~4 × 13 × 5 cm) */}
       <mesh
-        position={[thumbX, 0.03, 0]}
+        position={[thumbX, 0.045, 0]}
         rotation={[0, 0, thumbRot]}
       >
-        <boxGeometry args={[0.028, 0.09, 0.035]} />
+        <boxGeometry args={[0.04, 0.13, 0.05]} />
         <meshStandardMaterial {...matProps} />
       </mesh>
       {/* 4 dedos */}
       {[0, 1, 2, 3].map((i) => {
-        const h = [0.09, 0.115, 0.11, 0.085][i];
-        const x = (i - 1.5) * 0.026;
+        const h = [0.13, 0.16, 0.155, 0.12][i];
+        const x = (i - 1.5) * 0.037;
         return (
-          <mesh key={i} position={[x, 0.07 + h / 2, 0]}>
-            <boxGeometry args={[0.02, h, 0.03]} />
+          <mesh key={i} position={[x, 0.1 + h / 2, 0]}>
+            <boxGeometry args={[0.028, h, 0.045]} />
             <meshStandardMaterial {...matProps} />
           </mesh>
         );
@@ -471,7 +475,7 @@ const HandMesh = React.memo(function HandMesh({
 });
 
 /**
- * Par de manos (izquierda + derecha). Ancho total ≈ 0.28 m.
+ * Par de manos (izquierda + derecha). Ancho total ≈ 0.40 m.
  * Se rota en X para que las manos se inclinen hacia la red
  * (arriba del bloqueo), y queda bien cerca de la malla.
  */
@@ -485,10 +489,10 @@ const HandPair = React.memo(function HandPair({
 }) {
   return (
     <group rotation={[haciaRed * -0.25, 0, 0]}>
-      <group position={[-0.085, 0, 0]}>
+      <group position={[-0.12, 0, 0]}>
         <HandMesh color={color} esDerecha={false} />
       </group>
-      <group position={[0.085, 0, 0]}>
+      <group position={[0.12, 0, 0]}>
         <HandMesh color={color} esDerecha={true} />
       </group>
     </group>
