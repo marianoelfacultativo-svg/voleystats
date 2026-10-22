@@ -81,6 +81,14 @@ export interface AccionVisual {
 
   /** true = es la última acción visible del punto. Solo esa toca el piso. */
   es_ultima_del_punto: boolean;
+
+  /**
+   * Calidad (1-6) del armado inmediatamente anterior en el mismo punto.
+   * Solo se rellena para acciones de tipo "ataque" (propio o rival).
+   * null = no hubo armado previo (remate de segunda, ataque directo, etc.).
+   * Se usa para calcular la altura del punto de contacto del remate.
+   */
+  calidad_armado_previo: number | null;
 }
 
 export interface PuntoConAcciones {
@@ -150,6 +158,23 @@ function subtiipoReal(a: AccionV2Row): string | null {
   return null;
 }
 
+/**
+ * Convierte un subtipo de armado (número 1-6 o string numérico) a
+ * calidad entera. Devuelve null si no es un valor válido (p. ej. "R").
+ */
+function calidadDeArmado(
+  subtipo: string | number | null | undefined
+): number | null {
+  if (subtipo === null || subtipo === undefined) return null;
+  if (typeof subtipo === "number") {
+    if (subtipo >= 1 && subtipo <= 6) return subtipo;
+    return null;
+  }
+  const n = parseInt(subtipo, 10);
+  if (!isNaN(n) && n >= 1 && n <= 6) return n;
+  return null;
+}
+
 // ------------------------------------------------------------
 // CARGA
 // ------------------------------------------------------------
@@ -174,6 +199,30 @@ export async function cargarAccionesUnificadas(
   if (error || !data) return { acciones: [], puntos: [] };
 
   const rows = data as AccionV2Row[];
+
+  // ---------- Calidad de armado previo por acción de ataque ----------
+  // Recorremos en el orden natural (set → punto → orden) y guardamos
+  // el último armado visible para cada acción de ataque del mismo punto.
+  // Se resetea al cambiar de punto/set.
+  const calidadArmadoPrevioPorAccion = new Map<string, number | null>();
+  {
+    let ultimoArmado: number | null = null;
+    let ultimoPuntoKey = "";
+    for (const a of rows) {
+      const k = `${a.set_numero}-${a.punto_numero}`;
+      if (k !== ultimoPuntoKey) {
+        ultimoArmado = null;
+        ultimoPuntoKey = k;
+      }
+      if (a.tipo === "ataque") {
+        calidadArmadoPrevioPorAccion.set(a.id, ultimoArmado);
+      }
+      if (a.tipo === "armado" && !(a.oculta ?? false)) {
+        const c = calidadDeArmado(a.subtipo ?? null);
+        if (c !== null) ultimoArmado = c;
+      }
+    }
+  }
 
   const base: AccionVisual[] = rows.map((a) => ({
     id: a.id,
@@ -219,6 +268,7 @@ export async function cargarAccionesUnificadas(
     zona_destino_codigo: codigoZonaDeCelda(a.destino_celda),
     subtipo_real: subtiipoReal(a),
     es_ultima_del_punto: false,
+    calidad_armado_previo: calidadArmadoPrevioPorAccion.get(a.id) ?? null,
   }));
 
   // ---------- Calcular es_ultima_del_punto ----------
