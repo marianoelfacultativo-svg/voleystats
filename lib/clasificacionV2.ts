@@ -914,15 +914,6 @@ export function calcularSubtiposDefensa(
 // ============================================================
 // SUBTIPOS DE ATAQUE RIVAL
 // ============================================================
-//
-// Reglas (v19.1):
-//   - Ataque rival que toca bloqueo propio y va afuera → buena_rival
-//     (si es la última acción visible) o simple (si no lo es).
-//   - Ataque rival que pica en cancha propia sin defensa después
-//     → buena_rival (si es la última) o simple (si no lo es).
-//   - Resto de ataques rivales que NO son la última acción visible
-//     → simple.
-//   - Resto de ataques rivales que SÍ son la última → buena_rival.
 
 export function calcularSubtiposAtaqueRival(
   lineas: LineaClasificada[]
@@ -949,7 +940,6 @@ export function calcularSubtiposAtaqueRival(
     let j = i + 1;
     while (j < resultado.length && resultado[j].oculta) j++;
 
-    // No hay siguiente visible
     if (j >= resultado.length) {
       resultado[i] = {
         ...l,
@@ -960,7 +950,6 @@ export function calcularSubtiposAtaqueRival(
 
     const siguiente = resultado[j];
 
-    // El siguiente no es defensa propia
     if (siguiente.tipo !== "defensa" || siguiente.esRival) {
       resultado[i] = {
         ...l,
@@ -969,7 +958,6 @@ export function calcularSubtiposAtaqueRival(
       continue;
     }
 
-    // Hay defensa propia después: se valora según lo que hizo la defensa
     const subtipoDef = siguiente.subtipo;
     let nuevoSub: string;
 
@@ -1033,18 +1021,18 @@ export function calcularErroresRival(
 // ============================================================
 //
 // Reglas (v19.1):
-//   - use_rival  → desvío del bloqueo propio que se va afuera.
-//   - filtrada   → toca la red o cae en bloqueo lateral.
-//   - positivo_mas → pelota sigue viva después del bloqueo y la
-//     próxima acción es un "libre" (rival o propio).
-//   - neutro     → punto directo de bloqueo, o cae en cancha propia
-//     sin que haya un libre después (termina ahí).
-//   - positivo   → pelota sigue en juego más de una acción sin libre
-//     inmediato (ataque rival bloqueado que queda en cancha rival).
-//
-// IMPORTANTE: "libre" acá es el subtipo RAW del popup. También
-// aceptamos sus variantes finales ("mala_libre", "toque_positiva")
-// para que el pipeline sea idempotente al re-guardar un punto.
+//   - use_rival    → desvío del bloqueo propio que se va afuera.
+//   - filtrada     → toca la red o cae en bloqueo lateral.
+//   - punto        → cae en cancha rival y el rival NO completa 3
+//                    toques antes de que se cierre el punto (no hay
+//                    acción propia después del bloqueo).
+//   - positivo_mas → cae en cancha rival, el rival devuelve (>= 3
+//                    toques o acción propia después) y la próxima
+//                    acción es un libre.
+//   - positivo     → cae en cancha rival, el rival devuelve y NO hay
+//                    libre inmediato.
+//   - neutro       → cae en cancha propia sin libre después.
+//   - positivo_mas (propia) → cae en cancha propia con libre después.
 
 function siguienteEsLibre(siguiente: LineaClasificada | undefined): boolean {
   if (!siguiente) return false;
@@ -1056,17 +1044,54 @@ function siguienteEsLibre(siguiente: LineaClasificada | undefined): boolean {
   return false;
 }
 
+function contarToquesRivalesDespuesBloqueo(
+  lineas: LineaClasificada[],
+  idxBloqueo: number
+): number {
+  let count = 0;
+  for (let j = idxBloqueo + 1; j < lineas.length; j++) {
+    const l = lineas[j];
+    if (l.oculta) continue;
+    if (!l.esRival) break;
+    if (
+      l.tipo === "recepcion" ||
+      l.tipo === "armado" ||
+      l.tipo === "ataque" ||
+      l.tipo === "defensa" ||
+      l.tipo === "libre"
+    ) {
+      count++;
+    }
+  }
+  return count;
+}
+
+function hayAccionPropiaDespues(
+  lineas: LineaClasificada[],
+  idxBloqueo: number
+): boolean {
+  for (let j = idxBloqueo + 1; j < lineas.length; j++) {
+    const l = lineas[j];
+    if (l.oculta) continue;
+    if (!l.esRival) return true;
+  }
+  return false;
+}
+
 function valorarBloqueoBase(
-  destino: string,
-  esUltimaVisible: boolean,
-  siguiente: LineaClasificada | undefined
+  lineas: LineaClasificada[],
+  idxBloqueo: number
 ): string {
+  const l = lineas[idxBloqueo];
+  const destino = l.destino.celda;
+
   if (esFuera(destino)) return "use_rival";
   if (destino.startsWith("RED-")) return "filtrada";
   if (esCeldaBloqueoPropioLateral(destino)) return "filtrada";
 
   // Cae en cancha propia real
   if (esCanchaPropiaReal(destino)) {
+    const siguiente = lineas[idxBloqueo + 1];
     if (siguienteEsLibre(siguiente)) return "positivo_mas";
     return "neutro";
   }
@@ -1077,14 +1102,19 @@ function valorarBloqueoBase(
     esCeldaBloqueoPropioConPopup(destino);
 
   if (esRival) {
-    // Punto directo de bloqueo → neutro (no positivo)
-    if (esUltimaVisible) return "neutro";
-    // Sigue en juego: si la próxima es libre → positivo_mas
+    const toquesRivales = contarToquesRivalesDespuesBloqueo(
+      lineas,
+      idxBloqueo
+    );
+    const huboPropia = hayAccionPropiaDespues(lineas, idxBloqueo);
+
+    if (toquesRivales < 3 && !huboPropia) return "punto";
+
+    const siguiente = lineas[idxBloqueo + 1];
     if (siguienteEsLibre(siguiente)) return "positivo_mas";
     return "positivo";
   }
 
-  // Fallback (no debería pasar seguido)
   return "positivo";
 }
 
@@ -1097,19 +1127,9 @@ export function calcularSubtiposBloqueo(
   });
   if (idxBloqueos.length === 0) return lineas;
 
-  let ultimoVisibleIdx = -1;
-  for (let i = lineas.length - 1; i >= 0; i--) {
-    if (!lineas[i].oculta) {
-      ultimoVisibleIdx = i;
-      break;
-    }
-  }
-
   return lineas.map((l, i) => {
     if (l.tipo !== "bloqueo" || l.esRival) return l;
-    const esUltima = i === ultimoVisibleIdx;
-    const siguiente = lineas[i + 1];
-    const base = valorarBloqueoBase(l.destino.celda, esUltima, siguiente);
+    const base = valorarBloqueoBase(lineas, i);
     return { ...l, subtipo: base };
   });
 }
