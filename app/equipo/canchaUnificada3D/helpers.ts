@@ -115,7 +115,7 @@ export function obtenerCoords(
     const col = celda.split("-")[2] || "C3";
     const rangoX = COL_X[col];
     if (!rangoX) return null;
-    // AJUSTE: El bloqueo pasa apenas al otro lado (0.1 m en vez de 0.3)
+    // El bloqueo pasa apenas al otro lado (0.1 m en vez de 0.3)
     // para que la curva no se vaya tanto a la cancha rival.
     const z = celda.startsWith("BLOQ-P-") ? 0.1 : -0.1;
     return { x: (rangoX[0] + rangoX[1]) / 2, z };
@@ -599,6 +599,8 @@ function generarPuntosArmado(
 //    → la pelota pasa por la red a z=0 y toca el bloqueo a z=±0.1,
 //      para que no se vaya tanto a la cancha rival.
 //    → de ahí sigue al destino.
+//    → Si el destino es el bloqueo, no cae al piso: se queda en la
+//      altura del bloqueo.
 //
 function generarPuntosAtaque(
   a: AccionVisual,
@@ -609,7 +611,14 @@ function generarPuntosAtaque(
   if (!origen || !destino) return [];
 
   const h0 = hOrigenPorTipo(a);
-  const hT = a.es_ultima_del_punto ? 0 : 0.5;
+
+  // FIX: Si el destino es el bloqueo, el balón no debe caer al piso.
+  const esDestinoBloqueo = (a.destino_celda ?? "").startsWith("BLOQ-");
+  const hT = esDestinoBloqueo
+    ? ALTURA_BLOQUEO
+    : a.es_ultima_del_punto
+    ? 0
+    : 0.5;
 
   // --- Caso 4: tiene desvío en bloqueo ---
   const desviosArr = a.desvios ?? [];
@@ -761,8 +770,13 @@ export function accionAPuntos(
 
   const h0 = hOrigenPorTipo(a);
 
+  // FIX: Si el destino es el bloqueo, el balón no debe caer al piso.
+  const esDestinoBloqueo = (a.destino_celda ?? "").startsWith("BLOQ-");
+
   let hT: number;
-  if (a.tipo === "libre") {
+  if (esDestinoBloqueo) {
+    hT = ALTURA_BLOQUEO;
+  } else if (a.tipo === "libre") {
     hT = a.es_ultima_del_punto ? 0 : 1.5;
   } else {
     hT =
