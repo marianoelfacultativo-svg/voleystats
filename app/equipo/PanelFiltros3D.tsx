@@ -33,8 +33,8 @@ export interface Filtros3D {
   rol: string | "todos";
   zonaJugador: number | "todas";
   soloErrores: boolean;
-  /** 
-   * Qué acciones mostrar: 
+  /**
+   * Qué acciones mostrar:
    *   "propias" (default) = solo el equipo
    *   "rivales"           = solo el rival
    *   "ambas"             = ambos
@@ -85,6 +85,7 @@ const VALORACIONES_POR_TIPO: Record<string, Opcion[]> = {
     { v: "positivo", label: "Pos" },
     { v: "neutro", label: "Neu" },
     { v: "negativo", label: "Neg" },
+    { v: "error_rival", label: "Error (rival)" },
   ],
   recepcion: [
     { v: "1", label: "1 (Ace c/)" },
@@ -104,9 +105,11 @@ const VALORACIONES_POR_TIPO: Record<string, Opcion[]> = {
     { v: "R", label: "R" },
   ],
   ataque: [
+    // Propios — viejos
     { v: "punto", label: "Punto (viejo)" },
     { v: "neutro", label: "Neutro (viejo)" },
     { v: "error", label: "Error (viejo)" },
+    // Propios — v18
     { v: "punto_directo_ataque", label: "Punto directo" },
     { v: "punto_desviado_ataque", label: "Punto desviado" },
     { v: "use_rival_ataque", label: "Use rival" },
@@ -122,11 +125,19 @@ const VALORACIONES_POR_TIPO: Record<string, Opcion[]> = {
       label: "Neu desvío+def",
     },
     { v: "neutro_defensa_ataque", label: "Neu defensa" },
+    // Rivales (v19.1)
+    { v: "buena_rival", label: "Buena rival" },
+    { v: "simple", label: "Simple (rival)" },
+    { v: "peligroso", label: "Peligroso (rival)" },
+    { v: "toque", label: "Toque (rival)" },
+    { v: "libre", label: "Libre (rival)" },
+    { v: "error_rival", label: "Error (rival)" },
   ],
   bloqueo: [
     { v: "punto", label: "Punto" },
     { v: "positivo_mas", label: "Pos+" },
     { v: "positivo", label: "Pos" },
+    { v: "neutro", label: "Neu" },
     { v: "use_rival", label: "Use Rival" },
     { v: "red", label: "Red" },
     { v: "filtrada", label: "Filtrada" },
@@ -146,6 +157,13 @@ const VALORACIONES_POR_TIPO: Record<string, Opcion[]> = {
     { v: "toque", label: "Toque" },
     { v: "libre", label: "Libre" },
   ],
+  "roce-red": [
+    { v: "ofensivo-propio", label: "Ofensivo propio" },
+    { v: "invasion-zaguero", label: "Invasión zaguero" },
+    { v: "invasion-delantero", label: "Invasión delantero" },
+    { v: "roce-red-rival", label: "Roce red rival" },
+    { v: "error_rival", label: "Error (rival)" },
+  ],
 };
 
 const TIPOS = [
@@ -156,6 +174,7 @@ const TIPOS = [
   { v: "bloqueo", label: "Bloqueo" },
   { v: "defensa", label: "Defensa" },
   { v: "libre", label: "Libre" },
+  { v: "roce-red", label: "Roce red" },
 ];
 
 const ROLES = [
@@ -179,7 +198,7 @@ function nivelValoracion(
   if (tipo === "saque") {
     if (sub === "ace" || sub === "positivo_mas" || sub === "positivo")
       return "pos";
-    if (sub === "negativo") return "neg";
+    if (sub === "negativo" || sub === "error_rival") return "neg";
     return "neu";
   }
   if (tipo === "recepcion") {
@@ -204,7 +223,9 @@ function nivelValoracion(
       sub === "punto" ||
       sub === "punto_directo_ataque" ||
       sub === "punto_desviado_ataque" ||
-      sub === "use_rival_ataque"
+      sub === "use_rival_ataque" ||
+      sub === "buena_rival" ||
+      sub === "peligroso"
     ) {
       return "pos";
     }
@@ -212,7 +233,8 @@ function nivelValoracion(
       sub === "error" ||
       sub === "error_red_ataque" ||
       sub === "error_afuera_ataque" ||
-      sub === "gorro_ataque"
+      sub === "gorro_ataque" ||
+      sub === "error_rival"
     ) {
       return "neg";
     }
@@ -221,7 +243,8 @@ function nivelValoracion(
   if (tipo === "bloqueo") {
     if (sub === "punto" || sub === "positivo_mas" || sub === "positivo")
       return "pos";
-    if (sub === "red" || sub === "filtrada") return "neg";
+    if (sub === "red" || sub === "filtrada" || sub === "use_rival")
+      return "neg";
     return "neu";
   }
   if (tipo === "defensa") {
@@ -234,6 +257,10 @@ function nivelValoracion(
     )
       return "neg";
     return "neu";
+  }
+  if (tipo === "roce-red") {
+    if (sub === "roce-red-rival") return "pos";
+    return "neg";
   }
   return "neu";
 }
@@ -773,7 +800,9 @@ export default function PanelFiltros3D({
                   }`}
                   title={`${s.tipo} · ${s.label}`}
                 >
-                  {s.tipo === "armado" || s.tipo === "recepcion"
+                  {s.tipo === "armado" ||
+                  s.tipo === "recepcion" ||
+                  s.tipo === "roce-red"
                     ? s.label
                     : `${s.tipo.slice(0, 3)}·${s.label}`}
                 </button>
