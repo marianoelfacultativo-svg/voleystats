@@ -46,6 +46,7 @@ export const BASE_SCORES: Record<string, Record<string, number>> = {
     punto: 10,
     positivo_mas: 8,
     positivo: 6,
+    neutro: 5,
     use_rival: 3,
     filtrada: 2,
     red: 0,

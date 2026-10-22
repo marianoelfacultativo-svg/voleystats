@@ -55,6 +55,7 @@ export interface BloqueoRow {
     | "punto"
     | "positivo_mas"
     | "positivo"
+    | "neutro"
     | "use_rival"
     | "red"
     | "filtrada";
@@ -424,6 +425,7 @@ function valoracionV2aV1(
       "punto",
       "positivo_mas",
       "positivo",
+      "neutro",
       "use_rival",
       "red",
       "filtrada",

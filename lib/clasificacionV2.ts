@@ -723,16 +723,6 @@ export function ganadorDelPunto(
 // ============================================================
 // SUBTIPOS DE ATAQUE
 // ============================================================
-//
-// Subtipos nuevos (propios):
-//   puntos  → punto_directo_ataque, punto_desviado_ataque
-//   errores → use_rival_ataque, error_red_ataque, error_afuera_ataque,
-//             gorro_ataque
-//   neutros → neutro_bloqueo_cobertura_ataque,
-//             neutro_desvio_bloqueo_defensa_ataque, neutro_defensa_ataque
-//
-// Los viejos ("punto", "neutro", "error") se preservan intactos.
-// ============================================================
 
 function hayCoberturaPropiaDespues(
   lineas: LineaClasificada[],
@@ -789,25 +779,20 @@ function calcularSubtipoDeAtaque(
 
   // #2..#6 — Tocó bloqueo rival
   if (tocoBloqueoRival) {
-    // #2 — use rival (afuera)
     if (destino.startsWith("FUERA-")) {
       return "use_rival_ataque";
     }
-    // #3 — error red
     if (destino.startsWith("RED-")) {
       return "error_red_ataque";
     }
-    // #4/#5 — cayó en cancha propia
     if (/^F[123]-/.test(destino)) {
       return hayCoberturaPropiaDespues(lineas, idxAtaque)
         ? "neutro_bloqueo_cobertura_ataque"
         : "gorro_ataque";
     }
-    // #6 — cayó en cancha rival
     if (/^F[456]-/.test(destino)) {
       return "punto_desviado_ataque";
     }
-    // Fallback dentro de bloqueo
     return "neutro_desvio_bloqueo_defensa_ataque";
   }
 
@@ -855,7 +840,6 @@ export function calcularSubtiposAtaque(
 
   return lineas.map((l, i) => {
     if (l.tipo !== "ataque" || l.esRival) return l;
-    // Preservar subtipos ya asignados (puntos viejos con "punto"/"neutro"/"error")
     if (l.subtipo && l.subtipo !== null) return l;
     return {
       ...l,
@@ -866,13 +850,6 @@ export function calcularSubtiposAtaque(
 
 // ============================================================
 // SUBTIPOS DE DEFENSA (propias y rivales)
-// ============================================================
-//
-// Cambios v18:
-//   - defensa sin subtipo (o "defensa_normal") en ÚLTIMA posición
-//     → "neutro" (antes: "buena_rival")
-//   - "cobertura" en ÚLTIMA posición → "cobertura_negativa"
-//   - "cobertura" en posición intermedia → "cobertura_positiva"
 // ============================================================
 
 export function calcularSubtiposDefensa(
@@ -937,6 +914,15 @@ export function calcularSubtiposDefensa(
 // ============================================================
 // SUBTIPOS DE ATAQUE RIVAL
 // ============================================================
+//
+// Reglas (v19.1):
+//   - Ataque rival que toca bloqueo propio y va afuera → buena_rival
+//     (si es la última acción visible) o simple (si no lo es).
+//   - Ataque rival que pica en cancha propia sin defensa después
+//     → buena_rival (si es la última) o simple (si no lo es).
+//   - Resto de ataques rivales que NO son la última acción visible
+//     → simple.
+//   - Resto de ataques rivales que SÍ son la última → buena_rival.
 
 export function calcularSubtiposAtaqueRival(
   lineas: LineaClasificada[]
@@ -958,24 +944,32 @@ export function calcularSubtiposAtaqueRival(
     if (l.tipo !== "ataque" || !l.esRival) continue;
     if (l.subtipo === "toque") continue;
 
+    const esUltima = i === ultimoVisibleIdx;
+
     let j = i + 1;
     while (j < resultado.length && resultado[j].oculta) j++;
 
+    // No hay siguiente visible
     if (j >= resultado.length) {
-      if (i === ultimoVisibleIdx) {
-        resultado[i] = { ...l, subtipo: "buena_rival" };
-      }
+      resultado[i] = {
+        ...l,
+        subtipo: esUltima ? "buena_rival" : "simple",
+      };
       continue;
     }
 
     const siguiente = resultado[j];
+
+    // El siguiente no es defensa propia
     if (siguiente.tipo !== "defensa" || siguiente.esRival) {
-      if (i === ultimoVisibleIdx) {
-        resultado[i] = { ...l, subtipo: "buena_rival" };
-      }
+      resultado[i] = {
+        ...l,
+        subtipo: esUltima ? "buena_rival" : "simple",
+      };
       continue;
     }
 
+    // Hay defensa propia después: se valora según lo que hizo la defensa
     const subtipoDef = siguiente.subtipo;
     let nuevoSub: string;
 
@@ -1037,6 +1031,30 @@ export function calcularErroresRival(
 // ============================================================
 // SUBTIPOS DE BLOQUEO PROPIO
 // ============================================================
+//
+// Reglas (v19.1):
+//   - use_rival  → desvío del bloqueo propio que se va afuera.
+//   - filtrada   → toca la red o cae en bloqueo lateral.
+//   - positivo_mas → pelota sigue viva después del bloqueo y la
+//     próxima acción es un "libre" (rival o propio).
+//   - neutro     → punto directo de bloqueo, o cae en cancha propia
+//     sin que haya un libre después (termina ahí).
+//   - positivo   → pelota sigue en juego más de una acción sin libre
+//     inmediato (ataque rival bloqueado que queda en cancha rival).
+//
+// IMPORTANTE: "libre" acá es el subtipo RAW del popup. También
+// aceptamos sus variantes finales ("mala_libre", "toque_positiva")
+// para que el pipeline sea idempotente al re-guardar un punto.
+
+function siguienteEsLibre(siguiente: LineaClasificada | undefined): boolean {
+  if (!siguiente) return false;
+  if (siguiente.tipo === "libre") return true;
+  if (siguiente.tipo === "defensa") {
+    const s = siguiente.subtipo;
+    return s === "libre" || s === "mala_libre" || s === "toque_positiva";
+  }
+  return false;
+}
 
 function valorarBloqueoBase(
   destino: string,
@@ -1046,7 +1064,12 @@ function valorarBloqueoBase(
   if (esFuera(destino)) return "use_rival";
   if (destino.startsWith("RED-")) return "filtrada";
   if (esCeldaBloqueoPropioLateral(destino)) return "filtrada";
-  if (esCanchaPropiaReal(destino)) return "positivo";
+
+  // Cae en cancha propia real
+  if (esCanchaPropiaReal(destino)) {
+    if (siguienteEsLibre(siguiente)) return "positivo_mas";
+    return "neutro";
+  }
 
   const esRival =
     esCanchaRivalReal(destino) ||
@@ -1054,12 +1077,14 @@ function valorarBloqueoBase(
     esCeldaBloqueoPropioConPopup(destino);
 
   if (esRival) {
-    if (esUltimaVisible) return "punto";
-    if (siguiente?.tipo === "libre" && siguiente.esRival)
-      return "positivo_mas";
+    // Punto directo de bloqueo → neutro (no positivo)
+    if (esUltimaVisible) return "neutro";
+    // Sigue en juego: si la próxima es libre → positivo_mas
+    if (siguienteEsLibre(siguiente)) return "positivo_mas";
     return "positivo";
   }
 
+  // Fallback (no debería pasar seguido)
   return "positivo";
 }
 
