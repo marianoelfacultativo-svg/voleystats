@@ -40,8 +40,6 @@ interface Props {
   height?: number;
   mostrarEstelas?: boolean;
   velocidadAnimacion?: number;
-  /** Filtro actual de acciones para que el 3D sea coherente con la UI */
-  filtroAcciones?: "propias" | "rivales" | "ambas";
 }
 
 export default function CanchaUnificada3D({
@@ -54,7 +52,6 @@ export default function CanchaUnificada3D({
   height = 760,
   mostrarEstelas = true,
   velocidadAnimacion = 1,
-  filtroAcciones = "ambas",
 }: Props) {
   const accionesAMostrar: AccionVisual[] = useMemo(() => {
     if (modo === "armados") {
@@ -133,10 +130,9 @@ export default function CanchaUnificada3D({
 
         <Court />
         <Net />
-        <BloqueadoresVisual
-          acciones={accionesAMostrar}
-          filtroAcciones={filtroAcciones}
-        />
+        
+        {/* Ya no le pasamos el filtro: usa las acciones que le llegan */}
+        <BloqueadoresVisual acciones={accionesAMostrar} />
 
         {trayectorias.tipo === "individual" &&
           trayectorias.items.map((it) => (

@@ -494,15 +494,13 @@ const HandPair = React.memo(function HandPair({
 
 export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
   acciones,
-  filtroAcciones,
 }: {
   acciones: AccionVisual[];
-  filtroAcciones?: "propias" | "rivales" | "ambas";
 }) {
   const items = useMemo(() => {
-    // Usamos un Map por celda para evitar duplicados: si un ataque
-    // tiene desvío en BLOQ-R-C4 y además hay una acción de bloqueo
-    // en esa misma celda, no queremos 2 pares de manos superpuestos.
+    // Usamos un Map por celda para evitar duplicados.
+    // Ya no filtramos por propias/rivales: si la acción está acá
+    // (porque pasó el filtro de la cancha), sus manos también.
     const porCelda = new Map<
       string,
       { key: string; celda: string; color: string; esPropio: boolean }
@@ -543,16 +541,8 @@ export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
       }
     }
 
-    // Filtramos las manos según la pestaña de acciones activa.
-    // - "propias": solo manos de bloqueo propio.
-    // - "rivales": solo manos de bloqueo rival.
-    // - "ambas": todas.
-    return Array.from(porCelda.values()).filter((it) => {
-      if (filtroAcciones === "propias" && !it.esPropio) return false;
-      if (filtroAcciones === "rivales" && it.esPropio) return false;
-      return true;
-    });
-  }, [acciones, filtroAcciones]);
+    return Array.from(porCelda.values());
+  }, [acciones]);
 
   return (
     <group>
@@ -563,6 +553,8 @@ export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
 
         const centroX = (rango[0] + rango[1]) / 2;
         // Las manos quedan muy cerca de la red: 0.28 m del plano z=0.
+        // - Propias: lado +z (nuestra cancha), inclinadas hacia -z.
+        // - Rivales: lado -z (cancha rival), inclinadas hacia +z.
         const z = it.esPropio ? 0.28 : -0.28;
         const haciaRed: 1 | -1 = it.esPropio ? -1 : 1;
 
