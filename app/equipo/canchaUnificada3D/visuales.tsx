@@ -16,6 +16,7 @@ import { colorPorValoracion } from "../adaptadorUnificadoV2";
 
 import {
   ALTURA_BANDA_INFERIOR,
+  ALTURA_BLOQUEO,
   ALTURA_RED,
   COL_X,
   RED_X_MAX,
@@ -406,7 +407,96 @@ export const Net = React.memo(function Net() {
 });
 
 // ============================================================
-// BLOQUEADORES VISUAL — placas en la red
+// MANO — geometría simple (palma + 5 dedos)
+// ============================================================
+
+/**
+ * Una sola mano estilizada:
+ *  - Palma: caja vertical.
+ *  - 4 dedos: cajas verticales, apuntando hacia arriba.
+ *  - Pulgar: caja lateral, apuntando hacia arriba.
+ *
+ * `esDerecha` espeja la posición del pulgar.
+ *
+ * El "centro" de la mano está a la altura de la palma. Para que el
+ * bloqueo quede a la altura `ALTURA_BLOQUEO` (2.45 m), se posiciona
+ * el grupo en esa Y y la palma queda centrada ahí.
+ */
+const HandMesh = React.memo(function HandMesh({
+  color,
+  esDerecha,
+}: {
+  color: string;
+  esDerecha: boolean;
+}) {
+  const thumbX = esDerecha ? 0.075 : -0.075;
+  const thumbRot = esDerecha ? -0.6 : 0.6;
+
+  const matProps = {
+    color,
+    emissive: color,
+    emissiveIntensity: 0.25,
+    transparent: true,
+    opacity: 0.9,
+  };
+
+  return (
+    <group>
+      {/* Palma */}
+      <mesh position={[0, 0, 0]}>
+        <boxGeometry args={[0.11, 0.14, 0.04]} />
+        <meshStandardMaterial {...matProps} />
+      </mesh>
+      {/* Pulgar */}
+      <mesh
+        position={[thumbX, 0.03, 0]}
+        rotation={[0, 0, thumbRot]}
+      >
+        <boxGeometry args={[0.028, 0.09, 0.035]} />
+        <meshStandardMaterial {...matProps} />
+      </mesh>
+      {/* 4 dedos */}
+      {[0, 1, 2, 3].map((i) => {
+        const h = [0.09, 0.115, 0.11, 0.085][i];
+        const x = (i - 1.5) * 0.026;
+        return (
+          <mesh key={i} position={[x, 0.07 + h / 2, 0]}>
+            <boxGeometry args={[0.02, h, 0.03]} />
+            <meshStandardMaterial {...matProps} />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+});
+
+/**
+ * Par de manos (izquierda + derecha). Ancho total ≈ 0.28 m.
+ * Se rota en X para que las manos se inclinen hacia la red
+ * (arriba del bloqueo), y queda bien cerca de la malla.
+ */
+const HandPair = React.memo(function HandPair({
+  color,
+  haciaRed,
+}: {
+  color: string;
+  /** +1 = inclinar hacia +z, -1 = inclinar hacia -z */
+  haciaRed: 1 | -1;
+}) {
+  return (
+    <group rotation={[haciaRed * -0.25, 0, 0]}>
+      <group position={[-0.085, 0, 0]}>
+        <HandMesh color={color} esDerecha={false} />
+      </group>
+      <group position={[0.085, 0, 0]}>
+        <HandMesh color={color} esDerecha={true} />
+      </group>
+    </group>
+  );
+});
+
+// ============================================================
+// BLOQUEADORES VISUAL — manos en la red
 // ============================================================
 
 export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
@@ -415,19 +505,26 @@ export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
   acciones: AccionVisual[];
 }) {
   const items = useMemo(() => {
-    const out: {
-      key: string;
-      celda: string;
-      color: string;
-      esPropio: boolean;
-    }[] = [];
+    // Usamos un Map por celda para evitar duplicados: si un ataque
+    // tiene desvío en BLOQ-R-C4 y además hay una acción de bloqueo
+    // en esa misma celda, no queremos 2 pares de manos superpuestos.
+    //
+    // Orden de prioridad:
+    //   1. Acciones tipo "bloqueo" (tienen su propio color de valoración)
+    //   2. Desvíos de cualquier acción (ataque → BLOQ-R, etc.)
+    //
+    // Los desvíos son el caso "ataque que se desvió en el bloqueo":
+    // con esto también se dibuja el bloqueador rival en el desvío.
+    const porCelda = new Map<
+      string,
+      { key: string; celda: string; color: string; esPropio: boolean }
+    >();
 
     for (const a of acciones) {
       if (a.tipo !== "bloqueo") continue;
       const color = colorPorValoracion(a);
-
       if (a.origen_celda?.startsWith("BLOQ-")) {
-        out.push({
+        porCelda.set(a.origen_celda, {
           key: `o-${a.id}`,
           celda: a.origen_celda,
           color,
@@ -435,7 +532,7 @@ export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
         });
       }
       if (a.destino_celda?.startsWith("BLOQ-")) {
-        out.push({
+        porCelda.set(a.destino_celda, {
           key: `d-${a.id}`,
           celda: a.destino_celda,
           color,
@@ -443,7 +540,22 @@ export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
         });
       }
     }
-    return out;
+
+    for (const a of acciones) {
+      const color = colorPorValoracion(a);
+      for (const d of a.desvios ?? []) {
+        if (!d.celda.startsWith("BLOQ-")) continue;
+        if (porCelda.has(d.celda)) continue;
+        porCelda.set(d.celda, {
+          key: `dv-${a.id}-${d.celda}`,
+          celda: d.celda,
+          color,
+          esPropio: d.celda.startsWith("BLOQ-P-"),
+        });
+      }
+    }
+
+    return Array.from(porCelda.values());
   }, [acciones]);
 
   return (
@@ -453,42 +565,19 @@ export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
         const rango = COL_X[col];
         if (!rango) return null;
 
-        const ancho = (rango[1] - rango[0]) * 0.8;
         const centroX = (rango[0] + rango[1]) / 2;
-        const z = it.esPropio ? 0.35 : -0.35;
-
-        const alturaMano = 1.1;
-        const centroY = 1.9 + alturaMano / 2;
+        // Las manos quedan muy cerca de la red: 0.28 m del plano z=0.
+        // - Propias: lado +z (nuestra cancha), inclinadas hacia -z.
+        // - Rivales: lado -z (cancha rival), inclinadas hacia +z.
+        const z = it.esPropio ? 0.28 : -0.28;
+        const haciaRed: 1 | -1 = it.esPropio ? -1 : 1;
 
         return (
-          <group key={it.key}>
-            <mesh position={[centroX, centroY, z]}>
-              <boxGeometry args={[ancho, alturaMano, 0.12]} />
-              <meshStandardMaterial
-                color={it.color}
-                emissive={it.color}
-                emissiveIntensity={0.35}
-                transparent
-                opacity={0.78}
-              />
-            </mesh>
-
-            <mesh position={[centroX - ancho * 0.25, 1.4, z]}>
-              <cylinderGeometry args={[0.05, 0.05, 1.0, 8]} />
-              <meshStandardMaterial
-                color={it.color}
-                transparent
-                opacity={0.55}
-              />
-            </mesh>
-            <mesh position={[centroX + ancho * 0.25, 1.4, z]}>
-              <cylinderGeometry args={[0.05, 0.05, 1.0, 8]} />
-              <meshStandardMaterial
-                color={it.color}
-                transparent
-                opacity={0.55}
-              />
-            </mesh>
+          <group
+            key={it.key}
+            position={[centroX, ALTURA_BLOQUEO, z]}
+          >
+            <HandPair color={it.color} haciaRed={haciaRed} />
           </group>
         );
       })}

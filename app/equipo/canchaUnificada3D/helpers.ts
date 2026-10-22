@@ -77,6 +77,10 @@ const APEX_LIBRE_MAX = 9.0; // 900 cm
 // La libre NUNCA pasa por acá: es una parábola pura.
 const ALTURA_MIN_RED_CRUCE = ALTURA_RED + 0.1; // 2.53
 
+// Altura del bloqueo (donde se producen los desvíos).
+// Tiene que coincidir con el centro de las manos en visuales.tsx.
+export const ALTURA_BLOQUEO = 2.45;
+
 // ============================================================
 // HELPERS DE COORDENADAS
 // ============================================================
@@ -326,7 +330,7 @@ function hDestinoDefaultPorTipo(a: AccionVisual): number {
 function alturaDeCeldaEspecial(celda: string | null | undefined): number {
   if (!celda) return 1.5;
   if (celda.startsWith("RED-")) return ALTURA_RED;
-  if (celda.startsWith("BLOQ-")) return 2.6;
+  if (celda.startsWith("BLOQ-")) return ALTURA_BLOQUEO;
   if (celda.startsWith("FUERA-ARR-") || celda.startsWith("FUERA-ABA-"))
     return 0.5;
   return 1.5;
@@ -589,6 +593,12 @@ function generarPuntosArmado(
 //    → la diferencia ataque/toque se logra moviendo el waypoint
 //      intermedio: ataque sube rápido, toque sube lento.
 //
+// 4. (NUEVO) Tiene desvío en bloqueo (BLOQ-P-* o BLOQ-R-*):
+//    → la pelota pasa por el bloqueo a la altura del bloqueo (2.45)
+//      y de ahí sigue al destino. Esto cubre el caso "pasa apenas
+//      al otro lado, toca el bloqueo y vuelve", y también los
+//      desvíos que terminan en rival / fuera de cualquier lado.
+//
 function generarPuntosAtaque(
   a: AccionVisual,
   _hDestinoOverride?: number
@@ -599,6 +609,24 @@ function generarPuntosAtaque(
 
   const h0 = hOrigenPorTipo(a);
   const hT = a.es_ultima_del_punto ? 0 : 0.5;
+
+  // --- Caso 4: tiene desvío en bloqueo ---
+  const desviosArr = a.desvios ?? [];
+  const bloqueoDesvio = desviosArr.find(
+    (d) => d.celda.startsWith("BLOQ-R-") || d.celda.startsWith("BLOQ-P-")
+  );
+
+  if (bloqueoDesvio) {
+    const bCoords = obtenerCoords(bloqueoDesvio.celda, bloqueoDesvio.mini);
+    if (bCoords) {
+      const waypoints: [number, number, number][] = [
+        [origen.x, h0, origen.z],
+        [bCoords.x, ALTURA_BLOQUEO, bCoords.z],
+        [destino.x, hT, destino.z],
+      ];
+      return catmullRom3(waypoints, 60);
+    }
+  }
 
   const esToque = a.variante === "toque";
   const pDesc = esToque ? 1.8 : 0.7;
@@ -654,13 +682,8 @@ function generarPuntosAtaque(
   }
 
   // Caso 3: h0 < 2.53. Sube a 2.53 en la red y baja al destino.
-  // Waypoints suaves para no tener codos.
-  // La diferencia ataque/toque se logra moviendo el waypoint
-  // intermedio de la subida (entre origen y red).
   const midX = origen.x + (xRed - origen.x) * 0.55;
   const midZ = origen.z * 0.45;
-  // Ataque: sube rápido al principio → midH más alto.
-  // Toque:  sube lento → midH más bajo.
   const midH = esToque
     ? h0 + (ALTURA_MIN_RED_CRUCE - h0) * 0.35
     : h0 + (ALTURA_MIN_RED_CRUCE - h0) * 0.7;
@@ -687,9 +710,6 @@ function calcularApexExtra(a: AccionVisual, cruzaRed: boolean): number {
   const esToque = a.tipo === "ataque" && a.variante === "toque";
 
   if (a.tipo === "libre") {
-    // Si la libre tiene desvíos (no es un tramo simple), se usa un
-    // valor fijo según cruce de red. El caso "sin desvíos" tiene su
-    // propio cálculo de apex absoluto en accionAPuntos.
     return cruzaRed ? 4.2 : 3.6;
   }
   if (esToque) {
@@ -700,20 +720,10 @@ function calcularApexExtra(a: AccionVisual, cruzaRed: boolean): number {
   return 0.4;
 }
 
-// Para todas las acciones usamos curvatura 1 (arco normal).
 function calcularCurvatura(_a: AccionVisual): number {
   return 1;
 }
 
-/**
- * Apex absoluto de una acción "libre" (sin desvíos) según su recorrido.
- *
- * - Recorrido mínimo → APEX_LIBRE_MIN (3 m).
- * - Recorrido máximo (≈ 23.71 m, de FUERA-ARR-C1 a FUERA-ABA-C5)
- *   → APEX_LIBRE_MAX (9 m).
- *
- * Se normaliza de forma lineal contra la distancia máxima del sistema.
- */
 function apexLibreAbsoluto(
   origen: { x: number; z: number },
   destino: { x: number; z: number }
@@ -729,15 +739,10 @@ export function accionAPuntos(
   a: AccionVisual,
   hDestinoOverride?: number
 ): [number, number, number][] {
-  // El armado siempre se dibuja con su lógica especial (calidad +
-  // velocidad + regla de no bajar). Si hay override, lo usamos como
-  // altura del destino (modo punto-completo).
   if (a.tipo === "armado") {
     return generarPuntosArmado(a, hDestinoOverride);
   }
 
-  // El ataque / toque se dibuja con su lógica especial (curva única
-  // suave, sin codos). Ignora el override del siguiente.
   if (a.tipo === "ataque") {
     return generarPuntosAtaque(a);
   }
@@ -748,9 +753,6 @@ export function accionAPuntos(
 
   const h0 = hOrigenPorTipo(a);
 
-  // Para la libre, ignorar el override del siguiente. El override del
-  // armado hacía que la libre subiera de 1.5 a 2.35 y no se viera como
-  // parábola.
   let hT: number;
   if (a.tipo === "libre") {
     hT = a.es_ultima_del_punto ? 0 : 1.5;
@@ -767,17 +769,10 @@ export function accionAPuntos(
   const ladoD = ladoDeCelda(a.destino_celda);
   const cruzaRed = ladoO !== null && ladoD !== null && ladoO !== ladoD;
 
-  // ---- Cálculo del apexExtra ----
-  // Para "libre" sin desvíos: apex absoluto depende del recorrido.
-  // Para el resto (o libres con desvíos): regla por tipo.
   const desviosArr = a.desvios ?? [];
   let apexExtra: number;
   if (a.tipo === "libre" && desviosArr.length === 0) {
     const apexAbs = apexLibreAbsoluto(origen, destino);
-    // parabolaSegmento aplica: h = hBase + arco * apexExtra
-    // con arco máx = 1 en t=0.5 y hBase en t=0.5 = (h0 + hT) / 2.
-    // Entonces el apex final = (h0 + hT) / 2 + apexExtra.
-    // Para que apex final = apexAbs: apexExtra = apexAbs - (h0+hT)/2.
     apexExtra = Math.max(0.5, apexAbs - (h0 + hT) / 2);
   } else {
     apexExtra = calcularApexExtra(a, cruzaRed);
@@ -830,9 +825,6 @@ export function accionAPuntos(
 
     let segPts: [number, number, number][];
 
-    // El waypoint forzado de red (2.53) SOLO se usa para acciones que
-    // no son libres. La libre es SIEMPRE una parábola pura, sin
-    // forzar el paso por la red a 2.53.
     if (
       subCross &&
       !esCeldaEnRed(w1.celda) &&
