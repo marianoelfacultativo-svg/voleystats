@@ -58,6 +58,22 @@ const VISTAS: { id: Vista; label: string }[] = [
   { id: "paralela-der", label: "Paralela der." },
 ];
 
+// ============================================================
+// VELOCIDAD DE ANIMACIÓN — 3 niveles
+// ============================================================
+//
+// nivel 1 (▶)     → lento      → velocidadAnimacion 0.5
+// nivel 2 (▶▶)    → normal     → velocidadAnimacion 1.0
+// nivel 3 (▶▶▶)   → rápido     → velocidadAnimacion 2.0
+//
+type NivelVelocidad = 1 | 2 | 3;
+
+const VELOCIDAD_POR_NIVEL: Record<NivelVelocidad, number> = {
+  1: 0.5,
+  2: 1.0,
+  3: 2.0,
+};
+
 function detectarWebGL(): boolean {
   if (typeof window === "undefined") return false;
   try {
@@ -94,6 +110,9 @@ export default function VisualizacionUnificada({
   const [modo, setModo] = useState<ModoUnificado>("fundamento");
   const [vista, setVista] = useState<Vista>("iso-izq");
   const [mostrarEstelas, setMostrarEstelas] = useState(true);
+
+  // -------- Velocidad de animación (solo punto-completo) --------
+  const [nivelVelocidad, setNivelVelocidad] = useState<NivelVelocidad>(2);
 
   // -------- Filtros --------
   const [filtros, setFiltros] = useState<Filtros3D>({ ...FILTROS3D_VACIO });
@@ -296,6 +315,8 @@ export default function VisualizacionUnificada({
     return { set: setActivo, punto: puntoActivo };
   }, [modo, setActivo, puntoActivo]);
 
+  const velocidadAnimacion = VELOCIDAD_POR_NIVEL[nivelVelocidad];
+
   // ============================================================
   // HANDLERS DE UI
   // ============================================================
@@ -373,6 +394,38 @@ export default function VisualizacionUnificada({
               </button>
             ))}
             <div className="ml-auto flex items-center gap-1">
+              {/* Selector de velocidad — solo en modo punto-completo */}
+              {modo === "punto-completo" && (
+                <div
+                  className="flex items-center gap-0.5 bg-white border border-slate-300 rounded-lg overflow-hidden"
+                  title="Velocidad de la animación"
+                >
+                  {([1, 2, 3] as NivelVelocidad[]).map((nivel) => {
+                    const activo = nivelVelocidad === nivel;
+                    return (
+                      <button
+                        key={nivel}
+                        onClick={() => setNivelVelocidad(nivel)}
+                        className={`px-2 h-7 text-[11px] font-bold transition ${
+                          activo
+                            ? "bg-emerald-500 text-white"
+                            : "bg-white text-slate-600 hover:bg-slate-50"
+                        }`}
+                        title={
+                          nivel === 1
+                            ? "Lento (0.5x)"
+                            : nivel === 2
+                            ? "Normal (1x)"
+                            : "Rápido (2x)"
+                        }
+                      >
+                        {"▶".repeat(nivel)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
               <button
                 onClick={() => setMostrarEstelas((v) => !v)}
                 className={`px-2.5 py-1 text-xs rounded-lg border transition ${
@@ -530,6 +583,7 @@ export default function VisualizacionUnificada({
                 width={1000}
                 height={760}
                 mostrarEstelas={mostrarEstelas}
+                velocidadAnimacion={velocidadAnimacion}
               />
             ) : (
               <div className="w-full p-6 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 text-center">

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { Line, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
@@ -73,6 +73,10 @@ const VARIANZA_GENERAL = 0.24;
 
 const RED_X_MIN = 2;
 const RED_X_MAX = 11;
+
+// Segundos que dura cada acción en el modo "punto completo".
+// Si el usuario lo siente muy rápido, subir este número.
+const SEGUNDOS_POR_ACCION = 2.2;
 
 // ============================================================
 // HELPERS DE COORDENADAS
@@ -275,11 +279,6 @@ function alturaDeCeldaEspecial(celda: string | null | undefined): number {
 // PARÁBOLA / CATMULLROM
 // ============================================================
 
-/**
- * Parábola entre dos waypoints.
- * `curvatura` > 1 hace la curva más "picuda" (sube y baja más rápido).
- * `curvatura` = 1 → parábola clásica.
- */
 function parabolaSegmento(
   w1: { x: number; z: number; h: number },
   w2: { x: number; z: number; h: number },
@@ -478,11 +477,9 @@ function generarPuntosArmado(a: AccionVisual): [number, number, number][] {
 function calcularApexExtra(a: AccionVisual, cruzaRed: boolean): number {
   const esToque = a.tipo === "ataque" && a.variante === "toque";
 
-  // LIBRE: parábola muy pronunciada
   if (a.tipo === "libre") {
     return cruzaRed ? 4.2 : 3.6;
   }
-  // TOQUE: parábola muy chata
   if (esToque) {
     return cruzaRed ? 0.2 : 0.3;
   }
@@ -491,10 +488,6 @@ function calcularApexExtra(a: AccionVisual, cruzaRed: boolean): number {
   return 0.4;
 }
 
-/**
- * Curvatura de la parábola: >1 la hace más picuda.
- * Libre usa 1.8 para que suba y baje más agresivamente.
- */
 function calcularCurvatura(a: AccionVisual): number {
   if (a.tipo === "libre") return 1.8;
   return 1;
@@ -675,50 +668,146 @@ const Trajectory = React.memo(function Trajectory({
 });
 
 /**
- * Animador de pelota. Recorre el array de puntos con interpolación lineal
- * (para evitar overshoots de CatmullRom) y nunca baja de y=0.05.
+ * Animador de pelota con dibujo progresivo acción por acción.
+ *
+ * - Cada acción ocupa `SEGUNDOS_POR_ACCION` segundos.
+ * - Mientras la pelota recorre la acción `i`, solo se dibuja la parte
+ *   ya recorrida de esa acción.
+ * - Las acciones anteriores se ven completas; las futuras no se ven.
+ * - Al terminar la última acción, se reinicia automáticamente.
  */
-const BallAnimator = React.memo(function BallAnimator({
-  points,
-  color,
-  speed = 1,
+const AnimatedPointPlayback = React.memo(function AnimatedPointPlayback({
+  trayectorias,
+  velocidadAnimacion = 1,
 }: {
-  points: [number, number, number][];
-  color: string;
-  speed?: number;
+  trayectorias: { id: string; puntos: [number, number, number][]; color: string }[];
+  velocidadAnimacion?: number;
 }) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const tRef = useRef(0);
+  const ballRef = useRef<THREE.Mesh>(null);
+  const tRef = useRef(0); // progreso global continuo: 0 .. n
+  const snapRef = useRef({ idx: 0, hasta: 2 });
+  const [, forceUpdate] = useState(0);
+
+  const n = trayectorias.length;
 
   useFrame((_, delta) => {
-    if (!meshRef.current || points.length < 2) return;
-    tRef.current = (tRef.current + delta * speed * 0.18) % 1;
+    if (n === 0) return;
+    const d = (delta * velocidadAnimacion) / SEGUNDOS_POR_ACCION;
+    tRef.current = (tRef.current + d) % n;
 
-    const totalSeg = points.length - 1;
-    const exact = tRef.current * totalSeg;
-    const i = Math.min(totalSeg - 1, Math.floor(exact));
-    const t = exact - i;
-    const p1 = points[i];
-    const p2 = points[i + 1];
+    const idx = Math.min(n - 1, Math.floor(tRef.current));
+    const tLocal = tRef.current - idx;
+    const it = trayectorias[idx];
+    if (!it || it.puntos.length < 2) return;
 
-    meshRef.current.position.set(
-      p1[0] + t * (p2[0] - p1[0]),
-      Math.max(0.05, p1[1] + t * (p2[1] - p1[1])),
-      p1[2] + t * (p2[2] - p1[2])
-    );
+    // Posición de la pelota
+    const totalSeg = it.puntos.length - 1;
+    const exact = tLocal * totalSeg;
+    const iBall = Math.min(totalSeg - 1, Math.floor(exact));
+    const tBall = exact - iBall;
+    const p1 = it.puntos[iBall];
+    const p2 = it.puntos[iBall + 1];
+    if (ballRef.current) {
+      ballRef.current.position.set(
+        p1[0] + tBall * (p2[0] - p1[0]),
+        Math.max(0.05, p1[1] + tBall * (p2[1] - p1[1])),
+        p1[2] + tBall * (p2[2] - p1[2])
+      );
+    }
+
+    // Longitud de la línea parcial de la acción actual
+    const hasta = Math.max(2, Math.ceil(tLocal * it.puntos.length));
+    if (snapRef.current.idx !== idx || snapRef.current.hasta !== hasta) {
+      snapRef.current = { idx, hasta };
+      forceUpdate((x) => (x + 1) % 100000);
+    }
   });
 
+  if (n === 0) return null;
+
+  const { idx: idxSnap, hasta } = snapRef.current;
+
   return (
-    <mesh ref={meshRef}>
-      <sphereGeometry args={[0.22, 24, 24]} />
-      <meshStandardMaterial
-        color="#fef3c7"
-        emissive={color}
-        emissiveIntensity={0.9}
-        metalness={0.2}
-        roughness={0.35}
-      />
-    </mesh>
+    <group>
+      {trayectorias.map((it, i) => {
+        if (it.puntos.length < 2) return null;
+
+        if (i < idxSnap) {
+          // Acción ya completada → línea entera
+          return (
+            <React.Fragment key={it.id}>
+              <Line
+                points={it.puntos}
+                color={it.color}
+                lineWidth={10}
+                transparent
+                opacity={0.1}
+              />
+              <Line
+                points={it.puntos}
+                color={it.color}
+                lineWidth={4}
+                transparent
+                opacity={0.35}
+              />
+              <Line
+                points={it.puntos}
+                color={it.color}
+                lineWidth={2}
+                transparent
+                opacity={0.95}
+              />
+            </React.Fragment>
+          );
+        }
+
+        if (i === idxSnap) {
+          // Acción actual → solo tramo recorrido
+          const corte = Math.min(hasta, it.puntos.length);
+          const parcial = it.puntos.slice(0, corte);
+          if (parcial.length < 2) return null;
+          return (
+            <React.Fragment key={it.id}>
+              <Line
+                points={parcial}
+                color={it.color}
+                lineWidth={12}
+                transparent
+                opacity={0.12}
+              />
+              <Line
+                points={parcial}
+                color={it.color}
+                lineWidth={4}
+                transparent
+                opacity={0.4}
+              />
+              <Line
+                points={parcial}
+                color={it.color}
+                lineWidth={2.5}
+                transparent
+                opacity={1}
+              />
+            </React.Fragment>
+          );
+        }
+
+        // Acción futura → no dibujar
+        return null;
+      })}
+
+      <mesh ref={ballRef}>
+        <sphereGeometry args={[0.22, 24, 24]} />
+        <meshStandardMaterial
+          color="#fef3c7"
+          emissive="#f59e0b"
+          emissiveIntensity={0.9}
+          metalness={0.2}
+          roughness={0.35}
+        />
+      </mesh>
+    </group>
   );
 });
 
@@ -779,21 +868,16 @@ const Court = React.memo(function Court() {
   );
 });
 
-/**
- * RED 3D: postes + bandas + malla de líneas + panel semitransparente
- * que le da cuerpo sólido a la red.
- */
 const Net = React.memo(function Net() {
   const postHeight = ALTURA_RED;
   const bandaInferior = ALTURA_BANDA_INFERIOR;
-  const anchoRed = RED_X_MAX - RED_X_MIN; // 9
-  const centroX = (RED_X_MIN + RED_X_MAX) / 2; // 6.5
-  const alturaRed = postHeight - bandaInferior; // 1.0
+  const anchoRed = RED_X_MAX - RED_X_MIN;
+  const centroX = (RED_X_MIN + RED_X_MAX) / 2;
+  const alturaRed = postHeight - bandaInferior;
   const centroY = bandaInferior + alturaRed / 2;
 
   return (
     <group>
-      {/* Postes */}
       <mesh position={[RED_X_MIN, postHeight / 2, 0]}>
         <cylinderGeometry args={[0.06, 0.06, postHeight, 12]} />
         <meshStandardMaterial color="#f1f5f9" />
@@ -803,7 +887,6 @@ const Net = React.memo(function Net() {
         <meshStandardMaterial color="#f1f5f9" />
       </mesh>
 
-      {/* Banda superior */}
       <mesh
         position={[centroX, postHeight, 0]}
         rotation={[0, 0, Math.PI / 2]}
@@ -812,7 +895,6 @@ const Net = React.memo(function Net() {
         <meshStandardMaterial color="#f8fafc" />
       </mesh>
 
-      {/* Banda inferior */}
       <mesh
         position={[centroX, bandaInferior, 0]}
         rotation={[0, 0, Math.PI / 2]}
@@ -821,7 +903,6 @@ const Net = React.memo(function Net() {
         <meshStandardMaterial color="#f8fafc" />
       </mesh>
 
-      {/* PANEL SEMITRANSPARENTE: le da cuerpo a la red */}
       <mesh position={[centroX, centroY, 0]}>
         <planeGeometry args={[anchoRed, alturaRed]} />
         <meshStandardMaterial
@@ -833,7 +914,6 @@ const Net = React.memo(function Net() {
         />
       </mesh>
 
-      {/* Grilla vertical (malla) */}
       {Array.from({ length: 37 }).map((_, i) => {
         const x = RED_X_MIN + (i / 36) * anchoRed;
         return (
@@ -851,7 +931,6 @@ const Net = React.memo(function Net() {
         );
       })}
 
-      {/* Grilla horizontal (malla) */}
       {Array.from({ length: 7 }).map((_, i) => {
         const y = bandaInferior + (i / 6) * alturaRed;
         return (
@@ -872,10 +951,6 @@ const Net = React.memo(function Net() {
   );
 });
 
-/**
- * BLOQUEOS 3D: barrera con volumen (manos + brazos) en la posición de
- * cada celda BLOQ-* que aparece en las acciones de tipo "bloqueo".
- */
 const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
   acciones,
 }: {
@@ -1056,7 +1131,6 @@ export default function CanchaUnificada3D({
         puntos: [number, number, number][];
         color: string;
       }[] = [];
-      const allPts: [number, number, number][] = [];
       for (let i = 0; i < accionesAMostrar.length; i++) {
         const a = accionesAMostrar[i];
         const pts = accionAPuntos(a, heights[i]);
@@ -1066,13 +1140,8 @@ export default function CanchaUnificada3D({
           puntos: pts,
           color: colorPorValoracion(a),
         });
-        if (allPts.length > 0) {
-          allPts.push(...pts.slice(1));
-        } else {
-          allPts.push(...pts);
-        }
       }
-      return { tipo: "punto-completo" as const, items, allPts };
+      return { tipo: "punto-completo" as const, items };
     }
 
     const items: {
@@ -1120,23 +1189,11 @@ export default function CanchaUnificada3D({
           ))}
 
         {trayectorias.tipo === "punto-completo" && (
-          <>
-            {trayectorias.items.map((it) => (
-              <Trajectory
-                key={it.id}
-                points={it.puntos}
-                color={it.color}
-                mostrarEstelas={mostrarEstelas}
-              />
-            ))}
-            {trayectorias.allPts.length >= 2 && (
-              <BallAnimator
-                points={trayectorias.allPts}
-                color="#f59e0b"
-                speed={velocidadAnimacion}
-              />
-            )}
-          </>
+          <AnimatedPointPlayback
+            key={`pc-${puntoSeleccionado?.set ?? 0}-${puntoSeleccionado?.punto ?? 0}`}
+            trayectorias={trayectorias.items}
+            velocidadAnimacion={velocidadAnimacion}
+          />
         )}
 
         <CameraController vista={vista} />

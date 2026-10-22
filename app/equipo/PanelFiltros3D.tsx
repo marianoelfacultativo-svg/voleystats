@@ -99,19 +99,15 @@ const VALORACIONES_POR_TIPO: Record<string, Opcion[]> = {
     { v: "R", label: "R" },
   ],
   ataque: [
-    // ---- Viejos (compat con puntos cargados antes) ----
     { v: "punto", label: "Punto (viejo)" },
     { v: "neutro", label: "Neutro (viejo)" },
     { v: "error", label: "Error (viejo)" },
-    // ---- Puntos ----
     { v: "punto_directo_ataque", label: "Punto directo" },
     { v: "punto_desviado_ataque", label: "Punto desviado" },
-    // ---- Errores ----
     { v: "use_rival_ataque", label: "Use rival" },
     { v: "error_red_ataque", label: "Error red" },
     { v: "error_afuera_ataque", label: "Error afuera" },
     { v: "gorro_ataque", label: "Gorro" },
-    // ---- Neutros ----
     {
       v: "neutro_bloqueo_cobertura_ataque",
       label: "Neu bloqueo+cob",
@@ -251,7 +247,7 @@ export function aplicarFiltros(
   acciones: AccionVisual[],
   f: Filtros3D
 ): AccionVisual[] {
-  return acciones.filter((a) => {
+  const filtradas = acciones.filter((a) => {
     if (a.oculta) return false;
 
     // Por defecto solo acciones propias.
@@ -294,6 +290,63 @@ export function aplicarFiltros(
     if (f.soloErrores && !a.es_error) return false;
     return true;
   });
+
+  // ----------------------------------------------------------
+  // CONTEXTO VISUAL: si el filtro incluye bloqueo o defensa,
+  // agregar la acción ANTERIOR (visible) de cada bloqueo/defensa
+  // filtrado. Esto se hace SIEMPRE, sin importar los demás filtros
+  // (jugador, soloErrores, mostrarRivales): es solo para que la
+  // trayectoria entrante se entienda.
+  // ----------------------------------------------------------
+  const necesitaContexto =
+    f.tipos.includes("bloqueo") || f.tipos.includes("defensa");
+
+  if (!necesitaContexto) return filtradas;
+
+  // Índice de acciones visibles por punto, ordenadas por `orden`.
+  const porPunto = new Map<string, AccionVisual[]>();
+  for (const a of acciones) {
+    if (a.oculta) continue;
+    const k = `${a.set_numero}-${a.punto_numero}`;
+    let lista = porPunto.get(k);
+    if (!lista) {
+      lista = [];
+      porPunto.set(k, lista);
+    }
+    lista.push(a);
+  }
+  for (const lista of porPunto.values()) {
+    lista.sort((x, y) => x.orden - y.orden);
+  }
+
+  const ids = new Set(filtradas.map((a) => a.id));
+  const extras: AccionVisual[] = [];
+
+  for (const a of filtradas) {
+    if (a.tipo !== "bloqueo" && a.tipo !== "defensa") continue;
+    const k = `${a.set_numero}-${a.punto_numero}`;
+    const lista = porPunto.get(k) ?? [];
+    const idx = lista.findIndex((x) => x.id === a.id);
+    if (idx <= 0) continue;
+    const anterior = lista[idx - 1];
+    if (!ids.has(anterior.id)) {
+      ids.add(anterior.id);
+      extras.push(anterior);
+    }
+  }
+
+  if (extras.length === 0) return filtradas;
+
+  // Re-ordenar todo por (set, punto, orden) para preservar el orden
+  // temporal: así la trayectoria de contexto se dibuja antes (debajo).
+  const resultado = [...filtradas, ...extras];
+  resultado.sort((a, b) => {
+    if (a.set_numero !== b.set_numero) return a.set_numero - b.set_numero;
+    if (a.punto_numero !== b.punto_numero)
+      return a.punto_numero - b.punto_numero;
+    return a.orden - b.orden;
+  });
+  return resultado;
 }
 
 // ------------------------------------------------------------
@@ -598,7 +651,6 @@ export default function PanelFiltros3D({
                 key={t.v}
                 onClick={() => {
                   const nuevos = toggleArrayValue(filtros.tipos, t.v);
-                  // Limpiar subtipos/valoraciones que ya no aplican
                   const subsValidos = new Set(
                     nuevos.flatMap((ti) =>
                       (SUBTIPOS_REALES_POR_TIPO[ti] ?? []).map((s) => s.v)
@@ -631,6 +683,13 @@ export default function PanelFiltros3D({
             );
           })}
         </div>
+        {(filtros.tipos.includes("bloqueo") ||
+          filtros.tipos.includes("defensa")) && (
+          <p className="text-[9px] text-amber-700 mt-1 italic">
+            🔗 Se agrega automáticamente la acción anterior de cada
+            bloqueo/defensa para ver la trayectoria entrante.
+          </p>
+        )}
       </div>
 
       {/* Fila 4: Subtipo real (multi, depende de tipos) */}
