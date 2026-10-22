@@ -53,32 +53,24 @@ const TEXTO_NIVEL: Record<NivelValoracion, string> = {
 };
 
 // ------------------------------------------------------------
-// Escala no lineal: 0-6 ocupa 35% del radio, 6-10 ocupa 65%.
+// Escala LINEAL y SIMÉTRICA:
+//
+//   Real -2  → centro del radar
+//   Real  0  → 1/6 del radio
+//   Real  2  → 2/6 del radio
+//   Real  4  → 3/6 del radio
+//   Real  6  → 4/6 del radio
+//   Real  8  → 5/6 del radio
+//   Real 10  → borde
+//
+// Cada tramo de 2 unidades reales ocupa exactamente lo mismo.
 // ------------------------------------------------------------
 
-const VISUAL_MAX = 10;
-const FRACCION_LIMITE = 0.35;
-const REAL_LIMITE = 6;
-const VISUAL_LIMITE = VISUAL_MAX * FRACCION_LIMITE; // 3.5
+const REAL_MIN = -2;
+const REAL_MAX = 10;
 
-function realAVisual(v: number): number {
-  if (v <= REAL_LIMITE) return (v / REAL_LIMITE) * VISUAL_LIMITE;
-  return (
-    VISUAL_LIMITE +
-    ((v - REAL_LIMITE) / (10 - REAL_LIMITE)) * (VISUAL_MAX - VISUAL_LIMITE)
-  );
-}
-
-function visualAReal(v: number): number {
-  if (v <= VISUAL_LIMITE) return (v / VISUAL_LIMITE) * REAL_LIMITE;
-  return (
-    REAL_LIMITE +
-    ((v - VISUAL_LIMITE) / (VISUAL_MAX - VISUAL_LIMITE)) * (10 - REAL_LIMITE)
-  );
-}
-
-const TICKS_REALES = [0, 2, 4, 6, 8, 10];
-const TICKS_VISUALES = TICKS_REALES.map(realAVisual);
+// Ticks visibles (7 valores → 6 tramos iguales).
+const TICKS_REALES = [-2, 0, 2, 4, 6, 8, 10];
 
 export default function RadarJugador({
   jugador,
@@ -122,7 +114,10 @@ export default function RadarJugador({
     };
     for (const s of seriesFinales) {
       const real = s.jugador.valoracionPonderadaPorFundamento[f] ?? 0;
-      row[s.id] = Number(realAVisual(real).toFixed(3));
+      // Clampeamos al rango [REAL_MIN, REAL_MAX] para evitar que un
+      // valor fuera de rango deforme el radar.
+      const clamped = Math.max(REAL_MIN, Math.min(REAL_MAX, real));
+      row[s.id] = Number(clamped.toFixed(3));
     }
     return row;
   });
@@ -165,11 +160,9 @@ export default function RadarJugador({
             />
             <PolarRadiusAxis
               angle={90}
-              domain={[0, VISUAL_MAX]}
-              ticks={TICKS_VISUALES as any}
-              tickFormatter={(v) =>
-                String(Math.round(visualAReal(Number(v))))
-              }
+              domain={[REAL_MIN, REAL_MAX]}
+              ticks={TICKS_REALES as any}
+              tickFormatter={(v) => String(v)}
               tick={{ fill: "#94a3b8", fontSize: 10 }}
               axisLine={false}
               tickLine={false}
