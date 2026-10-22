@@ -73,6 +73,8 @@ const APEX_LIBRE_MIN = 3.0; // 300 cm
 const APEX_LIBRE_MAX = 9.0; // 900 cm
 
 // Altura mínima para pasar la red (red + 10 cm).
+// SOLO se usa para ataques que salen desde abajo de esa altura.
+// La libre NUNCA pasa por acá: es una parábola pura.
 const ALTURA_MIN_RED_CRUCE = ALTURA_RED + 0.1; // 2.53
 
 // ============================================================
@@ -582,21 +584,19 @@ function generarPuntosArmado(
 //   - Toque (p = 1.8): se mantiene alto al principio, cae empinado
 //     al final → visualmente "caída más vertical".
 //
+// En modo punto-completo, el ataque IGNORA el override del siguiente.
+// Si es la última visible cae a 0; si no, cae a 0.5 (piso).
+//
 function generarPuntosAtaque(
   a: AccionVisual,
-  hDestinoOverride?: number
+  _hDestinoOverride?: number
 ): [number, number, number][] {
   const origen = obtenerCoords(a.origen_celda, a.origen_mini);
   const destino = obtenerCoords(a.destino_celda, a.destino_mini);
   if (!origen || !destino) return [];
 
   const h0 = hOrigenPorTipo(a);
-  const hT =
-    hDestinoOverride !== undefined
-      ? hDestinoOverride
-      : a.es_ultima_del_punto
-      ? 0
-      : hDestinoDefaultPorTipo(a);
+  const hT = a.es_ultima_del_punto ? 0 : 0.5;
 
   const esToque = a.variante === "toque";
   const destinoEnRed = (a.destino_celda ?? "").startsWith("RED-");
@@ -691,9 +691,9 @@ function calcularApexExtra(a: AccionVisual, cruzaRed: boolean): number {
   const esToque = a.tipo === "ataque" && a.variante === "toque";
 
   if (a.tipo === "libre") {
-    // Fallback: si la libre tiene desvíos (no es un tramo simple), se
-    // usa un valor fijo según cruce de red. El caso "sin desvíos" tiene
-    // su propio cálculo de apex absoluto en accionAPuntos.
+    // Si la libre tiene desvíos (no es un tramo simple), se usa un
+    // valor fijo según cruce de red. El caso "sin desvíos" tiene su
+    // propio cálculo de apex absoluto en accionAPuntos.
     return cruzaRed ? 4.2 : 3.6;
   }
   if (esToque) {
@@ -704,8 +704,8 @@ function calcularApexExtra(a: AccionVisual, cruzaRed: boolean): number {
   return 0.4;
 }
 
-function calcularCurvatura(a: AccionVisual): number {
-  if (a.tipo === "libre") return 1.8;
+// Para todas las acciones usamos curvatura 1 (arco normal).
+function calcularCurvatura(_a: AccionVisual): number {
   return 1;
 }
 
@@ -742,8 +742,9 @@ export function accionAPuntos(
 
   // El ataque / toque se dibuja con su lógica especial (2 tramos si
   // cruza la red, exponente distinto para remate vs toque).
+  // Ignora el override del siguiente.
   if (a.tipo === "ataque") {
-    return generarPuntosAtaque(a, hDestinoOverride);
+    return generarPuntosAtaque(a);
   }
 
   const origen = obtenerCoords(a.origen_celda, a.origen_mini);
@@ -751,12 +752,21 @@ export function accionAPuntos(
   if (!origen || !destino) return [];
 
   const h0 = hOrigenPorTipo(a);
-  const hT =
-    hDestinoOverride !== undefined
-      ? hDestinoOverride
-      : a.es_ultima_del_punto
-      ? 0
-      : hDestinoDefaultPorTipo(a);
+
+  // Para la libre, ignorar el override del siguiente. El override del
+  // armado hacía que la libre subiera de 1.5 a 2.35 y no se viera como
+  // parábola.
+  let hT: number;
+  if (a.tipo === "libre") {
+    hT = a.es_ultima_del_punto ? 0 : 1.5;
+  } else {
+    hT =
+      hDestinoOverride !== undefined
+        ? hDestinoOverride
+        : a.es_ultima_del_punto
+        ? 0
+        : hDestinoDefaultPorTipo(a);
+  }
 
   const ladoO = ladoDeCelda(a.origen_celda);
   const ladoD = ladoDeCelda(a.destino_celda);
@@ -773,7 +783,7 @@ export function accionAPuntos(
     // con arco máx = 1 en t=0.5 y hBase en t=0.5 = (h0 + hT) / 2.
     // Entonces el apex final = (h0 + hT) / 2 + apexExtra.
     // Para que apex final = apexAbs: apexExtra = apexAbs - (h0+hT)/2.
-    apexExtra = Math.max(0, apexAbs - (h0 + hT) / 2);
+    apexExtra = Math.max(0.5, apexAbs - (h0 + hT) / 2);
   } else {
     apexExtra = calcularApexExtra(a, cruzaRed);
   }
@@ -825,7 +835,15 @@ export function accionAPuntos(
 
     let segPts: [number, number, number][];
 
-    if (subCross && !esCeldaEnRed(w1.celda) && !esCeldaEnRed(w2.celda)) {
+    // El waypoint forzado de red (2.53) SOLO se usa para acciones que
+    // no son libres. La libre es SIEMPRE una parábola pura, sin
+    // forzar el paso por la red a 2.53.
+    if (
+      subCross &&
+      !esCeldaEnRed(w1.celda) &&
+      !esCeldaEnRed(w2.celda) &&
+      a.tipo !== "libre"
+    ) {
       const dz = w2.z - w1.z;
       const tRed = dz !== 0 ? Math.abs(w1.z) / Math.abs(dz) : 0.5;
       const xRed = w1.x + tRed * (w2.x - w1.x);
