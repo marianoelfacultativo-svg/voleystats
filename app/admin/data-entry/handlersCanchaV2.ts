@@ -192,24 +192,22 @@ export function crearHandlersCancha(params: Params) {
       }
     }
 
-    const nueva: LineaClasificada = {
-      id: `l-${contadorId}`,
-      tipo: res.tipo,
-      esRival: res.esRival,
-      jugadorId: jugadorFinal,
-      origen,
-      destino,
-      desvios:
-        desviosPendientes.length > 0 ? [...desviosPendientes] : undefined,
-      subtipo: subtipoFinal,
-      tipoSaque: tipoSaqueFinal,
-      posicionInicial: estrella ? { ...estrella } : null,
-      equipoId: equipoAccionFinal,
-    };
-
-    // --- SPLIT: Si es bloqueo propio y el origen es rival, separar en ataque + bloqueo
+    // --- SPLIT: ataque / bloqueo propio con origen rival ---
+    //
+    // Si la línea viene desde cancha rival, tiene un desvío en bloqueo
+    // propio, y se clasifica como "ataque" o "bloqueo" PROPIO, en
+    // realidad son DOS acciones: un ataque rival + un bloqueo propio.
+    //
+    // Antes este SPLIT solo se disparaba con tipo="bloqueo". Eso hacía
+    // que cuando `comoAtaque` daba true (destino rival/fuera), la línea
+    // se guardara como 1 sola acción de ataque con es_rival=false y el
+    // jugador de nuestro bloqueo (BUG: el ataque rival aparecía como
+    // propio y en cancha rival).
+    //
+    // Ahora también se dispara con tipo="ataque", así siempre se separa
+    // en las 2 acciones correctas.
     if (
-      res.tipo === "bloqueo" &&
+      (res.tipo === "bloqueo" || res.tipo === "ataque") &&
       !res.esRival &&
       /^F[456]-/.test(origen.celda)
     ) {
@@ -251,6 +249,21 @@ export function crearHandlersCancha(params: Params) {
         return;
       }
     }
+
+    const nueva: LineaClasificada = {
+      id: `l-${contadorId}`,
+      tipo: res.tipo,
+      esRival: res.esRival,
+      jugadorId: jugadorFinal,
+      origen,
+      destino,
+      desvios:
+        desviosPendientes.length > 0 ? [...desviosPendientes] : undefined,
+      subtipo: subtipoFinal,
+      tipoSaque: tipoSaqueFinal,
+      posicionInicial: estrella ? { ...estrella } : null,
+      equipoId: equipoAccionFinal,
+    };
 
     setLineas((prev) => [...prev, nueva]);
     setContadorId((c) => c + 1);
