@@ -443,13 +443,13 @@ const HandMesh = React.memo(function HandMesh({
 
 const HandPair = React.memo(function HandPair({
   color,
-  haciaRed,
+  rotationX,
 }: {
   color: string;
-  haciaRed: 1 | -1;
+  rotationX: number;
 }) {
   return (
-    <group rotation={[haciaRed * -0.25, 0, 0]}>
+    <group rotation={[rotationX, 0, 0]}>
       <group position={[-0.12, 0, 0]}>
         <HandMesh color={color} esDerecha={false} />
       </group>
@@ -464,14 +464,16 @@ const HandPair = React.memo(function HandPair({
 // BLOQUEADORES VISUAL — manos en la red
 // ============================================================
 //
-// Reglas (v19.3):
+// Reglas (v19.4):
 //   - UN par de manos POR ACCIÓN DE BLOQUEO.
 //   - X según la MINI-COLUMNA (9 columnas a lo ancho de cada celda
 //     BLOQ). La red es horizontal → la escala es solo de ancho.
 //   - Y según la MINI-FILA del bloqueo:
-//       * m1 (arriba en el SVG) → Y más alto
-//       * m2 (abajo en el SVG)  → Y más bajo
-//     Rango total de variación: ±20 cm (ALTURA_BLOQUEO_SPAN / 2).
+//       * m1 (arriba en el SVG) → Y más alta (2.75)
+//       * m2 (abajo en el SVG)  → Y más baja (2.55)
+//   - Inclinación (rotación X):
+//       * m1 (arriba) → inclinadas hacia la RED ("para adelante")
+//       * m2 (abajo)  → inclinación leve (comportamiento original)
 //   - Z fijo cerca de la red (±0.28 m), apuntando al lado del
 //     bloqueador (propias → +z, rivales → -z).
 //   - Fallback: si el bloqueo viene de un ataque sin acción de
@@ -488,8 +490,18 @@ interface ManoItem {
 }
 
 const MINI_COLS_BLOQUEO = 9;
-const MINI_FILS_BLOQUEO = 2;
-const ALTURA_BLOQUEO_SPAN = 0.4;
+
+// Alturas nuevas del bloqueo visual.
+// - m2 (abajo) queda donde estaba el m1 viejo (2.55).
+// - m1 (arriba) queda 20 cm más arriba (2.75).
+const ALTURA_BLOQUEO_M2 = ALTURA_BLOQUEO + 0.1; // 2.55
+const ALTURA_BLOQUEO_M1 = ALTURA_BLOQUEO_M2 + 0.2; // 2.75
+
+// Inclinaciones (rotación X en radianes, con signo según el lado):
+// - m1 (arriba): ±0.55 → se inclina claramente hacia la red.
+// - m2 (abajo):  ±0.25 → inclinación suave (comportamiento previo).
+const INCLINACION_ARRIBA = 0.55;
+const INCLINACION_ABAJO = 0.25;
 
 function xDesdeCeldaMini(celda: string, mini: string | null): number | null {
   const col = celda.split("-")[2] || "C3";
@@ -510,21 +522,28 @@ function xDesdeCeldaMini(celda: string, mini: string | null): number | null {
 
 /**
  * Devuelve la altura (Y) del par de manos según la mini-fila.
- * Mini-fila 1 (arriba en el SVG) → más alto.
- * Mini-fila 2 (abajo en el SVG)  → más bajo.
+ * Mini-fila 1 (arriba en el SVG) → 2.75
+ * Mini-fila 2 (abajo en el SVG)  → 2.55
  */
 function yDesdeMiniRow(mini: string | null): number {
-  if (!mini) return ALTURA_BLOQUEO;
+  if (!mini) return ALTURA_BLOQUEO_M2;
   const match = mini.match(/^m(\d+)-(\d+)$/);
-  if (!match) return ALTURA_BLOQUEO;
-
+  if (!match) return ALTURA_BLOQUEO_M2;
   const fila = parseInt(match[1], 10);
-  if (fila < 1) return ALTURA_BLOQUEO;
-  if (fila > MINI_FILS_BLOQUEO) return ALTURA_BLOQUEO;
+  return fila === 1 ? ALTURA_BLOQUEO_M1 : ALTURA_BLOQUEO_M2;
+}
 
-  const frac = (fila - 0.5) / MINI_FILS_BLOQUEO;
-  const offset = (0.5 - frac) * ALTURA_BLOQUEO_SPAN;
-  return ALTURA_BLOQUEO + offset;
+/**
+ * Devuelve la rotación X (en radianes).
+ * - Fila arriba: inclinación hacia la red (fuerte).
+ * - Fila abajo: inclinación suave.
+ * - Propias (haciaRed = -1): negativa (top tilts toward -Z = net).
+ * - Rivales (haciaRed = +1): positiva (top tilts toward +Z = net).
+ */
+function rotationXDesdeMini(mini: string | null, esPropio: boolean): number {
+  const esFilaArriba = mini?.startsWith("m1-") ?? false;
+  const inclinacion = esFilaArriba ? INCLINACION_ARRIBA : INCLINACION_ABAJO;
+  return esPropio ? -inclinacion : inclinacion;
 }
 
 export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
@@ -604,16 +623,16 @@ export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
         if (centroX === null) return null;
 
         const centroY = yDesdeMiniRow(it.mini);
+        const rotationX = rotationXDesdeMini(it.mini, it.esPropio);
 
         const z = it.esPropio ? 0.28 : -0.28;
-        const haciaRed: 1 | -1 = it.esPropio ? -1 : 1;
 
         return (
           <group
             key={it.key}
             position={[centroX, centroY, z]}
           >
-            <HandPair color={it.color} haciaRed={haciaRed} />
+            <HandPair color={it.color} rotationX={rotationX} />
           </group>
         );
       })}

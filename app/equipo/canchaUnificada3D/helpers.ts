@@ -78,8 +78,10 @@ const APEX_LIBRE_MAX = 9.0; // 900 cm
 const ALTURA_MIN_RED_CRUCE = ALTURA_RED + 0.1; // 2.53
 
 // Altura del bloqueo (donde se producen los desvíos).
-// Tiene que coincidir con el centro de las manos en visuales.tsx.
-export const ALTURA_BLOQUEO = 2.45;
+// Tiene que coincidir con el centro de las manos en visuales.tsx
+// para la mini-fila m2 (la de abajo, 2.55). La m1 (arriba) queda
+// 20 cm más arriba (2.75) por pedido del usuario.
+export const ALTURA_BLOQUEO = 2.55;
 
 // ============================================================
 // HELPERS DE COORDENADAS
@@ -115,8 +117,6 @@ export function obtenerCoords(
     const col = celda.split("-")[2] || "C3";
     const rangoX = COL_X[col];
     if (!rangoX) return null;
-    // El bloqueo pasa apenas al otro lado (0.1 m en vez de 0.3)
-    // para que la curva no se vaya tanto a la cancha rival.
     const z = celda.startsWith("BLOQ-P-") ? 0.1 : -0.1;
     return { x: (rangoX[0] + rangoX[1]) / 2, z };
   }
@@ -487,8 +487,6 @@ function generarPuntosArmado(
     hDestino = ALTURA_DESTINO_MEDIA + (ry - 0.5) * VARIANZA_GENERAL;
   }
 
-  // En modo punto-completo, el armado termina a la altura del punto de
-  // contacto del siguiente ataque (para que la pelota no caiga al piso).
   if (hDestinoOverride !== undefined) {
     hDestino = hDestinoOverride;
   }
@@ -499,7 +497,6 @@ function generarPuntosArmado(
   const [fila] = (a.origen_celda ?? "F3").split("-");
   const rApex = prand(seed, "-apex");
 
-  // Apex según velocidad (si está definida) o según calidad (fallback).
   let apex: number;
   const rangoVel =
     a.velocidad !== null && a.velocidad !== undefined
@@ -539,9 +536,6 @@ function generarPuntosArmado(
   const pasos = 40;
   const pts: [number, number, number][] = [];
 
-  // Si el apex queda por debajo del destino (altura del ataque), la
-  // pelota no puede bajar: se dibuja solo la mitad ascendente del arco
-  // (ease-out) hasta el punto de contacto.
   if (hDestinoOverride !== undefined && apex < hDestino) {
     for (let i = 0; i <= pasos; i++) {
       const t = i / pasos;
@@ -572,36 +566,7 @@ function generarPuntosArmado(
 // ============================================================
 // ATAQUE / TOQUE — CURVA ÚNICA SUAVE (SIN CODOS)
 // ============================================================
-//
-// El ataque y el toque se dibujan con UNA SOLA curva suave
-// (sin cambio de dirección abrupto en la red).
-//
-// Tres casos:
-//
-// 1. NO cruza la red (o va a la red misma):
-//    → curva `pow` única, sin codos.
-//    → ataque: p = 0.7 (baja rápido, se achata al final → horizontal)
-//    → toque:  p = 1.8 (baja lento, cae empinado al final → vertical)
-//
-// 2. Cruza la red y el punto de contacto ya está ≥ 2.53:
-//    → si la curva `pow` ya pasa por la red a ≥ 2.53, la uso directo
-//      (suave, sin codos, con la diferencia ataque/toque por p)
-//    → si no, uso CatmullRom con un waypoint forzado en la red a 2.53
-//      (también C1, sin codo)
-//
-// 3. Cruza la red y el punto de contacto está < 2.53:
-//    → la pelota sube a 2.53 al cruzar la red y baja al destino.
-//    → uso CatmullRom con waypoints intermedios (suave).
-//    → la diferencia ataque/toque se logra moviendo el waypoint
-//      intermedio: ataque sube rápido, toque sube lento.
-//
-// 4. Tiene desvío en bloqueo (BLOQ-P-* o BLOQ-R-*):
-//    → la pelota pasa por la red a z=0 y toca el bloqueo a z=±0.1,
-//      para que no se vaya tanto a la cancha rival.
-//    → de ahí sigue al destino.
-//    → Si el destino es el bloqueo, no cae al piso: se queda en la
-//      altura del bloqueo.
-//
+
 function generarPuntosAtaque(
   a: AccionVisual,
   _hDestinoOverride?: number
@@ -612,7 +577,6 @@ function generarPuntosAtaque(
 
   const h0 = hOrigenPorTipo(a);
 
-  // FIX: Si el destino es el bloqueo, el balón no debe caer al piso.
   const esDestinoBloqueo = (a.destino_celda ?? "").startsWith("BLOQ-");
   const hT = esDestinoBloqueo
     ? ALTURA_BLOQUEO
@@ -620,7 +584,6 @@ function generarPuntosAtaque(
     ? 0
     : 0.5;
 
-  // --- Caso 4: tiene desvío en bloqueo ---
   const desviosArr = a.desvios ?? [];
   const bloqueoDesvio = desviosArr.find(
     (d) => d.celda.startsWith("BLOQ-R-") || d.celda.startsWith("BLOQ-P-")
@@ -629,8 +592,6 @@ function generarPuntosAtaque(
   if (bloqueoDesvio) {
     const bCoords = obtenerCoords(bloqueoDesvio.celda, bloqueoDesvio.mini);
     if (bCoords) {
-      // Waypoint exactamente en la red (z=0) para que la curva no
-      // se vaya mucho a la cancha rival antes de tocar el bloqueo.
       const dz = bCoords.z - origen.z;
       const tRed = dz !== 0 ? Math.abs(origen.z) / Math.abs(dz) : 0.5;
       const xRed = origen.x + tRed * (bCoords.x - origen.x);
@@ -672,12 +633,9 @@ function generarPuntosAtaque(
   const tRed = dz !== 0 ? Math.abs(origen.z) / Math.abs(dz) : 0.5;
   const xRed = origen.x + tRed * (destino.x - origen.x);
 
-  // Caso 2: la pelota ya está arriba del mínimo
   if (h0 >= ALTURA_MIN_RED_CRUCE) {
-    // ¿La curva pow pasa por la red a ≥ 2.53?
     const yRedPow = h0 - (h0 - hT) * Math.pow(tRed, pDesc);
     if (yRedPow >= ALTURA_MIN_RED_CRUCE) {
-      // Sí: usar la curva pow directamente (suave, sin codo)
       const pts: [number, number, number][] = [];
       const pasos = 60;
       for (let i = 0; i <= pasos; i++) {
@@ -689,7 +647,6 @@ function generarPuntosAtaque(
       }
       return pts;
     }
-    // No: forzar el paso por la red con CatmullRom (suave)
     const waypoints: [number, number, number][] = [
       [origen.x, h0, origen.z],
       [xRed, ALTURA_MIN_RED_CRUCE, 0],
@@ -698,7 +655,6 @@ function generarPuntosAtaque(
     return catmullRom3(waypoints, 60);
   }
 
-  // Caso 3: h0 < 2.53. Sube a 2.53 en la red y baja al destino.
   const midX = origen.x + (xRed - origen.x) * 0.55;
   const midZ = origen.z * 0.45;
   const midH = esToque
@@ -718,11 +674,6 @@ function generarPuntosAtaque(
 // TRAYECTORIA GENERAL
 // ============================================================
 
-/**
- * Apex "extra" por tipo de acción (se suma a la altura base de la
- * parábola). Para "libre" se calcula aparte (ver accionAPuntos) usando
- * la distancia real recorrida entre origen y destino.
- */
 function calcularApexExtra(a: AccionVisual, cruzaRed: boolean): number {
   const esToque = a.tipo === "ataque" && a.variante === "toque";
 
@@ -770,7 +721,6 @@ export function accionAPuntos(
 
   const h0 = hOrigenPorTipo(a);
 
-  // FIX: Si el destino es el bloqueo, el balón no debe caer al piso.
   const esDestinoBloqueo = (a.destino_celda ?? "").startsWith("BLOQ-");
 
   let hT: number;
