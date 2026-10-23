@@ -16,12 +16,14 @@ import { colorPorValoracion } from "../adaptadorUnificadoV2";
 
 import {
   ALTURA_BANDA_INFERIOR,
-  ALTURA_BLOQUEO,
+  ALTURA_BLOQUEO_M1,
+  ALTURA_BLOQUEO_M2,
   ALTURA_RED,
   COL_X,
   RED_X_MAX,
   RED_X_MIN,
   SEGUNDOS_POR_ACCION,
+  Z_BLOQUEO,
   type Vista,
 } from "./helpers";
 
@@ -464,18 +466,18 @@ const HandPair = React.memo(function HandPair({
 // BLOQUEADORES VISUAL — manos en la red
 // ============================================================
 //
-// Reglas (v19.4):
+// Reglas (v19.5):
 //   - UN par de manos POR ACCIÓN DE BLOQUEO.
 //   - X según la MINI-COLUMNA (9 columnas a lo ancho de cada celda
 //     BLOQ). La red es horizontal → la escala es solo de ancho.
-//   - Y según la MINI-FILA del bloqueo:
-//       * m1 (arriba en el SVG) → Y más alta (2.75)
-//       * m2 (abajo en el SVG)  → Y más baja (2.55)
-//   - Inclinación (rotación X):
-//       * m1 (arriba) → inclinadas hacia la RED ("para adelante")
-//       * m2 (abajo)  → inclinación leve (comportamiento original)
-//   - Z fijo cerca de la red (±0.28 m), apuntando al lado del
-//     bloqueador (propias → +z, rivales → -z).
+//   - Y según la MINI-FILA:
+//       * m1 (arriba) → 2.75, inclinadas hacia la red.
+//       * m2 (abajo)  → 2.55, inclinación leve.
+//     Valores exactos vienen de helpers.ts
+//     (ALTURA_BLOQUEO_M1 / ALTURA_BLOQUEO_M2).
+//   - Z = ±Z_BLOQUEO (0.1 m), MUY pegado a la red.
+//     Propias → +Z, rivales → -Z. Coincide con lo que usa
+//     helpers.ts para el waypoint del codo en el bloqueo.
 //   - Fallback: si el bloqueo viene de un ataque sin acción de
 //     bloqueo separada (datos pre-split) o si estás filtrando
 //     "solo rivales" (la acción de bloqueo no está en pantalla),
@@ -491,15 +493,6 @@ interface ManoItem {
 
 const MINI_COLS_BLOQUEO = 9;
 
-// Alturas nuevas del bloqueo visual.
-// - m2 (abajo) queda donde estaba el m1 viejo (2.55).
-// - m1 (arriba) queda 20 cm más arriba (2.75).
-const ALTURA_BLOQUEO_M2 = ALTURA_BLOQUEO + 0.1; // 2.55
-const ALTURA_BLOQUEO_M1 = ALTURA_BLOQUEO_M2 + 0.2; // 2.75
-
-// Inclinaciones (rotación X en radianes, con signo según el lado):
-// - m1 (arriba): ±0.55 → se inclina claramente hacia la red.
-// - m2 (abajo):  ±0.25 → inclinación suave (comportamiento previo).
 const INCLINACION_ARRIBA = 0.55;
 const INCLINACION_ABAJO = 0.25;
 
@@ -520,11 +513,6 @@ function xDesdeCeldaMini(celda: string, mini: string | null): number | null {
   return x0 + frac * ancho;
 }
 
-/**
- * Devuelve la altura (Y) del par de manos según la mini-fila.
- * Mini-fila 1 (arriba en el SVG) → 2.75
- * Mini-fila 2 (abajo en el SVG)  → 2.55
- */
 function yDesdeMiniRow(mini: string | null): number {
   if (!mini) return ALTURA_BLOQUEO_M2;
   const match = mini.match(/^m(\d+)-(\d+)$/);
@@ -533,13 +521,6 @@ function yDesdeMiniRow(mini: string | null): number {
   return fila === 1 ? ALTURA_BLOQUEO_M1 : ALTURA_BLOQUEO_M2;
 }
 
-/**
- * Devuelve la rotación X (en radianes).
- * - Fila arriba: inclinación hacia la red (fuerte).
- * - Fila abajo: inclinación suave.
- * - Propias (haciaRed = -1): negativa (top tilts toward -Z = net).
- * - Rivales (haciaRed = +1): positiva (top tilts toward +Z = net).
- */
 function rotationXDesdeMini(mini: string | null, esPropio: boolean): number {
   const esFilaArriba = mini?.startsWith("m1-") ?? false;
   const inclinacion = esFilaArriba ? INCLINACION_ARRIBA : INCLINACION_ABAJO;
@@ -556,8 +537,6 @@ export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
     const covered = new Set<string>();
 
     // 1) Una acción de bloqueo → un par en el ORIGEN.
-    //    No se dedupea por celda: si hay 2 bloqueos en la misma
-    //    celda+mini, se dibujan los 2 pares.
     for (const a of acciones) {
       if (a.tipo !== "bloqueo") continue;
       const celdaOrig = a.origen_celda;
@@ -573,9 +552,7 @@ export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
       });
     }
 
-    // 2) Fallback: ataque post-split con DESTINO en el bloqueo
-    //    (cubre "Solo rivales": la acción de bloqueo propia no
-    //    está en la lista, pero el ataque rival sí).
+    // 2) Fallback: ataque post-split con DESTINO en el bloqueo.
     for (const a of acciones) {
       const celdaDest = a.destino_celda;
       if (!celdaDest || !celdaDest.startsWith("BLOQ-")) continue;
@@ -625,7 +602,9 @@ export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
         const centroY = yDesdeMiniRow(it.mini);
         const rotationX = rotationXDesdeMini(it.mini, it.esPropio);
 
-        const z = it.esPropio ? 0.28 : -0.28;
+        // Z = ±Z_BLOQUEO (0.1 m), pegado a la red.
+        // Coincide con el waypoint del codo en helpers.ts.
+        const z = it.esPropio ? Z_BLOQUEO : -Z_BLOQUEO;
 
         return (
           <group

@@ -77,11 +77,49 @@ const APEX_LIBRE_MAX = 9.0; // 900 cm
 // La libre NUNCA pasa por acá: es una parábola pura.
 const ALTURA_MIN_RED_CRUCE = ALTURA_RED + 0.1; // 2.53
 
-// Altura del bloqueo (donde se producen los desvíos).
-// Tiene que coincidir con el centro de las manos en visuales.tsx
-// para la mini-fila m2 (la de abajo, 2.55). La m1 (arriba) queda
-// 20 cm más arriba (2.75) por pedido del usuario.
-export const ALTURA_BLOQUEO = 2.55;
+// ------------------------------------------------------------
+// ALTURAS Y Z DEL BLOQUEO
+// ------------------------------------------------------------
+// - M2 (mini-fila 2, la de abajo del SVG) → 2.55
+// - M1 (mini-fila 1, la de arriba del SVG) → 2.75
+// - Z_BLOQUEO: los pares de manos y los puntos de contacto del
+//   balón quedan a 10 cm de la red (antes 28 cm). Así queda
+//   "pegado a la red" y las líneas se conectan con las manos.
+export const ALTURA_BLOQUEO_M2 = 2.55;
+export const ALTURA_BLOQUEO_M1 = 2.75;
+export const ALTURA_BLOQUEO = ALTURA_BLOQUEO_M2; // default
+export const Z_BLOQUEO = 0.1;
+
+// ============================================================
+// HELPERS DE BLOQUEO
+// ============================================================
+
+/** Altura de la mano del bloqueo según la mini-fila. */
+export function alturaBloqueoPara(mini: string | null | undefined): number {
+  if (!mini) return ALTURA_BLOQUEO_M2;
+  const match = mini.match(/^m(\d+)-(\d+)$/);
+  if (!match) return ALTURA_BLOQUEO_M2;
+  const fila = parseInt(match[1], 10);
+  return fila === 1 ? ALTURA_BLOQUEO_M1 : ALTURA_BLOQUEO_M2;
+}
+
+/** X del bloqueo según la mini-columna (9 columnas a lo ancho). */
+function xBloqueoDesdeMini(
+  celda: string,
+  mini: string | null
+): number | null {
+  const col = celda.split("-")[2] || "C3";
+  const rango = COL_X[col];
+  if (!rango) return null;
+  const [x0, x1] = rango;
+  const ancho = x1 - x0;
+  if (!mini) return (x0 + x1) / 2;
+  const match = mini.match(/^m(\d+)-(\d+)$/);
+  if (!match) return (x0 + x1) / 2;
+  const miniCol = parseInt(match[2], 10);
+  const frac = (miniCol - 0.5) / 9;
+  return x0 + frac * ancho;
+}
 
 // ============================================================
 // HELPERS DE COORDENADAS
@@ -114,11 +152,10 @@ export function obtenerCoords(
   if (celda.startsWith("D")) return destinoSaquePos(celda);
 
   if (celda.startsWith("BLOQ-P-") || celda.startsWith("BLOQ-R-")) {
-    const col = celda.split("-")[2] || "C3";
-    const rangoX = COL_X[col];
-    if (!rangoX) return null;
-    const z = celda.startsWith("BLOQ-P-") ? 0.1 : -0.1;
-    return { x: (rangoX[0] + rangoX[1]) / 2, z };
+    const x = xBloqueoDesdeMini(celda, mini);
+    if (x === null) return null;
+    const z = celda.startsWith("BLOQ-P-") ? Z_BLOQUEO : -Z_BLOQUEO;
+    return { x, z };
   }
 
   if (celda.startsWith("RED-")) {
@@ -224,19 +261,7 @@ function prand(seed: string, key: string): number {
 // ============================================================
 // ALTURA DEL PUNTO DE CONTACTO DEL REMATE
 // ============================================================
-//
-// La altura del remate depende de la calidad del armado previo (1-6).
-// Se sortea de forma determinística por acción (mismo id → misma altura
-// entre re-renders), pero el valor es 100% aleatorio dentro del rango.
-//
-// Rangos (en metros, al centro de la pelota):
-//   5-6 (genial/perfecto) → 2.75 – 2.85
-//   4   (correcto)        → 2.55 – 2.70
-//   3   (flojo)           → 2.50 – 2.55
-//   2   (malo)            → 2.50 – 2.55
-//   1   (horrible)        → 2.00 – 2.35
-//   sin armado previo     → 2.80 fijo
-//
+
 function rangoAlturaRemate(
   calidad: number | null | undefined
 ): { min: number; max: number } | null {
@@ -259,17 +284,7 @@ function alturaRemate(a: AccionVisual): number {
 // ============================================================
 // RANGO DE APEX DEL ARMADO SEGÚN VELOCIDAD
 // ============================================================
-//
-// La velocidad del armado define el apex del arco:
-//   1   → 2.75 fijo
-//   1.5 → 3.00 – 3.15
-//   2   → 3.40 – 3.80
-//   3   → 4.00 – 5.00
-//   5   → 7.00 – 9.00
-//
-// Dentro del rango, cuanto más lejos va la pelota, más alto el apex
-// (normalizado contra ~9 m de recorrido).
-//
+
 function rangoAlturaVelocidad(v: number): { min: number; max: number } | null {
   if (v === 1) return { min: 2.75, max: 2.75 };
   if (v === 1.5) return { min: 3.0, max: 3.15 };
@@ -294,7 +309,9 @@ export function hOrigenPorTipo(a: AccionVisual): number {
     case "ataque":
       return alturaRemate(a);
     case "bloqueo":
-      return 2.6;
+      // La mano del bloqueo está a la altura del mini-fila
+      // (m1 → 2.75, m2 → 2.55).
+      return alturaBloqueoPara(a.origen_mini);
     case "defensa":
       return 0.3;
     case "libre":
@@ -329,10 +346,14 @@ function hDestinoDefaultPorTipo(a: AccionVisual): number {
   }
 }
 
-function alturaDeCeldaEspecial(celda: string | null | undefined): number {
+/** Altura de un waypoint intermedio (desvío). */
+function alturaDeWaypoint(
+  celda: string | null | undefined,
+  mini: string | null | undefined
+): number {
   if (!celda) return 1.5;
   if (celda.startsWith("RED-")) return ALTURA_RED;
-  if (celda.startsWith("BLOQ-")) return ALTURA_BLOQUEO;
+  if (celda.startsWith("BLOQ-")) return alturaBloqueoPara(mini);
   if (celda.startsWith("FUERA-ARR-") || celda.startsWith("FUERA-ABA-"))
     return 0.5;
   return 1.5;
@@ -568,18 +589,12 @@ function generarPuntosArmado(
 // ============================================================
 //
 // Reglas:
-//   1. Sin desvío de bloqueo:
-//      - No cruza red: curva pow única (p = 0.7 ataque / 1.8 toque).
-//      - Cruza red: si la pow pasa por encima de 2.53, se usa directo.
-//        Si no, CatmullRom con waypoint en la red.
+//   1. Sin desvío de bloqueo: curva suave tradicional.
 //   2. Con desvío de bloqueo (BLOQ-P-* o BLOQ-R-*):
-//      - La pelota SUBE hasta el bloqueo (curva con pendiente positiva
-//        al llegar → ease-in t^1.3).
-//      - En el bloqueo HACE UN CODO VISIBLE (cambio de dirección).
-//      - Baja hacia el destino (curva con pendiente negativa fuerte al
-//        salir → ease-out 1-(1-t)^1.6).
-//      - Los dos tramos NO se suavizan entre sí: el codo queda marcado.
-//      - Si el destino ES el bloqueo, solo se dibuja la subida.
+//      - Sube desde origen hasta el bloqueo (pendiente positiva).
+//      - CODO VISIBLE en el bloqueo (cambio de dirección brusco).
+//      - Baja desde el bloqueo al destino.
+//      - La Y del codo es la Y de la mano (2.55 m2 / 2.75 m1).
 
 function generarPuntosAtaque(
   a: AccionVisual,
@@ -593,7 +608,7 @@ function generarPuntosAtaque(
 
   const esDestinoBloqueo = (a.destino_celda ?? "").startsWith("BLOQ-");
   const hT = esDestinoBloqueo
-    ? ALTURA_BLOQUEO
+    ? alturaBloqueoPara(a.destino_mini)
     : a.es_ultima_del_punto
     ? 0
     : 0.5;
@@ -607,6 +622,8 @@ function generarPuntosAtaque(
   if (bloqueoDesvio) {
     const bCoords = obtenerCoords(bloqueoDesvio.celda, bloqueoDesvio.mini);
     if (bCoords) {
+      const alturaCodo = alturaBloqueoPara(bloqueoDesvio.mini);
+
       // Subida: origen → bloqueo, pendiente positiva al llegar.
       const pasosSubida = 32;
       const subida: [number, number, number][] = [];
@@ -615,11 +632,10 @@ function generarPuntosAtaque(
         const x = origen.x + t * (bCoords.x - origen.x);
         const z = origen.z + t * (bCoords.z - origen.z);
         const p = Math.pow(t, 1.3);
-        const h = h0 + (ALTURA_BLOQUEO - h0) * p;
+        const h = h0 + (alturaCodo - h0) * p;
         subida.push([x, Math.max(0.05, h), z]);
       }
 
-      // Si el destino es el propio bloqueo, no hay bajada.
       if (esDestinoBloqueo) {
         return subida;
       }
@@ -632,11 +648,11 @@ function generarPuntosAtaque(
         const x = bCoords.x + t * (destino.x - bCoords.x);
         const z = bCoords.z + t * (destino.z - bCoords.z);
         const p = 1 - Math.pow(1 - t, 1.6);
-        const h = ALTURA_BLOQUEO - (ALTURA_BLOQUEO - hT) * p;
+        const h = alturaCodo - (alturaCodo - hT) * p;
         bajada.push([x, Math.max(0.05, h), z]);
       }
 
-      // Unión SIN suavizar → el codo queda visible.
+      // Unión sin suavizar → el codo queda visible.
       bajada.shift();
       return [...subida, ...bajada];
     }
@@ -651,7 +667,6 @@ function generarPuntosAtaque(
   const ladoD = ladoDeCelda(a.destino_celda);
   const cruzaRed = ladoO !== null && ladoD !== null && ladoO !== ladoD;
 
-  // ---------- Caso 1: sin red (o destino en red) ----------
   if (destinoEnRed || !cruzaRed) {
     const pts: [number, number, number][] = [];
     const pasos = 50;
@@ -665,7 +680,6 @@ function generarPuntosAtaque(
     return pts;
   }
 
-  // ---------- Caso 2 y 3: cruza la red ----------
   const dz = destino.z - origen.z;
   const tRed = dz !== 0 ? Math.abs(origen.z) / Math.abs(dz) : 0.5;
   const xRed = origen.x + tRed * (destino.x - origen.x);
@@ -762,7 +776,7 @@ export function accionAPuntos(
 
   let hT: number;
   if (esDestinoBloqueo) {
-    hT = ALTURA_BLOQUEO;
+    hT = alturaBloqueoPara(a.destino_mini);
   } else if (a.tipo === "libre") {
     hT = a.es_ultima_del_punto ? 0 : 1.5;
   } else {
@@ -809,7 +823,7 @@ export function accionAPuntos(
     waypoints.push({
       x: dc.x,
       z: dc.z,
-      h: alturaDeCeldaEspecial(d.celda),
+      h: alturaDeWaypoint(d.celda, d.mini),
       celda: d.celda,
     });
   }
