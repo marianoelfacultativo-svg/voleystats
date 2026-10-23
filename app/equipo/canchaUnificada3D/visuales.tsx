@@ -108,15 +108,6 @@ export const Trajectory = React.memo(function Trajectory({
 // ANIMATED POINT PLAYBACK — pelota + dibujo acción por acción
 // ============================================================
 
-/**
- * Animador de pelota con dibujo progresivo acción por acción.
- *
- * - Cada acción ocupa `SEGUNDOS_POR_ACCION` segundos.
- * - Mientras la pelota recorre la acción `i`, solo se dibuja la parte
- *   ya recorrida de esa acción.
- * - Las acciones anteriores se ven completas; las futuras no se ven.
- * - Al terminar la última acción, se reinicia automáticamente.
- */
 export const AnimatedPointPlayback = React.memo(
   function AnimatedPointPlayback({
     trayectorias,
@@ -130,7 +121,7 @@ export const AnimatedPointPlayback = React.memo(
     velocidadAnimacion?: number;
   }) {
     const ballRef = useRef<THREE.Mesh>(null);
-    const tRef = useRef(0); // progreso global continuo: 0 .. n
+    const tRef = useRef(0);
     const snapRef = useRef({ idx: 0, hasta: 2 });
     const [, forceUpdate] = useState(0);
 
@@ -146,7 +137,6 @@ export const AnimatedPointPlayback = React.memo(
       const it = trayectorias[idx];
       if (!it || it.puntos.length < 2) return;
 
-      // Posición de la pelota
       const totalSeg = it.puntos.length - 1;
       const exact = tLocal * totalSeg;
       const iBall = Math.min(totalSeg - 1, Math.floor(exact));
@@ -161,7 +151,6 @@ export const AnimatedPointPlayback = React.memo(
         );
       }
 
-      // Longitud de la línea parcial de la acción actual
       const hasta = Math.max(2, Math.ceil(tLocal * it.puntos.length));
       if (snapRef.current.idx !== idx || snapRef.current.hasta !== hasta) {
         snapRef.current = { idx, hasta };
@@ -179,7 +168,6 @@ export const AnimatedPointPlayback = React.memo(
           if (it.puntos.length < 2) return null;
 
           if (i < idxSnap) {
-            // Acción ya completada → línea entera
             return (
               <React.Fragment key={it.id}>
                 <Line
@@ -208,7 +196,6 @@ export const AnimatedPointPlayback = React.memo(
           }
 
           if (i === idxSnap) {
-            // Acción actual → solo tramo recorrido
             const corte = Math.min(hasta, it.puntos.length);
             const parcial = it.puntos.slice(0, corte);
             if (parcial.length < 2) return null;
@@ -239,7 +226,6 @@ export const AnimatedPointPlayback = React.memo(
             );
           }
 
-          // Acción futura → no dibujar
           return null;
         })}
 
@@ -410,12 +396,6 @@ export const Net = React.memo(function Net() {
 // MANO — geometría simple (palma + 5 dedos)
 // ============================================================
 
-/**
- * Una sola mano estilizada:
- *  - Palma: caja vertical.
- *  - 4 dedos: cajas verticales, apuntando hacia arriba.
- *  - Pulgar: caja lateral, apuntando hacia arriba.
- */
 const HandMesh = React.memo(function HandMesh({
   color,
   esDerecha,
@@ -426,7 +406,6 @@ const HandMesh = React.memo(function HandMesh({
   const thumbX = esDerecha ? 0.105 : -0.105;
   const thumbRot = esDerecha ? -0.6 : 0.6;
 
-  // Color y transparencia: los mismos que tenía la placa original.
   const matProps = {
     color,
     emissive: color,
@@ -437,12 +416,10 @@ const HandMesh = React.memo(function HandMesh({
 
   return (
     <group>
-      {/* Palma (~15 × 20 × 6 cm) */}
       <mesh position={[0, 0, 0]}>
         <boxGeometry args={[0.15, 0.2, 0.06]} />
         <meshStandardMaterial {...matProps} />
       </mesh>
-      {/* Pulgar (~4 × 13 × 5 cm) */}
       <mesh
         position={[thumbX, 0.045, 0]}
         rotation={[0, 0, thumbRot]}
@@ -450,7 +427,6 @@ const HandMesh = React.memo(function HandMesh({
         <boxGeometry args={[0.04, 0.13, 0.05]} />
         <meshStandardMaterial {...matProps} />
       </mesh>
-      {/* 4 dedos */}
       {[0, 1, 2, 3].map((i) => {
         const h = [0.13, 0.16, 0.155, 0.12][i];
         const x = (i - 1.5) * 0.037;
@@ -465,15 +441,11 @@ const HandMesh = React.memo(function HandMesh({
   );
 });
 
-/**
- * Par de manos (izquierda + derecha). Ancho total ≈ 0.40 m.
- */
 const HandPair = React.memo(function HandPair({
   color,
   haciaRed,
 }: {
   color: string;
-  /** +1 = inclinar hacia +z, -1 = inclinar hacia -z */
   haciaRed: 1 | -1;
 }) {
   return (
@@ -491,77 +463,155 @@ const HandPair = React.memo(function HandPair({
 // ============================================================
 // BLOQUEADORES VISUAL — manos en la red
 // ============================================================
+//
+// Reglas (v19.3):
+//   - UN par de manos POR ACCIÓN DE BLOQUEO.
+//   - X según la MINI-COLUMNA (9 columnas a lo ancho de cada celda
+//     BLOQ). La red es horizontal → la escala es solo de ancho.
+//   - Y según la MINI-FILA del bloqueo:
+//       * m1 (arriba en el SVG) → Y más alto
+//       * m2 (abajo en el SVG)  → Y más bajo
+//     Rango total de variación: ±20 cm (ALTURA_BLOQUEO_SPAN / 2).
+//   - Z fijo cerca de la red (±0.28 m), apuntando al lado del
+//     bloqueador (propias → +z, rivales → -z).
+//   - Fallback: si el bloqueo viene de un ataque sin acción de
+//     bloqueo separada (datos pre-split) o si estás filtrando
+//     "solo rivales" (la acción de bloqueo no está en pantalla),
+//     se detecta por destino_celda BLOQ o por desvío BLOQ.
+
+interface ManoItem {
+  key: string;
+  celda: string;
+  mini: string | null;
+  color: string;
+  esPropio: boolean;
+}
+
+const MINI_COLS_BLOQUEO = 9;
+const MINI_FILS_BLOQUEO = 2;
+const ALTURA_BLOQUEO_SPAN = 0.4;
+
+function xDesdeCeldaMini(celda: string, mini: string | null): number | null {
+  const col = celda.split("-")[2] || "C3";
+  const rango = COL_X[col];
+  if (!rango) return null;
+  const [x0, x1] = rango;
+  const ancho = x1 - x0;
+
+  if (!mini) return (x0 + x1) / 2;
+
+  const match = mini.match(/^m(\d+)-(\d+)$/);
+  if (!match) return (x0 + x1) / 2;
+
+  const miniCol = parseInt(match[2], 10);
+  const frac = (miniCol - 0.5) / MINI_COLS_BLOQUEO;
+  return x0 + frac * ancho;
+}
+
+/**
+ * Devuelve la altura (Y) del par de manos según la mini-fila.
+ * Mini-fila 1 (arriba en el SVG) → más alto.
+ * Mini-fila 2 (abajo en el SVG)  → más bajo.
+ */
+function yDesdeMiniRow(mini: string | null): number {
+  if (!mini) return ALTURA_BLOQUEO;
+  const match = mini.match(/^m(\d+)-(\d+)$/);
+  if (!match) return ALTURA_BLOQUEO;
+
+  const fila = parseInt(match[1], 10);
+  if (fila < 1) return ALTURA_BLOQUEO;
+  if (fila > MINI_FILS_BLOQUEO) return ALTURA_BLOQUEO;
+
+  const frac = (fila - 0.5) / MINI_FILS_BLOQUEO;
+  const offset = (0.5 - frac) * ALTURA_BLOQUEO_SPAN;
+  return ALTURA_BLOQUEO + offset;
+}
 
 export const BloqueadoresVisual = React.memo(function BloqueadoresVisual({
   acciones,
 }: {
   acciones: AccionVisual[];
 }) {
-  const items = useMemo(() => {
-    // Usamos un Map por celda para evitar duplicados.
-    // Ya no filtramos por propias/rivales: si la acción está acá
-    // (porque pasó el filtro de la cancha), sus manos también.
-    const porCelda = new Map<
-      string,
-      { key: string; celda: string; color: string; esPropio: boolean }
-    >();
+  const items = useMemo<ManoItem[]>(() => {
+    const out: ManoItem[] = [];
+    const covered = new Set<string>();
 
+    // 1) Una acción de bloqueo → un par en el ORIGEN.
+    //    No se dedupea por celda: si hay 2 bloqueos en la misma
+    //    celda+mini, se dibujan los 2 pares.
     for (const a of acciones) {
       if (a.tipo !== "bloqueo") continue;
-      const color = colorPorValoracion(a);
-      if (a.origen_celda?.startsWith("BLOQ-")) {
-        porCelda.set(a.origen_celda, {
-          key: `o-${a.id}`,
-          celda: a.origen_celda,
-          color,
-          esPropio: a.origen_celda.startsWith("BLOQ-P-"),
-        });
-      }
-      if (a.destino_celda?.startsWith("BLOQ-")) {
-        porCelda.set(a.destino_celda, {
-          key: `d-${a.id}`,
-          celda: a.destino_celda,
-          color,
-          esPropio: a.destino_celda.startsWith("BLOQ-P-"),
-        });
-      }
+      const celdaOrig = a.origen_celda;
+      if (!celdaOrig || !celdaOrig.startsWith("BLOQ-")) continue;
+      const mini = a.origen_mini ?? null;
+      covered.add(`${celdaOrig}|${mini ?? ""}`);
+      out.push({
+        key: `bloq-${a.id}`,
+        celda: celdaOrig,
+        mini,
+        color: colorPorValoracion(a),
+        esPropio: celdaOrig.startsWith("BLOQ-P-"),
+      });
     }
 
+    // 2) Fallback: ataque post-split con DESTINO en el bloqueo
+    //    (cubre "Solo rivales": la acción de bloqueo propia no
+    //    está en la lista, pero el ataque rival sí).
+    for (const a of acciones) {
+      const celdaDest = a.destino_celda;
+      if (!celdaDest || !celdaDest.startsWith("BLOQ-")) continue;
+      const mini = a.destino_mini ?? null;
+      const key = `${celdaDest}|${mini ?? ""}`;
+      if (covered.has(key)) continue;
+      covered.add(key);
+      out.push({
+        key: `dst-${a.id}`,
+        celda: celdaDest,
+        mini,
+        color: colorPorValoracion(a),
+        esPropio: celdaDest.startsWith("BLOQ-P-"),
+      });
+    }
+
+    // 3) Fallback: desvío en BLOQ (datos pre-split).
     for (const a of acciones) {
       const color = colorPorValoracion(a);
-      for (const d of a.desvios ?? []) {
+      const desvios = a.desvios ?? [];
+      for (let i = 0; i < desvios.length; i++) {
+        const d = desvios[i];
         if (!d.celda.startsWith("BLOQ-")) continue;
-        if (porCelda.has(d.celda)) continue;
-        porCelda.set(d.celda, {
-          key: `dv-${a.id}-${d.celda}`,
+        const mini = d.mini ?? null;
+        const key = `${d.celda}|${mini ?? ""}`;
+        if (covered.has(key)) continue;
+        covered.add(key);
+        out.push({
+          key: `dv-${a.id}-${i}`,
           celda: d.celda,
+          mini,
           color,
           esPropio: d.celda.startsWith("BLOQ-P-"),
         });
       }
     }
 
-    return Array.from(porCelda.values());
+    return out;
   }, [acciones]);
 
   return (
     <group>
       {items.map((it) => {
-        const col = it.celda.split("-")[2] || "C3";
-        const rango = COL_X[col];
-        if (!rango) return null;
+        const centroX = xDesdeCeldaMini(it.celda, it.mini);
+        if (centroX === null) return null;
 
-        const centroX = (rango[0] + rango[1]) / 2;
-        // Las manos quedan muy cerca de la red: 0.28 m del plano z=0.
-        // - Propias: lado +z (nuestra cancha), inclinadas hacia -z.
-        // - Rivales: lado -z (cancha rival), inclinadas hacia +z.
+        const centroY = yDesdeMiniRow(it.mini);
+
         const z = it.esPropio ? 0.28 : -0.28;
         const haciaRed: 1 | -1 = it.esPropio ? -1 : 1;
 
         return (
           <group
             key={it.key}
-            position={[centroX, ALTURA_BLOQUEO, z]}
+            position={[centroX, centroY, z]}
           >
             <HandPair color={it.color} haciaRed={haciaRed} />
           </group>
