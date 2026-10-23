@@ -566,6 +566,20 @@ function generarPuntosArmado(
 // ============================================================
 // ATAQUE / TOQUE — CURVA ÚNICA SUAVE (SIN CODOS)
 // ============================================================
+//
+// Reglas:
+//   1. Sin desvío de bloqueo:
+//      - No cruza red: curva pow única (p = 0.7 ataque / 1.8 toque).
+//      - Cruza red: si la pow pasa por encima de 2.53, se usa directo.
+//        Si no, CatmullRom con waypoint en la red.
+//   2. Con desvío de bloqueo (BLOQ-P-* o BLOQ-R-*):
+//      - La pelota SUBE hasta el bloqueo (curva con pendiente positiva
+//        al llegar → ease-in t^1.3).
+//      - En el bloqueo HACE UN CODO VISIBLE (cambio de dirección).
+//      - Baja hacia el destino (curva con pendiente negativa fuerte al
+//        salir → ease-out 1-(1-t)^1.6).
+//      - Los dos tramos NO se suavizan entre sí: el codo queda marcado.
+//      - Si el destino ES el bloqueo, solo se dibuja la subida.
 
 function generarPuntosAtaque(
   a: AccionVisual,
@@ -584,6 +598,7 @@ function generarPuntosAtaque(
     ? 0
     : 0.5;
 
+  // --- Caso con desvío de bloqueo: subida + CODO + bajada ---
   const desviosArr = a.desvios ?? [];
   const bloqueoDesvio = desviosArr.find(
     (d) => d.celda.startsWith("BLOQ-R-") || d.celda.startsWith("BLOQ-P-")
@@ -592,20 +607,42 @@ function generarPuntosAtaque(
   if (bloqueoDesvio) {
     const bCoords = obtenerCoords(bloqueoDesvio.celda, bloqueoDesvio.mini);
     if (bCoords) {
-      const dz = bCoords.z - origen.z;
-      const tRed = dz !== 0 ? Math.abs(origen.z) / Math.abs(dz) : 0.5;
-      const xRed = origen.x + tRed * (bCoords.x - origen.x);
+      // Subida: origen → bloqueo, pendiente positiva al llegar.
+      const pasosSubida = 32;
+      const subida: [number, number, number][] = [];
+      for (let i = 0; i <= pasosSubida; i++) {
+        const t = i / pasosSubida;
+        const x = origen.x + t * (bCoords.x - origen.x);
+        const z = origen.z + t * (bCoords.z - origen.z);
+        const p = Math.pow(t, 1.3);
+        const h = h0 + (ALTURA_BLOQUEO - h0) * p;
+        subida.push([x, Math.max(0.05, h), z]);
+      }
 
-      const waypoints: [number, number, number][] = [
-        [origen.x, h0, origen.z],
-        [xRed, ALTURA_BLOQUEO, 0],
-        [bCoords.x, ALTURA_BLOQUEO, bCoords.z],
-        [destino.x, hT, destino.z],
-      ];
-      return catmullRom3(waypoints, 60);
+      // Si el destino es el propio bloqueo, no hay bajada.
+      if (esDestinoBloqueo) {
+        return subida;
+      }
+
+      // Bajada: bloqueo → destino, pendiente negativa fuerte al salir.
+      const pasosBajada = 32;
+      const bajada: [number, number, number][] = [];
+      for (let i = 0; i <= pasosBajada; i++) {
+        const t = i / pasosBajada;
+        const x = bCoords.x + t * (destino.x - bCoords.x);
+        const z = bCoords.z + t * (destino.z - bCoords.z);
+        const p = 1 - Math.pow(1 - t, 1.6);
+        const h = ALTURA_BLOQUEO - (ALTURA_BLOQUEO - hT) * p;
+        bajada.push([x, Math.max(0.05, h), z]);
+      }
+
+      // Unión SIN suavizar → el codo queda visible.
+      bajada.shift();
+      return [...subida, ...bajada];
     }
   }
 
+  // --- Caso sin desvío (curva suave tradicional) ---
   const esToque = a.variante === "toque";
   const pDesc = esToque ? 1.8 : 0.7;
   const destinoEnRed = (a.destino_celda ?? "").startsWith("RED-");
