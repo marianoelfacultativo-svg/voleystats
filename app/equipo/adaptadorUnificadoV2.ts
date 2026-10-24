@@ -7,6 +7,16 @@
 import { supabase } from "@/lib/supabase";
 import type { AccionV2Row } from "@/lib/dbV2";
 import { zonaCrudaDeCelda } from "@/lib/mapeoV2";
+import {
+  calcularErroresRival,
+  calcularSubtiposAtaque,
+  calcularSubtiposAtaqueRival,
+  calcularSubtiposBloqueo,
+  calcularSubtiposDefensa,
+  calcularSubtiposSaque,
+  type Lado,
+  type LineaClasificada,
+} from "@/lib/clasificacionV2";
 
 // ------------------------------------------------------------
 // TIPOS
@@ -116,6 +126,159 @@ function flipAccionRow(a: AccionV2Row): AccionV2Row {
 }
 
 // ------------------------------------------------------------
+// RECÁLCULO DE SUBTIPOS POST-FLIP
+// ------------------------------------------------------------
+//
+// Los subtipos (ace, punto, buena_rival, error_def, etc.) se
+// calculan al guardar desde la perspectiva del equipo dueño del
+// punto (el local). Cuando el equipo rival entra al portal, sus
+// acciones quedan como "es_rival=true" y sus subtipos siguen
+// siendo los del rival desde la perspectiva original.
+//
+// Al flipear la perspectiva, hay que volver a correr toda la
+// cadena de cálculo de subtipos con los datos ya invertidos,
+// como si recién se estuviera guardando desde este lado.
+//
+// Las funciones `calcularSubtipos*` son idempotentes para los
+// valores "raw" (los que eligen los popups): toque, gran-defensa,
+// libre, cobertura. Por eso convertimos los finales guardados a
+// raw antes de recalcular.
+// ------------------------------------------------------------
+
+/**
+ * Convierte los subtipos "finales" (que ya pasaron por la cadena
+ * de cálculo) de vuelta a sus valores "raw" originales.
+ *
+ * - saque / ataque / bloqueo: siempre null (la cadena los
+ *   recalcula desde cero; solo miran el destino y el contexto).
+ * - defensa: convierte los finales a sus raw equivalentes.
+ * - recepción / armado / libre / roce-red: no se recalculan,
+ *   pasan tal cual.
+ */
+function aSubtipoRawParaRecalculo(
+  tipo: string,
+  subtipo: string | number | null | undefined
+): string | number | null {
+  if (tipo === "saque" || tipo === "ataque" || tipo === "bloqueo") {
+    return null;
+  }
+  if (tipo === "defensa") {
+    const s = typeof subtipo === "string" ? subtipo : null;
+    if (s === "toque" || s === "gran-defensa" || s === "libre" || s === "cobertura") {
+      return s;
+    }
+    if (s === "toque_positiva" || s === "toque_negativa") return "toque";
+    if (s === "gran_def") return "gran-defensa";
+    if (s === "error_def" || s === "mala_libre" || s === "errores_graves") {
+      return "libre";
+    }
+    if (s === "cobertura_positiva" || s === "cobertura_negativa") {
+      return "cobertura";
+    }
+    // "neutro", "buena_rival", null → null (neutro puro)
+    return null;
+  }
+  return subtipo ?? null;
+}
+
+/**
+ * Reconstruye una LineaClasificada desde una AccionV2Row ya
+ * flipeada, con el subtipo convertido a raw listo para recalcular.
+ */
+function rowALineaParaRecalculo(row: AccionV2Row): LineaClasificada {
+  let variante = row.variante ?? null;
+  let subtipo: string | number | null = row.subtipo ?? null;
+
+  if (typeof subtipo === "string" && subtipo.startsWith("toque:")) {
+    variante = variante ?? "toque";
+    subtipo = subtipo.slice(6);
+  }
+
+  subtipo = aSubtipoRawParaRecalculo(row.tipo, subtipo);
+
+  return {
+    id: row.id,
+    tipo: row.tipo as LineaClasificada["tipo"],
+    esRival: row.es_rival,
+    jugadorId: row.jugador_id ?? null,
+    origen: {
+      celda: row.origen_celda ?? "",
+      mini: row.origen_mini ?? "",
+    },
+    destino: {
+      celda: row.destino_celda ?? "",
+      mini: row.destino_mini ?? "",
+    },
+    desvios: (row.desvios ?? []).map((d) => ({
+      celda: d.celda,
+      mini: d.mini,
+      jugadorId: d.jugador_id ?? null,
+    })),
+    subtipo,
+    variante,
+    velocidad: row.velocidad ?? null,
+    tipoSaque: (row.tipo_saque as LineaClasificada["tipoSaque"]) ?? null,
+    x2: row.x2 ?? undefined,
+    oculta: row.oculta ?? undefined,
+    posicionInicial: row.posicion_inicial_celda
+      ? {
+          celda: row.posicion_inicial_celda,
+          mini: row.posicion_inicial_mini ?? "",
+        }
+      : null,
+    equipoId: row.equipo_id ?? null,
+  };
+}
+
+/**
+ * Recalcula los subtipos de todas las acciones del partido después
+ * de flipear la perspectiva. Devuelve un Map<id, subtipoNuevo>.
+ *
+ * @param rows      Acciones YA flipeadas.
+ * @param ganadores Map de `${set}-${punto}` → ganador (ya flipeado).
+ */
+function recalcularSubtiposPostFlip(
+  rows: AccionV2Row[],
+  ganadores: Map<string, Lado | null>
+): Map<string, string | number | null> {
+  const out = new Map<string, string | number | null>();
+
+  // Agrupar por punto
+  const porPunto = new Map<string, AccionV2Row[]>();
+  for (const r of rows) {
+    const k = `${r.set_numero}-${r.punto_numero}`;
+    let arr = porPunto.get(k);
+    if (!arr) {
+      arr = [];
+      porPunto.set(k, arr);
+    }
+    arr.push(r);
+  }
+
+  for (const [k, arr] of porPunto) {
+    arr.sort((a, b) => a.orden - b.orden);
+
+    let lineas: LineaClasificada[] = arr.map(rowALineaParaRecalculo);
+
+    lineas = calcularSubtiposSaque(lineas);
+    lineas = calcularSubtiposAtaqueRival(lineas);
+    lineas = calcularSubtiposBloqueo(lineas);
+    lineas = calcularSubtiposDefensa(lineas);
+
+    const ganador = ganadores.get(k) ?? "propio";
+    lineas = calcularSubtiposAtaque(lineas, ganador);
+
+    lineas = calcularErroresRival(lineas);
+
+    for (const l of lineas) {
+      out.set(l.id, l.subtipo ?? null);
+    }
+  }
+
+  return out;
+}
+
+// ------------------------------------------------------------
 // HELPERS DE ZONA CODIFICADA
 // ------------------------------------------------------------
 
@@ -207,6 +370,34 @@ export async function cargarAccionesUnificadas(
   let rows = data as AccionV2Row[];
   if (debeFlipear) rows = rows.map(flipAccionRow);
 
+  // ------------------------------------------------------------
+  // RECÁLCULO DE SUBTIPOS POST-FLIP
+  // ------------------------------------------------------------
+  if (debeFlipear) {
+    // Cargar ganadores del punto (necesarios para calcularSubtiposAtaque).
+    const { data: puntosData } = await supabase
+      .from("puntos_v2")
+      .select("set_numero, punto_numero, ganador")
+      .eq("partido_id", partidoId);
+
+    const ganadores = new Map<string, Lado | null>();
+    for (const p of puntosData ?? []) {
+      let g = (p.ganador as Lado | null) ?? null;
+      if (g === "propio") g = "rival";
+      else if (g === "rival") g = "propio";
+      ganadores.set(`${p.set_numero}-${p.punto_numero}`, g);
+    }
+
+    const subtiposNuevos = recalcularSubtiposPostFlip(rows, ganadores);
+    rows = rows.map((r) => {
+      if (!subtiposNuevos.has(r.id)) return r;
+      return { ...r, subtipo: subtiposNuevos.get(r.id) ?? null };
+    });
+  }
+
+  // ------------------------------------------------------------
+  // CALIDAD DE ARMADO PREVIO (por acción)
+  // ------------------------------------------------------------
   const calidadArmadoPrevioPorAccion = new Map<string, number | null>();
   {
     let ultimoArmado: number | null = null;
@@ -274,6 +465,9 @@ export async function cargarAccionesUnificadas(
     calidad_armado_previo: calidadArmadoPrevioPorAccion.get(a.id) ?? null,
   }));
 
+  // ------------------------------------------------------------
+  // ES ÚLTIMA DEL PUNTO
+  // ------------------------------------------------------------
   const ultimaOrdenPorPunto = new Map<string, number>();
   for (const a of base) {
     if (a.oculta) continue;

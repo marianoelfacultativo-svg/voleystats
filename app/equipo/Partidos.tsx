@@ -53,6 +53,11 @@ interface Jugador {
   rol: string;
 }
 
+interface Equipo {
+  id: string;
+  nombre: string;
+}
+
 interface Props {
   equipoId: string;
   nombreEquipo: string;
@@ -90,6 +95,7 @@ type ModoDetalle = "analisis" | "comparar-jugadores" | "crudas";
 export default function Partidos({ equipoId, nombreEquipo }: Props) {
   const [partidos, setPartidos] = useState<Partido[]>([]);
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
+  const [equipos, setEquipos] = useState<Equipo[]>([]);
   const [acciones, setAcciones] = useState<AccionDB[]>([]);
   const [datosRival, setDatosRival] = useState<Record<string, DatosRival>>({});
   const [cargando, setCargando] = useState(true);
@@ -130,13 +136,15 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         .from("jugadores")
         .select("id, nombre, numero, rol")
         .order("nombre"),
-    ]).then(async ([partRes, jugRes]) => {
+      supabase.from("equipos").select("id, nombre"),
+    ]).then(async ([partRes, jugRes, eqRes]) => {
       if (!partRes.data || !jugRes.data) {
         setCargando(false);
         return;
       }
       setPartidos(partRes.data);
       setJugadores(jugRes.data);
+      if (eqRes.data) setEquipos(eqRes.data);
 
       const ids = partRes.data.map((p) => p.id);
       if (ids.length === 0) {
@@ -174,6 +182,16 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   const nombreDe = (id: string) => {
     const j = jugadores.find((x) => x.id === id);
     return j ? j.nombre + (j.numero !== null ? ` #${j.numero}` : "") : "?";
+  };
+
+  // Si el usuario actual es el equipo_rival_id del partido, el rival
+  // visible es el equipo local (equipo_id), no el texto guardado.
+  const nombreRivalDe = (p: Partido) => {
+    if (p.equipo_rival_id === equipoId) {
+      const local = equipos.find((e) => e.id === p.equipo_id);
+      if (local) return local.nombre;
+    }
+    return p.rival;
   };
 
   const handleToggleModoPrincipal = (nuevo: ModoPrincipal) => {
@@ -246,13 +264,15 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   }
 
   const partidosFiltrados = partidos.filter((p) => {
-    if (filtroRival && p.rival !== filtroRival) return false;
+    if (filtroRival && nombreRivalDe(p) !== filtroRival) return false;
     if (filtroFechaDesde && p.fecha < filtroFechaDesde) return false;
     if (filtroFechaHasta && p.fecha > filtroFechaHasta) return false;
     return true;
   });
 
-  const rivalesUnicos = Array.from(new Set(partidos.map((p) => p.rival))).sort();
+  const rivalesUnicos = Array.from(
+    new Set(partidos.map((p) => nombreRivalDe(p)))
+  ).sort();
   const hayFiltrosActivos =
     filtroRival !== "" || filtroFechaDesde !== "" || filtroFechaHasta !== "";
 
@@ -317,7 +337,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       ).totales;
       return {
         id,
-        nombre: `vs ${partido.rival} (${partido.fecha})`,
+        nombre: `vs ${nombreRivalDe(partido)} (${partido.fecha})`,
         color: COLORES_COMPARACION[idx],
         partido,
         stats,
@@ -400,7 +420,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
 
           return {
             id: pid,
-            nombre: `vs ${partido.rival} (${partido.fecha})`,
+            nombre: `vs ${nombreRivalDe(partido)} (${partido.fecha})`,
             color: COLORES_COMPARACION[idx],
             partido,
             accPartido,
@@ -565,7 +585,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       ),
     }));
 
-  // Datos del rival para el partido activo (calculados desde acciones_v2).
   const datosRivalPartido = partidoDetalle
     ? datosRival[partidoDetalle.id] ?? { buenas: 0, errores: 0 }
     : { buenas: 0, errores: 0 };
@@ -796,7 +815,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                               : "text-slate-800"
                           }`}
                         >
-                          vs {p.rival}
+                          vs {nombreRivalDe(p)}
                         </p>
                         <p
                           className={`text-xs mt-1 ${
@@ -881,7 +900,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                                 {idx + 1}
                               </span>
                             )}
-                            vs {p.rival} · {p.fecha}
+                            vs {nombreRivalDe(p)} · {p.fecha}
                           </button>
                         );
                       })}
@@ -1265,7 +1284,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 <div className="flex justify-between items-start">
                   <div>
                     <h3 className="text-xl font-bold text-slate-900">
-                      {nombreEquipo} vs {partidoDetalle.rival}
+                      {nombreEquipo} vs {nombreRivalDe(partidoDetalle)}
                     </h3>
                     <p className="text-sm text-slate-500 mt-1">
                       📅 {partidoDetalle.fecha}
@@ -1523,7 +1542,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                       />
                     </div>
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-                      {/* Usa datos calculados desde acciones_v2, no del panel de admin. */}
                       <GraficoTortaRival
                         erroresRivales={datosRivalPartido.errores}
                         buenasRivales={datosRivalPartido.buenas}
