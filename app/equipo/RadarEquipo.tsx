@@ -36,13 +36,6 @@ const ETIQUETAS: Record<string, string> = {
   defensa: "Defensa",
 };
 
-const BG_NIVEL: Record<NivelValoracion, string> = {
-  bajo: "#fee2e2",
-  cumple: "#fef9c3",
-  bien: "#dcfce7",
-  destaca: "#dbeafe",
-};
-
 const TEXTO_NIVEL: Record<NivelValoracion, string> = {
   bajo: "#dc2626",
   cumple: "#eab308",
@@ -178,65 +171,6 @@ export default function RadarEquipo({ equipo, series, titulo }: Props) {
             )}
           </RadarChart>
         </ResponsiveContainer>
-      </div>
-
-      <div className="grid grid-cols-5 gap-2 mt-4">
-        {FUNDAMENTOS_EQUIPO.map((f) => {
-          const count = primera?.equipo.porFundamento[f]?.total ?? 0;
-          const valorPrimera =
-            primera?.equipo.valoracionPonderadaPorFundamento[f] ?? 0;
-          const evaluadoPrimera = valorPrimera > 0;
-          const nivelPrimera = nivelDeValoracion(f, valorPrimera);
-
-          return (
-            <div
-              key={f}
-              className="p-2 rounded border-2 text-center"
-              style={{
-                backgroundColor: esMultiple
-                  ? "#f8fafc"
-                  : evaluadoPrimera
-                  ? BG_NIVEL[nivelPrimera]
-                  : "#f1f5f9",
-                borderColor: esMultiple
-                  ? "#cbd5e1"
-                  : evaluadoPrimera
-                  ? TEXTO_NIVEL[nivelPrimera]
-                  : "#cbd5e1",
-              }}
-            >
-              <p
-                className={`text-xs font-medium ${
-                  evaluadoPrimera ? "text-slate-500" : "text-slate-400"
-                }`}
-              >
-                {ETIQUETAS[f]}
-                <span className="ml-1">{`(${count})`}</span>
-              </p>
-              {seriesFinales.map((s) => {
-                const val =
-                  s.equipo.valoracionPonderadaPorFundamento[f] ?? 0;
-                const evaluado = val > 0;
-                const colorText = evaluado
-                  ? esMultiple
-                    ? s.color
-                    : TEXTO_NIVEL[nivelDeValoracion(f, val)]
-                  : "#94a3b8";
-                return (
-                  <p
-                    key={s.id}
-                    className="font-bold text-sm"
-                    style={{ color: colorText }}
-                  >
-                    {evaluado
-                      ? `${val > 0 ? "+" : ""}${val.toFixed(2)}`
-                      : "—"}
-                  </p>
-                );
-              })}
-            </div>
-          );
-        })}
       </div>
     </div>
   );

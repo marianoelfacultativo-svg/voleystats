@@ -24,6 +24,7 @@ import GraficoBloqueoPorSet from "./GraficoBloqueoPorSet";
 import GraficoArmadosPorSet from "./GraficoArmadosPorSet";
 import TablaJugadoresPorSet from "./TablaJugadoresPorSet";
 import TablaEstadisticasCrudas from "./TablaEstadisticasCrudas";
+import GraficoBarrasFundamentoPartidos from "./GraficoBarrasFundamentoPartidos";
 
 interface Partido {
   id: string;
@@ -54,6 +55,13 @@ interface Props {
 }
 
 const FUNDAMENTOS = ["saque", "recepcion", "ataque", "bloqueo", "defensa"];
+const FUNDAMENTOS_BARRAS = [
+  "saque",
+  "recepcion",
+  "ataque",
+  "bloqueo",
+  "defensa",
+] as const;
 const NOMBRES: Record<string, string> = {
   saque: "Saque",
   recepcion: "Recepción",
@@ -298,6 +306,11 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
 
+  // Acciones combinadas de los partidos comparados (para las barras del total).
+  const accionesPartidosComparados: AccionDB[] = partidosComparadosData.flatMap(
+    (s) => s.acciones
+  );
+
   const seriesRadarPartidos = partidosComparadosData.map((s) => ({
     id: s.id,
     nombre: s.nombre,
@@ -377,6 +390,11 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         })
         .filter((x): x is NonNullable<typeof x> => x !== null)
     : [];
+
+  // Acciones combinadas del jugador en los partidos seleccionados (para barras).
+  const accionesJxPCombinadas: AccionDB[] = partidosJxPData.flatMap(
+    (s) => s.accPartido
+  );
 
   const seriesRadarJxP = partidosJxPData.map((s) => ({
     id: s.id,
@@ -880,14 +898,31 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                         </div>
                       </div>
 
+                      {/* =================================================
+                          6 CUADROS — Radar comparativo + 5 barras del
+                          jugador en los partidos seleccionados.
+                         ================================================= */}
                       <div className="mb-6">
                         <h4 className="font-semibold text-slate-800 mb-3">
                           Radar comparado
                         </h4>
-                        <RadarJugador
-                          series={seriesRadarJxP}
-                          esArmador={esArmadorJxP}
-                        />
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 col-span-1">
+                            <RadarJugador
+                              series={seriesRadarJxP}
+                              esArmador={esArmadorJxP}
+                            />
+                          </div>
+                          {FUNDAMENTOS_BARRAS.map((f) => (
+                            <GraficoBarrasFundamentoPartidos
+                              key={f}
+                              fundamento={f}
+                              acciones={accionesJxPCombinadas}
+                              jugadorId={jugadorSeleccionadoJxP ?? undefined}
+                              tituloOverride={`${NOMBRES[f]} (total)`}
+                            />
+                          ))}
+                        </div>
                       </div>
 
                       <div className="mb-6">
@@ -1081,11 +1116,27 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     </div>
                   </div>
 
+                  {/* =================================================
+                      6 CUADROS — Radar comparativo + 5 barras del
+                      TOTAL de los partidos comparados.
+                     ================================================= */}
                   <div className="mb-6">
-                    <RadarEquipo
-                      series={seriesRadarPartidos}
-                      titulo="Radar comparativo del equipo"
-                    />
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 col-span-1">
+                        <RadarEquipo
+                          series={seriesRadarPartidos}
+                          titulo="Radar comparativo del equipo"
+                        />
+                      </div>
+                      {FUNDAMENTOS_BARRAS.map((f) => (
+                        <GraficoBarrasFundamentoPartidos
+                          key={f}
+                          fundamento={f}
+                          acciones={accionesPartidosComparados}
+                          tituloOverride={`${NOMBRES[f]} (total)`}
+                        />
+                      ))}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 gap-4">
@@ -1437,8 +1488,20 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     </div>
                   </div>
 
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-                    <RadarEquipo equipo={statsPartido.totales} />
+                  {/* =================================================
+                      6 CUADROS — Radar + 5 barras del partido individual.
+                     ================================================= */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 col-span-1">
+                      <RadarEquipo equipo={statsPartido.totales} />
+                    </div>
+                    {FUNDAMENTOS_BARRAS.map((f) => (
+                      <GraficoBarrasFundamentoPartidos
+                        key={f}
+                        fundamento={f}
+                        acciones={accionesDelPartido}
+                      />
+                    ))}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
