@@ -34,6 +34,11 @@ interface Jugador {
   rol: string;
 }
 
+interface Equipo {
+  id: string;
+  nombre: string;
+}
+
 interface Props {
   equipoId: string;
   nombreEquipo: string;
@@ -68,6 +73,7 @@ const RANKINGS: { id: RankingTipo; titulo: string; icono: string }[] = [
 export default function Dashboard({ equipoId, nombreEquipo }: Props) {
   const [partidos, setPartidos] = useState<Partido[]>([]);
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
+  const [equipos, setEquipos] = useState<Equipo[]>([]);
   const [acciones, setAcciones] = useState<AccionDB[]>([]);
   const [cargando, setCargando] = useState(true);
   const [rankingAbierto, setRankingAbierto] = useState<RankingTipo | null>(
@@ -90,13 +96,15 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
         .from("jugadores")
         .select("id, nombre, numero, rol")
         .order("nombre"),
-    ]).then(async ([partRes, jugRes]) => {
+      supabase.from("equipos").select("id, nombre"),
+    ]).then(async ([partRes, jugRes, eqRes]) => {
       if (!partRes.data || !jugRes.data) {
         setCargando(false);
         return;
       }
       setPartidos(partRes.data);
       setJugadores(jugRes.data);
+      if (eqRes.data) setEquipos(eqRes.data);
 
       const ids = partRes.data.map((p) => p.id);
       if (ids.length === 0) {
@@ -119,6 +127,15 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
   }
 
   const ultimoPartido = partidos[0];
+
+  // Si soy el equipo rival del partido, el rival visible es el local.
+  const nombreRivalDe = (p: Partido) => {
+    if (p.equipo_rival_id === equipoId) {
+      const local = equipos.find((e) => e.id === p.equipo_id);
+      if (local) return local.nombre;
+    }
+    return p.rival;
+  };
 
   // Solo mostramos jugadores que tengan acciones en lo que ve este equipo
   const jugadoresDelEquipo = jugadores.filter((j) =>
@@ -194,7 +211,7 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
             <div className="flex justify-between items-start mb-4">
               <div>
                 <p className="text-lg font-semibold text-slate-800">
-                  🏐 {nombreEquipo} vs {ultimoPartido.rival}
+                  🏐 {nombreEquipo} vs {nombreRivalDe(ultimoPartido)}
                 </p>
                 <p className="text-sm text-slate-500 mt-1">
                   📅 {ultimoPartido.fecha}

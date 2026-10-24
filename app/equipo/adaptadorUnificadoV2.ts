@@ -164,7 +164,12 @@ function aSubtipoRawParaRecalculo(
   }
   if (tipo === "defensa") {
     const s = typeof subtipo === "string" ? subtipo : null;
-    if (s === "toque" || s === "gran-defensa" || s === "libre" || s === "cobertura") {
+    if (
+      s === "toque" ||
+      s === "gran-defensa" ||
+      s === "libre" ||
+      s === "cobertura"
+    ) {
       return s;
     }
     if (s === "toque_positiva" || s === "toque_negativa") return "toque";
@@ -211,7 +216,7 @@ function rowALineaParaRecalculo(row: AccionV2Row): LineaClasificada {
     },
     desvios: (row.desvios ?? []).map((d) => ({
       celda: d.celda,
-      mini: d.mini,
+      mini: d.mini ?? "",
       jugadorId: d.jugador_id ?? null,
     })),
     subtipo,

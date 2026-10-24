@@ -34,12 +34,19 @@ interface Partido {
   id: string;
   rival: string;
   fecha: string;
+  equipo_id: string;
+  equipo_rival_id: string | null;
 }
 
 interface Jugador {
   id: string;
   nombre: string;
   numero: number | null;
+}
+
+interface Equipo {
+  id: string;
+  nombre: string;
 }
 
 const MODOS: { id: ModoUnificado; label: string; icono: string }[] = [
@@ -101,6 +108,7 @@ export default function VisualizacionUnificada({
   const [partidos, setPartidos] = useState<Partido[]>([]);
   const [partidoSeleccionado, setPartidoSeleccionado] = useState<string>("");
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
+  const [equipos, setEquipos] = useState<Equipo[]>([]);
 
   // -------- Datos cargados --------
   const [accionesPartido, setAccionesPartido] = useState<AccionVisual[]>([]);
@@ -138,11 +146,16 @@ export default function VisualizacionUnificada({
     (async () => {
       const { data: partRes } = await supabase
         .from("partidos")
-        .select("id, rival, fecha")
-        .eq("equipo_id", equipoId)
+        .select("id, rival, fecha, equipo_id, equipo_rival_id")
+        .or(`equipo_id.eq.${equipoId},equipo_rival_id.eq.${equipoId}`)
         .order("fecha", { ascending: false });
 
       setPartidos(partRes ?? []);
+
+      const { data: eqRes } = await supabase
+        .from("equipos")
+        .select("id, nombre");
+      setEquipos(eqRes ?? []);
 
       const { data: jeRes } = await supabase
         .from("jugador_equipo")
@@ -164,8 +177,26 @@ export default function VisualizacionUnificada({
   }, [equipoId]);
 
   // ============================================================
+  // NOMBRE DEL RIVAL VISIBLE
+  // ============================================================
+  //
+  // Si soy el equipo_rival_id del partido, el rival visible es el
+  // equipo local (equipo_id), no el texto guardado en partido.rival.
+  const nombreRivalDe = (p: Partido) => {
+    if (p.equipo_rival_id === equipoId) {
+      const local = equipos.find((e) => e.id === p.equipo_id);
+      if (local) return local.nombre;
+    }
+    return p.rival;
+  };
+
+  // ============================================================
   // CARGA DE ACCIONES DEL PARTIDO
   // ============================================================
+  //
+  // Se pasa equipoId a cargarAccionesUnificadas para que el
+  // adaptador flipee la perspectiva (y recalcule subtipos) si
+  // el equipo actual es el rival del partido.
 
   useEffect(() => {
     if (!partidoSeleccionado) {
@@ -177,7 +208,10 @@ export default function VisualizacionUnificada({
     setCargando(true);
 
     (async () => {
-      const res = await cargarAccionesUnificadas(partidoSeleccionado);
+      const res = await cargarAccionesUnificadas(
+        partidoSeleccionado,
+        equipoId
+      );
       setAccionesPartido(res.acciones);
 
       if (res.puntos.length > 0) {
@@ -191,7 +225,7 @@ export default function VisualizacionUnificada({
 
       setCargando(false);
     })();
-  }, [partidoSeleccionado]);
+  }, [partidoSeleccionado, equipoId]);
 
   // ============================================================
   // FILTRADO
@@ -352,7 +386,7 @@ export default function VisualizacionUnificada({
           <option value="">— Seleccioná un partido —</option>
           {partidos.map((p) => (
             <option key={p.id} value={p.id}>
-              vs {p.rival} · {p.fecha}
+              vs {nombreRivalDe(p)} · {p.fecha}
             </option>
           ))}
         </select>
