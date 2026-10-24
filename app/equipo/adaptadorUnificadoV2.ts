@@ -61,33 +61,11 @@ export interface AccionVisual {
   posicion_inicial_x: number | null;
   posicion_inicial_y: number | null;
 
-  /**
-   * Zona de la celda origen codificada con lado + zona:
-   *   "P4" = propia zona 4
-   *   "R4" = rival zona 4
-   *   null = sin zona (bloqueos, red, fuera, saques)
-   */
   zona_origen_codigo: string | null;
-  /** Igual que arriba pero para el destino. */
   zona_destino_codigo: string | null;
 
-  /**
-   * Subtiipo "real" (variante técnica, no valoración). Solo aplica a:
-   *   - saque: "potencia" | "flotado" | null
-   *   - ataque: "remate" | "toque" (nunca null, remate por defecto)
-   *   - resto: null
-   */
   subtipo_real: string | null;
-
-  /** true = es la última acción visible del punto. Solo esa toca el piso. */
   es_ultima_del_punto: boolean;
-
-  /**
-   * Calidad (1-6) del armado inmediatamente anterior en el mismo punto.
-   * Solo se rellena para acciones de tipo "ataque" (propio o rival).
-   * null = no hubo armado previo (remate de segunda, ataque directo, etc.).
-   * Se usa para calcular la altura del punto de contacto del remate.
-   */
   calidad_armado_previo: number | null;
 }
 
@@ -103,10 +81,44 @@ export interface CargaUnificadaResult {
 }
 
 // ------------------------------------------------------------
+// FLIP DE PERSPECTIVA (para cuando mira el equipo rival)
+// ------------------------------------------------------------
+
+function invertirCelda(celda: string): string {
+  if (celda.startsWith("F1-")) return "F4-" + celda.slice(3);
+  if (celda.startsWith("F2-")) return "F5-" + celda.slice(3);
+  if (celda.startsWith("F3-")) return "F6-" + celda.slice(3);
+  if (celda.startsWith("F4-")) return "F1-" + celda.slice(3);
+  if (celda.startsWith("F5-")) return "F2-" + celda.slice(3);
+  if (celda.startsWith("F6-")) return "F3-" + celda.slice(3);
+  if (celda.startsWith("BLOQ-P-")) return "BLOQ-R-" + celda.slice(7);
+  if (celda.startsWith("BLOQ-R-")) return "BLOQ-P-" + celda.slice(7);
+  if (celda.startsWith("FUERA-ARR-")) return "FUERA-ABA-" + celda.slice(10);
+  if (celda.startsWith("FUERA-ABA-")) return "FUERA-ARR-" + celda.slice(10);
+  return celda;
+}
+
+function flipAccionRow(a: AccionV2Row): AccionV2Row {
+  return {
+    ...a,
+    es_rival: !a.es_rival,
+    lado: a.lado === "propio" ? "rival" : "propio",
+    origen_celda: a.origen_celda ? invertirCelda(a.origen_celda) : null,
+    destino_celda: a.destino_celda ? invertirCelda(a.destino_celda) : null,
+    desvios: (a.desvios ?? []).map((d) => ({
+      ...d,
+      celda: invertirCelda(d.celda),
+    })),
+    posicion_inicial_celda: a.posicion_inicial_celda
+      ? invertirCelda(a.posicion_inicial_celda)
+      : null,
+  };
+}
+
+// ------------------------------------------------------------
 // HELPERS DE ZONA CODIFICADA
 // ------------------------------------------------------------
 
-/** true si la celda pertenece a cancha rival (F4..F6 o BLOQ-R-*). */
 function esLadoRival(celda: string | null | undefined): boolean {
   if (!celda) return false;
   if (/^F[456]-/.test(celda)) return true;
@@ -115,10 +127,6 @@ function esLadoRival(celda: string | null | undefined): boolean {
   return false;
 }
 
-/**
- * "Espeja" la fila rival a propia (F4→F3, F5→F2, F6→F1) para poder
- * reutilizar `zonaCrudaDeCelda`. Devuelve la celda convertida.
- */
 function espejarFila(celda: string): string {
   if (celda.startsWith("F4-")) return "F3-" + celda.slice(3);
   if (celda.startsWith("F5-")) return "F2-" + celda.slice(3);
@@ -126,10 +134,6 @@ function espejarFila(celda: string): string {
   return celda;
 }
 
-/**
- * Calcula el código de zona a partir de la celda cruda.
- * Retorna "P1".."P6" / "R1".."R6" o null si la celda no tiene zona.
- */
 function codigoZonaDeCelda(
   celda: string | null | undefined
 ): string | null {
@@ -142,26 +146,14 @@ function codigoZonaDeCelda(
   return `${esRival ? "R" : "P"}${zona}`;
 }
 
-/**
- * Deriva el "subtiipo real" (variante técnica, NO valoración).
- *   - saque: tipo_saque (potencia | flotado) | null
- *   - ataque: variante === "toque" ? "toque" : "remate"
- *   - resto: null
- */
 function subtiipoReal(a: AccionV2Row): string | null {
-  if (a.tipo === "saque") {
-    return a.tipo_saque ?? null;
-  }
+  if (a.tipo === "saque") return a.tipo_saque ?? null;
   if (a.tipo === "ataque") {
     return a.variante === "toque" ? "toque" : "remate";
   }
   return null;
 }
 
-/**
- * Convierte un subtipo de armado (número 1-6 o string numérico) a
- * calidad entera. Devuelve null si no es un valor válido (p. ej. "R").
- */
 function calidadDeArmado(
   subtipo: string | number | null | undefined
 ): number | null {
@@ -185,6 +177,20 @@ export async function cargarAccionesUnificadas(
 ): Promise<CargaUnificadaResult> {
   if (!partidoId) return { acciones: [], puntos: [] };
 
+  // Si el equipo que mira es el equipo_rival_id del partido, flipeamos
+  // toda la perspectiva (es_rival, lado, celdas, desvíos).
+  let debeFlipear = false;
+  if (equipoId) {
+    const { data: partido } = await supabase
+      .from("partidos")
+      .select("equipo_id, equipo_rival_id")
+      .eq("id", partidoId)
+      .maybeSingle();
+    if (partido && partido.equipo_rival_id === equipoId) {
+      debeFlipear = true;
+    }
+  }
+
   let q = supabase
     .from("acciones_v2")
     .select("*")
@@ -198,12 +204,9 @@ export async function cargarAccionesUnificadas(
   const { data, error } = await q;
   if (error || !data) return { acciones: [], puntos: [] };
 
-  const rows = data as AccionV2Row[];
+  let rows = data as AccionV2Row[];
+  if (debeFlipear) rows = rows.map(flipAccionRow);
 
-  // ---------- Calidad de armado previo por acción de ataque ----------
-  // Recorremos en el orden natural (set → punto → orden) y guardamos
-  // el último armado visible para cada acción de ataque del mismo punto.
-  // Se resetea al cambiar de punto/set.
   const calidadArmadoPrevioPorAccion = new Map<string, number | null>();
   {
     let ultimoArmado: number | null = null;
@@ -271,7 +274,6 @@ export async function cargarAccionesUnificadas(
     calidad_armado_previo: calidadArmadoPrevioPorAccion.get(a.id) ?? null,
   }));
 
-  // ---------- Calcular es_ultima_del_punto ----------
   const ultimaOrdenPorPunto = new Map<string, number>();
   for (const a of base) {
     if (a.oculta) continue;
@@ -319,9 +321,6 @@ export async function cargarAccionesUnificadas(
 // COLORES
 // ------------------------------------------------------------
 
-/**
- * Color por tipo de acción (para compat con código viejo).
- */
 export function colorPorTipo(tipo: string, esRival: boolean): string {
   if (esRival) return "#94a3b8";
   switch (tipo) {
@@ -346,10 +345,6 @@ export function colorPorTipo(tipo: string, esRival: boolean): string {
   }
 }
 
-/**
- * Color según la VALORACIÓN de la acción (ace, punto, error, etc.).
- * Verde = positivo, amarillo/naranja = neutro/medio, rojo = negativo.
- */
 export function colorPorValoracion(a: AccionVisual): string {
   const raw =
     a.subtipo !== null && a.subtipo !== undefined
@@ -357,7 +352,6 @@ export function colorPorValoracion(a: AccionVisual): string {
       : "";
   const base = raw.startsWith("toque:") ? raw.slice(6) : raw;
 
-  // Saque
   if (a.tipo === "saque") {
     switch (base) {
       case "ace":
@@ -373,7 +367,6 @@ export function colorPorValoracion(a: AccionVisual): string {
     }
   }
 
-  // Recepción (subtipo 1-6)
   if (a.tipo === "recepcion") {
     const n = parseInt(base, 10);
     const colores: Record<number, string> = {
@@ -387,7 +380,6 @@ export function colorPorValoracion(a: AccionVisual): string {
     if (!isNaN(n) && colores[n]) return colores[n];
   }
 
-  // Armado (subtipo 1-6 o R)
   if (a.tipo === "armado") {
     if (base === "R") return "#64748b";
     const n = parseInt(base, 10);
@@ -402,7 +394,6 @@ export function colorPorValoracion(a: AccionVisual): string {
     if (!isNaN(n) && colores[n]) return colores[n];
   }
 
-  // Ataque
   if (a.tipo === "ataque") {
     switch (base) {
       case "punto":
@@ -414,7 +405,6 @@ export function colorPorValoracion(a: AccionVisual): string {
     }
   }
 
-  // Bloqueo
   if (a.tipo === "bloqueo") {
     switch (base) {
       case "punto":
@@ -432,7 +422,6 @@ export function colorPorValoracion(a: AccionVisual): string {
     }
   }
 
-  // Defensa
   if (a.tipo === "defensa") {
     switch (base) {
       case "toque_positiva":
@@ -451,26 +440,20 @@ export function colorPorValoracion(a: AccionVisual): string {
     }
   }
 
-  // Libre
   if (a.tipo === "libre") {
     return "#a16207";
   }
 
-  // Roce de red
   if (a.tipo === "roce-red") {
     if (base === "roce-red-rival") return "#0284c7";
     if (base === "ofensivo-propio") return "#dc2626";
     return "#ea580c";
   }
 
-  // Fallback
   if (a.es_rival) return "#94a3b8";
   return "#64748b";
 }
 
-/**
- * Etiqueta corta para mostrar en tooltip / lista.
- */
 export function etiquetaAccion(a: AccionVisual): string {
   const st =
     a.subtipo !== null && a.subtipo !== undefined

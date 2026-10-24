@@ -229,7 +229,9 @@ export function generarRecepcionesAceContra(params: {
       orden: acciones.length + 1,
       tipo: "recepcion",
       subtipo: 1,
-      es_rival: !esPropio,
+      // FIX: si Quilmes sacó (esPropio), la recepción es de River → rival.
+      //      si River sacó (esPropio=false), la recepción es de Quilmes → propia.
+      es_rival: esPropio,
       jugador_id: jugador,
       lado: esPropio ? "rival" : "propio",
       origen_celda: celdaReceptora,
