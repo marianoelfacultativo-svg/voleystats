@@ -23,6 +23,7 @@ import GraficoSaquePorSet from "./GraficoSaquePorSet";
 import GraficoBloqueoPorSet from "./GraficoBloqueoPorSet";
 import MapaCalorTendencia from "./MapaCalorTendencia";
 import ImagenAmpliable from "./ImagenAmpliable";
+import GraficoBarrasFundamento from "./GraficoBarrasFundamento";
 
 interface Jugador {
   id: string;
@@ -47,6 +48,14 @@ const NOMBRES_FUNDAMENTO: Record<string, string> = {
   toque: "Toque",
 };
 
+const FUNDAMENTOS_BARRAS = [
+  "saque",
+  "recepcion",
+  "ataque",
+  "bloqueo",
+  "defensa",
+] as const;
+
 const ORDEN_RANKINGS: {
   id: string;
   titulo: string;
@@ -66,6 +75,90 @@ function colorPodio(puesto: number): string {
   if (puesto === 1) return "bg-yellow-400 text-yellow-900";
   if (puesto === 2) return "bg-slate-300 text-slate-800";
   return "bg-amber-700 text-amber-100";
+}
+
+// ------------------------------------------------------------
+// Calcula positivas / neutras / negativas por fundamento para
+// un jugador (o para todo el equipo si jugadorId es undefined).
+//
+// Reglas:
+//   - Saque:    punto = ace; error = negativo; resto = neutro.
+//   - Ataque:   punto = punto; error = error; resto = neutro.
+//   - Recepción: positivas = positiva / 2x_positiva.
+//                negativas = negativa / 2x_negativa / 3x_negativa / ace_contra.
+//                resto = neutras.
+//   - Bloqueo:  positivas = punto / positivo_mas / positivo.
+//               negativas = use_rival / red / filtrada.
+//               resto (neutro) = neutras.
+//   - Defensa:  positivas = gran_def / toque_positiva / cobertura_positiva.
+//               negativas = toque_negativa / mala_libre / error_def /
+//                           errores_graves / cobertura_negativa.
+//               resto (neutro) = neutras.
+// ------------------------------------------------------------
+function calcularBarrasPorFundamento(
+  acciones: AccionDB[],
+  jugadorId?: string
+): Record<
+  string,
+  { positivas: number; neutras: number; negativas: number }
+> {
+  const out: Record<
+    string,
+    { positivas: number; neutras: number; negativas: number }
+  > = {};
+  for (const f of FUNDAMENTOS_BARRAS) {
+    out[f] = { positivas: 0, neutras: 0, negativas: 0 };
+  }
+
+  for (const a of acciones) {
+    if (jugadorId && a.jugador_id !== jugadorId) continue;
+    const fund = a.fundamento;
+    if (!out[fund]) continue;
+
+    let cat: "positivas" | "neutras" | "negativas" = "neutras";
+    const v = a.valoracion;
+
+    if (fund === "saque") {
+      if (v === "ace") cat = "positivas";
+      else if (v === "negativo") cat = "negativas";
+    } else if (fund === "ataque") {
+      if (v === "punto") cat = "positivas";
+      else if (v === "error") cat = "negativas";
+    } else if (fund === "recepcion") {
+      if (v === "positiva" || v === "2x_positiva") cat = "positivas";
+      else if (
+        v === "negativa" ||
+        v === "2x_negativa" ||
+        v === "3x_negativa" ||
+        v === "ace_contra"
+      )
+        cat = "negativas";
+    } else if (fund === "bloqueo") {
+      if (v === "punto" || v === "positivo_mas" || v === "positivo")
+        cat = "positivas";
+      else if (v === "use_rival" || v === "red" || v === "filtrada")
+        cat = "negativas";
+    } else if (fund === "defensa") {
+      if (
+        v === "gran_def" ||
+        v === "toque_positiva" ||
+        v === "cobertura_positiva"
+      )
+        cat = "positivas";
+      else if (
+        v === "toque_negativa" ||
+        v === "mala_libre" ||
+        v === "error_def" ||
+        v === "errores_graves" ||
+        v === "cobertura_negativa"
+      )
+        cat = "negativas";
+    }
+
+    out[fund][cat] += a.cantidad;
+  }
+
+  return out;
 }
 
 export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
@@ -138,6 +231,10 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
   const textosRanking = jugadorSeleccionado
     ? rankingDeJugador(jugadorSeleccionado, porJugador, acciones)
     : {};
+
+  const barrasJugadorActual = jugadorSeleccionado
+    ? calcularBarrasPorFundamento(acciones, jugadorSeleccionado)
+    : null;
 
   const handleToggleModo = (nuevo: "individual" | "comparar") => {
     setModo(nuevo);
@@ -422,14 +519,32 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   </div>
                 </div>
 
+                {/* ============================================================
+                    FILA DE 6 CUADROS: radar + 5 gráficos de barras por
+                    fundamento. Todos del mismo tamaño visual.
+                   ============================================================ */}
                 <div className="mb-6">
                   <h4 className="font-semibold text-slate-800 mb-3">
                     Perfil de rendimiento
                   </h4>
-                  <RadarJugador
-                    jugador={jugadorActual}
-                    esArmador={esArmador}
-                  />
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex flex-col">
+                      <RadarJugador
+                        jugador={jugadorActual}
+                        esArmador={esArmador}
+                      />
+                    </div>
+                    {barrasJugadorActual &&
+                      FUNDAMENTOS_BARRAS.map((f) => (
+                        <GraficoBarrasFundamento
+                          key={f}
+                          fundamento={f}
+                          positivas={barrasJugadorActual[f].positivas}
+                          neutras={barrasJugadorActual[f].neutras}
+                          negativas={barrasJugadorActual[f].negativas}
+                        />
+                      ))}
+                  </div>
                 </div>
 
                 {Object.keys(jugadorActual.valoracionPonderadaPorFundamento)

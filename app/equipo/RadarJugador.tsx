@@ -14,7 +14,6 @@ import {
   nivelDeValoracion,
   type NivelValoracion,
 } from "@/lib/estadisticas";
-import LeyendaColores from "./LeyendaColores";
 
 export interface SerieRadar {
   id: string;
@@ -114,8 +113,6 @@ export default function RadarJugador({
     };
     for (const s of seriesFinales) {
       const real = s.jugador.valoracionPonderadaPorFundamento[f] ?? 0;
-      // Clampeamos al rango [REAL_MIN, REAL_MAX] para evitar que un
-      // valor fuera de rango deforme el radar.
       const clamped = Math.max(REAL_MIN, Math.min(REAL_MAX, real));
       row[s.id] = Number(clamped.toFixed(3));
     }
@@ -154,10 +151,7 @@ export default function RadarJugador({
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart data={datos} outerRadius="72%">
             <PolarGrid stroke="#cbd5e1" gridType="polygon" />
-            <PolarAngleAxis
-              dataKey="fundamento"
-              tick={renderTick}
-            />
+            <PolarAngleAxis dataKey="fundamento" tick={renderTick} />
             <PolarRadiusAxis
               angle={90}
               domain={[REAL_MIN, REAL_MAX]}
@@ -182,10 +176,7 @@ export default function RadarJugador({
               />
             ))}
             {esMultiple && (
-              <Legend
-                wrapperStyle={{ fontSize: 12 }}
-                iconType="circle"
-              />
+              <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
             )}
           </RadarChart>
         </ResponsiveContainer>
@@ -252,10 +243,6 @@ export default function RadarJugador({
             </div>
           );
         })}
-      </div>
-
-      <div className="mt-4">
-        <LeyendaColores />
       </div>
     </div>
   );

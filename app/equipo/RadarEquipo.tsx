@@ -149,10 +149,7 @@ export default function RadarEquipo({ equipo, series, titulo }: Props) {
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart data={datos} outerRadius="72%">
             <PolarGrid stroke="#cbd5e1" gridType="polygon" />
-            <PolarAngleAxis
-              dataKey="fundamento"
-              tick={renderTick}
-            />
+            <PolarAngleAxis dataKey="fundamento" tick={renderTick} />
             <PolarRadiusAxis
               angle={90}
               domain={[REAL_MIN, REAL_MAX]}
@@ -177,10 +174,7 @@ export default function RadarEquipo({ equipo, series, titulo }: Props) {
               />
             ))}
             {esMultiple && (
-              <Legend
-                wrapperStyle={{ fontSize: 12 }}
-                iconType="circle"
-              />
+              <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
             )}
           </RadarChart>
         </ResponsiveContainer>
@@ -244,11 +238,6 @@ export default function RadarEquipo({ equipo, series, titulo }: Props) {
           );
         })}
       </div>
-
-      <p className="text-xs text-slate-400 mt-3 text-center">
-        Cada vértice usa el promedio de valoración ponderada de los jugadores
-        del equipo en ese fundamento.
-      </p>
     </div>
   );
 }
