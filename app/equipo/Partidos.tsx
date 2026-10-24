@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { cargarAccionesCompatibles, type AccionDB } from "@/lib/db";
+import {
+  cargarAccionesCompatibles,
+  contarPuntosRival,
+  type AccionDB,
+} from "@/lib/db";
 import {
   calcularEstadisticasEquipo,
   calcularEstadisticasJugador,
@@ -54,6 +58,11 @@ interface Props {
   nombreEquipo: string;
 }
 
+interface DatosRival {
+  buenas: number;
+  errores: number;
+}
+
 const FUNDAMENTOS = ["saque", "recepcion", "ataque", "bloqueo", "defensa"];
 const FUNDAMENTOS_BARRAS = [
   "saque",
@@ -82,6 +91,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   const [partidos, setPartidos] = useState<Partido[]>([]);
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
   const [acciones, setAcciones] = useState<AccionDB[]>([]);
+  const [datosRival, setDatosRival] = useState<Record<string, DatosRival>>({});
   const [cargando, setCargando] = useState(true);
 
   const [filtroRival, setFiltroRival] = useState("");
@@ -131,15 +141,25 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       const ids = partRes.data.map((p) => p.id);
       if (ids.length === 0) {
         setAcciones([]);
+        setDatosRival({});
         setCargando(false);
         return;
       }
 
-      const resultados = await Promise.all(
-        ids.map((pid) => cargarAccionesCompatibles(pid, equipoId))
-      );
+      const [resultadosAcciones, resultadosRival] = await Promise.all([
+        Promise.all(
+          ids.map((pid) => cargarAccionesCompatibles(pid, equipoId))
+        ),
+        Promise.all(ids.map((pid) => contarPuntosRival(pid))),
+      ]);
 
-      setAcciones(resultados.flat());
+      const mapaRival: Record<string, DatosRival> = {};
+      ids.forEach((pid, idx) => {
+        mapaRival[pid] = resultadosRival[idx];
+      });
+
+      setAcciones(resultadosAcciones.flat());
+      setDatosRival(mapaRival);
       setCargando(false);
     });
   }, [equipoId]);
@@ -306,7 +326,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
 
-  // Acciones combinadas de los partidos comparados (para las barras del total).
   const accionesPartidosComparados: AccionDB[] = partidosComparadosData.flatMap(
     (s) => s.acciones
   );
@@ -391,7 +410,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         .filter((x): x is NonNullable<typeof x> => x !== null)
     : [];
 
-  // Acciones combinadas del jugador en los partidos seleccionados (para barras).
   const accionesJxPCombinadas: AccionDB[] = partidosJxPData.flatMap(
     (s) => s.accPartido
   );
@@ -546,6 +564,11 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         idsJugadores
       ),
     }));
+
+  // Datos del rival para el partido activo (calculados desde acciones_v2).
+  const datosRivalPartido = partidoDetalle
+    ? datosRival[partidoDetalle.id] ?? { buenas: 0, errores: 0 }
+    : { buenas: 0, errores: 0 };
 
   return (
     <div className="space-y-6">
@@ -898,10 +921,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                         </div>
                       </div>
 
-                      {/* =================================================
-                          6 CUADROS — Radar comparativo + 5 barras del
-                          jugador en los partidos seleccionados.
-                         ================================================= */}
                       <div className="mb-6">
                         <h4 className="font-semibold text-slate-800 mb-3">
                           Radar comparado
@@ -1116,10 +1135,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     </div>
                   </div>
 
-                  {/* =================================================
-                      6 CUADROS — Radar comparativo + 5 barras del
-                      TOTAL de los partidos comparados.
-                     ================================================= */}
                   <div className="mb-6">
                     <div className="grid grid-cols-3 gap-3">
                       <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 col-span-1">
@@ -1488,9 +1503,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     </div>
                   </div>
 
-                  {/* =================================================
-                      6 CUADROS — Radar + 5 barras del partido individual.
-                     ================================================= */}
                   <div className="grid grid-cols-3 gap-3">
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 col-span-1">
                       <RadarEquipo equipo={statsPartido.totales} />
@@ -1511,9 +1523,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                       />
                     </div>
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                      {/* Usa datos calculados desde acciones_v2, no del panel de admin. */}
                       <GraficoTortaRival
-                        erroresRivales={partidoDetalle.errores_rivales ?? 0}
-                        buenasRivales={partidoDetalle.buenas_rivales ?? 0}
+                        erroresRivales={datosRivalPartido.errores}
+                        buenasRivales={datosRivalPartido.buenas}
                       />
                     </div>
                   </div>

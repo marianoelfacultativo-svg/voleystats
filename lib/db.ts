@@ -402,14 +402,11 @@ function valoracionV2aV1(
     let s = String(subtipo);
     if (s.startsWith("toque:")) s = s.slice(6);
 
-    // Viejos subtipos: se mantienen tal cual.
     if (s === "punto" || s === "error" || s === "neutro") return s;
 
-    // Subtipos nuevos (v18). Los mapeamos a su valoración base para
-    // que el motor de stats los cuente con puntaje coherente.
     if (s === "punto_directo_ataque") return "punto";
     if (s === "punto_desviado_ataque") return "punto";
-    if (s === "use_rival_ataque") return "punto"; // touch-out tras bloqueo rival
+    if (s === "use_rival_ataque") return "punto";
     if (s === "error_red_ataque") return "error";
     if (s === "error_afuera_ataque") return "error";
     if (s === "gorro_ataque") return "error";
@@ -438,17 +435,13 @@ function valoracionV2aV1(
   if (tipo === "defensa") {
     const s = String(subtipo);
 
-    // Raw (elegidos en el popup)
     if (s === "toque") return "toque_positiva";
     if (s === "gran-defensa") return "gran_def";
     if (s === "libre") return "mala_libre";
     if (s === "cobertura") return "cobertura_positiva";
 
-    // "buena_rival" era el subtipo por defecto de la defensa última
-    // sin subtipo. Ahora esa defensa es neutra (ni suma ni resta).
     if (s === "buena_rival") return "neutro";
 
-    // Finales (ya calculados por la pipeline)
     if (s === "toque_positiva") return "toque_positiva";
     if (s === "toque_negativa") return "toque_negativa";
     if (s === "gran_def") return "gran_def";
@@ -613,4 +606,51 @@ export async function cargarAccionesCompatibles(
   }
 
   return Array.from(agrupado.values());
+}
+
+// ============================================
+// CONTAR PUNTOS DEL RIVAL (buenas / errores)
+// ============================================
+//
+// Reglas (v19.6):
+//   - Buena rival: punto cerrado donde la ÚLTIMA acción visible es del
+//     rival Y tiene subtipo EXACTAMENTE "buena_rival".
+//   - Error rival: punto cerrado donde la última acción visible NO se
+//     atribuye a un jugador propio (es del rival, o jugador_id === null)
+//     y NO entró como buena rival.
+//   - Puntos donde la última acción es propia (aunque sea error propio)
+//     no cuentan para el rival.
+export async function contarPuntosRival(
+  partidoId: string
+): Promise<{ buenas: number; errores: number }> {
+  const res = await cargarPuntosV2(partidoId);
+  if (!res.ok || !res.puntos) return { buenas: 0, errores: 0 };
+
+  let buenas = 0;
+  let errores = 0;
+
+  for (const p of res.puntos) {
+    if (p.ganador !== "propio" && p.ganador !== "rival") continue;
+
+    const visibles = p.acciones.filter((a) => !a.oculta);
+    if (visibles.length === 0) continue;
+    const ultima = visibles[visibles.length - 1];
+
+    const sub =
+      typeof ultima.subtipo === "string" ? ultima.subtipo : null;
+    const esBuenaRival = ultima.es_rival === true && sub === "buena_rival";
+
+    // "No se le atribuye la acción a un jugador propio":
+    //   - es del rival, o
+    //   - tiene jugador_id null (sin asignar)
+    const esPropia = ultima.es_rival === false && ultima.jugador_id !== null;
+
+    if (esBuenaRival) {
+      buenas++;
+    } else if (!esPropia) {
+      errores++;
+    }
+  }
+
+  return { buenas, errores };
 }
