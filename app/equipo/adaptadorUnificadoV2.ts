@@ -220,7 +220,8 @@ function rowALineaParaRecalculo(row: AccionV2Row): LineaClasificada {
       jugadorId: d.jugador_id ?? null,
     })),
     subtipo,
-    variante,
+    variante:
+      variante === "toque" || variante === "remate" ? variante : null,
     velocidad: row.velocidad ?? null,
     tipoSaque: (row.tipo_saque as LineaClasificada["tipoSaque"]) ?? null,
     x2: row.x2 ?? undefined,
