@@ -7,6 +7,7 @@ import { supabase } from "./supabase";
 import { cargarPuntosV2 } from "./dbV2";
 import type { RotacionPunto } from "./rotaciones";
 import { puntajeBase, ajustarPorContexto } from "./estadisticas";
+import { debeFlipear, prepararPuntos } from "./flipPerspectiva";
 
 // ------------------------------------------------------------
 // Interfaces V1 (compat con visualizadores antiguos)
@@ -488,6 +489,11 @@ function zonaTendenciaDeCelda(celda: string | null): number | null {
 // ------------------------------------------------------------
 // CARGA COMPATIBLE (solo V2)
 // ------------------------------------------------------------
+//
+// Si el `equipoId` que mira es el `equipo_rival_id` del partido,
+// flipa la perspectiva y recalcula subtipos ANTES de traducir a
+// AccionDB. Así el equipo rival ve los datos como si hubiera
+// cargado el partido desde su propia consola.
 
 export async function cargarAccionesCompatibles(
   partidoId: string,
@@ -496,8 +502,11 @@ export async function cargarAccionesCompatibles(
   const res = await cargarPuntosV2(partidoId);
   if (!res.ok || !res.puntos) return [];
 
+  const hayQueFlipear = await debeFlipear(partidoId, equipoId);
+  const puntos = prepararPuntos(res.puntos, hayQueFlipear);
+
   const acciones: AccionIndividual[] = [];
-  for (const p of res.puntos) {
+  for (const p of puntos) {
     for (const a of p.acciones) {
       if (equipoId && a.equipo_id && a.equipo_id !== equipoId) continue;
       const fund = fundamentoV2aV1(a.tipo);
@@ -572,7 +581,7 @@ export async function cargarAccionesCompatibles(
     }
   }
 
-  for (const p of res.puntos) {
+  for (const p of puntos) {
     for (const a of p.acciones) {
       if (a.tipo !== "armado") continue;
       if (!a.jugador_id) continue;
@@ -620,16 +629,24 @@ export async function cargarAccionesCompatibles(
 //     y NO entró como buena rival.
 //   - Puntos donde la última acción es propia (aunque sea error propio)
 //     no cuentan para el rival.
+//
+// Si se pasa `equipoId` y el equipo mira desde el lado rival, se
+// flipa la perspectiva + recalcula subtipos antes de contar.
+
 export async function contarPuntosRival(
-  partidoId: string
+  partidoId: string,
+  equipoId?: string
 ): Promise<{ buenas: number; errores: number }> {
   const res = await cargarPuntosV2(partidoId);
   if (!res.ok || !res.puntos) return { buenas: 0, errores: 0 };
 
+  const hayQueFlipear = await debeFlipear(partidoId, equipoId);
+  const puntos = prepararPuntos(res.puntos, hayQueFlipear);
+
   let buenas = 0;
   let errores = 0;
 
-  for (const p of res.puntos) {
+  for (const p of puntos) {
     if (p.ganador !== "propio" && p.ganador !== "rival") continue;
 
     const visibles = p.acciones.filter((a) => !a.oculta);

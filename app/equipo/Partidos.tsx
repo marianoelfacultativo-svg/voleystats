@@ -158,7 +158,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         Promise.all(
           ids.map((pid) => cargarAccionesCompatibles(pid, equipoId))
         ),
-        Promise.all(ids.map((pid) => contarPuntosRival(pid))),
+        Promise.all(ids.map((pid) => contarPuntosRival(pid, equipoId))),
       ]);
 
       const mapaRival: Record<string, DatosRival> = {};
