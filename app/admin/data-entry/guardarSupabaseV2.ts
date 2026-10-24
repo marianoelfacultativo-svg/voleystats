@@ -62,6 +62,7 @@ export async function guardarPuntosEnSupabase({
       equipo_id:
         pc.equipoId ??
         (pc.saqueInicial === "propio" ? equipoId : equipoRivalId),
+      estado_rival: (pc.estadoRival ?? null) as Record<string, unknown> | null,
     };
 
     const lineasConSaque = calcularSubtiposSaque(pc.lineas);
