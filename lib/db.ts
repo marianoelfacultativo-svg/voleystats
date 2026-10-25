@@ -314,6 +314,12 @@ export interface AccionDB {
   puntaje?: number;
   puntajeBase?: number;
   variante?: string | null;
+  /**
+   * Celda destino de la acción (F1-C3, F4-C2, BLOQ-R-C3, etc.).
+   * Se usa para desglosar bloqueos por "cae en cancha propia" vs
+   * "cae en cancha rival" en las tablas crudas. Opcional.
+   */
+  destino_celda?: string | null;
 }
 
 const RECEPCION_NUM_A_STR: Record<number, string> = {
@@ -341,6 +347,7 @@ interface AccionIndividual {
   fundamento: string;
   valoracion: string;
   variante?: string | null;
+  destino_celda?: string | null;
   created_at: string;
 }
 
@@ -516,6 +523,7 @@ export async function cargarAccionesCompatibles(
         fundamento: fund,
         valoracion: val,
         variante: a.variante ?? null,
+        destino_celda: a.destino_celda ?? null,
         created_at: a.created_at ?? p.created_at ?? "",
       });
     }
@@ -565,6 +573,7 @@ export async function cargarAccionesCompatibles(
       puntaje: final,
       puntajeBase: base,
       variante: acc.variante ?? null,
+      destino_celda: acc.destino_celda ?? null,
     });
 
     anteriorFinal = final;
@@ -600,7 +609,7 @@ export async function cargarAccionesCompatibles(
   const agrupado = new Map<string, AccionDB>();
   for (const r of procesadas) {
     const pRed = Math.round((r.puntaje ?? 5) * 10) / 10;
-    const k = `${r.jugador_id}|${r.set_numero}|${r.fundamento}|${r.valoracion}|${pRed}`;
+    const k = `${r.jugador_id}|${r.set_numero}|${r.fundamento}|${r.valoracion}|${pRed}|${r.destino_celda ?? ""}`;
     const existente = agrupado.get(k);
     if (existente) {
       existente.cantidad += 1;
