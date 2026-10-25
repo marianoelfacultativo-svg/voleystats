@@ -178,7 +178,6 @@ export default function JugadorPage() {
             setPartidos(partRes);
             const idsPartidos = partRes.map((p) => p.id);
 
-            // Cargar acciones desde las tablas V1 + V2, filtrando por equipo.
             const resultados = await Promise.all(
               idsPartidos.map((pid) =>
                 cargarAccionesCompatibles(pid, asig.equipo_id)
@@ -835,7 +834,6 @@ export default function JugadorPage() {
                     />
                   </div>
 
-                  {/* MAPA DE CALOR POR FUNDAMENTO */}
                   <div className="mb-6">
                     <h3 className="font-semibold text-slate-800 mb-3">
                       Mapa de calor
@@ -979,6 +977,8 @@ export default function JugadorPage() {
                       <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                         <MapaCalorTendencia
                           distribucion={stats.armador.distribucionTendencia}
+                          acciones={accionesFiltradas}
+                          jugadorId={jugador.id}
                         />
                       </div>
                     </div>

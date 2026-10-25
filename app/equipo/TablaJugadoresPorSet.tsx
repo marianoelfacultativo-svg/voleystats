@@ -213,13 +213,11 @@ function DetalleJugador({
     });
   };
 
-  // Acciones del equipo filtradas por set (si aplica) → para calcular máximos correctos
   const accionesEquipoFiltradas =
     setFiltro === "todos"
       ? acciones
       : acciones.filter((a) => a.set_numero === setFiltro);
 
-  // Calcular máximos de referencia
   const maxPorFund = calcularMaxAccionesPorFundamento(
     accionesEquipoFiltradas,
     jugadoresIds
@@ -232,7 +230,6 @@ function DetalleJugador({
     if (total > maxAccionesEquipo) maxAccionesEquipo = total;
   }
 
-  // Stats del jugador con contexto de volumen (min 3 acciones para el radar)
   const est = calcularEstadisticasJugador(
     jugadorId,
     accionesEquipoFiltradas,
@@ -244,7 +241,6 @@ function DetalleJugador({
 
   const fundamentos = esArmador ? FUNDAMENTOS_ARMADOR : FUNDAMENTOS_NORMAL;
 
-  // Gráficos por set (siempre muestran todos los sets)
   const promediosSaque = calcularPromedioPonderadoPorSet(
     jugadorId,
     acciones,
@@ -530,6 +526,8 @@ function DetalleJugador({
             <div className="col-span-3 p-3 bg-white border border-slate-200 rounded-lg">
               <MapaCalorTendencia
                 distribucion={est.armador.distribucionTendencia}
+                acciones={accionesJugadorFiltradas}
+                jugadorId={jugadorId}
               />
             </div>
           )}

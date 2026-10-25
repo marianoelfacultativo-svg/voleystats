@@ -518,10 +518,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   </div>
                 </div>
 
-                {/* ============================================================
-                    FILA DE 6 CUADROS: radar + 5 gráficos de barras por
-                    fundamento. Todos del mismo tamaño visual.
-                   ============================================================ */}
                 <div className="mb-6">
                   <h4 className="font-semibold text-slate-800 mb-3">
                     Perfil de rendimiento
@@ -546,7 +542,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   </div>
                 </div>
 
-                {/* MAPA DE CALOR POR FUNDAMENTO */}
                 <div className="mb-6">
                   <h4 className="font-semibold text-slate-800 mb-3">
                     Mapa de calor
@@ -690,6 +685,8 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         distribucion={
                           jugadorActual.armador.distribucionTendencia
                         }
+                        acciones={acciones}
+                        jugadorId={jugadorActual.jugador_id}
                       />
                     </div>
                   </div>

@@ -1,10 +1,22 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import type { DistribucionTendencia } from "@/lib/estadisticas";
+import type { AccionDB } from "@/lib/db";
+
+// ============================================================
+// MAPA DE CALOR DE TENDENCIA (armado)
+// Recibe acciones crudas + jugadorId para poder filtrar.
+// Si no vienen, usa `distribucion` legacy sin filtros.
+// ============================================================
 
 interface Props {
-  distribucion: DistribucionTendencia;
+  distribucion?: DistribucionTendencia;
+  acciones?: AccionDB[];
+  jugadorId?: string;
 }
+
+type Nivel = "todas" | "pos" | "neu" | "neg";
 
 interface Celda {
   key: keyof DistribucionTendencia;
@@ -20,10 +32,63 @@ const CELDAS: Celda[] = [
   { key: "zona_1", label: "1" },
 ];
 
+// ------------------------------------------------------------
+// Helpers de cálculo
+// ------------------------------------------------------------
+
+function zonaTendencia(celda: string | null | undefined): number | null {
+  if (!celda) return null;
+  switch (celda) {
+    case "F1-C1":
+    case "F1-C2":
+      return 4;
+    case "F1-C3":
+      return 3;
+    case "F1-C4":
+    case "F1-C5":
+      return 2;
+    case "F2-C3":
+    case "F3-C3":
+      return 6;
+    case "F2-C4":
+    case "F2-C5":
+    case "F3-C4":
+    case "F3-C5":
+      return 2;
+    default:
+      return null;
+  }
+}
+
+function zonaOrigenDeCelda(celda: string | null | undefined): number | null {
+  if (!celda) return null;
+  const partes = celda.split("-");
+  if (partes.length !== 2) return null;
+  const [fila, col] = partes;
+  const f = parseInt(fila.slice(1));
+  if (f < 1 || f > 3) return null;
+  if (col === "C1" || col === "C2") return f === 1 ? 4 : 5;
+  if (col === "C3") return f === 1 ? 3 : 6;
+  if (col === "C4" || col === "C5") return f === 1 ? 2 : 1;
+  return null;
+}
+
+function nivelArmado(valoracion: string): "pos" | "neu" | "neg" {
+  if (valoracion === "correcto" || valoracion === "perfecto" || valoracion === "genial")
+    return "pos";
+  if (valoracion === "malo" || valoracion === "horrible") return "neg";
+  return "neu";
+}
+
+function nivelToque(valoracion: string): "pos" | "neu" | "neg" {
+  if (valoracion === "punto") return "pos";
+  if (valoracion === "error") return "neg";
+  return "neu";
+}
+
 function calcularColor(pct: number) {
-  if (pct <= 0) return { r: 219, g: 234, b: 254 }; // azul muy claro
+  if (pct <= 0) return { r: 219, g: 234, b: 254 };
   if (pct < 20) {
-    // azul → celeste
     const t = pct / 20;
     return {
       r: Math.round(96 + t * (147 - 96)),
@@ -32,7 +97,6 @@ function calcularColor(pct: number) {
     };
   }
   if (pct < 35) {
-    // celeste → amarillo
     const t = (pct - 20) / 15;
     return {
       r: Math.round(147 + t * (250 - 147)),
@@ -41,7 +105,6 @@ function calcularColor(pct: number) {
     };
   }
   if (pct < 50) {
-    // amarillo → rojo
     const t = (pct - 35) / 15;
     return {
       r: Math.round(250 + t * (239 - 250)),
@@ -50,7 +113,6 @@ function calcularColor(pct: number) {
     };
   }
   if (pct < 75) {
-    // rojo → rojo oscuro
     const t = (pct - 50) / 25;
     return {
       r: Math.round(239 - t * 60),
@@ -58,7 +120,6 @@ function calcularColor(pct: number) {
       b: Math.round(68 - t * 40),
     };
   }
-  // muy rojo → rojo más oscuro
   const t = (pct - 75) / 25;
   return {
     r: Math.round(179 - t * 60),
@@ -67,11 +128,102 @@ function calcularColor(pct: number) {
   };
 }
 
-export default function MapaCalorTendencia({ distribucion }: Props) {
-  const total = distribucion.total;
+// ============================================================
+// COMPONENTE
+// ============================================================
+
+export default function MapaCalorTendencia({
+  distribucion,
+  acciones,
+  jugadorId,
+}: Props) {
+  const [nivel, setNivel] = useState<Nivel>("todas");
+  const [velocidad, setVelocidad] = useState<string>("todas");
+  const [zonaOrigen, setZonaOrigen] = useState<string>("todas");
+  const [valoracion, setValoracion] = useState<string>("todas");
+
+  const modoFiltrable = !!acciones && !!jugadorId;
+
+  const distFiltrada: DistribucionTendencia = useMemo(() => {
+    if (!modoFiltrable) {
+      return (
+        distribucion ?? {
+          zona_4: 0,
+          zona_3: 0,
+          zona_2: 0,
+          zona_6: 0,
+          zona_1: 0,
+          toque: 0,
+          total: 0,
+        }
+      );
+    }
+
+    const acc = acciones!.filter((a) => a.jugador_id === jugadorId);
+    const d: DistribucionTendencia = {
+      zona_4: 0,
+      zona_3: 0,
+      zona_2: 0,
+      zona_6: 0,
+      zona_1: 0,
+      toque: 0,
+      total: 0,
+    };
+
+    const filtrosNoToque =
+      velocidad !== "todas" ||
+      zonaOrigen !== "todas" ||
+      valoracion !== "todas";
+
+    for (const a of acc) {
+      // ---- ARMADOS ----
+      if (a.fundamento === "armados") {
+        if (nivel !== "todas" && nivelArmado(a.valoracion) !== nivel) continue;
+        if (velocidad !== "todas") {
+          if (velocidad === "sin") {
+            if (a.velocidad !== null && a.velocidad !== undefined) continue;
+          } else if (a.velocidad !== Number(velocidad)) continue;
+        }
+        if (zonaOrigen !== "todas") {
+          if (zonaOrigenDeCelda(a.origen_celda) !== Number(zonaOrigen)) continue;
+        }
+        if (valoracion !== "todas" && a.valoracion !== valoracion) continue;
+
+        const z = zonaTendencia(a.destino_celda);
+        if (z === 4) d.zona_4 += a.cantidad;
+        else if (z === 3) d.zona_3 += a.cantidad;
+        else if (z === 2) d.zona_2 += a.cantidad;
+        else if (z === 6) d.zona_6 += a.cantidad;
+        else if (z === 1) d.zona_1 += a.cantidad;
+        continue;
+      }
+
+      // ---- TOQUES (remate de segunda del armador) ----
+      if (a.fundamento === "toque") {
+        if (filtrosNoToque) continue;
+        if (nivel !== "todas" && nivelToque(a.valoracion) !== nivel) continue;
+        d.toque += a.cantidad;
+      }
+    }
+
+    d.total =
+      d.zona_4 + d.zona_3 + d.zona_2 + d.zona_6 + d.zona_1 + d.toque;
+    return d;
+  }, [
+    modoFiltrable,
+    distribucion,
+    acciones,
+    jugadorId,
+    nivel,
+    velocidad,
+    zonaOrigen,
+    valoracion,
+  ]);
+
+  const total = distFiltrada.total;
 
   const pcts = CELDAS.map((c) => {
-    const valor = distribucion[c.key] as number;
+    const valor = distFiltrada[c.key] as number;
     return total > 0 ? (valor / total) * 100 : 0;
   });
   const maxPct = Math.max(...pcts, 1);
@@ -80,20 +232,119 @@ export default function MapaCalorTendencia({ distribucion }: Props) {
   const tamañoMin = 12;
 
   return (
-    <div>
-      <h4 className="font-semibold text-slate-800 mb-3">
+    <div className="space-y-2">
+      <h4 className="font-semibold text-slate-800">
         Distribución de tendencia
       </h4>
 
+      {/* Filtros (solo si hay acciones) */}
+      {modoFiltrable && (
+        <div className="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-2">
+          {/* Nivel */}
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="text-[9px] font-semibold text-slate-500 uppercase mr-1">
+              Nivel:
+            </span>
+            {(["todas", "pos", "neu", "neg"] as Nivel[]).map((n) => {
+              const labels: Record<Nivel, string> = {
+                todas: "Todas",
+                pos: "Positivas",
+                neu: "Neutras",
+                neg: "Negativas",
+              };
+              const colores: Record<Nivel, string> = {
+                todas: "bg-slate-100 text-slate-700 border-slate-300",
+                pos: "bg-green-100 text-green-800 border-green-400",
+                neu: "bg-slate-100 text-slate-700 border-slate-400",
+                neg: "bg-red-100 text-red-800 border-red-400",
+              };
+              const activo = nivel === n;
+              return (
+                <button
+                  key={n}
+                  onClick={() => setNivel(n)}
+                  className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border-2 transition ${
+                    activo
+                      ? "bg-emerald-500 text-white border-emerald-600"
+                      : `${colores[n]} hover:brightness-95`
+                  }`}
+                >
+                  {labels[n]}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Velocidad / Zona / Valoración */}
+          <div className="grid grid-cols-3 gap-1.5">
+            <div>
+              <label className="block text-[9px] font-semibold text-slate-500 uppercase mb-0.5">
+                Velocidad
+              </label>
+              <select
+                value={velocidad}
+                onChange={(e) => setVelocidad(e.target.value)}
+                className="w-full px-1.5 py-0.5 text-[10px] border border-slate-300 rounded bg-white focus:outline-none focus:border-emerald-500"
+              >
+                <option value="todas">Todas</option>
+                <option value="1">1</option>
+                <option value="1.5">1.5</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="5">5</option>
+                <option value="sin">Sin dato</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-semibold text-slate-500 uppercase mb-0.5">
+                Zona origen
+              </label>
+              <select
+                value={zonaOrigen}
+                onChange={(e) => setZonaOrigen(e.target.value)}
+                className="w-full px-1.5 py-0.5 text-[10px] border border-slate-300 rounded bg-white focus:outline-none focus:border-emerald-500"
+              >
+                <option value="todas">Todas</option>
+                {[1, 2, 3, 4, 5, 6].map((z) => (
+                  <option key={z} value={String(z)}>
+                    Zona {z}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-semibold text-slate-500 uppercase mb-0.5">
+                Valoración
+              </label>
+              <select
+                value={valoracion}
+                onChange={(e) => setValoracion(e.target.value)}
+                className="w-full px-1.5 py-0.5 text-[10px] border border-slate-300 rounded bg-white focus:outline-none focus:border-emerald-500"
+              >
+                <option value="todas">Todas</option>
+                <option value="horrible">Horrible</option>
+                <option value="malo">Malo</option>
+                <option value="flojo">Flojo</option>
+                <option value="correcto">Correcto</option>
+                <option value="perfecto">Perfecto</option>
+                <option value="genial">Genial</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
       {total === 0 ? (
         <p className="text-sm text-slate-500 text-center py-8">
-          Todavía no hay tendencias cargadas
+          No hay tendencias con los filtros actuales
         </p>
       ) : (
         <>
           <div className="grid grid-cols-3 gap-3">
             {CELDAS.map((c) => {
-              const valor = distribucion[c.key] as number;
+              const valor = distFiltrada[c.key] as number;
               const pct = (valor / total) * 100;
               const tamaño =
                 valor === 0

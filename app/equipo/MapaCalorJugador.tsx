@@ -12,13 +12,15 @@ interface Props {
   jugadorId: string;
 }
 
-type Fundamento = "saque" | "ataque" | "defensa" | "recepcion";
+type Fundamento = "saque" | "ataque" | "defensa" | "recepcion" | "armados";
+type Nivel = "todas" | "pos" | "neu" | "neg";
 
 const TABS: { id: Fundamento; label: string; icono: string }[] = [
   { id: "saque", label: "Saque", icono: "🔥" },
   { id: "ataque", label: "Ataque", icono: "⚡" },
   { id: "defensa", label: "Defensa", icono: "🛡️" },
   { id: "recepcion", label: "Recepción", icono: "🙌" },
+  { id: "armados", label: "Armados", icono: "🎯" },
 ];
 
 // ------------------------------------------------------------
@@ -96,7 +98,7 @@ function getCoords(
 }
 
 // ------------------------------------------------------------
-// Proyección a SVG (achicado y adaptado a cancha de vóley)
+// Proyección a SVG
 // ------------------------------------------------------------
 
 const W = 13;
@@ -111,18 +113,133 @@ function toPx(x: number, z: number): { px: number; py: number } {
   };
 }
 
+// ------------------------------------------------------------
+// Clasificación de nivel y zona
+// ------------------------------------------------------------
+
+function clasificarNivel(
+  fundamento: string,
+  valoracion: string
+): "pos" | "neu" | "neg" {
+  if (fundamento === "saque") {
+    if (valoracion === "ace" || valoracion === "positivo_mas" || valoracion === "positivo")
+      return "pos";
+    if (valoracion === "negativo") return "neg";
+    return "neu";
+  }
+  if (fundamento === "ataque") {
+    if (valoracion === "punto") return "pos";
+    if (valoracion === "error") return "neg";
+    return "neu";
+  }
+  if (fundamento === "recepcion") {
+    if (valoracion === "positiva" || valoracion === "2x_positiva") return "pos";
+    if (["negativa", "2x_negativa", "3x_negativa", "ace_contra"].includes(valoracion))
+      return "neg";
+    return "neu";
+  }
+  if (fundamento === "defensa") {
+    if (["gran_def", "toque_positiva", "cobertura_positiva"].includes(valoracion))
+      return "pos";
+    if (
+      [
+        "toque_negativa",
+        "mala_libre",
+        "error_def",
+        "errores_graves",
+        "cobertura_negativa",
+      ].includes(valoracion)
+    )
+      return "neg";
+    return "neu";
+  }
+  if (fundamento === "armados") {
+    if (["correcto", "perfecto", "genial"].includes(valoracion)) return "pos";
+    if (["malo", "horrible"].includes(valoracion)) return "neg";
+    return "neu";
+  }
+  return "neu";
+}
+
+function zonaDeCelda(celda: string | null | undefined): number | null {
+  if (!celda) return null;
+  const partes = celda.split("-");
+  if (partes.length !== 2) return null;
+  const [fila, col] = partes;
+  const f = parseInt(fila.slice(1));
+  if (f < 1 || f > 3) return null;
+  if (col === "C1" || col === "C2") {
+    if (f === 1) return 4;
+    if (f === 2) return 5;
+    if (f === 3) return 5;
+  }
+  if (col === "C3") {
+    if (f === 1) return 3;
+    if (f === 2) return 6;
+    if (f === 3) return 6;
+  }
+  if (col === "C4" || col === "C5") {
+    if (f === 1) return 2;
+    if (f === 2) return 1;
+    if (f === 3) return 1;
+  }
+  return null;
+}
+
 // ============================================================
 // COMPONENTE
 // ============================================================
 
 export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
   const [fundamento, setFundamento] = useState<Fundamento>("saque");
+  const [nivel, setNivel] = useState<Nivel>("todas");
+
+  // Filtros específicos de armado
+  const [velocidad, setVelocidad] = useState<string>("todas");
+  const [zonaOrigen, setZonaOrigen] = useState<string>("todas");
+  const [valoracionArmado, setValoracionArmado] = useState<string>("todas");
 
   const puntos = useMemo(() => {
-    return acciones.filter(
+    let filtradas = acciones.filter(
       (a) => a.jugador_id === jugadorId && a.fundamento === fundamento
     );
-  }, [acciones, jugadorId, fundamento]);
+
+    if (nivel !== "todas") {
+      filtradas = filtradas.filter(
+        (a) => clasificarNivel(fundamento, a.valoracion) === nivel
+      );
+    }
+
+    if (fundamento === "armados") {
+      if (velocidad !== "todas") {
+        if (velocidad === "sin") {
+          filtradas = filtradas.filter(
+            (a) => a.velocidad === null || a.velocidad === undefined
+          );
+        } else {
+          filtradas = filtradas.filter((a) => a.velocidad === Number(velocidad));
+        }
+      }
+      if (zonaOrigen !== "todas") {
+        filtradas = filtradas.filter(
+          (a) => zonaDeCelda(a.origen_celda) === Number(zonaOrigen)
+        );
+      }
+      if (valoracionArmado !== "todas") {
+        filtradas = filtradas.filter((a) => a.valoracion === valoracionArmado);
+      }
+    }
+
+    return filtradas;
+  }, [
+    acciones,
+    jugadorId,
+    fundamento,
+    nivel,
+    velocidad,
+    zonaOrigen,
+    valoracionArmado,
+  ]);
 
   const heatPoints = useMemo(() => {
     const pts: { px: number; py: number; peso: number }[] = [];
@@ -131,7 +248,7 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
       let celda: string | null | undefined = null;
       let mini: string | null | undefined = null;
 
-      if (fundamento === "saque" || fundamento === "ataque") {
+      if (fundamento === "saque" || fundamento === "ataque" || fundamento === "armados") {
         celda = a.destino_celda;
         mini = a.destino_mini;
       } else {
@@ -172,9 +289,11 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
 
   const tieneDatos = heatPoints.length > 0 || stars.length > 0;
 
+  const esArmado = fundamento === "armados";
+
   return (
     <div className="space-y-3">
-      {/* Selector de fundamento */}
+      {/* Tabs de fundamento */}
       <div className="flex flex-wrap gap-1">
         {TABS.map((t) => (
           <button
@@ -191,11 +310,108 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
         ))}
       </div>
 
+      {/* Filtro general de nivel */}
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="text-[10px] font-semibold text-slate-500 uppercase mr-1">
+          Nivel:
+        </span>
+        {(["todas", "pos", "neu", "neg"] as Nivel[]).map((n) => {
+          const labels: Record<Nivel, string> = {
+            todas: "Todas",
+            pos: "Positivas",
+            neu: "Neutras",
+            neg: "Negativas",
+          };
+          const colores: Record<Nivel, string> = {
+            todas: "bg-slate-100 text-slate-700 border-slate-300",
+            pos: "bg-green-100 text-green-800 border-green-400",
+            neu: "bg-slate-100 text-slate-700 border-slate-400",
+            neg: "bg-red-100 text-red-800 border-red-400",
+          };
+          const activo = nivel === n;
+          return (
+            <button
+              key={n}
+              onClick={() => setNivel(n)}
+              className={`px-2 py-1 text-[11px] font-semibold rounded border-2 transition ${
+                activo
+                  ? "bg-emerald-500 text-white border-emerald-600"
+                  : `${colores[n]} hover:brightness-95`
+              }`}
+            >
+              {labels[n]}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Filtros de armado (solo cuando la tab es armados) */}
+      {esArmado && (
+        <div className="grid grid-cols-3 gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2">
+          <div>
+            <label className="block text-[9px] font-semibold text-slate-500 uppercase mb-0.5">
+              Velocidad
+            </label>
+            <select
+              value={velocidad}
+              onChange={(e) => setVelocidad(e.target.value)}
+              className="w-full px-2 py-1 text-[11px] border border-slate-300 rounded bg-white focus:outline-none focus:border-emerald-500"
+            >
+              <option value="todas">Todas</option>
+              <option value="1">1</option>
+              <option value="1.5">1.5</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="5">5</option>
+              <option value="sin">Sin dato</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[9px] font-semibold text-slate-500 uppercase mb-0.5">
+              Zona origen
+            </label>
+            <select
+              value={zonaOrigen}
+              onChange={(e) => setZonaOrigen(e.target.value)}
+              className="w-full px-2 py-1 text-[11px] border border-slate-300 rounded bg-white focus:outline-none focus:border-emerald-500"
+            >
+              <option value="todas">Todas</option>
+              {[1, 2, 3, 4, 5, 6].map((z) => (
+                <option key={z} value={String(z)}>
+                  Zona {z}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[9px] font-semibold text-slate-500 uppercase mb-0.5">
+              Valoración
+            </label>
+            <select
+              value={valoracionArmado}
+              onChange={(e) => setValoracionArmado(e.target.value)}
+              className="w-full px-2 py-1 text-[11px] border border-slate-300 rounded bg-white focus:outline-none focus:border-emerald-500"
+            >
+              <option value="todas">Todas</option>
+              <option value="horrible">Horrible (1)</option>
+              <option value="malo">Malo (2)</option>
+              <option value="flojo">Flojo (3)</option>
+              <option value="correcto">Correcto (4)</option>
+              <option value="perfecto">Perfecto (5)</option>
+              <option value="genial">Genial (6)</option>
+            </select>
+          </div>
+        </div>
+      )}
+
       {/* Cancha */}
       <div className="bg-slate-900 rounded-xl overflow-hidden flex justify-center p-4">
         {!tieneDatos ? (
           <div className="h-[360px] flex items-center justify-center text-slate-400 text-sm">
-            Sin datos de {TABS.find((t) => t.id === fundamento)?.label} para este jugador
+            Sin datos de {TABS.find((t) => t.id === fundamento)?.label} para
+            este jugador con los filtros actuales
           </div>
         ) : (
           <svg
@@ -217,33 +433,51 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
               </filter>
             </defs>
 
-            {/* Fondo de la cancha */}
             <rect x={0} y={0} width={260} height={360} fill="#1e293b" />
 
-            {/* Líneas de la cancha de vóley */}
             <g stroke="#ffffff" strokeWidth="1.5" fill="none" opacity="0.4">
-              {/* Borde exterior */}
               <rect x={0} y={0} width={260} height={360} />
-              {/* Red (centro) */}
-              <line x1={0} y1={180} x2={260} y2={180} strokeWidth="4" opacity="0.8" />
-              {/* Líneas de ataque (3 metros) */}
+              <line
+                x1={0}
+                y1={180}
+                x2={260}
+                y2={180}
+                strokeWidth="4"
+                opacity="0.8"
+              />
               <line x1={0} y1={120} x2={260} y2={120} />
               <line x1={0} y1={240} x2={260} y2={240} />
-              {/* Línea central longitudinal (opcional, para dar perspectiva) */}
-              <line x1={130} y1={0} x2={130} y2={360} strokeDasharray="4 4" opacity="0.2" />
+              <line
+                x1={130}
+                y1={0}
+                x2={130}
+                y2={360}
+                strokeDasharray="4 4"
+                opacity="0.2"
+              />
             </g>
 
-            {/* Malla de la red */}
             <g stroke="#ffffff" strokeWidth="0.5" opacity="0.15">
               {Array.from({ length: 13 }).map((_, i) => (
-                <line key={`v-${i}`} x1={i * 20} y1={174} x2={i * 20} y2={186} />
+                <line
+                  key={`v-${i}`}
+                  x1={i * 20}
+                  y1={174}
+                  x2={i * 20}
+                  y2={186}
+                />
               ))}
               {Array.from({ length: 3 }).map((_, i) => (
-                <line key={`h-${i}`} x1={0} y1={174 + i * 6} x2={260} y2={174 + i * 6} />
+                <line
+                  key={`h-${i}`}
+                  x1={0}
+                  y1={174 + i * 6}
+                  x2={260}
+                  y2={174 + i * 6}
+                />
               ))}
             </g>
 
-            {/* Capa de calor */}
             <g filter="url(#heatBlur)" opacity="0.85">
               {heatPoints.map((p, i) => (
                 <circle
@@ -256,7 +490,6 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
               ))}
             </g>
 
-            {/* Estrellas (posiciones iniciales) */}
             <g>
               {stars.map((s, i) => (
                 <text
@@ -266,26 +499,45 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fontSize={16}
-                  style={{ filter: "drop-shadow(0px 2px 2px rgba(0,0,0,0.6))" }}
+                  style={{
+                    filter: "drop-shadow(0px 2px 2px rgba(0,0,0,0.6))",
+                  }}
                 >
                   ⭐
                 </text>
               ))}
             </g>
 
-            {/* Etiquetas */}
-            <text x={130} y={16} textAnchor="middle" fill="#ffffff" opacity="0.5" fontSize={10} fontWeight="bold">
+            <text
+              x={130}
+              y={16}
+              textAnchor="middle"
+              fill="#ffffff"
+              opacity="0.5"
+              fontSize={10}
+              fontWeight="bold"
+            >
               CANCHA RIVAL
             </text>
-            <text x={130} y={352} textAnchor="middle" fill="#ffffff" opacity="0.5" fontSize={10} fontWeight="bold">
+            <text
+              x={130}
+              y={352}
+              textAnchor="middle"
+              fill="#ffffff"
+              opacity="0.5"
+              fontSize={10}
+              fontWeight="bold"
+            >
               CANCHA PROPIA
             </text>
           </svg>
         )}
       </div>
-      
+
       <p className="text-[10px] text-slate-500 text-center">
-        {fundamento === "saque" || fundamento === "ataque"
+        {fundamento === "saque" ||
+        fundamento === "ataque" ||
+        fundamento === "armados"
           ? "El mapa muestra los destinos de las acciones."
           : "El mapa muestra los orígenes de las acciones y las estrellas indican la posición inicial."}
       </p>
