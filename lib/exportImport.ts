@@ -117,6 +117,11 @@ function bajarV1Vacio() {
   };
 }
 
+/** Filtra null y le dice a TypeScript que el resultado no tiene null. */
+function sinNulos<T>(arr: (T | null)[]): T[] {
+  return arr.filter((x): x is T => x !== null);
+}
+
 // ------------------------------------------------------------
 // EXPORTAR
 // ------------------------------------------------------------
@@ -480,8 +485,8 @@ async function insertarV1(
     const filas = (v1 as any)?.[tabla] ?? [];
     if (filas.length === 0) continue;
 
-    const filasNuevas = filas
-      .map((f: any) => {
+    const filasNuevas = sinNulos(
+      filas.map((f: any) => {
         const partidoNuevo = mapaPartidos[f.partido_id];
         if (!partidoNuevo) return null;
         return {
@@ -489,7 +494,7 @@ async function insertarV1(
           partido_id: partidoNuevo,
         };
       })
-      .filter(Boolean);
+    );
 
     if (filasNuevas.length === 0) continue;
 
@@ -544,8 +549,8 @@ async function importarPartido(
   }
 
   if (data.accionesV2.length > 0) {
-    const filas = data.accionesV2
-      .map((a) => {
+    const filas = sinNulos(
+      data.accionesV2.map((a) => {
         const puntoNuevo = mapaPuntos[a.punto_id];
         if (!puntoNuevo) return null;
         return {
@@ -555,7 +560,7 @@ async function importarPartido(
           partido_id: partidoNuevoId,
         };
       })
-      .filter(Boolean);
+    );
 
     if (filas.length > 0) {
       const { error } = await supabase.from("acciones_v2").insert(filas);
@@ -629,8 +634,8 @@ async function importarEquipo(
   }
 
   if (data.asignaciones.length > 0) {
-    const filas = data.asignaciones
-      .map((a) => {
+    const filas = sinNulos(
+      data.asignaciones.map((a) => {
         const jugNuevo = mapaJugadores[a.jugador_id];
         if (!jugNuevo) return null;
         return {
@@ -640,7 +645,7 @@ async function importarEquipo(
           equipo_id: equipoNuevoId,
         };
       })
-      .filter(Boolean);
+    );
     if (filas.length > 0) {
       const { error } = await supabase
         .from("jugador_equipo")
