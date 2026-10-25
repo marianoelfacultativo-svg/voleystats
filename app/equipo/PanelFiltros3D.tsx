@@ -2,9 +2,10 @@
 
 // ============================================================
 // PANEL DE FILTROS 3D — controles compartidos para CanchaUnificada3D
+// Layout compacto: fila básica + fundamento + secciones colapsables.
 // ============================================================
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { AccionVisual } from "./adaptadorUnificadoV2";
 
 // ------------------------------------------------------------
@@ -17,15 +18,11 @@ export interface Filtros3D {
   jugador: string | "todos";
   /** Multi-select de fundamentos (vacío = todos). */
   tipos: string[];
-  /**
-   * Multi-select de SUBTIPOS REALES (variantes técnicas):
-   *   - saque: "potencia" | "flotado"
-   *   - ataque: "remate" | "toque"
-   */
+  /** Multi-select de subtipos reales (potencia/flotado, remate/toque). */
   subtipos: string[];
-  /** Multi-select de VALORACIONES (ace, pos+, pos, neu, neg, punto, error, etc.). */
+  /** Multi-select de valoraciones. */
   valoraciones: string[];
-  /** Multi-select de zonas de origen ("P1".."P6", "R1".."R6"). */
+  /** Multi-select de zonas de origen. */
   zonasOrigen: string[];
   /** Multi-select de zonas de destino. */
   zonasDestino: string[];
@@ -33,12 +30,6 @@ export interface Filtros3D {
   rol: string | "todos";
   zonaJugador: number | "todas";
   soloErrores: boolean;
-  /**
-   * Qué acciones mostrar:
-   *   "propias" (default) = solo el equipo
-   *   "rivales"           = solo el rival
-   *   "ambas"             = ambos
-   */
   acciones: "propias" | "rivales" | "ambas";
 }
 
@@ -59,7 +50,7 @@ export const FILTROS3D_VACIO: Filtros3D = {
 };
 
 // ------------------------------------------------------------
-// OPCIONES POR TIPO: subtipos reales y valoraciones
+// OPCIONES
 // ------------------------------------------------------------
 
 interface Opcion {
@@ -105,27 +96,18 @@ const VALORACIONES_POR_TIPO: Record<string, Opcion[]> = {
     { v: "R", label: "R" },
   ],
   ataque: [
-    // Propios — viejos
     { v: "punto", label: "Punto (viejo)" },
     { v: "neutro", label: "Neutro (viejo)" },
     { v: "error", label: "Error (viejo)" },
-    // Propios — v18
     { v: "punto_directo_ataque", label: "Punto directo" },
     { v: "punto_desviado_ataque", label: "Punto desviado" },
     { v: "use_rival_ataque", label: "Use rival" },
     { v: "error_red_ataque", label: "Error red" },
     { v: "error_afuera_ataque", label: "Error afuera" },
     { v: "gorro_ataque", label: "Gorro" },
-    {
-      v: "neutro_bloqueo_cobertura_ataque",
-      label: "Neu bloqueo+cob",
-    },
-    {
-      v: "neutro_desvio_bloqueo_defensa_ataque",
-      label: "Neu desvío+def",
-    },
+    { v: "neutro_bloqueo_cobertura_ataque", label: "Neu bloqueo+cob" },
+    { v: "neutro_desvio_bloqueo_defensa_ataque", label: "Neu desvío+def" },
     { v: "neutro_defensa_ataque", label: "Neu defensa" },
-    // Rivales (v19.1)
     { v: "buena_rival", label: "Buena rival" },
     { v: "simple", label: "Simple (rival)" },
     { v: "peligroso", label: "Peligroso (rival)" },
@@ -271,6 +253,10 @@ const COLOR_NIVEL = {
   neg: "bg-red-100 text-red-800 border-red-400",
 };
 
+function toggleArrayValue<T>(arr: T[], v: T): T[] {
+  return arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
+}
+
 // ------------------------------------------------------------
 // APLICAR FILTROS
 // ------------------------------------------------------------
@@ -282,7 +268,6 @@ export function aplicarFiltros(
   const filtradas = acciones.filter((a) => {
     if (a.oculta) return false;
 
-    // Qué acciones mostrar (propias / rivales / ambas)
     if (f.acciones === "propias" && a.es_rival) return false;
     if (f.acciones === "rivales" && !a.es_rival) return false;
 
@@ -292,13 +277,11 @@ export function aplicarFiltros(
 
     if (f.tipos.length > 0 && !f.tipos.includes(a.tipo)) return false;
 
-    // Subtipo real (variante técnica)
     if (f.subtipos.length > 0) {
       const sr = a.subtipo_real ?? "";
       if (!f.subtipos.includes(sr)) return false;
     }
 
-    // Valoración
     if (f.valoraciones.length > 0) {
       const s =
         a.subtipo !== null && a.subtipo !== undefined
@@ -324,19 +307,10 @@ export function aplicarFiltros(
     return true;
   });
 
-  // ----------------------------------------------------------
-  // CONTEXTO VISUAL: si el filtro incluye bloqueo o defensa,
-  // agregar la acción ANTERIOR (visible) de cada bloqueo/defensa
-  // filtrado. Esto se hace SIEMPRE, sin importar los demás filtros
-  // (jugador, soloErrores, acciones): es solo para que la
-  // trayectoria entrante se entienda.
-  // ----------------------------------------------------------
   const necesitaContexto =
     f.tipos.includes("bloqueo") || f.tipos.includes("defensa");
-
   if (!necesitaContexto) return filtradas;
 
-  // Índice de acciones visibles por punto, ordenadas por `orden`.
   const porPunto = new Map<string, AccionVisual[]>();
   for (const a of acciones) {
     if (a.oculta) continue;
@@ -370,8 +344,6 @@ export function aplicarFiltros(
 
   if (extras.length === 0) return filtradas;
 
-  // Re-ordenar todo por (set, punto, orden) para preservar el orden
-  // temporal: así la trayectoria de contexto se dibuja antes (debajo).
   const resultado = [...filtradas, ...extras];
   resultado.sort((a, b) => {
     if (a.set_numero !== b.set_numero) return a.set_numero - b.set_numero;
@@ -389,13 +361,11 @@ export function aplicarFiltros(
 interface Props {
   filtros: Filtros3D;
   onChange: (f: Filtros3D) => void;
-
   setsDisponibles: number[];
   puntosDisponibles: number[];
   jugadores: { id: string; nombre: string }[];
-  /** @deprecated — ya no se usa */
+  /** @deprecated */
   valoracionesDisponibles?: string[];
-
   totalAcciones: number;
   accionesFiltradas: number;
 }
@@ -404,17 +374,6 @@ const selectCls =
   "w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:border-emerald-500";
 const labelCls =
   "block text-[10px] font-semibold text-slate-500 uppercase mb-1 tracking-wide";
-
-// ------------------------------------------------------------
-// TOGGLE HELPER
-// ------------------------------------------------------------
-
-function toggleArrayValue<T>(arr: T[], v: T): T[] {
-  return arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
-}
-
-const ZONAS_PROPIAS = ["P1", "P2", "P3", "P4", "P5", "P6"];
-const ZONAS_RIVALES = ["R1", "R2", "R3", "R4", "R5", "R6"];
 
 // ------------------------------------------------------------
 // COMPONENTE
@@ -429,6 +388,9 @@ export default function PanelFiltros3D({
   totalAcciones,
   accionesFiltradas,
 }: Props) {
+  const [avanzadoAbierto, setAvanzadoAbierto] = useState(false);
+  const [valoracionAbierta, setValoracionAbierta] = useState(false);
+
   const set = <K extends keyof Filtros3D>(k: K, v: Filtros3D[K]) =>
     onChange({ ...filtros, [k]: v });
 
@@ -456,21 +418,6 @@ export default function PanelFiltros3D({
     return out;
   }, [filtros.tipos]);
 
-  const hayFiltrosActivos =
-    filtros.set !== "todos" ||
-    filtros.punto !== "todos" ||
-    filtros.jugador !== "todos" ||
-    filtros.tipos.length > 0 ||
-    filtros.subtipos.length > 0 ||
-    filtros.valoraciones.length > 0 ||
-    filtros.zonasOrigen.length > 0 ||
-    filtros.zonasDestino.length > 0 ||
-    filtros.rotacion !== "todas" ||
-    filtros.rol !== "todos" ||
-    filtros.zonaJugador !== "todas" ||
-    filtros.soloErrores ||
-    filtros.acciones !== "propias";
-
   const cantFiltros =
     (filtros.set !== "todos" ? 1 : 0) +
     (filtros.punto !== "todos" ? 1 : 0) +
@@ -486,9 +433,19 @@ export default function PanelFiltros3D({
     (filtros.soloErrores ? 1 : 0) +
     (filtros.acciones !== "propias" ? 1 : 0);
 
+  const hayFiltrosActivos = cantFiltros > 0;
+
+  const hayAvanzadosActivos =
+    filtros.zonasOrigen.length > 0 ||
+    filtros.zonasDestino.length > 0 ||
+    filtros.rotacion !== "todas" ||
+    filtros.rol !== "todos" ||
+    filtros.zonaJugador !== "todas";
+
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 space-y-3">
-      <div className="flex items-center justify-between mb-1">
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 space-y-2">
+      {/* ---------- HEADER ---------- */}
+      <div className="flex items-center justify-between">
         <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
           🎛️ Filtros {cantFiltros > 0 && `(${cantFiltros})`}
         </p>
@@ -507,8 +464,8 @@ export default function PanelFiltros3D({
         </div>
       </div>
 
-      {/* Fila 1: Set, Punto, Jugador */}
-      <div className="grid grid-cols-3 gap-2">
+      {/* ---------- FILA BÁSICA ---------- */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <div>
           <label className={labelCls}>Set</label>
           <select
@@ -572,90 +529,6 @@ export default function PanelFiltros3D({
             ))}
           </select>
         </div>
-      </div>
-
-      {/* Fila 2: Rotación, Rol, Zona jugador, Solo errores, Acciones */}
-      <div className="grid grid-cols-3 md:grid-cols-5 gap-2 items-end">
-        <div>
-          <label className={labelCls}>Rotación</label>
-          <select
-            value={
-              filtros.rotacion === "todas"
-                ? "todas"
-                : String(filtros.rotacion)
-            }
-            onChange={(e) =>
-              set(
-                "rotacion",
-                e.target.value === "todas"
-                  ? "todas"
-                  : parseInt(e.target.value)
-              )
-            }
-            className={selectCls}
-          >
-            <option value="todas">Todas</option>
-            {[1, 2, 3, 4, 5, 6].map((r) => (
-              <option key={r} value={String(r)}>
-                R{r}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className={labelCls}>Rol jugador</label>
-          <select
-            value={filtros.rol}
-            onChange={(e) => set("rol", e.target.value)}
-            className={selectCls}
-          >
-            <option value="todos">Todos</option>
-            {ROLES.map((r) => (
-              <option key={r.v} value={r.v}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className={labelCls}>Zona jugador</label>
-          <select
-            value={
-              filtros.zonaJugador === "todas"
-                ? "todas"
-                : String(filtros.zonaJugador)
-            }
-            onChange={(e) =>
-              set(
-                "zonaJugador",
-                e.target.value === "todas"
-                  ? "todas"
-                  : parseInt(e.target.value)
-              )
-            }
-            className={selectCls}
-          >
-            <option value="todas">Todas</option>
-            {[1, 2, 3, 4, 5, 6].map((z) => (
-              <option key={z} value={String(z)}>
-                Z{z}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <button
-          onClick={() => set("soloErrores", !filtros.soloErrores)}
-          className={`h-[30px] text-xs font-semibold rounded-lg border-2 transition ${
-            filtros.soloErrores
-              ? "bg-red-500 text-white border-red-500"
-              : "bg-white text-red-600 border-red-300 hover:bg-red-50"
-          }`}
-        >
-          {filtros.soloErrores ? "✓ Solo errores" : "⚠️ Solo errores"}
-        </button>
 
         <div>
           <label className={labelCls}>Acciones</label>
@@ -667,8 +540,7 @@ export default function PanelFiltros3D({
                 e.target.value as "propias" | "rivales" | "ambas"
               )
             }
-            className={`${selectCls} font-semibold text-slate-700`}
-            title="Filtrar por acciones propias, rivales o ambas"
+            className={`${selectCls} font-semibold`}
           >
             <option value="propias">👤 Solo propias</option>
             <option value="rivales">👥 Solo rivales</option>
@@ -677,12 +549,24 @@ export default function PanelFiltros3D({
         </div>
       </div>
 
-      {/* Fila 3: Fundamento (multi) */}
+      {/* ---------- FUNDAMENTOS + SOLO ERRORES ---------- */}
       <div>
-        <label className={labelCls}>
-          Fundamento (multi){" "}
-          {filtros.tipos.length > 0 && `· ${filtros.tipos.length}`}
-        </label>
+        <div className="flex items-center justify-between mb-1">
+          <label className={`${labelCls} mb-0`}>
+            Fundamento{" "}
+            {filtros.tipos.length > 0 && `· ${filtros.tipos.length}`}
+          </label>
+          <button
+            onClick={() => set("soloErrores", !filtros.soloErrores)}
+            className={`px-2 py-0.5 text-[10px] font-semibold rounded border-2 transition ${
+              filtros.soloErrores
+                ? "bg-red-500 text-white border-red-500"
+                : "bg-white text-red-600 border-red-300 hover:bg-red-50"
+            }`}
+          >
+            {filtros.soloErrores ? "✓ Solo errores" : "⚠️ Solo errores"}
+          </button>
+        </div>
         <div className="flex flex-wrap gap-1">
           {TIPOS.map((t) => {
             const activo = filtros.tipos.includes(t.v);
@@ -732,17 +616,13 @@ export default function PanelFiltros3D({
         )}
       </div>
 
-      {/* Fila 4: Subtipo real (multi, depende de tipos) */}
-      <div>
-        <label className={labelCls}>
-          Subtipo (multi){" "}
-          {filtros.subtipos.length > 0 && `· ${filtros.subtipos.length}`}
-        </label>
-        {filtros.tipos.length === 0 || subtiposDisponibles.length === 0 ? (
-          <p className="text-[10px] text-slate-400 italic">
-            Solo aplica a saque (potencia/flotado) y ataque (remate/toque).
-          </p>
-        ) : (
+      {/* ---------- SUBTIPOS REALES (si hay tipos compatibles) ---------- */}
+      {subtiposDisponibles.length > 0 && (
+        <div>
+          <label className={labelCls}>
+            Subtipo{" "}
+            {filtros.subtipos.length > 0 && `· ${filtros.subtipos.length}`}
+          </label>
           <div className="flex flex-wrap gap-1">
             {subtiposDisponibles.map((s) => {
               const activo = filtros.subtipos.includes(s.v);
@@ -764,67 +644,173 @@ export default function PanelFiltros3D({
               );
             })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Fila 5: Valoración (multi, depende de tipos) */}
-      <div>
-        <label className={labelCls}>
-          Valoración (multi){" "}
-          {filtros.valoraciones.length > 0 &&
-            `· ${filtros.valoraciones.length}`}
-        </label>
-        {filtros.tipos.length === 0 ? (
-          <p className="text-[10px] text-slate-400 italic">
-            Elegí al menos un fundamento para filtrar valoraciones.
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-1">
-            {valoracionesDisponibles.map((s) => {
-              const activo = filtros.valoraciones.includes(s.v);
-              const nivel = nivelValoracion(s.tipo, s.v);
-              const colCls = COLOR_NIVEL[nivel];
-              return (
-                <button
-                  key={`val-${s.tipo}-${s.v}`}
-                  onClick={() =>
+      {/* ---------- VALORACIÓN (colapsable) ---------- */}
+      {filtros.tipos.length > 0 && valoracionesDisponibles.length > 0 && (
+        <div className="border-t border-slate-200 pt-2">
+          <button
+            onClick={() => setValoracionAbierta((v) => !v)}
+            className="w-full flex items-center justify-between text-[11px] font-semibold text-slate-600 uppercase tracking-wider"
+          >
+            <span>
+              Valoración{" "}
+              {filtros.valoraciones.length > 0 &&
+                `· ${filtros.valoraciones.length}`}
+            </span>
+            <span
+              className={`text-slate-400 transition-transform ${
+                valoracionAbierta ? "rotate-180" : ""
+              }`}
+            >
+              ▼
+            </span>
+          </button>
+          {valoracionAbierta && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {valoracionesDisponibles.map((s) => {
+                const activo = filtros.valoraciones.includes(s.v);
+                const nivel = nivelValoracion(s.tipo, s.v);
+                const colCls = COLOR_NIVEL[nivel];
+                return (
+                  <button
+                    key={`val-${s.tipo}-${s.v}`}
+                    onClick={() =>
+                      set(
+                        "valoraciones",
+                        toggleArrayValue(filtros.valoraciones, s.v)
+                      )
+                    }
+                    className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border-2 transition ${
+                      activo
+                        ? "bg-emerald-500 text-white border-emerald-600"
+                        : `${colCls} hover:brightness-95`
+                    }`}
+                    title={`${s.tipo} · ${s.label}`}
+                  >
+                    {s.tipo === "armado" ||
+                    s.tipo === "recepcion" ||
+                    s.tipo === "roce-red"
+                      ? s.label
+                      : `${s.tipo.slice(0, 3)}·${s.label}`}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ---------- AVANZADO (colapsable) ---------- */}
+      <div className="border-t border-slate-200 pt-2">
+        <button
+          onClick={() => setAvanzadoAbierto((v) => !v)}
+          className="w-full flex items-center justify-between text-[11px] font-semibold text-slate-600 uppercase tracking-wider"
+        >
+          <span>
+            Avanzado{" "}
+            {hayAvanzadosActivos && (
+              <span className="text-amber-700">•</span>
+            )}
+          </span>
+          <span
+            className={`text-slate-400 transition-transform ${
+              avanzadoAbierto ? "rotate-180" : ""
+            }`}
+          >
+            ▼
+          </span>
+        </button>
+
+        {avanzadoAbierto && (
+          <div className="mt-2 space-y-2">
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className={labelCls}>Rotación</label>
+                <select
+                  value={
+                    filtros.rotacion === "todas"
+                      ? "todas"
+                      : String(filtros.rotacion)
+                  }
+                  onChange={(e) =>
                     set(
-                      "valoraciones",
-                      toggleArrayValue(filtros.valoraciones, s.v)
+                      "rotacion",
+                      e.target.value === "todas"
+                        ? "todas"
+                        : parseInt(e.target.value)
                     )
                   }
-                  className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border-2 transition ${
-                    activo
-                      ? "bg-emerald-500 text-white border-emerald-600"
-                      : `${colCls} hover:brightness-95`
-                  }`}
-                  title={`${s.tipo} · ${s.label}`}
+                  className={selectCls}
                 >
-                  {s.tipo === "armado" ||
-                  s.tipo === "recepcion" ||
-                  s.tipo === "roce-red"
-                    ? s.label
-                    : `${s.tipo.slice(0, 3)}·${s.label}`}
-                </button>
-              );
-            })}
+                  <option value="todas">Todas</option>
+                  {[1, 2, 3, 4, 5, 6].map((r) => (
+                    <option key={r} value={String(r)}>
+                      R{r}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className={labelCls}>Rol jugador</label>
+                <select
+                  value={filtros.rol}
+                  onChange={(e) => set("rol", e.target.value)}
+                  className={selectCls}
+                >
+                  <option value="todos">Todos</option>
+                  {ROLES.map((r) => (
+                    <option key={r.v} value={r.v}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className={labelCls}>Zona jugador</label>
+                <select
+                  value={
+                    filtros.zonaJugador === "todas"
+                      ? "todas"
+                      : String(filtros.zonaJugador)
+                  }
+                  onChange={(e) =>
+                    set(
+                      "zonaJugador",
+                      e.target.value === "todas"
+                        ? "todas"
+                        : parseInt(e.target.value)
+                    )
+                  }
+                  className={selectCls}
+                >
+                  <option value="todas">Todas</option>
+                  {[1, 2, 3, 4, 5, 6].map((z) => (
+                    <option key={z} value={String(z)}>
+                      Z{z}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <ZonasMultiSelector
+              label="Zona origen"
+              seleccionadas={filtros.zonasOrigen}
+              onChange={(z) => set("zonasOrigen", z)}
+            />
+
+            <ZonasMultiSelector
+              label="Zona destino"
+              seleccionadas={filtros.zonasDestino}
+              onChange={(z) => set("zonasDestino", z)}
+            />
           </div>
         )}
       </div>
-
-      {/* Fila 6: Zona origen (multi, P y R) */}
-      <ZonasMultiSelector
-        label="Zona origen"
-        seleccionadas={filtros.zonasOrigen}
-        onChange={(z) => set("zonasOrigen", z)}
-      />
-
-      {/* Fila 7: Zona destino (multi, P y R) */}
-      <ZonasMultiSelector
-        label="Zona destino"
-        seleccionadas={filtros.zonasDestino}
-        onChange={(z) => set("zonasDestino", z)}
-      />
     </div>
   );
 }
@@ -832,6 +818,9 @@ export default function PanelFiltros3D({
 // ============================================================
 // SUBCOMPONENTE: selector múltiple de zonas P/R
 // ============================================================
+
+const ZONAS_PROPIAS = ["P1", "P2", "P3", "P4", "P5", "P6"];
+const ZONAS_RIVALES = ["R1", "R2", "R3", "R4", "R5", "R6"];
 
 function ZonasMultiSelector({
   label,
@@ -845,7 +834,7 @@ function ZonasMultiSelector({
   return (
     <div>
       <label className={labelCls}>
-        {label} (multi)
+        {label}
         {seleccionadas.length > 0 && ` · ${seleccionadas.length}`}
       </label>
       <div className="flex flex-wrap gap-1 items-center">
