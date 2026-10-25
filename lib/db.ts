@@ -4,7 +4,7 @@
 // ============================================
 
 import { supabase } from "./supabase";
-import { cargarPuntosV2 } from "./dbV2";
+import { cargarPuntosV2, type AccionV2Row } from "./dbV2";
 import type { RotacionPunto } from "./rotaciones";
 import { puntajeBase, ajustarPorContexto } from "./estadisticas";
 import { debeFlipear, prepararPuntos } from "./flipPerspectiva";
@@ -489,11 +489,6 @@ function zonaTendenciaDeCelda(celda: string | null): number | null {
 // ------------------------------------------------------------
 // CARGA COMPATIBLE (solo V2)
 // ------------------------------------------------------------
-//
-// Si el `equipoId` que mira es el `equipo_rival_id` del partido,
-// flipa la perspectiva y recalcula subtipos ANTES de traducir a
-// AccionDB. Así el equipo rival ve los datos como si hubiera
-// cargado el partido desde su propia consola.
 
 export async function cargarAccionesCompatibles(
   partidoId: string,
@@ -621,17 +616,103 @@ export async function cargarAccionesCompatibles(
 // CONTAR PUNTOS DEL RIVAL (buenas / errores)
 // ============================================
 //
-// Reglas (v19.6):
-//   - Buena rival: punto cerrado donde la ÚLTIMA acción visible es del
-//     rival Y tiene subtipo EXACTAMENTE "buena_rival".
-//   - Error rival: punto cerrado donde la última acción visible NO se
-//     atribuye a un jugador propio (es del rival, o jugador_id === null)
-//     y NO entró como buena rival.
-//   - Puntos donde la última acción es propia (aunque sea error propio)
-//     no cuentan para el rival.
+// Clasifica la ÚLTIMA acción visible de cada punto, solo si esa
+// acción es del rival (visto desde quien mira).
 //
-// Si se pasa `equipoId` y el equipo mira desde el lado rival, se
-// flipa la perspectiva + recalcula subtipos antes de contar.
+// BUENA RIVAL (el rival anotó directo):
+//   - Ataque con "punto_directo_ataque" (directo puro).
+//   - Ataque con "buena_rival" o "punto" (formatos viejos, que
+//     al ser última acción implican que fue directo).
+//   - Roce-red con "roce-red-rival".
+//
+// ERROR RIVAL (el rival erró):
+//   - Saque con "negativo".
+//   - Ataque con "error_afuera_ataque", "error_red_ataque",
+//     "error_rival" o "error".
+//   - Roce-red con "ofensivo-propio", "invasion-zaguero",
+//     "invasion-delantero" o "error_rival".
+//   - Fallback: cualquier acción del rival con destino FUERA-*
+//     o RED-*.
+//
+// NO CUENTA:
+//   - Ace rival (error del receptor, no mérito del sacador).
+//   - Ataque con "punto_desviado_ataque" o "use_rival_ataque"
+//     (alguien la tocó antes de que cayera).
+//   - Ataque con "gorro_ataque" (punto mío, la mató mi bloqueo).
+//   - Ataque con "neutro_*" o "simple"/"peligroso"/"toque"/"libre".
+//   - Cualquier bloqueo rival que sea la última acción (red,
+//     use_rival, filtrada, caída en su cancha, fuera/red, punto).
+//   - Puntos donde la última acción es propia.
+//   - Saques con "positivo_mas", "positivo" o "neutro".
+
+type ClasificacionRival = "buena" | "error" | null;
+
+function clasificarUltimaRival(ultima: AccionV2Row): ClasificacionRival {
+  if (ultima.es_rival !== true) return null;
+
+  const sub = typeof ultima.subtipo === "string" ? ultima.subtipo : null;
+  const base = sub && sub.startsWith("toque:") ? sub.slice(6) : sub;
+  const destino = ultima.destino_celda ?? "";
+
+  // ============ SAQUE ============
+  if (ultima.tipo === "saque") {
+    if (base === "negativo") return "error";
+    // ace y el resto → no cuenta
+    return null;
+  }
+
+  // ============ ATAQUE ============
+  if (ultima.tipo === "ataque") {
+    if (
+      base === "punto_directo_ataque" ||
+      base === "buena_rival" ||
+      base === "punto"
+    ) {
+      return "buena";
+    }
+    if (
+      base === "error_afuera_ataque" ||
+      base === "error_red_ataque" ||
+      base === "error_rival" ||
+      base === "error"
+    ) {
+      return "error";
+    }
+    // punto_desviado, use_rival, gorro, neutro_*, simple,
+    // peligroso, toque, libre → no cuenta.
+    return null;
+  }
+
+  // ============ BLOQUEO ============
+  // Ningún bloqueo rival que sea la última acción cuenta para la
+  // torta (red/use_rival/filtrada → punto mío o error del atacante;
+  // caída en su cancha → punto mío; punto en mi cancha → error del
+  // atacante propio).
+  if (ultima.tipo === "bloqueo") {
+    return null;
+  }
+
+  // ============ ROCE-RED ============
+  if (ultima.tipo === "roce-red") {
+    if (base === "roce-red-rival") return "buena";
+    if (
+      base === "ofensivo-propio" ||
+      base === "invasion-zaguero" ||
+      base === "invasion-delantero" ||
+      base === "error_rival"
+    ) {
+      return "error";
+    }
+    return null;
+  }
+
+  // ============ FALLBACK ============
+  if (destino.startsWith("FUERA-") || destino.startsWith("RED-")) {
+    return "error";
+  }
+
+  return null;
+}
 
 export async function contarPuntosRival(
   partidoId: string,
@@ -653,20 +734,9 @@ export async function contarPuntosRival(
     if (visibles.length === 0) continue;
     const ultima = visibles[visibles.length - 1];
 
-    const sub =
-      typeof ultima.subtipo === "string" ? ultima.subtipo : null;
-    const esBuenaRival = ultima.es_rival === true && sub === "buena_rival";
-
-    // "No se le atribuye la acción a un jugador propio":
-    //   - es del rival, o
-    //   - tiene jugador_id null (sin asignar)
-    const esPropia = ultima.es_rival === false && ultima.jugador_id !== null;
-
-    if (esBuenaRival) {
-      buenas++;
-    } else if (!esPropia) {
-      errores++;
-    }
+    const clasif = clasificarUltimaRival(ultima);
+    if (clasif === "buena") buenas++;
+    else if (clasif === "error") errores++;
   }
 
   return { buenas, errores };
