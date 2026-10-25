@@ -16,7 +16,9 @@
     "lucide-react": "^0.400.0",
     "three": "^0.170.0",
     "@react-three/fiber": "^8.17.10",
-    "@react-three/drei": "^9.114.3"
+    "@react-three/drei": "^9.114.3",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.2"
   },
   "devDependencies": {
     "typescript": "^5.4.5",

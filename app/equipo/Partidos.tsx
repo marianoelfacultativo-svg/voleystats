@@ -29,6 +29,7 @@ import GraficoArmadosPorSet from "./GraficoArmadosPorSet";
 import TablaJugadoresPorSet from "./TablaJugadoresPorSet";
 import TablaEstadisticasCrudas from "./TablaEstadisticasCrudas";
 import GraficoBarrasFundamentoPartidos from "./GraficoBarrasFundamentoPartidos";
+import IconoVoley from "./IconoVoley";
 
 interface Partido {
   id: string;
@@ -598,33 +599,36 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       <div className="flex justify-end gap-2 flex-wrap">
         <button
           onClick={() => handleToggleModoPrincipal("partido")}
-          className={`px-4 py-2 text-sm font-medium rounded-lg transition border ${
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition border ${
             modoPrincipal === "partido"
               ? "bg-emerald-500 text-white border-emerald-500"
               : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
           }`}
         >
-          📅 Ver partido
+          <IconoVoley tipo="partido" size={18} className={modoPrincipal === "partido" ? "text-white" : "text-slate-600"} />
+          Ver partido
         </button>
         <button
           onClick={() => handleToggleModoPrincipal("comparar-partidos")}
-          className={`px-4 py-2 text-sm font-medium rounded-lg transition border ${
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition border ${
             modoPrincipal === "comparar-partidos"
               ? "bg-emerald-500 text-white border-emerald-500"
               : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
           }`}
         >
-          ⚖️ Comparar partidos ({partidosComparados.length}/3)
+          <IconoVoley tipo="comparar" size={18} className={modoPrincipal === "comparar-partidos" ? "text-white" : "text-slate-600"} />
+          Comparar partidos ({partidosComparados.length}/3)
         </button>
         <button
           onClick={() => handleToggleModoPrincipal("jugador-por-partidos")}
-          className={`px-4 py-2 text-sm font-medium rounded-lg transition border ${
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition border ${
             modoPrincipal === "jugador-por-partidos"
               ? "bg-emerald-500 text-white border-emerald-500"
               : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
           }`}
         >
-          👤 Jugador por partidos
+          <IconoVoley tipo="jugador" size={18} className={modoPrincipal === "jugador-por-partidos" ? "text-white" : "text-slate-600"} />
+          Jugador por partidos
         </button>
       </div>
 
@@ -1254,33 +1258,36 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     setModoDetalle("analisis");
                     setJugadoresComparados([]);
                   }}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
+                  className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
                     modoDetalle === "analisis"
                       ? "bg-emerald-500 text-white border-emerald-500"
                       : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
                   }`}
                 >
-                  📊 Análisis
+                  <IconoVoley tipo="dashboard" size={14} className={modoDetalle === "analisis" ? "text-white" : "text-slate-600"} />
+                  Análisis
                 </button>
                 <button
                   onClick={() => setModoDetalle("comparar-jugadores")}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
+                  className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
                     modoDetalle === "comparar-jugadores"
                       ? "bg-emerald-500 text-white border-emerald-500"
                       : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
                   }`}
                 >
-                  ⚖️ Comparar jugadores ({jugadoresComparados.length}/3)
+                  <IconoVoley tipo="comparar" size={14} className={modoDetalle === "comparar-jugadores" ? "text-white" : "text-slate-600"} />
+                  Comparar jugadores ({jugadoresComparados.length}/3)
                 </button>
                 <button
                   onClick={() => setModoDetalle("crudas")}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
+                  className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
                     modoDetalle === "crudas"
                       ? "bg-emerald-500 text-white border-emerald-500"
                       : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
                   }`}
                 >
-                  📋 Estadísticas crudas
+                  <IconoVoley tipo="crudas" size={14} className={modoDetalle === "crudas" ? "text-white" : "text-slate-600"} />
+                  Estadísticas crudas
                 </button>
               </div>
 
