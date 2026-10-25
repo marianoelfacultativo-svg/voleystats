@@ -1,25 +1,38 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { AccionDB } from "@/lib/db";
 import {
   VALORES_POR_FUNDAMENTO,
   calcularEstadisticasEquipo,
-  type AccionDB,
 } from "@/lib/estadisticas";
 
 // ============================================================
-// DEFINICIÓN DE COLUMNAS
+// TIPOS DE COLUMNA / BLOQUE
 // ============================================================
 
-interface ColumnaValoracion {
+interface Columna {
   key: string;
   label: string;
   tipo: "pos" | "neg" | "neu";
   detalle?: string;
 }
 
-// ---------- SAQUE ----------
-const COLUMNAS_SAQUE: ColumnaValoracion[] = [
+interface Bloque {
+  id: string;
+  titulo: string;
+  subtitulo?: string;
+  columnas: Columna[];
+  valores: Record<string, number>;
+  incluye: (a: AccionDB) => boolean;
+  columnaDe: (a: AccionDB) => string | null;
+}
+
+// ============================================================
+// COLUMNAS POR FUNDAMENTO
+// ============================================================
+
+const COLS_SAQUE: Columna[] = [
   { key: "ace", label: "Ace", tipo: "pos" },
   { key: "positivo_mas", label: "Pos+", tipo: "pos" },
   { key: "positivo", label: "Pos", tipo: "pos" },
@@ -27,8 +40,7 @@ const COLUMNAS_SAQUE: ColumnaValoracion[] = [
   { key: "negativo", label: "Neg", tipo: "neg" },
 ];
 
-// ---------- RECEPCIÓN ----------
-const COLUMNAS_RECEPCION: ColumnaValoracion[] = [
+const COLS_RECEPCION: Columna[] = [
   { key: "2x_positiva", label: "2x+", tipo: "pos" },
   { key: "positiva", label: "Pos", tipo: "pos" },
   { key: "negativa", label: "Neg", tipo: "neg" },
@@ -37,76 +49,33 @@ const COLUMNAS_RECEPCION: ColumnaValoracion[] = [
   { key: "ace_contra", label: "AceC", tipo: "neg" },
 ];
 
-// ---------- ATAQUE ----------
-const COLUMNAS_ATAQUE: ColumnaValoracion[] = [
+const COLS_ATAQUE: Columna[] = [
   { key: "punto", label: "Punto", tipo: "pos" },
   { key: "neutro", label: "Neu", tipo: "neu" },
   { key: "error", label: "Error", tipo: "neg" },
 ];
 
-// ---------- BLOQUEO (desglosado) ----------
-//
-// Se divide por combinación de valoración + destino:
-//   - Pto       → punto (cae en cancha rival sin más)
-//   - Pos+R     → positivo_mas que cae en cancha rival (rival devuelve + libre)
-//   - Pos R     → positivo que cae en cancha rival (rival devuelve sin libre)
-//   - Pos+P     → positivo_mas que cae en cancha propia (nos quedó + libre)
-//   - Neu P     → neutro que cae en cancha propia (sin libre)
-//   - UseR      → use_rival (desviada afuera)
-//   - Red       → red (toca red)
-//   - Filt      → filtrada (cae en bloqueo lateral)
-const COLUMNAS_BLOQUEO: ColumnaValoracion[] = [
-  {
-    key: "punto",
-    label: "Pto",
-    tipo: "pos",
-    detalle: "Cae en cancha rival, directo",
-  },
-  {
-    key: "pos_mas_r",
-    label: "Pos+R",
-    tipo: "pos",
-    detalle: "Cae en cancha rival, con libre después",
-  },
-  {
-    key: "pos_r",
-    label: "Pos R",
-    tipo: "pos",
-    detalle: "Cae en cancha rival, sin libre",
-  },
-  {
-    key: "pos_mas_p",
-    label: "Pos+P",
-    tipo: "pos",
-    detalle: "Cae en cancha propia, con libre después",
-  },
-  {
-    key: "neu_p",
-    label: "Neu P",
-    tipo: "neu",
-    detalle: "Cae en cancha propia, sin libre",
-  },
-  {
-    key: "use_rival",
-    label: "UseR",
-    tipo: "neg",
-    detalle: "Desviada afuera",
-  },
-  {
-    key: "red",
-    label: "Red",
-    tipo: "neg",
-    detalle: "Toca la red",
-  },
-  {
-    key: "filtrada",
-    label: "Filt",
-    tipo: "neg",
-    detalle: "Cae en bloqueo lateral",
-  },
+const COLS_BLOQUEO_NORMAL: Columna[] = [
+  { key: "punto", label: "Punto", tipo: "pos" },
+  { key: "positivo_mas", label: "Pos+", tipo: "pos" },
+  { key: "positivo", label: "Pos", tipo: "pos" },
+  { key: "use_rival", label: "UseR", tipo: "neg" },
+  { key: "red", label: "Red", tipo: "neg" },
+  { key: "filtrada", label: "Filt", tipo: "neg" },
 ];
 
-const VALORES_BLOQUEO_DESGLOSADO: Record<string, number> = {
+const COLS_BLOQUEO_AMPLIADO: Columna[] = [
+  { key: "punto", label: "Pto", tipo: "pos", detalle: "Cae en cancha rival, directo" },
+  { key: "pos_mas_r", label: "Pos+R", tipo: "pos", detalle: "Cae en cancha rival, con libre después" },
+  { key: "pos_r", label: "Pos R", tipo: "pos", detalle: "Cae en cancha rival, sin libre" },
+  { key: "pos_mas_p", label: "Pos+P", tipo: "pos", detalle: "Cae en cancha propia, con libre después" },
+  { key: "neu_p", label: "Neu P", tipo: "neu", detalle: "Cae en cancha propia, sin libre" },
+  { key: "use_rival", label: "UseR", tipo: "neg", detalle: "Desviada afuera" },
+  { key: "red", label: "Red", tipo: "neg", detalle: "Toca la red" },
+  { key: "filtrada", label: "Filt", tipo: "neg", detalle: "Cae en bloqueo lateral" },
+];
+
+const VALORES_BLOQUEO_AMPLIADO: Record<string, number> = {
   punto: 10,
   pos_mas_r: 8,
   pos_r: 6,
@@ -117,8 +86,7 @@ const VALORES_BLOQUEO_DESGLOSADO: Record<string, number> = {
   filtrada: 2,
 };
 
-// ---------- DEFENSA ----------
-const COLUMNAS_DEFENSA: ColumnaValoracion[] = [
+const COLS_DEFENSA: Columna[] = [
   { key: "toque_positiva", label: "Toq+", tipo: "pos" },
   { key: "gran_def", label: "GranD", tipo: "pos" },
   { key: "cobertura_positiva", label: "Cob+", tipo: "pos" },
@@ -129,8 +97,7 @@ const COLUMNAS_DEFENSA: ColumnaValoracion[] = [
   { key: "mala_libre", label: "MalaL", tipo: "neg" },
 ];
 
-// ---------- ARMADOS ----------
-const COLUMNAS_ARMADOS: ColumnaValoracion[] = [
+const COLS_ARMADOS: Columna[] = [
   { key: "perfecto", label: "Perf", tipo: "pos" },
   { key: "correcto", label: "Corr", tipo: "pos" },
   { key: "flojo", label: "Flojo", tipo: "neu" },
@@ -138,15 +105,29 @@ const COLUMNAS_ARMADOS: ColumnaValoracion[] = [
   { key: "horrible", label: "Horr", tipo: "neg" },
 ];
 
-// ---------- TOQUE ----------
-const COLUMNAS_TOQUE: ColumnaValoracion[] = [
+const COLS_TOQUE: Columna[] = [
   { key: "punto", label: "Punto", tipo: "pos" },
   { key: "neutro", label: "Neu", tipo: "neu" },
   { key: "error", label: "Error", tipo: "neg" },
 ];
 
+const COLS_ATAQUE_AMPLIADO: Columna[] = [
+  { key: "punto_directo_ataque", label: "Pto dir", tipo: "pos", detalle: "Punto directo, sin toque rival" },
+  { key: "punto_desviado_ataque", label: "Pto desv", tipo: "pos", detalle: "Punto con desvío (bloqueo rival)" },
+  { key: "use_rival_ataque", label: "UseRiv", tipo: "pos", detalle: "Use rival (cae afuera)" },
+  { key: "gorro_ataque", label: "Gorro", tipo: "neg", detalle: "Gorro (bloqueo rival devuelve)" },
+  { key: "error_afuera_ataque", label: "Err af", tipo: "neg", detalle: "Error afuera" },
+  { key: "error_red_ataque", label: "Err red", tipo: "neg", detalle: "Error red" },
+  { key: "neutro_bloqueo_cobertura_ataque", label: "Neu b+c", tipo: "neu", detalle: "Neutro: bloqueo + cobertura" },
+  { key: "neutro_desvio_bloqueo_defensa_ataque", label: "Neu d+d", tipo: "neu", detalle: "Neutro: desvío + defensa" },
+  { key: "neutro_defensa_ataque", label: "Neu def", tipo: "neu", detalle: "Neutro: defensa rival" },
+  { key: "punto", label: "Punto (v)", tipo: "pos", detalle: "Punto (formato viejo)" },
+  { key: "neutro", label: "Neu (v)", tipo: "neu", detalle: "Neutro (formato viejo)" },
+  { key: "error", label: "Err (v)", tipo: "neg", detalle: "Error (formato viejo)" },
+];
+
 // ============================================================
-// HELPERS
+// NOMBRES Y HELPERS
 // ============================================================
 
 const NOMBRES_FUNDAMENTO: Record<string, string> = {
@@ -169,64 +150,25 @@ const ORDEN_FUNDAMENTOS = [
   "toque",
 ];
 
-function obtenerColumnas(fund: string): ColumnaValoracion[] {
+function obtenerColumnas(fund: string): Columna[] {
   switch (fund) {
     case "saque":
-      return COLUMNAS_SAQUE;
+      return COLS_SAQUE;
     case "recepcion":
-      return COLUMNAS_RECEPCION;
+      return COLS_RECEPCION;
     case "ataque":
-      return COLUMNAS_ATAQUE;
+      return COLS_ATAQUE;
     case "bloqueo":
-      return COLUMNAS_BLOQUEO;
+      return COLS_BLOQUEO_NORMAL;
     case "defensa":
-      return COLUMNAS_DEFENSA;
+      return COLS_DEFENSA;
     case "armados":
-      return COLUMNAS_ARMADOS;
+      return COLS_ARMADOS;
     case "toque":
-      return COLUMNAS_TOQUE;
+      return COLS_TOQUE;
     default:
       return [];
   }
-}
-
-function obtenerValores(fund: string): Record<string, number> {
-  if (fund === "bloqueo") return VALORES_BLOQUEO_DESGLOSADO;
-  return VALORES_POR_FUNDAMENTO[fund] ?? {};
-}
-
-/**
- * Devuelve la columna de la tabla donde debe caer esta acción.
- * Para bloqueo desglosamos por valoración + destino_celda.
- * Para el resto, la valoración coincide directo con la columna.
- */
-function clasificarParaTabla(
-  fund: string,
-  a: AccionDB
-): string | null {
-  if (fund === "bloqueo") {
-    const val = a.valoracion;
-    const dest = a.destino_celda ?? "";
-
-    if (val === "punto") return "punto";
-    if (val === "use_rival") return "use_rival";
-    if (val === "red") return "red";
-    if (val === "filtrada") return "filtrada";
-
-    if (val === "positivo_mas") {
-      // "positivo_mas" puede caer en propia o rival
-      const esPropia = /^F[123]-/.test(dest);
-      return esPropia ? "pos_mas_p" : "pos_mas_r";
-    }
-    if (val === "positivo") return "pos_r";
-    if (val === "neutro") return "neu_p";
-    return null;
-  }
-
-  const cols = obtenerColumnas(fund);
-  return cols.some((c) => c.key === a.valoracion)
-    ? a.valoracion
-    : null;
 }
 
 function colorTipo(tipo: "pos" | "neg" | "neu"): string {
@@ -235,10 +177,235 @@ function colorTipo(tipo: "pos" | "neg" | "neu"): string {
   return "text-slate-500";
 }
 
+function zonaDeCelda(celda: string | null | undefined): number | null {
+  if (!celda) return null;
+  switch (celda) {
+    case "F1-C1":
+    case "F1-C2":
+      return 4;
+    case "F1-C3":
+      return 3;
+    case "F1-C4":
+    case "F1-C5":
+      return 2;
+    case "F2-C3":
+    case "F3-C3":
+      return 6;
+    case "F2-C4":
+    case "F2-C5":
+    case "F3-C4":
+    case "F3-C5":
+      return 2;
+    default:
+      return null;
+  }
+}
+
 const selectCls =
   "w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:border-emerald-500";
 const labelCls =
   "block text-[10px] font-semibold text-slate-500 uppercase mb-1 tracking-wide";
+
+// ============================================================
+// CONSTRUCCIÓN DE BLOQUES
+// ============================================================
+
+function construirBloques(
+  fundamentosVisibles: string[],
+  ampliado: boolean
+): Bloque[] {
+  const bloques: Bloque[] = [];
+
+  for (const fund of fundamentosVisibles) {
+    if (fund === "saque") {
+      if (!ampliado) {
+        bloques.push({
+          id: "saque",
+          titulo: "Saque",
+          columnas: COLS_SAQUE,
+          valores: VALORES_POR_FUNDAMENTO.saque ?? {},
+          incluye: (a) => a.fundamento === "saque",
+          columnaDe: (a) => a.valoracion,
+        });
+      } else {
+        bloques.push({
+          id: "saque-flotado",
+          titulo: "Saque — Flotado",
+          columnas: COLS_SAQUE,
+          valores: VALORES_POR_FUNDAMENTO.saque ?? {},
+          incluye: (a) =>
+            a.fundamento === "saque" && a.tipo_saque === "flotado",
+          columnaDe: (a) => a.valoracion,
+        });
+        bloques.push({
+          id: "saque-potencia",
+          titulo: "Saque — Potencia",
+          columnas: COLS_SAQUE,
+          valores: VALORES_POR_FUNDAMENTO.saque ?? {},
+          incluye: (a) =>
+            a.fundamento === "saque" && a.tipo_saque === "potencia",
+          columnaDe: (a) => a.valoracion,
+        });
+      }
+      continue;
+    }
+
+    if (fund === "ataque") {
+      if (!ampliado) {
+        bloques.push({
+          id: "ataque",
+          titulo: "Ataque",
+          columnas: COLS_ATAQUE,
+          valores: VALORES_POR_FUNDAMENTO.ataque ?? {},
+          incluye: (a) => a.fundamento === "ataque",
+          columnaDe: (a) => a.valoracion,
+        });
+      } else {
+        const columnasAtaque = COLS_ATAQUE_AMPLIADO;
+        const esRemate = (a: AccionDB) =>
+          a.fundamento === "ataque" && a.variante !== "toque";
+        const esToque = (a: AccionDB) =>
+          a.fundamento === "ataque" && a.variante === "toque";
+
+        const columnaAtaqueDe = (a: AccionDB): string | null => {
+          const s = a.subtipo_original ?? a.valoracion;
+          if (columnasAtaque.some((c) => c.key === s)) return s;
+          return null;
+        };
+
+        bloques.push({
+          id: "ataque-remate",
+          titulo: "Ataque — Remate",
+          columnas: columnasAtaque,
+          valores: VALORES_POR_FUNDAMENTO.ataque ?? {},
+          incluye: esRemate,
+          columnaDe: columnaAtaqueDe,
+        });
+        bloques.push({
+          id: "ataque-toque",
+          titulo: "Ataque — Toque",
+          columnas: columnasAtaque,
+          valores: VALORES_POR_FUNDAMENTO.ataque ?? {},
+          incluye: esToque,
+          columnaDe: columnaAtaqueDe,
+        });
+      }
+      continue;
+    }
+
+    if (fund === "bloqueo") {
+      if (!ampliado) {
+        bloques.push({
+          id: "bloqueo",
+          titulo: "Bloqueo",
+          columnas: COLS_BLOQUEO_NORMAL,
+          valores: VALORES_POR_FUNDAMENTO.bloqueo ?? {},
+          incluye: (a) => a.fundamento === "bloqueo",
+          columnaDe: (a) => a.valoracion,
+        });
+      } else {
+        bloques.push({
+          id: "bloqueo-ampliado",
+          titulo: "Bloqueo — desglosado",
+          subtitulo: "Según dónde cae el balón",
+          columnas: COLS_BLOQUEO_AMPLIADO,
+          valores: VALORES_BLOQUEO_AMPLIADO,
+          incluye: (a) => a.fundamento === "bloqueo",
+          columnaDe: (a) => {
+            const val = a.valoracion;
+            const dest = a.destino_celda ?? "";
+            if (val === "punto") return "punto";
+            if (val === "use_rival") return "use_rival";
+            if (val === "red") return "red";
+            if (val === "filtrada") return "filtrada";
+            if (val === "positivo_mas")
+              return /^F[123]-/.test(dest) ? "pos_mas_p" : "pos_mas_r";
+            if (val === "positivo") return "pos_r";
+            if (val === "neutro") return "neu_p";
+            return null;
+          },
+        });
+      }
+      continue;
+    }
+
+    if (fund === "armados") {
+      if (!ampliado) {
+        bloques.push({
+          id: "armados",
+          titulo: "Armados",
+          columnas: COLS_ARMADOS,
+          valores: VALORES_POR_FUNDAMENTO.armados ?? {},
+          incluye: (a) => a.fundamento === "armados",
+          columnaDe: (a) => a.valoracion,
+        });
+      } else {
+        const zonas: { zona: number; label: string }[] = [
+          { zona: 4, label: "Zona 4" },
+          { zona: 3, label: "Zona 3" },
+          { zona: 2, label: "Zona 2" },
+          { zona: 6, label: "Zona 6" },
+          { zona: 1, label: "Zona 1" },
+        ];
+        for (const z of zonas) {
+          bloques.push({
+            id: `armados-zona-${z.zona}`,
+            titulo: `Armados — ${z.label}`,
+            subtitulo: "Agrupado por zona de destino",
+            columnas: COLS_ARMADOS,
+            valores: VALORES_POR_FUNDAMENTO.armados ?? {},
+            incluye: (a) =>
+              a.fundamento === "armados" &&
+              zonaDeCelda(a.destino_celda) === z.zona,
+            columnaDe: (a) => a.valoracion,
+          });
+        }
+        const velocidades: { v: number | null; label: string }[] = [
+          { v: 1, label: "Velocidad 1" },
+          { v: 1.5, label: "Velocidad 1.5" },
+          { v: 2, label: "Velocidad 2" },
+          { v: 3, label: "Velocidad 3" },
+          { v: 5, label: "Velocidad 5" },
+          { v: null, label: "Sin velocidad" },
+        ];
+        for (const ve of velocidades) {
+          bloques.push({
+            id: `armados-vel-${ve.v ?? "sin"}`,
+            titulo: `Armados — ${ve.label}`,
+            subtitulo: "Agrupado por velocidad elegida",
+            columnas: COLS_ARMADOS,
+            valores: VALORES_POR_FUNDAMENTO.armados ?? {},
+            incluye: (a) =>
+              a.fundamento === "armados" &&
+              (ve.v === null
+                ? a.velocidad === null || a.velocidad === undefined
+                : a.velocidad === ve.v),
+            columnaDe: (a) => a.valoracion,
+          });
+        }
+      }
+      continue;
+    }
+
+    const columnas =
+      fund === "recepcion"
+        ? COLS_RECEPCION
+        : fund === "defensa"
+        ? COLS_DEFENSA
+        : COLS_TOQUE;
+
+    bloques.push({
+      id: fund,
+      titulo: NOMBRES_FUNDAMENTO[fund] ?? fund,
+      columnas,
+      valores: VALORES_POR_FUNDAMENTO[fund] ?? {},
+      incluye: (a) => a.fundamento === fund,
+      columnaDe: (a) => a.valoracion,
+    });
+  }
+
+  return bloques;
+}
 
 // ============================================================
 // PROPS
@@ -250,6 +417,13 @@ interface Props {
   nombresJugadores: Record<string, string>;
   armadores?: Set<string>;
   soloJugadorId?: string;
+  /**
+   * Texto de contexto para el encabezado. Sirve para aclarar el
+   * alcance de la tabla, p. ej. "Todos los partidos · 8 partidos" o
+   * "Solo este partido · vs Quilmes · 2026-01-15".
+   * Opcional.
+   */
+  contexto?: string;
 }
 
 // ============================================================
@@ -262,9 +436,11 @@ export default function TablaEstadisticasCrudas({
   nombresJugadores,
   armadores,
   soloJugadorId,
+  contexto,
 }: Props) {
   const [filtroJugador, setFiltroJugador] = useState<string>("todos");
   const [filtroFundamento, setFiltroFundamento] = useState<string>("todos");
+  const [ampliado, setAmpliado] = useState(false);
 
   const armadoresSet = armadores ?? new Set<string>();
   const jugadoresAMostrar = soloJugadorId ? [soloJugadorId] : jugadoresIds;
@@ -273,7 +449,6 @@ export default function TablaEstadisticasCrudas({
   const nombreDe = (id: string) => nombresJugadores[id] ?? id;
   const esArmadorId = (id: string) => armadoresSet.has(id);
 
-  // Acciones para la tabla de detalle (TODOS los filtros aplicados)
   const accionesDetalle = useMemo(() => {
     return acciones.filter((a) => {
       if (
@@ -290,7 +465,6 @@ export default function TablaEstadisticasCrudas({
     });
   }, [acciones, jugadorEfectivo, filtroFundamento]);
 
-  // Acciones para el resumen del equipo (sin filtro de jugador)
   const accionesResumen = useMemo(() => {
     return acciones.filter((a) => {
       if (
@@ -311,26 +485,54 @@ export default function TablaEstadisticasCrudas({
     ).totales;
   }, [jugadoresAMostrar, accionesResumen, armadoresSet]);
 
-  const fundamentosConDatos = ORDEN_FUNDAMENTOS.filter((f) =>
+  const fundamentosVisibles = ORDEN_FUNDAMENTOS.filter((f) =>
     accionesDetalle.some(
       (a) => a.fundamento === f && jugadoresAMostrar.includes(a.jugador_id)
     )
   );
 
+  const bloques = useMemo(
+    () => construirBloques(fundamentosVisibles, ampliado),
+    [fundamentosVisibles, ampliado]
+  );
+
   return (
     <div className="space-y-4">
-      <div>
-        <h4 className="font-semibold text-slate-800 mb-1">
-          📋 Estadísticas crudas
-        </h4>
-        <p className="text-xs text-slate-500">
-          Cantidad exacta de cada valoración por jugador y promedio crudo
-          (sin ponderar). El bloqueo está desglosado por dónde cae el
-          balón.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h4 className="font-semibold text-slate-800 mb-1">
+            📋 Estadísticas crudas
+          </h4>
+          {contexto && (
+            <p className="text-[11px] text-fuchsia-700 font-medium mb-1">
+              {contexto}
+            </p>
+          )}
+          <p className="text-xs text-slate-500">
+            Cantidad exacta de cada valoración por jugador y promedio
+            crudo (sin ponderar).
+          </p>
+        </div>
+        <button
+          onClick={() => setAmpliado((v) => !v)}
+          className={`px-3 py-1.5 text-xs font-semibold rounded-lg border-2 transition whitespace-nowrap ${
+            ampliado
+              ? "bg-fuchsia-500 text-white border-fuchsia-600 hover:bg-fuchsia-600"
+              : "bg-white text-fuchsia-700 border-fuchsia-300 hover:bg-fuchsia-50"
+          }`}
+        >
+          {ampliado ? "🔍 Ver resumido" : "🔍 Ver ampliado"}
+        </button>
       </div>
 
-      {/* ---------- FILTROS ---------- */}
+      {ampliado && (
+        <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-lg px-3 py-2 text-xs text-fuchsia-800">
+          Vista ampliada: saque separado por flotado/potencia, ataque por
+          remate/toque, bloqueo desglosado por dónde cae el balón, y armado
+          separado por zona y por velocidad.
+        </div>
+      )}
+
       <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
         <div className="grid grid-cols-2 gap-2">
           {!soloJugadorId && (
@@ -374,7 +576,6 @@ export default function TablaEstadisticasCrudas({
         </p>
       </div>
 
-      {/* ---------- RESUMEN DEL EQUIPO ---------- */}
       {totales && (
         <div className="bg-white rounded-2xl border border-slate-200 p-4">
           <h5 className="font-semibold text-slate-800 mb-3 text-sm">
@@ -456,17 +657,14 @@ export default function TablaEstadisticasCrudas({
         </div>
       )}
 
-      {/* ---------- DETALLE POR FUNDAMENTO ---------- */}
-      {fundamentosConDatos.length === 0 ? (
+      {bloques.length === 0 ? (
         <div className="p-6 text-center text-sm text-slate-500">
           No hay acciones para mostrar
         </div>
       ) : (
         <div className="space-y-4">
-          {fundamentosConDatos.map((fund) => {
-            const cols = obtenerColumnas(fund);
-            if (!cols) return null;
-            const valores = obtenerValores(fund);
+          {bloques.map((bloque) => {
+            const cols = bloque.columnas;
 
             const porJugador: Record<string, Record<string, number>> = {};
             for (const jid of jugadoresAMostrar) {
@@ -474,24 +672,27 @@ export default function TablaEstadisticasCrudas({
               for (const c of cols) fila[c.key] = 0;
               porJugador[jid] = fila;
             }
-            const totalesFund: Record<string, number> = {};
-            for (const c of cols) totalesFund[c.key] = 0;
+            const totalesBloque: Record<string, number> = {};
+            for (const c of cols) totalesBloque[c.key] = 0;
+
+            let totalAccionesBloque = 0;
 
             for (const a of accionesDetalle) {
-              if (a.fundamento !== fund) continue;
+              if (!bloque.incluye(a)) continue;
               if (!jugadoresAMostrar.includes(a.jugador_id)) continue;
-              const colKey = clasificarParaTabla(fund, a);
+              const colKey = bloque.columnaDe(a);
               if (!colKey) continue;
               if (!(colKey in porJugador[a.jugador_id])) continue;
               porJugador[a.jugador_id][colKey] += a.cantidad;
-              totalesFund[colKey] += a.cantidad;
+              totalesBloque[colKey] += a.cantidad;
+              totalAccionesBloque += a.cantidad;
             }
+
+            if (totalAccionesBloque === 0) return null;
 
             const jugadoresConDatos = jugadoresAMostrar.filter((jid) =>
               cols.some((c) => porJugador[jid][c.key] > 0)
             );
-
-            if (jugadoresConDatos.length === 0) return null;
 
             const calcularTotal = (fila: Record<string, number>) =>
               cols.reduce((s, c) => s + fila[c.key], 0);
@@ -501,24 +702,31 @@ export default function TablaEstadisticasCrudas({
               if (total === 0) return 0;
               let suma = 0;
               for (const c of cols) {
-                const v = valores[c.key] ?? 0;
+                const v = bloque.valores[c.key] ?? 0;
                 suma += v * fila[c.key];
               }
               return suma / total;
             };
 
-            const totalTodas = calcularTotal(totalesFund);
-            const promTotal = calcularPromedioCrudo(totalesFund);
+            const totalTodas = calcularTotal(totalesBloque);
+            const promTotal = calcularPromedioCrudo(totalesBloque);
 
             return (
               <div
-                key={fund}
+                key={bloque.id}
                 className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"
               >
                 <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                  <h5 className="font-semibold text-slate-800">
-                    {NOMBRES_FUNDAMENTO[fund] ?? fund}
-                  </h5>
+                  <div>
+                    <h5 className="font-semibold text-slate-800">
+                      {bloque.titulo}
+                    </h5>
+                    {bloque.subtitulo && (
+                      <p className="text-[10px] text-slate-500 italic">
+                        {bloque.subtitulo}
+                      </p>
+                    )}
+                  </div>
                   <span className="text-xs text-slate-500">
                     {totalTodas} acción{totalTodas !== 1 ? "es" : ""}
                   </span>
@@ -601,7 +809,7 @@ export default function TablaEstadisticasCrudas({
                                 c.tipo
                               )}`}
                             >
-                              {totalesFund[c.key]}
+                              {totalesBloque[c.key]}
                             </td>
                           ))}
                           <td className="py-2 px-3 text-right text-slate-700">

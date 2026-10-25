@@ -184,8 +184,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     return j ? j.nombre + (j.numero !== null ? ` #${j.numero}` : "") : "?";
   };
 
-  // Si el usuario actual es el equipo_rival_id del partido, el rival
-  // visible es el equipo local (equipo_id), no el texto guardado.
   const nombreRivalDe = (p: Partido) => {
     if (p.equipo_rival_id === equipoId) {
       const local = equipos.find((e) => e.id === p.equipo_id);
@@ -588,6 +586,12 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   const datosRivalPartido = partidoDetalle
     ? datosRival[partidoDetalle.id] ?? { buenas: 0, errores: 0 }
     : { buenas: 0, errores: 0 };
+
+  const nombresJugadoresMap: Record<string, string> = {};
+  for (const j of jugadores) {
+    nombresJugadoresMap[j.id] =
+      j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
+  }
 
   return (
     <div className="space-y-6">
@@ -1489,10 +1493,15 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                   <TablaEstadisticasCrudas
                     acciones={accionesDelPartido}
                     jugadoresIds={idsJugadores}
-                    nombresJugadores={Object.fromEntries(
-                      jugadores.map((j) => [j.id, nombreDe(j.id)])
-                    )}
+                    nombresJugadores={nombresJugadoresMap}
                     armadores={armadores}
+                    contexto={`Solo este partido · vs ${nombreRivalDe(
+                      partidoDetalle
+                    )} · ${partidoDetalle.fecha}${
+                      filtroSet !== "todos"
+                        ? ` · Set ${filtroSet}`
+                        : ""
+                    }`}
                   />
                 </div>
               )}

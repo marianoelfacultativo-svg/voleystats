@@ -313,13 +313,36 @@ export interface AccionDB {
   cantidad: number;
   puntaje?: number;
   puntajeBase?: number;
+  /**
+   * Variante del ataque (de `acciones_v2.variante`). "toque" indica que
+   * fue un remate de toque / remate de segunda. Se usa para que el motor
+   * trate esos ataques del ARMADOR como "toque" (fundamento separado).
+   */
   variante?: string | null;
   /**
    * Celda destino de la acción (F1-C3, F4-C2, BLOQ-R-C3, etc.).
    * Se usa para desglosar bloqueos por "cae en cancha propia" vs
-   * "cae en cancha rival" en las tablas crudas. Opcional.
+   * "cae en cancha rival" en las tablas crudas ampliadas. Opcional.
    */
   destino_celda?: string | null;
+  /**
+   * Subtipo original de la acción, tal cual vino de V2, sin mapear a
+   * los valores del motor de estadísticas. Ej: "punto_directo_ataque",
+   * "error_red_ataque", "use_rival_ataque", etc. Se usa para las
+   * tablas crudas ampliadas. Opcional.
+   */
+  subtipo_original?: string | null;
+  /**
+   * Tipo de saque: "potencia" | "flotado" | null. Se usa para la
+   * tabla ampliada de saque. Opcional.
+   */
+  tipo_saque?: string | null;
+  /**
+   * Velocidad del armado (1 | 1.5 | 2 | 3 | 5). Se usa para la
+   * tabla ampliada de armado (una por zona + una por velocidad).
+   * Opcional.
+   */
+  velocidad?: number | null;
 }
 
 const RECEPCION_NUM_A_STR: Record<number, string> = {
@@ -348,6 +371,9 @@ interface AccionIndividual {
   valoracion: string;
   variante?: string | null;
   destino_celda?: string | null;
+  subtipo_original?: string | null;
+  tipo_saque?: string | null;
+  velocidad?: number | null;
   created_at: string;
 }
 
@@ -516,6 +542,12 @@ export async function cargarAccionesCompatibles(
       const val = valoracionV2aV1(a.tipo, a.subtipo ?? null);
       if (!val) continue;
       if (!a.jugador_id) continue;
+
+      // Subtipo original sin prefijo "toque:" (para las tablas ampliadas)
+      let subRaw: string | null =
+        typeof a.subtipo === "string" ? a.subtipo : null;
+      if (subRaw && subRaw.startsWith("toque:")) subRaw = subRaw.slice(6);
+
       acciones.push({
         jugador_id: a.jugador_id,
         set_numero: p.set_numero,
@@ -524,6 +556,9 @@ export async function cargarAccionesCompatibles(
         valoracion: val,
         variante: a.variante ?? null,
         destino_celda: a.destino_celda ?? null,
+        subtipo_original: subRaw,
+        tipo_saque: a.tipo_saque ?? null,
+        velocidad: a.velocidad ?? null,
         created_at: a.created_at ?? p.created_at ?? "",
       });
     }
@@ -574,6 +609,9 @@ export async function cargarAccionesCompatibles(
       puntajeBase: base,
       variante: acc.variante ?? null,
       destino_celda: acc.destino_celda ?? null,
+      subtipo_original: acc.subtipo_original ?? null,
+      tipo_saque: acc.tipo_saque ?? null,
+      velocidad: acc.velocidad ?? null,
     });
 
     anteriorFinal = final;
@@ -609,7 +647,7 @@ export async function cargarAccionesCompatibles(
   const agrupado = new Map<string, AccionDB>();
   for (const r of procesadas) {
     const pRed = Math.round((r.puntaje ?? 5) * 10) / 10;
-    const k = `${r.jugador_id}|${r.set_numero}|${r.fundamento}|${r.valoracion}|${pRed}|${r.destino_celda ?? ""}`;
+    const k = `${r.jugador_id}|${r.set_numero}|${r.fundamento}|${r.valoracion}|${pRed}|${r.destino_celda ?? ""}|${r.subtipo_original ?? ""}|${r.tipo_saque ?? ""}|${r.velocidad ?? ""}`;
     const existente = agrupado.get(k);
     if (existente) {
       existente.cantidad += 1;

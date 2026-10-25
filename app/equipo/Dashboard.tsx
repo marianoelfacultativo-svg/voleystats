@@ -13,6 +13,7 @@ import {
   rankingConsistencia,
   type RankingCompletoItem,
 } from "@/lib/estadisticas";
+import TablaEstadisticasCrudas from "./TablaEstadisticasCrudas";
 
 interface Partido {
   id: string;
@@ -185,6 +186,13 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
     defensa: rankingDefensa(porJugador, acciones),
     consistencia: rankingConsistencia(porJugador, acciones),
   };
+
+  // Mapa de nombres para las tablas crudas
+  const nombresJugadores: Record<string, string> = {};
+  for (const j of jugadoresDelEquipo) {
+    nombresJugadores[j.id] =
+      j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
+  }
 
   if (partidos.length === 0) {
     return (
@@ -490,6 +498,32 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
           })}
         </div>
       </div>
+
+      {/* ============================================================
+          ESTADÍSTICAS CRUDAS ACUMULADAS
+          Alcance: SUMA DE TODOS LOS PARTIDOS del equipo.
+         ============================================================ */}
+      {jugadoresDelEquipo.length > 0 && acciones.length > 0 && (
+        <div>
+          <h2 className="text-xl font-semibold text-slate-900 mb-1">
+            📋 Estadísticas crudas (acumuladas)
+          </h2>
+          <p className="text-xs text-slate-500 mb-3">
+            Todos los partidos de {nombreEquipo} sumados.
+          </p>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+            <TablaEstadisticasCrudas
+              acciones={acciones}
+              jugadoresIds={jugadoresDelEquipo.map((j) => j.id)}
+              nombresJugadores={nombresJugadores}
+              armadores={armadores}
+              contexto={`Suma de todos los partidos · ${partidos.length} partido${
+                partidos.length !== 1 ? "s" : ""
+              }`}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
