@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { cargarAccionesCompatibles, type AccionDB } from "@/lib/db";
 import {
@@ -26,6 +26,7 @@ import ImagenAmpliable from "./ImagenAmpliable";
 import GraficoBarrasFundamento from "./GraficoBarrasFundamento";
 import MapaCalorJugador from "./MapaCalorJugador";
 import IconoVoley from "./IconoVoley";
+import { descargarComoPDF } from "@/lib/exportarPDF";
 
 interface Jugador {
   id: string;
@@ -153,6 +154,9 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
   const [modo, setModo] = useState<"individual" | "comparar">("individual");
   const [comparados, setComparados] = useState<string[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [descargando, setDescargando] = useState(false);
+
+  const refPDF = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!equipoId) return;
@@ -336,6 +340,33 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     ),
   }));
 
+  const handleDescargarPDF = async () => {
+    if (modo === "individual" && !jugadorSeleccionado) {
+      alert("Elegí un jugador antes de descargar el PDF.");
+      return;
+    }
+    if (modo === "comparar" && comparadosData.length === 0) {
+      alert("Elegí al menos un jugador para comparar antes de descargar.");
+      return;
+    }
+    if (!refPDF.current) return;
+
+    setDescargando(true);
+    try {
+      const nombre =
+        modo === "individual" && datosJugador
+          ? `jugador-${datosJugador.nombre}-${nombreEquipo}`
+          : `comparacion-${nombreEquipo}`;
+      const titulo =
+        modo === "individual" && datosJugador
+          ? `${datosJugador.nombre} · ${nombreEquipo}`
+          : `Comparación · ${nombreEquipo}`;
+      await descargarComoPDF(refPDF.current, nombre, titulo);
+    } finally {
+      setDescargando(false);
+    }
+  };
+
   if (jugadores.length === 0) {
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
@@ -349,30 +380,40 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end gap-2">
+      <div className="flex justify-between items-center gap-2 flex-wrap">
+        <div className="flex justify-end gap-2 ml-auto">
+          <button
+            onClick={() => handleToggleModo("individual")}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition border ${
+              modo === "individual"
+                ? "bg-emerald-500 text-white border-emerald-500"
+                : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            👤 Ver jugador
+          </button>
+          <button
+            onClick={() => handleToggleModo("comparar")}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition border ${
+              modo === "comparar"
+                ? "bg-emerald-500 text-white border-emerald-500"
+                : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            ⚖️ Comparar ({comparados.length}/3)
+          </button>
+        </div>
         <button
-          onClick={() => handleToggleModo("individual")}
-          className={`px-4 py-2 text-sm font-medium rounded-lg transition border ${
-            modo === "individual"
-              ? "bg-emerald-500 text-white border-emerald-500"
-              : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
-          }`}
+          onClick={handleDescargarPDF}
+          disabled={descargando}
+          className="px-4 py-2 text-sm bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-medium rounded-lg transition disabled:opacity-50"
+          data-pdf-ignorar
         >
-          👤 Ver jugador
-        </button>
-        <button
-          onClick={() => handleToggleModo("comparar")}
-          className={`px-4 py-2 text-sm font-medium rounded-lg transition border ${
-            modo === "comparar"
-              ? "bg-emerald-500 text-white border-emerald-500"
-              : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
-          }`}
-        >
-          ⚖️ Comparar ({comparados.length}/3)
+          {descargando ? "Generando PDF..." : "📄 Descargar PDF"}
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div ref={refPDF} className="grid grid-cols-3 gap-4">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 col-span-1">
           <h3 className="font-semibold text-slate-800 mb-3">
             {modo === "individual" ? "Plantel" : "Elegí hasta 3 jugadores"}
