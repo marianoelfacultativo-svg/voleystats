@@ -15,18 +15,18 @@
 //   </button>
 //
 // Qué hace:
-//   1. Busca todos los elementos con [data-pdf-cerrado="true"] dentro
-//      del contenedor y guarda una lista de los que hay que reabrir
-//      después. Después les hace click (para abrir acordeones).
-//   2. Espera un tick para que React re-renderice y terminen las
-//      animaciones.
+//   1. Abre TODOS los acordeones cerrados dentro del contenedor.
+//      Lo hace en varias PASADAS, porque al abrir un acordeón pueden
+//      aparecer nuevos acordeones internos (ej. "Ver detalle" de un
+//      jugador muestra botones "Valoraciones" que también son
+//      acordeones). Sigue hasta que no haya más o llegue al límite.
+//   2. Espera un tick para que React re-renderice.
 //   3. Saca una "foto" con html2canvas.
-//   4. Vuelve a clickear los que estaban cerrados (para dejarlos
-//      como estaban).
+//   4. Cierra los acordeones en el orden inverso al que los abrió
+//      (así vuelven a quedar como estaban).
 //   5. Genera el PDF A4 paginado y lo descarga.
 //
-// Para marcar un acordeón que debe abrirse en el PDF, agregá en el
-// botón que abre/cierra el acordeón el atributo:
+// Para marcar un acordeón, agregá en el botón que abre/cierra:
 //
 //     data-pdf-acordeon
 //
@@ -56,6 +56,9 @@ const ESCALA_CAPTURA = 2;
 
 /** Cuánto esperar entre abrir acordeones y capturar (ms). */
 const ESPERA_RENDER_MS = 350;
+
+/** Cuántas pasadas máximo hacemos abriendo acordeones en cascada. */
+const MAX_PASADAS = 4;
 
 // ------------------------------------------------------------
 // HELPERS INTERNOS
@@ -87,22 +90,47 @@ function fechaCorta(): string {
 // CONTROL DE ACORDEONES
 // ------------------------------------------------------------
 
-/**
- * Devuelve los elementos acordeón que están cerrados dentro del
- * contenedor. Filtra por [data-pdf-acordeon][data-pdf-cerrado="true"].
- */
 function buscarAcordeonesCerrados(contenedor: HTMLElement): HTMLElement[] {
-  const todos = Array.from(
+  return Array.from(
     contenedor.querySelectorAll<HTMLElement>(
       '[data-pdf-acordeon][data-pdf-cerrado="true"]'
     )
   );
-  return todos;
 }
 
-function abrirAcordeones(elementos: HTMLElement[]): void {
-  for (const el of elementos) {
-    el.click();
+/**
+ * Abre todos los acordeones cerrados, en varias pasadas. Devuelve el
+ * registro de los que abrió, por pasada, para poder cerrarlos después
+ * en el orden inverso.
+ */
+async function abrirAcordeonesEnCascada(
+  contenedor: HTMLElement
+): Promise<HTMLElement[][]> {
+  const cerradosPorPasada: HTMLElement[][] = [];
+
+  for (let i = 0; i < MAX_PASADAS; i++) {
+    const cerrados = buscarAcordeonesCerrados(contenedor);
+    if (cerrados.length === 0) break;
+    cerradosPorPasada.push(cerrados);
+    for (const el of cerrados) el.click();
+    await esperar(ESPERA_RENDER_MS);
+  }
+
+  return cerradosPorPasada;
+}
+
+/**
+ * Cierra los acordeones en el orden inverso al que se abrieron:
+ * primero los internos (los de la última pasada), después los de
+ * afuera. Así vuelven a su estado original.
+ */
+function cerrarAcordeonesEnOrdenInverso(
+  cerradosPorPasada: HTMLElement[][]
+): void {
+  for (let i = cerradosPorPasada.length - 1; i >= 0; i--) {
+    for (const el of cerradosPorPasada[i]) {
+      el.click();
+    }
   }
 }
 
@@ -118,7 +146,6 @@ async function capturarElemento(
     useCORS: true,
     backgroundColor: "#ffffff",
     logging: false,
-    // Ignorar la toolbar que puede haber quedado en pantalla
     ignoreElements: (el) => el.hasAttribute("data-pdf-ignorar"),
   });
 }
@@ -136,11 +163,9 @@ function agregarCanvasAlPDF(
   const anchoImg = canvas.width;
   const altoImg = canvas.height;
 
-  // Tamaño que ocuparía la imagen entera escalada al ancho útil del PDF
   const anchoEscalado = anchoUtil;
   const altoEscalado = (altoImg * anchoUtil) / anchoImg;
 
-  // Si entra en una sola página, la metemos directo.
   if (altoEscalado <= altoUtil) {
     pdf.addImage(
       canvas.toDataURL("image/jpeg", 0.92),
@@ -153,8 +178,7 @@ function agregarCanvasAlPDF(
     return;
   }
 
-  // Si no entra, paginamos por franjas.
-  // Cuántos px de la imagen equivalen a un alto de página útil:
+  // Paginado por franjas
   const pxPorMm = anchoImg / anchoUtil;
   const altoPaginaPx = altoUtil * pxPorMm;
 
@@ -164,7 +188,6 @@ function agregarCanvasAlPDF(
   while (yPx < altoImg) {
     const altoFranjaPx = Math.min(altoPaginaPx, altoImg - yPx);
 
-    // Recortamos la franja del canvas original
     const franjaCanvas = document.createElement("canvas");
     franjaCanvas.width = anchoImg;
     franjaCanvas.height = altoFranjaPx;
@@ -209,29 +232,23 @@ function agregarCanvasAlPDF(
 
 /**
  * Captura el contenido del elemento y descarga un PDF A4 paginado.
- *
- * @param elemento  El nodo raíz a capturar (con useRef).
- * @param nombreBase Nombre del archivo sin extensión (se sanitiza).
- * @param titulo    Título que aparece arriba del PDF. Opcional.
+ * Abre todos los acordeones cerrados (en cascada) y los vuelve a
+ * dejar como estaban después de capturar.
  */
 export async function descargarComoPDF(
   elemento: HTMLElement,
   nombreBase: string,
   titulo?: string
 ): Promise<void> {
-  // 1. Abrir acordeones cerrados
-  const cerrados = buscarAcordeonesCerrados(elemento);
-  abrirAcordeones(cerrados);
-  await esperar(ESPERA_RENDER_MS);
+  // 1. Abrir acordeones cerrados (en varias pasadas)
+  const cerradosPorPasada = await abrirAcordeonesEnCascada(elemento);
 
   try {
     // 2. Capturar
     const canvas = await capturarElemento(elemento);
 
-    // 3. Volver a cerrar los que estaban cerrados (dejarlos como antes)
-    //    Lo hacemos después de capturar pero antes de armar el PDF,
-    //    para que el usuario no vea el cambio por mucho tiempo.
-    abrirAcordeones(cerrados); // volver a clickear cierra si estaba cerrado
+    // 3. Cerrar en orden inverso
+    cerrarAcordeonesEnOrdenInverso(cerradosPorPasada);
 
     // 4. Armar PDF
     const pdf = new jsPDF({
@@ -252,6 +269,8 @@ export async function descargarComoPDF(
     const archivo = `${limpiarNombreArchivo(nombreBase)}-${fechaCorta()}.pdf`;
     pdf.save(archivo);
   } catch (err) {
+    // Si falla algo, igual intentamos dejar los acordeones como estaban
+    cerrarAcordeonesEnOrdenInverso(cerradosPorPasada);
     // eslint-disable-next-line no-console
     console.error("Error generando PDF:", err);
     alert(
