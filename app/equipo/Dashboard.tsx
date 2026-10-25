@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { cargarAccionesCompatibles, type AccionDB } from "@/lib/db";
 import {
@@ -15,6 +15,7 @@ import {
 } from "@/lib/estadisticas";
 import TablaEstadisticasCrudas from "./TablaEstadisticasCrudas";
 import IconoVoley from "./IconoVoley";
+import { descargarComoPDF } from "@/lib/exportarPDF";
 
 interface Partido {
   id: string;
@@ -78,9 +79,14 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
   const [equipos, setEquipos] = useState<Equipo[]>([]);
   const [acciones, setAcciones] = useState<AccionDB[]>([]);
   const [cargando, setCargando] = useState(true);
-  const [rankingAbierto, setRankingAbierto] = useState<RankingTipo | null>(
-    null
+
+  // Acordeones de ranking: ahora se pueden abrir varios a la vez.
+  const [rankingsAbiertos, setRankingsAbiertos] = useState<Set<RankingTipo>>(
+    new Set()
   );
+
+  const [descargando, setDescargando] = useState(false);
+  const refPDF = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!equipoId) return;
@@ -123,6 +129,29 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
       setCargando(false);
     });
   }, [equipoId]);
+
+  const toggleRanking = (id: RankingTipo) => {
+    setRankingsAbiertos((prev) => {
+      const nuevo = new Set(prev);
+      if (nuevo.has(id)) nuevo.delete(id);
+      else nuevo.add(id);
+      return nuevo;
+    });
+  };
+
+  const handleDescargarPDF = async () => {
+    if (!refPDF.current) return;
+    setDescargando(true);
+    try {
+      await descargarComoPDF(
+        refPDF.current,
+        `dashboard-${nombreEquipo}`,
+        `Dashboard · ${nombreEquipo}`
+      );
+    } finally {
+      setDescargando(false);
+    }
+  };
 
   if (cargando) {
     return <p className="text-slate-500 text-center py-12">Cargando...</p>;
@@ -210,321 +239,345 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
   }
 
   return (
-    <div className="space-y-6">
-      {ultimoPartido && statsUltimo && (
-        <div>
-          <h2 className="text-xl font-semibold text-slate-900 mb-3">
-            Último partido
-          </h2>
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <p className="text-lg font-semibold text-slate-800">
-                  🏐 {nombreEquipo} vs {nombreRivalDe(ultimoPartido)}
-                </p>
-                <p className="text-sm text-slate-500 mt-1">
-                  📅 {ultimoPartido.fecha}
-                </p>
-                <p className="text-sm text-slate-600 mt-1">
-                  {scoreDe(ultimoPartido)}
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
-                <p className="text-xs text-slate-500 uppercase">Acciones</p>
-                <p className="text-2xl font-bold text-slate-800">
-                  {statsUltimo.totales.totalAcciones}
-                </p>
-              </div>
-              <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
-                <p className="text-xs text-green-700 uppercase">Puntos</p>
-                <p className="text-2xl font-bold text-green-800">
-                  {statsUltimo.totales.totalPuntos}
-                </p>
-              </div>
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
-                <p className="text-xs text-red-700 uppercase">Errores</p>
-                <p className="text-2xl font-bold text-red-800">
-                  {statsUltimo.totales.totalErrores}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {totales && (
-        <div>
-          <h2 className="text-xl font-semibold text-slate-900 mb-3">
-            Totales acumulados
-          </h2>
-          <div className="grid grid-cols-4 gap-3 mb-4">
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-              <p className="text-xs text-slate-500 uppercase">Partidos</p>
-              <p className="text-2xl font-bold text-slate-800">
-                {partidos.length}
-              </p>
-            </div>
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-              <p className="text-xs text-slate-500 uppercase">Acciones</p>
-              <p className="text-2xl font-bold text-slate-800">
-                {totales.totalAcciones}
-              </p>
-            </div>
-            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-xs text-green-700 uppercase">Puntos</p>
-              <p className="text-2xl font-bold text-green-800">
-                {totales.totalPuntos}
-              </p>
-            </div>
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-xs text-red-700 uppercase">Errores</p>
-              <p className="text-2xl font-bold text-red-800">
-                {totales.totalErrores}
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
-                  <th className="py-2 px-3">Fundamento</th>
-                  <th className="py-2 px-3 text-right">Total</th>
-                  <th className="py-2 px-3 text-right">Pos</th>
-                  <th className="py-2 px-3 text-right">Neg</th>
-                  <th className="py-2 px-3 text-right">Puntos</th>
-                  <th className="py-2 px-3 text-right">Errores</th>
-                  <th className="py-2 px-3 text-right">Saldo</th>
-                  <th className="py-2 px-3 text-right">Efect.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {FUNDAMENTOS.map((f) => {
-                  const e = totales.porFundamento[f];
-                  if (!e || e.total === 0) return null;
-                  return (
-                    <tr key={f} className="border-b border-slate-100">
-                      <td className="py-2 px-3 font-medium text-slate-700">
-                        {NOMBRES[f]}
-                      </td>
-                      <td className="py-2 px-3 text-right text-slate-600">
-                        {e.total}
-                      </td>
-                      <td className="py-2 px-3 text-right text-green-700">
-                        {e.positivos}
-                      </td>
-                      <td className="py-2 px-3 text-right text-red-700">
-                        {e.negativos}
-                      </td>
-                      <td className="py-2 px-3 text-right text-slate-600">
-                        {e.puntos}
-                      </td>
-                      <td className="py-2 px-3 text-right text-slate-600">
-                        {e.errores}
-                      </td>
-                      <td
-                        className={`py-2 px-3 text-right font-semibold ${
-                          e.saldo > 0
-                            ? "text-green-700"
-                            : e.saldo < 0
-                            ? "text-red-700"
-                            : "text-slate-600"
-                        }`}
-                      >
-                        {e.saldo > 0 ? "+" : ""}
-                        {e.saldo}
-                      </td>
-                      <td className="py-2 px-3 text-right text-slate-600">
-                        {e.efectividad.toFixed(0)}%
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      <div>
-        <h2 className="text-xl font-semibold text-slate-900 mb-3">
-          🏆 Rankings del plantel
-        </h2>
-        <p className="text-xs text-slate-500 mb-4">
-          Clic en cualquier ranking para ver la tabla completa
-        </p>
-        <div className="grid grid-cols-2 gap-3">
-          {RANKINGS.map((r) => {
-            const items = rankings[r.id];
-            const abierto = rankingAbierto === r.id;
-            const top1 = items[0];
-
-            return (
-              <div
-                key={r.id}
-                className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"
-              >
-                <button
-                  onClick={() => setRankingAbierto(abierto ? null : r.id)}
-                  className="w-full text-left p-4 hover:bg-slate-50 transition"
-                >
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2">
-                      <IconoVoley tipo={r.id} size={22} className="text-slate-800" />
-                      <p className="font-semibold text-slate-800">
-                        {r.titulo}
-                      </p>
-                    </div>
-                    <span
-                      className={`text-slate-400 transition-transform ${
-                        abierto ? "rotate-180" : ""
-                      }`}
-                    >
-                      ▼
-                    </span>
-                  </div>
-                  {top1 ? (
-                    <div>
-                      <p className="text-sm font-medium text-slate-800">
-                        {nombreDe(top1.jugador_id)}
-                        {esArmadorId(top1.jugador_id) && (
-                          <span className="ml-1 text-[10px] text-violet-600 font-medium">
-                            (Armador)
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        {top1.texto}
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-400">Sin datos</p>
-                  )}
-                </button>
-
-                {abierto && items.length > 0 && (
-                  <div className="border-t border-slate-200 bg-slate-50 p-3">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-left text-slate-500 text-xs">
-                          <th className="py-1.5 px-2 w-8">#</th>
-                          <th className="py-1.5 px-2">Jugador</th>
-                          {r.id === "defensa" ? (
-                            <>
-                              <th className="py-1.5 px-2 text-right">
-                                Positivas
-                              </th>
-                              <th className="py-1.5 px-2 text-right">
-                                Negativas
-                              </th>
-                              <th className="py-1.5 px-2 text-right">
-                                Balance
-                              </th>
-                              <th className="py-1.5 px-2 text-right">Valor</th>
-                            </>
-                          ) : (
-                            <th className="py-1.5 px-2 text-right">Detalle</th>
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((it, i) => (
-                          <tr
-                            key={it.jugador_id}
-                            className="border-t border-slate-200"
-                          >
-                            <td className="py-1.5 px-2">
-                              <span
-                                className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
-                                  i === 0
-                                    ? "bg-yellow-400 text-yellow-900"
-                                    : i === 1
-                                    ? "bg-slate-300 text-slate-800"
-                                    : i === 2
-                                    ? "bg-amber-700 text-amber-100"
-                                    : "bg-slate-100 text-slate-500"
-                                }`}
-                              >
-                                {i + 1}
-                              </span>
-                            </td>
-                            <td className="py-1.5 px-2 font-medium text-slate-700">
-                              {nombreDe(it.jugador_id)}
-                              {esArmadorId(it.jugador_id) && (
-                                <span className="ml-1 text-[10px] text-violet-600 font-medium">
-                                  (Armador)
-                                </span>
-                              )}
-                            </td>
-                            {r.id === "defensa" ? (
-                              <>
-                                <td className="py-1.5 px-2 text-right text-green-700 font-medium">
-                                  {it.positivas ?? 0}
-                                </td>
-                                <td className="py-1.5 px-2 text-right text-red-700 font-medium">
-                                  {it.negativas ?? 0}
-                                </td>
-                                <td
-                                  className={`py-1.5 px-2 text-right font-semibold ${
-                                    (it.balance ?? 0) > 0
-                                      ? "text-green-700"
-                                      : (it.balance ?? 0) < 0
-                                      ? "text-red-700"
-                                      : "text-slate-600"
-                                  }`}
-                                >
-                                  {(it.balance ?? 0) > 0 ? "+" : ""}
-                                  {it.balance ?? 0}
-                                </td>
-                                <td className="py-1.5 px-2 text-right font-semibold text-slate-800">
-                                  {it.valor.toFixed(2)}
-                                </td>
-                              </>
-                            ) : (
-                              <td className="py-1.5 px-2 text-right text-xs text-slate-600">
-                                {it.texto}
-                              </td>
-                            )}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+    <div className="space-y-4">
+      {/* Barra superior con el botón (NO se captura en el PDF) */}
+      <div className="flex justify-end" data-pdf-ignorar>
+        <button
+          onClick={handleDescargarPDF}
+          disabled={descargando}
+          className="px-4 py-2 text-sm bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-medium rounded-lg transition disabled:opacity-50"
+        >
+          {descargando ? "Generando PDF..." : "📄 Descargar PDF"}
+        </button>
       </div>
 
-      {/* ============================================================
-          ESTADÍSTICAS CRUDAS ACUMULADAS
-          Alcance: SUMA DE TODOS LOS PARTIDOS del equipo.
-         ============================================================ */}
-      {jugadoresDelEquipo.length > 0 && acciones.length > 0 && (
+      {/* Contenido a capturar */}
+      <div ref={refPDF} className="space-y-6">
+        {ultimoPartido && statsUltimo && (
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900 mb-3">
+              Último partido
+            </h2>
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <p className="text-lg font-semibold text-slate-800">
+                    🏐 {nombreEquipo} vs {nombreRivalDe(ultimoPartido)}
+                  </p>
+                  <p className="text-sm text-slate-500 mt-1">
+                    📅 {ultimoPartido.fecha}
+                  </p>
+                  <p className="text-sm text-slate-600 mt-1">
+                    {scoreDe(ultimoPartido)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                  <p className="text-xs text-slate-500 uppercase">Acciones</p>
+                  <p className="text-2xl font-bold text-slate-800">
+                    {statsUltimo.totales.totalAcciones}
+                  </p>
+                </div>
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
+                  <p className="text-xs text-green-700 uppercase">Puntos</p>
+                  <p className="text-2xl font-bold text-green-800">
+                    {statsUltimo.totales.totalPuntos}
+                  </p>
+                </div>
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
+                  <p className="text-xs text-red-700 uppercase">Errores</p>
+                  <p className="text-2xl font-bold text-red-800">
+                    {statsUltimo.totales.totalErrores}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {totales && (
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900 mb-3">
+              Totales acumulados
+            </h2>
+            <div className="grid grid-cols-4 gap-3 mb-4">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                <p className="text-xs text-slate-500 uppercase">Partidos</p>
+                <p className="text-2xl font-bold text-slate-800">
+                  {partidos.length}
+                </p>
+              </div>
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                <p className="text-xs text-slate-500 uppercase">Acciones</p>
+                <p className="text-2xl font-bold text-slate-800">
+                  {totales.totalAcciones}
+                </p>
+              </div>
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-xs text-green-700 uppercase">Puntos</p>
+                <p className="text-2xl font-bold text-green-800">
+                  {totales.totalPuntos}
+                </p>
+              </div>
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-xs text-red-700 uppercase">Errores</p>
+                <p className="text-2xl font-bold text-red-800">
+                  {totales.totalErrores}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-slate-500">
+                    <th className="py-2 px-3">Fundamento</th>
+                    <th className="py-2 px-3 text-right">Total</th>
+                    <th className="py-2 px-3 text-right">Pos</th>
+                    <th className="py-2 px-3 text-right">Neg</th>
+                    <th className="py-2 px-3 text-right">Puntos</th>
+                    <th className="py-2 px-3 text-right">Errores</th>
+                    <th className="py-2 px-3 text-right">Saldo</th>
+                    <th className="py-2 px-3 text-right">Efect.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {FUNDAMENTOS.map((f) => {
+                    const e = totales.porFundamento[f];
+                    if (!e || e.total === 0) return null;
+                    return (
+                      <tr key={f} className="border-b border-slate-100">
+                        <td className="py-2 px-3 font-medium text-slate-700">
+                          {NOMBRES[f]}
+                        </td>
+                        <td className="py-2 px-3 text-right text-slate-600">
+                          {e.total}
+                        </td>
+                        <td className="py-2 px-3 text-right text-green-700">
+                          {e.positivos}
+                        </td>
+                        <td className="py-2 px-3 text-right text-red-700">
+                          {e.negativos}
+                        </td>
+                        <td className="py-2 px-3 text-right text-slate-600">
+                          {e.puntos}
+                        </td>
+                        <td className="py-2 px-3 text-right text-slate-600">
+                          {e.errores}
+                        </td>
+                        <td
+                          className={`py-2 px-3 text-right font-semibold ${
+                            e.saldo > 0
+                              ? "text-green-700"
+                              : e.saldo < 0
+                              ? "text-red-700"
+                              : "text-slate-600"
+                          }`}
+                        >
+                          {e.saldo > 0 ? "+" : ""}
+                          {e.saldo}
+                        </td>
+                        <td className="py-2 px-3 text-right text-slate-600">
+                          {e.efectividad.toFixed(0)}%
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         <div>
-          <h2 className="text-xl font-semibold text-slate-900 mb-1">
-            📋 Estadísticas crudas (acumuladas)
+          <h2 className="text-xl font-semibold text-slate-900 mb-3">
+            🏆 Rankings del plantel
           </h2>
-          <p className="text-xs text-slate-500 mb-3">
-            Todos los partidos de {nombreEquipo} sumados.
+          <p className="text-xs text-slate-500 mb-4">
+            Clic en cualquier ranking para ver la tabla completa
           </p>
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-            <TablaEstadisticasCrudas
-              acciones={acciones}
-              jugadoresIds={jugadoresDelEquipo.map((j) => j.id)}
-              nombresJugadores={nombresJugadores}
-              armadores={armadores}
-              contexto={`Suma de todos los partidos · ${partidos.length} partido${
-                partidos.length !== 1 ? "s" : ""
-              }`}
-            />
+          <div className="grid grid-cols-2 gap-3">
+            {RANKINGS.map((r) => {
+              const items = rankings[r.id];
+              const abierto = rankingsAbiertos.has(r.id);
+              const top1 = items[0];
+
+              return (
+                <div
+                  key={r.id}
+                  className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"
+                >
+                  <button
+                    onClick={() => toggleRanking(r.id)}
+                    className="w-full text-left p-4 hover:bg-slate-50 transition"
+                    data-pdf-acordeon
+                    data-pdf-cerrado={abierto ? undefined : "true"}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <IconoVoley
+                          tipo={r.id}
+                          size={22}
+                          className="text-slate-800"
+                        />
+                        <p className="font-semibold text-slate-800">
+                          {r.titulo}
+                        </p>
+                      </div>
+                      <span
+                        className={`text-slate-400 transition-transform ${
+                          abierto ? "rotate-180" : ""
+                        }`}
+                      >
+                        ▼
+                      </span>
+                    </div>
+                    {top1 ? (
+                      <div>
+                        <p className="text-sm font-medium text-slate-800">
+                          {nombreDe(top1.jugador_id)}
+                          {esArmadorId(top1.jugador_id) && (
+                            <span className="ml-1 text-[10px] text-violet-600 font-medium">
+                              (Armador)
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {top1.texto}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400">Sin datos</p>
+                    )}
+                  </button>
+
+                  {abierto && items.length > 0 && (
+                    <div className="border-t border-slate-200 bg-slate-50 p-3">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-slate-500 text-xs">
+                            <th className="py-1.5 px-2 w-8">#</th>
+                            <th className="py-1.5 px-2">Jugador</th>
+                            {r.id === "defensa" ? (
+                              <>
+                                <th className="py-1.5 px-2 text-right">
+                                  Positivas
+                                </th>
+                                <th className="py-1.5 px-2 text-right">
+                                  Negativas
+                                </th>
+                                <th className="py-1.5 px-2 text-right">
+                                  Balance
+                                </th>
+                                <th className="py-1.5 px-2 text-right">
+                                  Valor
+                                </th>
+                              </>
+                            ) : (
+                              <th className="py-1.5 px-2 text-right">
+                                Detalle
+                              </th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {items.map((it, i) => (
+                            <tr
+                              key={it.jugador_id}
+                              className="border-t border-slate-200"
+                            >
+                              <td className="py-1.5 px-2">
+                                <span
+                                  className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
+                                    i === 0
+                                      ? "bg-yellow-400 text-yellow-900"
+                                      : i === 1
+                                      ? "bg-slate-300 text-slate-800"
+                                      : i === 2
+                                      ? "bg-amber-700 text-amber-100"
+                                      : "bg-slate-100 text-slate-500"
+                                  }`}
+                                >
+                                  {i + 1}
+                                </span>
+                              </td>
+                              <td className="py-1.5 px-2 font-medium text-slate-700">
+                                {nombreDe(it.jugador_id)}
+                                {esArmadorId(it.jugador_id) && (
+                                  <span className="ml-1 text-[10px] text-violet-600 font-medium">
+                                    (Armador)
+                                  </span>
+                                )}
+                              </td>
+                              {r.id === "defensa" ? (
+                                <>
+                                  <td className="py-1.5 px-2 text-right text-green-700 font-medium">
+                                    {it.positivas ?? 0}
+                                  </td>
+                                  <td className="py-1.5 px-2 text-right text-red-700 font-medium">
+                                    {it.negativas ?? 0}
+                                  </td>
+                                  <td
+                                    className={`py-1.5 px-2 text-right font-semibold ${
+                                      (it.balance ?? 0) > 0
+                                        ? "text-green-700"
+                                        : (it.balance ?? 0) < 0
+                                        ? "text-red-700"
+                                        : "text-slate-600"
+                                    }`}
+                                  >
+                                    {(it.balance ?? 0) > 0 ? "+" : ""}
+                                    {it.balance ?? 0}
+                                  </td>
+                                  <td className="py-1.5 px-2 text-right font-semibold text-slate-800">
+                                    {it.valor.toFixed(2)}
+                                  </td>
+                                </>
+                              ) : (
+                                <td className="py-1.5 px-2 text-right text-xs text-slate-600">
+                                  {it.texto}
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
-      )}
+
+        {/* ============================================================
+            ESTADÍSTICAS CRUDAS ACUMULADAS
+            Alcance: SUMA DE TODOS LOS PARTIDOS del equipo.
+           ============================================================ */}
+        {jugadoresDelEquipo.length > 0 && acciones.length > 0 && (
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900 mb-1">
+              📋 Estadísticas crudas (acumuladas)
+            </h2>
+            <p className="text-xs text-slate-500 mb-3">
+              Todos los partidos de {nombreEquipo} sumados.
+            </p>
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+              <TablaEstadisticasCrudas
+                acciones={acciones}
+                jugadoresIds={jugadoresDelEquipo.map((j) => j.id)}
+                nombresJugadores={nombresJugadores}
+                armadores={armadores}
+                contexto={`Suma de todos los partidos · ${partidos.length} partido${
+                  partidos.length !== 1 ? "s" : ""
+                }`}
+              />
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
