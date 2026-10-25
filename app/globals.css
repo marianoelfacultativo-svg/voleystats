@@ -3,40 +3,56 @@
 @tailwind utilities;
 
 /* ============================================ */
-/* TEMA VOLEYSTATS: Gris plateado + Verde */
+/* TEMA VOLEYSTATS: Metal / Plata Brillante */
 /* ============================================ */
 
 html, body {
-  background-color: #D8DBDF;
-  color: #1F2937;
+  /* Fondo general con un sutil gradiente radial para dar profundidad */
+  background: radial-gradient(circle at 50% 0%, #E2E8F0 0%, #94A3B8 100%) !important;
+  color: #0F172A;
   font-family: 'Inter', system-ui, sans-serif;
   min-height: 100vh;
+  background-attachment: fixed !important;
 }
 
-/* ====== FONDOS ====== */
-.bg-white { background-color: #EDEEF1 !important; }
-.bg-white\/95 { background-color: rgba(237, 238, 241, 0.95) !important; }
-.bg-white\/90 { background-color: rgba(237, 238, 241, 0.9) !important; }
+/* ====== FONDOS CON BRILLO METÁLICO ====== */
+/* El gradiente de arriba hacia abajo simula la luz reflejándose */
+.bg-white { 
+  background: linear-gradient(180deg, #FFFFFF 0%, #E2E8F0 100%) !important; 
+  box-shadow: inset 0 1px 0 rgba(255,255,255,1), 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+.bg-white\/95 { background: linear-gradient(180deg, #FFFFFF 0%, #E2E8F0 100%) !important; }
+.bg-white\/90 { background: linear-gradient(180deg, #FFFFFF 0%, #E2E8F0 100%) !important; }
 
-.bg-slate-50 { background-color: #E2E4E8 !important; }
-.bg-slate-100 { background-color: #D5D8DD !important; }
-.bg-slate-200 { background-color: #C7CBD1 !important; }
-.bg-slate-300 { background-color: #B8BDC4 !important; }
+.bg-slate-50 { 
+  background: linear-gradient(180deg, #F8FAFC 0%, #E2E8F0 100%) !important; 
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.8) !important;
+}
+.bg-slate-100 { 
+  background: linear-gradient(180deg, #F1F5F9 0%, #CBD5E1 100%) !important; 
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5) !important;
+}
+.bg-slate-200 { 
+  background: linear-gradient(180deg, #E2E8F0 0%, #94A3B8 100%) !important; 
+}
+.bg-slate-300 { 
+  background: linear-gradient(180deg, #CBD5E1 0%, #64748B 100%) !important; 
+}
 
 /* ====== BORDES ====== */
-.border-slate-100 { border-color: #D5D8DD !important; }
-.border-slate-200 { border-color: #C7CBD1 !important; }
-.border-slate-300 { border-color: #B8BDC4 !important; }
+.border-slate-100 { border-color: #E2E8F0 !important; }
+.border-slate-200 { border-color: #CBD5E1 !important; }
+.border-slate-300 { border-color: #94A3B8 !important; }
 
 /* ====== TEXTO ====== */
-.text-slate-900 { color: #1F2937 !important; }
-.text-slate-800 { color: #27303B !important; }
-.text-slate-700 { color: #374151 !important; }
-.text-slate-600 { color: #4B5563 !important; }
-.text-slate-500 { color: #6B7280 !important; }
-.text-slate-400 { color: #9CA3AF !important; }
+.text-slate-900 { color: #0F172A !important; }
+.text-slate-800 { color: #1E293B !important; }
+.text-slate-700 { color: #334155 !important; }
+.text-slate-600 { color: #475569 !important; }
+.text-slate-500 { color: #64748B !important; }
+.text-slate-400 { color: #94A3B8 !important; }
 
-/* ====== ACENTO: Azul → Verde esmeralda (se mantiene) ====== */
+/* ====== ACENTO: Azul → Verde esmeralda ====== */
 .bg-blue-500 { background-color: #10B981 !important; }
 .bg-blue-600 { background-color: #059669 !important; }
 .bg-blue-100 { background-color: #D1FAE5 !important; }
@@ -57,19 +73,19 @@ html, body {
 .hover\:bg-blue-200:hover { background-color: #A7F3D0 !important; }
 .hover\:border-blue-400:hover { border-color: #34D399 !important; }
 
-.hover\:bg-slate-50:hover { background-color: #E2E4E8 !important; }
-.hover\:bg-slate-100:hover { background-color: #D5D8DD !important; }
-.hover\:bg-slate-200:hover { background-color: #C7CBD1 !important; }
-.hover\:bg-slate-300:hover { background-color: #B8BDC4 !important; }
-.hover\:bg-slate-400:hover { background-color: #A8ADB5 !important; }
+.hover\:bg-slate-50:hover { background: linear-gradient(180deg, #FFFFFF 0%, #F1F5F9 100%) !important; }
+.hover\:bg-slate-100:hover { background: linear-gradient(180deg, #F8FAFC 0%, #E2E8F0 100%) !important; }
+.hover\:bg-slate-200:hover { background: linear-gradient(180deg, #F1F5F9 0%, #CBD5E1 100%) !important; }
+.hover\:bg-slate-300:hover { background: linear-gradient(180deg, #E2E8F0 0%, #94A3B8 100%) !important; }
+.hover\:bg-slate-400:hover { background: linear-gradient(180deg, #CBD5E1 0%, #64748B 100%) !important; }
 
-.hover\:text-slate-700:hover { color: #374151 !important; }
-.hover\:text-slate-800:hover { color: #27303B !important; }
+.hover\:text-slate-700:hover { color: #334155 !important; }
+.hover\:text-slate-800:hover { color: #1E293B !important; }
 .hover\:text-blue-800:hover { color: #047857 !important; }
 
 /* ====== FOCUS DE INPUTS ====== */
 .focus\:border-blue-500:focus { border-color: #10B981 !important; }
 
 /* ====== disabled ====== */
-.disabled\:bg-slate-300:disabled { background-color: #B8BDC4 !important; }
-.disabled\:bg-slate-400:disabled { background-color: #A8ADB5 !important; }
+.disabled\:bg-slate-300:disabled { background-color: #94A3B8 !important; }
+.disabled\:bg-slate-400:disabled { background-color: #64748B !important; }
