@@ -25,6 +25,7 @@ import MapaCalorTendencia from "./MapaCalorTendencia";
 import ImagenAmpliable from "./ImagenAmpliable";
 import GraficoBarrasFundamento from "./GraficoBarrasFundamento";
 import MapaCalorJugador from "./MapaCalorJugador";
+import IconoVoley from "./IconoVoley";
 
 interface Jugador {
   id: string;
@@ -60,14 +61,13 @@ const FUNDAMENTOS_BARRAS = [
 const ORDEN_RANKINGS: {
   id: string;
   titulo: string;
-  icono: string;
 }[] = [
-  { id: "recepcion", titulo: "Recepción", icono: "🙌" },
-  { id: "ataque", titulo: "Ataque", icono: "⚡" },
-  { id: "bloqueo", titulo: "Bloqueo", icono: "🧱" },
-  { id: "saque", titulo: "Saque", icono: "🎯" },
-  { id: "defensa", titulo: "Defensa", icono: "🛡️" },
-  { id: "consistencia", titulo: "Consistencia", icono: "📈" },
+  { id: "recepcion", titulo: "Recepción" },
+  { id: "ataque", titulo: "Ataque" },
+  { id: "bloqueo", titulo: "Bloqueo" },
+  { id: "saque", titulo: "Saque" },
+  { id: "defensa", titulo: "Defensa" },
+  { id: "consistencia", titulo: "Consistencia" },
 ];
 
 const COLORES_COMPARACION = ["#EF4444", "#8B5CF6", "#3B82F6"];
@@ -617,9 +617,9 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                             key={r.id}
                             className="flex items-start gap-3 px-4 py-3"
                           >
-                            <span className="text-xl leading-none mt-0.5">
-                              {r.icono}
-                            </span>
+                            <div className="mt-0.5 shrink-0">
+                              <IconoVoley tipo={r.id} size={20} className="text-slate-800" />
+                            </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-0.5">
                                 <p className="text-sm font-semibold text-slate-700">

@@ -14,6 +14,7 @@ import {
   type RankingCompletoItem,
 } from "@/lib/estadisticas";
 import TablaEstadisticasCrudas from "./TablaEstadisticasCrudas";
+import IconoVoley from "./IconoVoley";
 
 interface Partido {
   id: string;
@@ -62,13 +63,13 @@ type RankingTipo =
   | "defensa"
   | "consistencia";
 
-const RANKINGS: { id: RankingTipo; titulo: string; icono: string }[] = [
-  { id: "recepcion", titulo: "Recepción", icono: "🙌" },
-  { id: "ataque", titulo: "Ataque", icono: "⚡" },
-  { id: "bloqueo", titulo: "Bloqueo", icono: "🧱" },
-  { id: "saque", titulo: "Saque", icono: "🎯" },
-  { id: "defensa", titulo: "Defensa", icono: "🛡️" },
-  { id: "consistencia", titulo: "Consistencia", icono: "📈" },
+const RANKINGS: { id: RankingTipo; titulo: string }[] = [
+  { id: "recepcion", titulo: "Recepción" },
+  { id: "ataque", titulo: "Ataque" },
+  { id: "bloqueo", titulo: "Bloqueo" },
+  { id: "saque", titulo: "Saque" },
+  { id: "defensa", titulo: "Defensa" },
+  { id: "consistencia", titulo: "Consistencia" },
 ];
 
 export default function Dashboard({ equipoId, nombreEquipo }: Props) {
@@ -372,7 +373,7 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
                 >
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-xl">{r.icono}</span>
+                      <IconoVoley tipo={r.id} size={22} className="text-slate-800" />
                       <p className="font-semibold text-slate-800">
                         {r.titulo}
                       </p>

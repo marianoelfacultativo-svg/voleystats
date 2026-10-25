@@ -30,11 +30,11 @@ interface Props {
 }
 
 const ETIQUETAS: Record<string, string> = {
-  saque: "Saque",
-  recepcion: "Recepción",
-  ataque: "Ataque",
-  bloqueo: "Bloqueo",
-  defensa: "Defensa",
+  saque: "S",
+  recepcion: "R",
+  ataque: "A",
+  bloqueo: "B",
+  defensa: "D",
 };
 
 const TEXTO_NIVEL: Record<NivelValoracion, string> = {
@@ -129,8 +129,8 @@ export default function RadarJugador({
         x={x}
         y={y}
         textAnchor={textAnchor}
-        fontSize={12}
-        fontWeight={600}
+        fontSize={13}
+        fontWeight={700}
       >
         <tspan fill={colorNombre}>{nombre}</tspan>
         <tspan fill={colorNumero}> ({count})</tspan>
