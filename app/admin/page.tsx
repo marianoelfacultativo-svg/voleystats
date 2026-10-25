@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { obtenerSesion, cerrarSesion, type Sesion } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import ImagenAmpliable from "../equipo/ImagenAmpliable";
+import DatosBackup from "./DatosBackup";
 
-type Seccion = "equipos" | "jugadores" | "partidos" | "codigos";
+type Seccion = "equipos" | "jugadores" | "partidos" | "codigos" | "datos";
 
 interface Equipo {
   id: string;
@@ -614,6 +615,7 @@ export default function AdminPage() {
     { id: "jugadores", nombre: "Jugadores", icono: "👤" },
     { id: "partidos", nombre: "Partidos", icono: "📅" },
     { id: "codigos", nombre: "Códigos", icono: "🔑" },
+    { id: "datos", nombre: "Datos", icono: "💾" },
   ];
 
   const inputBase =
@@ -1824,6 +1826,9 @@ export default function AdminPage() {
               )}
             </div>
           )}
+
+          {/* ============ DATOS (BACKUP) ============ */}
+          {seccion === "datos" && <DatosBackup />}
         </div>
       </div>
     </main>

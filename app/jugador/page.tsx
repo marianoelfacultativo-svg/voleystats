@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { obtenerSesion, cerrarSesion, type Sesion } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -30,6 +30,7 @@ import ImagenAmpliable from "../equipo/ImagenAmpliable";
 import TablaEstadisticasCrudas from "../equipo/TablaEstadisticasCrudas";
 import MapaCalorJugador from "../equipo/MapaCalorJugador";
 import IconoVoley from "../equipo/IconoVoley";
+import { descargarComoPDF } from "@/lib/exportarPDF";
 
 interface Jugador {
   id: string;
@@ -107,6 +108,13 @@ export default function JugadorPage() {
   const [partidosComparados, setPartidosComparados] = useState<string[]>([]);
 
   const [verCrudas, setVerCrudas] = useState(false);
+
+  // Para el PDF: cuando se exporta el análisis, se agregan las crudas
+  // al final (mismo patrón que Partidos.tsx).
+  const [crudasEnPDF, setCrudasEnPDF] = useState(false);
+
+  const [descargando, setDescargando] = useState(false);
+  const refPDF = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const s = obtenerSesion();
@@ -242,6 +250,51 @@ export default function JugadorPage() {
       setPartidosComparados([]);
     } else {
       setPartidoSeleccionado("");
+    }
+  };
+
+  const handleDescargarPDF = async () => {
+    if (!refPDF.current) return;
+
+    if (vista === "por-partido" && modoPartido === "comparar") {
+      if (partidosComparados.length === 0) {
+        alert("Elegí al menos un partido para comparar antes de descargar.");
+        return;
+      }
+    }
+
+    setDescargando(true);
+
+    // Si estamos en modo análisis (no comparar, no ver crudas),
+    // agregamos las crudas al final del PDF.
+    const agregarCrudas =
+      !(vista === "por-partido" && modoPartido === "comparar") && !verCrudas;
+
+    if (agregarCrudas) {
+      setCrudasEnPDF(true);
+      await new Promise((r) => setTimeout(r, 200));
+    }
+
+    try {
+      let nombre = `jugador-${jugador?.nombre ?? "perfil"}`;
+      let titulo = jugador?.nombre ?? "Perfil";
+
+      if (vista === "por-partido" && modoPartido === "comparar") {
+        nombre = `jugador-${jugador?.nombre ?? ""}-comparacion-partidos`;
+        titulo = `${jugador?.nombre ?? ""} · Comparación de partidos`;
+      } else if (vista === "por-partido" && partidoActual) {
+        nombre = `jugador-${jugador?.nombre ?? ""}-vs-${partidoActual.rival}-${
+          partidoActual.fecha
+        }`;
+        titulo = `${jugador?.nombre ?? ""} · vs ${
+          partidoActual.rival
+        } · ${partidoActual.fecha}`;
+      }
+
+      await descargarComoPDF(refPDF.current, nombre, titulo);
+    } finally {
+      if (agregarCrudas) setCrudasEnPDF(false);
+      setDescargando(false);
     }
   };
 
@@ -418,12 +471,21 @@ export default function JugadorPage() {
                 : "Cargando perfil..."}
             </p>
           </div>
-          <button
-            onClick={handleCerrar}
-            className="px-4 py-2 text-sm bg-slate-200 hover:bg-slate-300 rounded-lg transition"
-          >
-            Cerrar sesión
-          </button>
+          <div className="flex gap-2" data-pdf-ignorar>
+            <button
+              onClick={handleDescargarPDF}
+              disabled={descargando}
+              className="px-4 py-2 text-sm bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-medium rounded-lg transition disabled:opacity-50"
+            >
+              {descargando ? "Generando PDF..." : "📄 Descargar PDF"}
+            </button>
+            <button
+              onClick={handleCerrar}
+              className="px-4 py-2 text-sm bg-slate-200 hover:bg-slate-300 rounded-lg transition"
+            >
+              Cerrar sesión
+            </button>
+          </div>
         </div>
 
         {cargando && (
@@ -440,8 +502,11 @@ export default function JugadorPage() {
         )}
 
         {!cargando && jugador && stats && (
-          <>
-            <div className="flex gap-2 mb-4 border-b border-slate-200">
+          <div ref={refPDF}>
+            <div
+              className="flex gap-2 mb-4 border-b border-slate-200"
+              data-pdf-ignorar
+            >
               <button
                 onClick={() => {
                   setVista("general");
@@ -471,7 +536,7 @@ export default function JugadorPage() {
             </div>
 
             {vista === "por-partido" && partidos.length > 0 && (
-              <div className="mb-4 space-y-3">
+              <div className="mb-4 space-y-3" data-pdf-ignorar>
                 <div className="flex justify-end gap-2">
                   <button
                     onClick={() => handleCambiarModoPartido("individual")}
@@ -1104,10 +1169,21 @@ export default function JugadorPage() {
                       </p>
                     </div>
                   )}
+
+                  {crudasEnPDF && (
+                    <div className="mt-6">
+                      <TablaEstadisticasCrudas
+                        acciones={accionesFiltradas}
+                        jugadoresIds={[jugador.id]}
+                        nombresJugadores={{ [jugador.id]: jugador.nombre }}
+                        soloJugadorId={jugador.id}
+                      />
+                    </div>
+                  )}
                 </>
               )}
             </div>
-          </>
+          </div>
         )}
       </div>
     </main>

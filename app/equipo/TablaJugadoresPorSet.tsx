@@ -54,7 +54,19 @@ export default function TablaJugadoresPorSet({
   armadores,
   statsEquipoTotales,
 }: Props) {
-  const [expandido, setExpandido] = useState<string | null>(null);
+  // Antes: un solo jugador expandido a la vez.
+  // Ahora: Set de jugadores expandidos, se pueden abrir varios a la vez
+  // (necesario para el PDF, que abre todo en cascada).
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+
+  const toggleExpandido = (id: string) => {
+    setExpandidos((prev) => {
+      const nuevo = new Set(prev);
+      if (nuevo.has(id)) nuevo.delete(id);
+      else nuevo.add(id);
+      return nuevo;
+    });
+  };
 
   const nombreDe = (id: string) => nombresJugadores[id] ?? "?";
 
@@ -65,8 +77,8 @@ export default function TablaJugadoresPorSet({
           Estadísticas por jugador
         </h4>
         <p className="text-xs text-slate-500 mt-1">
-          Click en "Ver detalle" para ver el análisis completo del jugador en
-          este partido
+          Click en &quot;Ver detalle&quot; para ver el análisis completo del
+          jugador en este partido
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -89,7 +101,7 @@ export default function TablaJugadoresPorSet({
               const est = calcularEstadisticasJugador(id, acciones, esArm);
               if (est.totalAcciones === 0) return null;
 
-              const abierto = expandido === id;
+              const abierto = expandidos.has(id);
 
               return (
                 <>
@@ -152,8 +164,10 @@ export default function TablaJugadoresPorSet({
                     </td>
                     <td className="py-2 px-3 text-right">
                       <button
-                        onClick={() => setExpandido(abierto ? null : id)}
+                        onClick={() => toggleExpandido(id)}
                         className="px-3 py-1 text-xs bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg transition"
+                        data-pdf-acordeon
+                        data-pdf-cerrado={abierto ? undefined : "true"}
                       >
                         {abierto ? "Ocultar" : "Ver detalle"}
                       </button>
@@ -290,7 +304,7 @@ function DetalleJugador({
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 flex-wrap" data-pdf-ignorar>
         <span className="text-sm text-slate-600 self-center mr-2">Ver:</span>
         {(["todos", 1, 2, 3, 4, 5] as const).map((s) => (
           <button
@@ -447,6 +461,8 @@ function DetalleJugador({
                       <button
                         onClick={() => toggleValoraciones(f)}
                         className="px-2 py-1 text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 rounded transition"
+                        data-pdf-acordeon
+                        data-pdf-cerrado={abierto ? undefined : "true"}
                       >
                         {abierto ? "Ocultar" : "Valoraciones"}
                       </button>
