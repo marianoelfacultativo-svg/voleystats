@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import type { AccionDB } from "@/lib/db";
 
 // ============================================================
-// MAPA DE CALOR POR JUGADOR
+// MAPA DE CALOR POR JUGADOR — Cancha de Vóley
 // ============================================================
 
 interface Props {
@@ -22,7 +22,7 @@ const TABS: { id: Fundamento; label: string; icono: string }[] = [
 ];
 
 // ------------------------------------------------------------
-// Coordenadas base de la cancha (mismas que CanchaV2)
+// Coordenadas base (mismas que CanchaV2)
 // ------------------------------------------------------------
 
 const COL_X: Record<string, [number, number]> = {
@@ -71,7 +71,6 @@ function getCoords(
   } else {
     const matchF = mini.match(/^f(\d)c(\d)$/);
     if (matchF) {
-      // Adapta grillas viejas de 3x3 a 9x9
       mf = (parseInt(matchF[1]) - 1) * 3 + 1;
       mc = (parseInt(matchF[2]) - 1) * 3 + 1;
     } else {
@@ -97,13 +96,13 @@ function getCoords(
 }
 
 // ------------------------------------------------------------
-// Dimensiones del SVG
+// Proyección a SVG (achicado y adaptado a cancha de vóley)
 // ------------------------------------------------------------
 
-const W = 13; // ancho cancha en unidades
-const H = 18; // alto total en unidades (-9 a 9)
-const scaleX = 600 / W;
-const scaleY = 900 / H;
+const W = 13;
+const H = 18;
+const scaleX = 260 / W; // 20
+const scaleY = 360 / H; // 20
 
 function toPx(x: number, z: number): { px: number; py: number } {
   return {
@@ -175,6 +174,7 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
 
   return (
     <div className="space-y-3">
+      {/* Selector de fundamento */}
       <div className="flex flex-wrap gap-1">
         {TABS.map((t) => (
           <button
@@ -191,81 +191,66 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
         ))}
       </div>
 
-      <div className="bg-[#1a472a] rounded-xl overflow-hidden flex justify-center p-4">
+      {/* Cancha */}
+      <div className="bg-slate-900 rounded-xl overflow-hidden flex justify-center p-4">
         {!tieneDatos ? (
-          <div className="h-[400px] flex items-center justify-center text-emerald-200/70 text-sm">
+          <div className="h-[360px] flex items-center justify-center text-slate-400 text-sm">
             Sin datos de {TABS.find((t) => t.id === fundamento)?.label} para este jugador
           </div>
         ) : (
           <svg
             width="100%"
             height="auto"
-            viewBox="0 0 600 900"
-            className="max-w-[500px] rounded-lg shadow-2xl"
+            viewBox="0 0 260 360"
+            className="max-w-[320px] rounded-lg shadow-2xl"
           >
-            {/* Definiciones para el gradiente y el blur */}
             <defs>
               <radialGradient id="heatColor" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#ff0000" stopOpacity="0.8" />
-                <stop offset="20%" stopColor="#ff4500" stopOpacity="0.6" />
-                <stop offset="40%" stopColor="#ffa500" stopOpacity="0.45" />
-                <stop offset="60%" stopColor="#ffff00" stopOpacity="0.3" />
-                <stop offset="80%" stopColor="#00ff00" stopOpacity="0.15" />
-                <stop offset="100%" stopColor="#0000ff" stopOpacity="0" />
+                <stop offset="0%" stopColor="#ff0000" stopOpacity="0.85" />
+                <stop offset="25%" stopColor="#ff4500" stopOpacity="0.65" />
+                <stop offset="50%" stopColor="#ffa500" stopOpacity="0.45" />
+                <stop offset="75%" stopColor="#ffff00" stopOpacity="0.25" />
+                <stop offset="100%" stopColor="#00ff00" stopOpacity="0" />
               </radialGradient>
               <filter id="heatBlur">
-                <feGaussianBlur stdDeviation="15" />
+                <feGaussianBlur stdDeviation="8" />
               </filter>
             </defs>
 
             {/* Fondo de la cancha */}
-            <rect x={0} y={0} width={600} height={900} fill="#1a472a" />
+            <rect x={0} y={0} width={260} height={360} fill="#1e293b" />
 
-            {/* Líneas de la cancha */}
-            <g stroke="#ffffff" strokeWidth="2" fill="none" opacity="0.4">
+            {/* Líneas de la cancha de vóley */}
+            <g stroke="#ffffff" strokeWidth="1.5" fill="none" opacity="0.4">
               {/* Borde exterior */}
-              <rect x={0} y={0} width={600} height={900} />
-              {/* Línea de red (z=0) */}
-              <line x1={0} y1={450} x2={600} y2={450} strokeWidth="4" />
-              {/* Líneas de ataque (z=-3 y z=3) */}
-              <line x1={0} y1={300} x2={600} y2={300} />
-              <line x1={0} y1={600} x2={600} y2={600} />
-              {/* Línea central de la cancha */}
-              <line x1={300} y1={0} x2={300} y2={900} />
-              {/* Círculo central (opcional, ayuda a la referencia) */}
-              <circle cx={300} cy={450} r={80} />
+              <rect x={0} y={0} width={260} height={360} />
+              {/* Red (centro) */}
+              <line x1={0} y1={180} x2={260} y2={180} strokeWidth="4" opacity="0.8" />
+              {/* Líneas de ataque (3 metros) */}
+              <line x1={0} y1={120} x2={260} y2={120} />
+              <line x1={0} y1={240} x2={260} y2={240} />
+              {/* Línea central longitudinal (opcional, para dar perspectiva) */}
+              <line x1={130} y1={0} x2={130} y2={360} strokeDasharray="4 4" opacity="0.2" />
             </g>
 
             {/* Malla de la red */}
-            <g stroke="#ffffff" strokeWidth="0.5" opacity="0.2">
-              {Array.from({ length: 20 }).map((_, i) => (
-                <line
-                  key={`v-${i}`}
-                  x1={i * 30}
-                  y1={440}
-                  x2={i * 30}
-                  y2={460}
-                />
+            <g stroke="#ffffff" strokeWidth="0.5" opacity="0.15">
+              {Array.from({ length: 13 }).map((_, i) => (
+                <line key={`v-${i}`} x1={i * 20} y1={174} x2={i * 20} y2={186} />
               ))}
               {Array.from({ length: 3 }).map((_, i) => (
-                <line
-                  key={`h-${i}`}
-                  x1={0}
-                  y1={440 + i * 7}
-                  x2={600}
-                  y2={440 + i * 7}
-                />
+                <line key={`h-${i}`} x1={0} y1={174 + i * 6} x2={260} y2={174 + i * 6} />
               ))}
             </g>
 
             {/* Capa de calor */}
-            <g filter="url(#heatBlur)" opacity="0.8">
+            <g filter="url(#heatBlur)" opacity="0.85">
               {heatPoints.map((p, i) => (
                 <circle
                   key={`h-${i}`}
                   cx={p.px}
                   cy={p.py}
-                  r={p.peso > 1 ? 45 + p.peso * 5 : 45}
+                  r={p.peso > 1 ? 20 + p.peso * 3 : 20}
                   fill="url(#heatColor)"
                 />
               ))}
@@ -280,37 +265,19 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
                   y={s.py}
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  fontSize={24}
-                  style={{
-                    filter: "drop-shadow(0px 2px 2px rgba(0,0,0,0.5))",
-                  }}
+                  fontSize={16}
+                  style={{ filter: "drop-shadow(0px 2px 2px rgba(0,0,0,0.6))" }}
                 >
                   ⭐
                 </text>
               ))}
             </g>
 
-            {/* Indicador de "Arriba" (Cancha Rival) y "Abajo" (Cancha Propia) */}
-            <text
-              x={300}
-              y={30}
-              textAnchor="middle"
-              fill="#ffffff"
-              opacity="0.5"
-              fontSize={14}
-              fontWeight="bold"
-            >
+            {/* Etiquetas */}
+            <text x={130} y={16} textAnchor="middle" fill="#ffffff" opacity="0.5" fontSize={10} fontWeight="bold">
               CANCHA RIVAL
             </text>
-            <text
-              x={300}
-              y={880}
-              textAnchor="middle"
-              fill="#ffffff"
-              opacity="0.5"
-              fontSize={14}
-              fontWeight="bold"
-            >
+            <text x={130} y={352} textAnchor="middle" fill="#ffffff" opacity="0.5" fontSize={10} fontWeight="bold">
               CANCHA PROPIA
             </text>
           </svg>
