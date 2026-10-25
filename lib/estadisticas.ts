@@ -19,6 +19,12 @@ export interface AccionDB {
    * trate esos ataques del ARMADOR como "toque" (fundamento separado).
    */
   variante?: string | null;
+  /**
+   * Celda destino de la acción (F1-C3, F4-C2, BLOQ-R-C3, etc.).
+   * Se usa para desglosar bloqueos por "cae en cancha propia" vs
+   * "cae en cancha rival" en las tablas crudas. Opcional.
+   */
+  destino_celda?: string | null;
 }
 
 export const BASE_SCORES: Record<string, Record<string, number>> = {
