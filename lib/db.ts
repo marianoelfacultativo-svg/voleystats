@@ -313,36 +313,18 @@ export interface AccionDB {
   cantidad: number;
   puntaje?: number;
   puntajeBase?: number;
-  /**
-   * Variante del ataque (de `acciones_v2.variante`). "toque" indica que
-   * fue un remate de toque / remate de segunda. Se usa para que el motor
-   * trate esos ataques del ARMADOR como "toque" (fundamento separado).
-   */
   variante?: string | null;
-  /**
-   * Celda destino de la acción (F1-C3, F4-C2, BLOQ-R-C3, etc.).
-   * Se usa para desglosar bloqueos por "cae en cancha propia" vs
-   * "cae en cancha rival" en las tablas crudas ampliadas. Opcional.
-   */
   destino_celda?: string | null;
-  /**
-   * Subtipo original de la acción, tal cual vino de V2, sin mapear a
-   * los valores del motor de estadísticas. Ej: "punto_directo_ataque",
-   * "error_red_ataque", "use_rival_ataque", etc. Se usa para las
-   * tablas crudas ampliadas. Opcional.
-   */
   subtipo_original?: string | null;
-  /**
-   * Tipo de saque: "potencia" | "flotado" | null. Se usa para la
-   * tabla ampliada de saque. Opcional.
-   */
   tipo_saque?: string | null;
-  /**
-   * Velocidad del armado (1 | 1.5 | 2 | 3 | 5). Se usa para la
-   * tabla ampliada de armado (una por zona + una por velocidad).
-   * Opcional.
-   */
   velocidad?: number | null;
+  
+  // Campos nuevos para el mapa de calor
+  origen_celda?: string | null;
+  origen_mini?: string | null;
+  destino_mini?: string | null;
+  posicion_inicial_celda?: string | null;
+  posicion_inicial_mini?: string | null;
 }
 
 const RECEPCION_NUM_A_STR: Record<number, string> = {
@@ -374,29 +356,23 @@ interface AccionIndividual {
   subtipo_original?: string | null;
   tipo_saque?: string | null;
   velocidad?: number | null;
+  origen_celda?: string | null;
+  origen_mini?: string | null;
+  destino_mini?: string | null;
+  posicion_inicial_celda?: string | null;
+  posicion_inicial_mini?: string | null;
   created_at: string;
 }
 
-// ------------------------------------------------------------
-// Traducción V2 → V1 (para que el motor de stats las entienda)
-// ------------------------------------------------------------
-
 function fundamentoV2aV1(tipo: string): string | null {
   switch (tipo) {
-    case "saque":
-      return "saque";
-    case "recepcion":
-      return "recepcion";
-    case "armado":
-      return "armados";
-    case "ataque":
-      return "ataque";
-    case "bloqueo":
-      return "bloqueo";
-    case "defensa":
-      return "defensa";
-    default:
-      return null;
+    case "saque": return "saque";
+    case "recepcion": return "recepcion";
+    case "armado": return "armados";
+    case "ataque": return "ataque";
+    case "bloqueo": return "bloqueo";
+    case "defensa": return "defensa";
+    default: return null;
   }
 }
 
@@ -407,37 +383,25 @@ function valoracionV2aV1(
   if (subtipo === null || subtipo === undefined) return null;
 
   if (tipo === "saque") {
-    const validos = [
-      "ace",
-      "positivo_mas",
-      "positivo",
-      "neutro",
-      "negativo",
-    ];
-    return typeof subtipo === "string" && validos.includes(subtipo)
-      ? subtipo
-      : null;
+    const validos = ["ace", "positivo_mas", "positivo", "neutro", "negativo"];
+    return typeof subtipo === "string" && validos.includes(subtipo) ? subtipo : null;
   }
 
   if (tipo === "recepcion") {
-    const n =
-      typeof subtipo === "number" ? subtipo : parseInt(String(subtipo));
+    const n = typeof subtipo === "number" ? subtipo : parseInt(String(subtipo));
     return RECEPCION_NUM_A_STR[n] ?? null;
   }
 
   if (tipo === "armado") {
     if (subtipo === "R") return null;
-    const n =
-      typeof subtipo === "number" ? subtipo : parseInt(String(subtipo));
+    const n = typeof subtipo === "number" ? subtipo : parseInt(String(subtipo));
     return CALIDAD_A_STR[n] ?? null;
   }
 
   if (tipo === "ataque") {
     let s = String(subtipo);
     if (s.startsWith("toque:")) s = s.slice(6);
-
     if (s === "punto" || s === "error" || s === "neutro") return s;
-
     if (s === "punto_directo_ataque") return "punto";
     if (s === "punto_desviado_ataque") return "punto";
     if (s === "use_rival_ataque") return "punto";
@@ -447,35 +411,21 @@ function valoracionV2aV1(
     if (s === "neutro_bloqueo_cobertura_ataque") return "neutro";
     if (s === "neutro_desvio_bloqueo_defensa_ataque") return "neutro";
     if (s === "neutro_defensa_ataque") return "neutro";
-
     return null;
   }
 
   if (tipo === "bloqueo") {
-    const validos = [
-      "punto",
-      "positivo_mas",
-      "positivo",
-      "neutro",
-      "use_rival",
-      "red",
-      "filtrada",
-    ];
-    return typeof subtipo === "string" && validos.includes(subtipo)
-      ? subtipo
-      : null;
+    const validos = ["punto", "positivo_mas", "positivo", "neutro", "use_rival", "red", "filtrada"];
+    return typeof subtipo === "string" && validos.includes(subtipo) ? subtipo : null;
   }
 
   if (tipo === "defensa") {
     const s = String(subtipo);
-
     if (s === "toque") return "toque_positiva";
     if (s === "gran-defensa") return "gran_def";
     if (s === "libre") return "mala_libre";
     if (s === "cobertura") return "cobertura_positiva";
-
     if (s === "buena_rival") return "neutro";
-
     if (s === "toque_positiva") return "toque_positiva";
     if (s === "toque_negativa") return "toque_negativa";
     if (s === "gran_def") return "gran_def";
@@ -484,44 +434,23 @@ function valoracionV2aV1(
     if (s === "neutro") return "neutro";
     if (s === "cobertura_positiva") return "cobertura_positiva";
     if (s === "cobertura_negativa") return "cobertura_negativa";
-
     return null;
   }
 
   return null;
 }
 
-// ------------------------------------------------------------
-// Zona de tendencia desde el destino del armado
-// ------------------------------------------------------------
-
 function zonaTendenciaDeCelda(celda: string | null): number | null {
   if (!celda) return null;
   switch (celda) {
-    case "F1-C1":
-    case "F1-C2":
-      return 4;
-    case "F1-C3":
-      return 3;
-    case "F1-C4":
-    case "F1-C5":
-      return 2;
-    case "F2-C3":
-    case "F3-C3":
-      return 6;
-    case "F2-C4":
-    case "F2-C5":
-    case "F3-C4":
-    case "F3-C5":
-      return 2;
-    default:
-      return null;
+    case "F1-C1": case "F1-C2": return 4;
+    case "F1-C3": return 3;
+    case "F1-C4": case "F1-C5": return 2;
+    case "F2-C3": case "F3-C3": return 6;
+    case "F2-C4": case "F2-C5": case "F3-C4": case "F3-C5": return 2;
+    default: return null;
   }
 }
-
-// ------------------------------------------------------------
-// CARGA COMPATIBLE (solo V2)
-// ------------------------------------------------------------
 
 export async function cargarAccionesCompatibles(
   partidoId: string,
@@ -543,9 +472,7 @@ export async function cargarAccionesCompatibles(
       if (!val) continue;
       if (!a.jugador_id) continue;
 
-      // Subtipo original sin prefijo "toque:" (para las tablas ampliadas)
-      let subRaw: string | null =
-        typeof a.subtipo === "string" ? a.subtipo : null;
+      let subRaw: string | null = typeof a.subtipo === "string" ? a.subtipo : null;
       if (subRaw && subRaw.startsWith("toque:")) subRaw = subRaw.slice(6);
 
       acciones.push({
@@ -559,6 +486,11 @@ export async function cargarAccionesCompatibles(
         subtipo_original: subRaw,
         tipo_saque: a.tipo_saque ?? null,
         velocidad: a.velocidad ?? null,
+        origen_celda: a.origen_celda ?? null,
+        origen_mini: a.origen_mini ?? null,
+        destino_mini: a.destino_mini ?? null,
+        posicion_inicial_celda: a.posicion_inicial_celda ?? null,
+        posicion_inicial_mini: a.posicion_inicial_mini ?? null,
         created_at: a.created_at ?? p.created_at ?? "",
       });
     }
@@ -566,8 +498,7 @@ export async function cargarAccionesCompatibles(
 
   acciones.sort((a, b) => {
     if (a.set_numero !== b.set_numero) return a.set_numero - b.set_numero;
-    if (a.punto_numero !== b.punto_numero)
-      return a.punto_numero - b.punto_numero;
+    if (a.punto_numero !== b.punto_numero) return a.punto_numero - b.punto_numero;
     return a.created_at.localeCompare(b.created_at);
   });
 
@@ -588,14 +519,8 @@ export async function cargarAccionesCompatibles(
     if (base === null) continue;
 
     let final = base;
-
-    if (anteriorFinal !== null) {
-      final = ajustarPorContexto(final, anteriorFinal);
-    }
-
-    if (acc.fundamento === "ataque" && ultimoArmadoFinal !== null) {
-      final = ajustarPorContexto(final, ultimoArmadoFinal);
-    }
+    if (anteriorFinal !== null) final = ajustarPorContexto(final, anteriorFinal);
+    if (acc.fundamento === "ataque" && ultimoArmadoFinal !== null) final = ajustarPorContexto(final, ultimoArmadoFinal);
 
     procesadas.push({
       jugador_id: acc.jugador_id,
@@ -612,15 +537,16 @@ export async function cargarAccionesCompatibles(
       subtipo_original: acc.subtipo_original ?? null,
       tipo_saque: acc.tipo_saque ?? null,
       velocidad: acc.velocidad ?? null,
+      origen_celda: acc.origen_celda ?? null,
+      origen_mini: acc.origen_mini ?? null,
+      destino_mini: acc.destino_mini ?? null,
+      posicion_inicial_celda: acc.posicion_inicial_celda ?? null,
+      posicion_inicial_mini: acc.posicion_inicial_mini ?? null,
     });
 
     anteriorFinal = final;
-
-    if (acc.fundamento === "armados") {
-      ultimoArmadoFinal = final;
-    } else if (acc.fundamento !== "ataque") {
-      ultimoArmadoFinal = null;
-    }
+    if (acc.fundamento === "armados") ultimoArmadoFinal = final;
+    else if (acc.fundamento !== "ataque") ultimoArmadoFinal = null;
   }
 
   for (const p of puntos) {
@@ -647,13 +573,10 @@ export async function cargarAccionesCompatibles(
   const agrupado = new Map<string, AccionDB>();
   for (const r of procesadas) {
     const pRed = Math.round((r.puntaje ?? 5) * 10) / 10;
-    const k = `${r.jugador_id}|${r.set_numero}|${r.fundamento}|${r.valoracion}|${pRed}|${r.destino_celda ?? ""}|${r.subtipo_original ?? ""}|${r.tipo_saque ?? ""}|${r.velocidad ?? ""}`;
+    const k = `${r.jugador_id}|${r.set_numero}|${r.fundamento}|${r.valoracion}|${pRed}|${r.destino_celda ?? ""}|${r.subtipo_original ?? ""}|${r.tipo_saque ?? ""}|${r.velocidad ?? ""}|${r.origen_celda ?? ""}|${r.origen_mini ?? ""}|${r.destino_mini ?? ""}|${r.posicion_inicial_celda ?? ""}`;
     const existente = agrupado.get(k);
-    if (existente) {
-      existente.cantidad += 1;
-    } else {
-      agrupado.set(k, { ...r, puntaje: pRed });
-    }
+    if (existente) existente.cantidad += 1;
+    else agrupado.set(k, { ...r, puntaje: pRed });
   }
 
   return Array.from(agrupado.values());
@@ -662,35 +585,6 @@ export async function cargarAccionesCompatibles(
 // ============================================
 // CONTAR PUNTOS DEL RIVAL (buenas / errores)
 // ============================================
-//
-// Clasifica la ÚLTIMA acción visible de cada punto, solo si esa
-// acción es del rival (visto desde quien mira).
-//
-// BUENA RIVAL (el rival anotó directo):
-//   - Ataque con "punto_directo_ataque" (directo puro).
-//   - Ataque con "buena_rival" o "punto" (formatos viejos, que
-//     al ser última acción implican que fue directo).
-//   - Roce-red con "roce-red-rival".
-//
-// ERROR RIVAL (el rival erró):
-//   - Saque con "negativo".
-//   - Ataque con "error_afuera_ataque", "error_red_ataque",
-//     "error_rival" o "error".
-//   - Roce-red con "ofensivo-propio", "invasion-zaguero",
-//     "invasion-delantero" o "error_rival".
-//   - Fallback: cualquier acción del rival con destino FUERA-*
-//     o RED-*.
-//
-// NO CUENTA:
-//   - Ace rival (error del receptor, no mérito del sacador).
-//   - Ataque con "punto_desviado_ataque" o "use_rival_ataque"
-//     (alguien la tocó antes de que cayera).
-//   - Ataque con "gorro_ataque" (punto mío, la mató mi bloqueo).
-//   - Ataque con "neutro_*" o "simple"/"peligroso"/"toque"/"libre".
-//   - Cualquier bloqueo rival que sea la última acción (red,
-//     use_rival, filtrada, caída en su cancha, fuera/red, punto).
-//   - Puntos donde la última acción es propia.
-//   - Saques con "positivo_mas", "positivo" o "neutro".
 
 type ClasificacionRival = "buena" | "error" | null;
 
@@ -701,62 +595,26 @@ function clasificarUltimaRival(ultima: AccionV2Row): ClasificacionRival {
   const base = sub && sub.startsWith("toque:") ? sub.slice(6) : sub;
   const destino = ultima.destino_celda ?? "";
 
-  // ============ SAQUE ============
   if (ultima.tipo === "saque") {
     if (base === "negativo") return "error";
-    // ace y el resto → no cuenta
     return null;
   }
 
-  // ============ ATAQUE ============
   if (ultima.tipo === "ataque") {
-    if (
-      base === "punto_directo_ataque" ||
-      base === "buena_rival" ||
-      base === "punto"
-    ) {
-      return "buena";
-    }
-    if (
-      base === "error_afuera_ataque" ||
-      base === "error_red_ataque" ||
-      base === "error_rival" ||
-      base === "error"
-    ) {
-      return "error";
-    }
-    // punto_desviado, use_rival, gorro, neutro_*, simple,
-    // peligroso, toque, libre → no cuenta.
+    if (base === "punto_directo_ataque" || base === "buena_rival" || base === "punto") return "buena";
+    if (base === "error_afuera_ataque" || base === "error_red_ataque" || base === "error_rival" || base === "error") return "error";
     return null;
   }
 
-  // ============ BLOQUEO ============
-  // Ningún bloqueo rival que sea la última acción cuenta para la
-  // torta (red/use_rival/filtrada → punto mío o error del atacante;
-  // caída en su cancha → punto mío; punto en mi cancha → error del
-  // atacante propio).
-  if (ultima.tipo === "bloqueo") {
-    return null;
-  }
+  if (ultima.tipo === "bloqueo") return null;
 
-  // ============ ROCE-RED ============
   if (ultima.tipo === "roce-red") {
     if (base === "roce-red-rival") return "buena";
-    if (
-      base === "ofensivo-propio" ||
-      base === "invasion-zaguero" ||
-      base === "invasion-delantero" ||
-      base === "error_rival"
-    ) {
-      return "error";
-    }
+    if (base === "ofensivo-propio" || base === "invasion-zaguero" || base === "invasion-delantero" || base === "error_rival") return "error";
     return null;
   }
 
-  // ============ FALLBACK ============
-  if (destino.startsWith("FUERA-") || destino.startsWith("RED-")) {
-    return "error";
-  }
+  if (destino.startsWith("FUERA-") || destino.startsWith("RED-")) return "error";
 
   return null;
 }

@@ -28,6 +28,7 @@ import GraficoBloqueoPorSet from "../equipo/GraficoBloqueoPorSet";
 import MapaCalorTendencia from "../equipo/MapaCalorTendencia";
 import ImagenAmpliable from "../equipo/ImagenAmpliable";
 import TablaEstadisticasCrudas from "../equipo/TablaEstadisticasCrudas";
+import MapaCalorJugador from "../equipo/MapaCalorJugador";
 
 interface Jugador {
   id: string;
@@ -832,6 +833,19 @@ export default function JugadorPage() {
                       todosJugadores={[stats]}
                       esArmador={esArmador}
                     />
+                  </div>
+
+                  {/* MAPA DE CALOR POR FUNDAMENTO */}
+                  <div className="mb-6">
+                    <h3 className="font-semibold text-slate-800 mb-3">
+                      Mapa de calor
+                    </h3>
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                      <MapaCalorJugador
+                        acciones={accionesFiltradas}
+                        jugadorId={jugador.id}
+                      />
+                    </div>
                   </div>
 
                   {Object.keys(stats.valoracionPonderadaPorFundamento)

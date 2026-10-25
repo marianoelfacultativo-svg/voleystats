@@ -24,6 +24,7 @@ import GraficoBloqueoPorSet from "./GraficoBloqueoPorSet";
 import MapaCalorTendencia from "./MapaCalorTendencia";
 import ImagenAmpliable from "./ImagenAmpliable";
 import GraficoBarrasFundamento from "./GraficoBarrasFundamento";
+import MapaCalorJugador from "./MapaCalorJugador";
 
 interface Jugador {
   id: string;
@@ -77,24 +78,6 @@ function colorPodio(puesto: number): string {
   return "bg-amber-700 text-amber-100";
 }
 
-// ------------------------------------------------------------
-// Calcula positivas / neutras / negativas por fundamento para
-// un jugador (o para todo el equipo si jugadorId es undefined).
-//
-// Reglas:
-//   - Saque:    punto = ace; error = negativo; resto = neutro.
-//   - Ataque:   punto = punto; error = error; resto = neutro.
-//   - Recepción: positivas = positiva / 2x_positiva.
-//                negativas = negativa / 2x_negativa / 3x_negativa / ace_contra.
-//                resto = neutras.
-//   - Bloqueo:  positivas = punto / positivo_mas / positivo.
-//               negativas = use_rival / red / filtrada.
-//               resto (neutro) = neutras.
-//   - Defensa:  positivas = gran_def / toque_positiva / cobertura_positiva.
-//               negativas = toque_negativa / mala_libre / error_def /
-//                           errores_graves / cobertura_negativa.
-//               resto (neutro) = neutras.
-// ------------------------------------------------------------
 function calcularBarrasPorFundamento(
   acciones: AccionDB[],
   jugadorId?: string
@@ -544,6 +527,19 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                           negativas={barrasJugadorActual[f].negativas}
                         />
                       ))}
+                  </div>
+                </div>
+
+                {/* MAPA DE CALOR POR FUNDAMENTO */}
+                <div className="mb-6">
+                  <h4 className="font-semibold text-slate-800 mb-3">
+                    Mapa de calor
+                  </h4>
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                    <MapaCalorJugador
+                      acciones={acciones}
+                      jugadorId={jugadorActual.jugador_id}
+                    />
                   </div>
                 </div>
 
