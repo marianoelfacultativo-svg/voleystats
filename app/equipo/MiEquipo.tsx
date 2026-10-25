@@ -159,20 +159,36 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     setCargando(true);
 
     Promise.all([
-      supabase.from("jugadores").select("*").order("nombre"),
+      supabase
+        .from("jugador_equipo")
+        .select("jugador_id")
+        .eq("equipo_id", equipoId)
+        .eq("activo", true),
       supabase
         .from("partidos")
         .select("id, equipo_id, equipo_rival_id")
         .or(`equipo_id.eq.${equipoId},equipo_rival_id.eq.${equipoId}`),
-    ]).then(async ([jugRes, partRes]) => {
-      if (!jugRes.data || !partRes.data) {
+    ]).then(async ([jeRes, partRes]) => {
+      if (!jeRes.data || !partRes.data) {
         setCargando(false);
         return;
       }
 
+      const idsJugadores = jeRes.data.map((x) => x.jugador_id);
+      let jugadoresData: Jugador[] = [];
+
+      if (idsJugadores.length > 0) {
+        const { data: jugRes } = await supabase
+          .from("jugadores")
+          .select("*")
+          .in("id", idsJugadores)
+          .order("nombre");
+        if (jugRes) jugadoresData = jugRes;
+      }
+
       const idsPartidos = partRes.data.map((p) => p.id);
       if (idsPartidos.length === 0) {
-        setJugadores(jugRes.data);
+        setJugadores(jugadoresData);
         setAcciones([]);
         setCargando(false);
         return;
@@ -182,7 +198,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
         idsPartidos.map((pid) => cargarAccionesCompatibles(pid, equipoId))
       );
 
-      setJugadores(jugRes.data);
+      setJugadores(jugadoresData);
       setAcciones(resultados.flat());
       setCargando(false);
     });
