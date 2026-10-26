@@ -65,7 +65,7 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-[100dvh] bg-gradient-to-b from-[#e2e8f0] via-[#cbd5e1] to-[#94a3b8] p-3 sm:p-5 flex flex-col">
+    <main className="min-h-[100dvh] bg-[#CBD5E1] p-3 sm:p-5 flex flex-col">
       
       <div className="relative flex-1 flex flex-col overflow-hidden bg-[#F8F5EC] shadow-[inset_0_0_30px_rgba(0,0,0,0.5)] border-[2px] border-[#94a3b8]">
         
@@ -79,34 +79,34 @@ export default function Home() {
             {/* Fondo base claro */}
             <rect width="100" height="100" fill="#F8F5EC" />
 
-            {/* 1. Triángulo Celeste Superior (Se estira hacia arriba) */}
-            <polygon points="-20,-20 25,-20 -20,35" fill="#11B7B8" />
+            {/* 1. Triángulo Celeste Superior */}
+            <polygon points="-20,-20 25,-20 -20,25" fill="#11B7B8" />
 
-            {/* 2. Área Terracota (Cancha) - Cubre toda la parte de arriba a la derecha */}
-            <polygon points="25,-20 120,-20 120,85 -20,30 -20,35 25,-20" fill="#E0827B" />
+            {/* 2. Área Terracota (Cancha) - Choca exactamente con la línea central y la superior */}
+            <polygon points="25,-20 120,-20 120,85 -20,20.44 -20,25" fill="#E0827B" />
 
-            {/* 3. Área Celeste Inferior */}
-            <polygon points="-20,25 120,85 120,100 -20,100" fill="#11B7B8" />
+            {/* 3. Área Celeste Inferior - Arranca exactamente desde la línea central */}
+            <polygon points="-20,20.44 120,85 120,100 -20,100" fill="#11B7B8" />
 
-            {/* 4. Línea Superior Blanca (Ahora se pasa hacia arriba y a la derecha) */}
-            <line 
-              x1="-20" 
-              y1="27" 
-              x2="50" 
-              y2="-15" 
-              stroke="#ffffff" 
-              strokeWidth="2" 
-              vectorEffect="non-scaling-stroke" 
-            />
-            
-            {/* 5. Línea Central Blanca */}
+            {/* 4. Línea Superior Blanca */}
             <line 
               x1="-20" 
               y1="25" 
+              x2="50" 
+              y2="-10" 
+              stroke="#ffffff" 
+              strokeWidth="4" 
+              vectorEffect="non-scaling-stroke" 
+            />
+            
+            {/* 5. Línea Central Blanca (Pasa por la pelota en y=50 y termina en el 5) */}
+            <line 
+              x1="-20" 
+              y1="20.44" 
               x2="100" 
               y2="85" 
               stroke="#ffffff" 
-              strokeWidth="2" 
+              strokeWidth="4" 
               vectorEffect="non-scaling-stroke" 
             />
           </svg>
@@ -162,7 +162,7 @@ export default function Home() {
               style={{
                 bottom: "-20%",
                 left: "10%",
-                transform: "rotate(26.56deg)",
+                transform: "rotate(28.3deg)",
               }}
             ></div>
 
@@ -201,8 +201,8 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ================= FRANJA INFERIOR (Pisa el marco) ================= */}
-        <div className="absolute bottom-0 left-0 w-full h-[15%] z-40 bg-gradient-to-b from-[#cbd5e1] to-[#94a3b8] border-t-[3px] border-[#e2e8f0] shadow-[0_-5px_15px_rgba(0,0,0,0.2)] flex flex-col items-center justify-center pb-2 sm:pb-4">
+        {/* ================= FRANJA INFERIOR (Gris plateado limpio) ================= */}
+        <div className="absolute bottom-0 left-0 w-full h-[15%] z-40 bg-[#CBD5E1] border-t-[3px] border-[#94A3B8] flex flex-col items-center justify-center pb-2 sm:pb-4">
           <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-md">
             SALIDA
             <span className="text-red-600 text-2xl sm:text-3xl font-black mx-[1px] sm:mx-[2px] mt-1">
