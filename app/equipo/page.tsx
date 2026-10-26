@@ -14,7 +14,7 @@ import VisualizacionUnificada from "./VisualizacionUnificada";
 type Seccion = "dashboard" | "mi-equipo" | "partidos" | "modelos";
 
 type IconoComponente = React.ComponentType<{
-  size?: number;
+  size?: string | number;
   className?: string;
 }>;
 
