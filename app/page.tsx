@@ -78,23 +78,23 @@ export default function Home() {
           <rect width="100" height="100" fill="#F8F5EC" />
 
           {/* 1. Triángulo Celeste Superior (Línea lateral) */}
-          <polygon points="0,0 28,0 0,18" fill="#11B7B8" />
+          <polygon points="0,0 25,0 0,15" fill="#11B7B8" />
 
-          {/* 2. Área Terracota (Cancha) - Relleno completo */}
-          <polygon points="28,0 100,0 100,92 0,20 0,18 28,0" fill="#E0827B" />
+          {/* 2. Área Terracota (Cancha) - El fondo se une directo sin huecos */}
+          <polygon points="25,0 100,0 100,85 0,35 0,15 25,0" fill="#E0827B" />
 
-          {/* 3. Área Celeste Inferior */}
-          <polygon points="0,20 100,92 100,95 0,95" fill="#11B7B8" />
+          {/* 3. Área Celeste Inferior - Empieza más abajo a la izquierda */}
+          <polygon points="0,35 100,85 100,100 0,100" fill="#11B7B8" />
 
           {/* 4. Líneas Blancas Divisorias */}
           {/* Línea lateral superior */}
-          <line x1="0" y1="18" x2="28" y2="0" stroke="#ffffff" strokeWidth="2" />
+          <line x1="0" y1="15" x2="25" y2="0" stroke="#ffffff" strokeWidth="2" />
           
-          {/* Línea central (La Red) - Súper empinada */}
-          <line x1="0" y1="20" x2="100" y2="92" stroke="#ffffff" strokeWidth="2.5" />
+          {/* Línea central (La Red) - Muy inclinada */}
+          <line x1="0" y1="35" x2="100" y2="85" stroke="#ffffff" strokeWidth="2.5" />
 
-          {/* 5. Franja Clara (Pie de página) */}
-          <rect x="0" y="95" width="100" height="5" fill="#F8F5EC" />
+          {/* 5. Franja Clara para el Título */}
+          <rect x="0" y="85" width="100" height="15" fill="#F8F5EC" />
         </svg>
       </div>
 
@@ -138,16 +138,16 @@ export default function Home() {
       </div>
 
       {/* ================= PELOTA Y SOMBRA (Pegadas) ================= */}
-      {/* Centrada en la nueva línea inclinada (x=50%, y=56%) */}
-      <div className="absolute z-30 top-[56%] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+      {/* Movida a la izquierda, no está centrada (x=35%, y=52.5%) */}
+      <div className="absolute z-30 top-[52.5%] left-[35%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
         
         <div className="relative flex items-center justify-center">
           
-          {/* Sombra: Mancha sólida pegada a la pelota, rotada a 36 grados */}
+          {/* Sombra: Mismo tamaño y ángulo que te gustaba */}
           <div
             className="absolute z-0 w-[150%] h-[40%] bg-[#0F2E69] rounded-[100%]"
             style={{
-              transform: "translate(25%, 35%) rotate(36deg)",
+              transform: "translate(25%, 35%) rotate(28deg)",
               transformOrigin: "left center",
             }}
           ></div>
@@ -184,14 +184,18 @@ export default function Home() {
       </div>
 
       {/* ================= TÍTULO INFERIOR ================= */}
-      <div className="absolute bottom-0 left-0 w-full h-[5%] z-20 flex flex-col items-center justify-center pb-1">
-        <h1 className="text-3xl sm:text-4xl font-black text-black tracking-tight flex items-center drop-shadow-sm">
+      {/* Franja de nuevo con el tamaño correcto y el subtítulo */}
+      <div className="absolute bottom-0 left-0 w-full h-[15%] z-20 flex flex-col items-center justify-center pb-4 sm:pb-6">
+        <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-sm">
           SALIDA
-          <span className="text-red-600 text-xl sm:text-2xl font-black mx-[1px] sm:mx-[2px] mt-0.5">
+          <span className="text-red-600 text-2xl sm:text-3xl font-black mx-[1px] sm:mx-[2px] mt-1">
             x
           </span>
           5
         </h1>
+        <p className="text-[#163A85] text-[10px] sm:text-xs mt-1 font-bold tracking-[0.3em] uppercase opacity-70">
+          Estadísticas de vóley
+        </p>
       </div>
     </main>
   );
