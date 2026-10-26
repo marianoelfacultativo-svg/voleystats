@@ -77,20 +77,31 @@ export default function Home() {
           {/* Fondo base claro */}
           <rect width="100" height="100" fill="#F8F5EC" />
 
-          {/* 1. Área Roja (Cancha principal, descendente) */}
-          <polygon points="35,0 100,0 100,65 0,40" fill="#E0827B" />
+          {/* 1. Triángulo Celeste Superior (Línea lateral) */}
+          <polygon points="0,0 45,0 0,18" fill="#11B7B8" />
 
-          {/* 2. Triángulo Celeste Superior (Línea lateral) */}
-          <polygon points="0,0 35,0 0,25" fill="#11B7B8" />
+          {/* 2. Área Terracota (Relleno completo hasta la línea) */}
+          <polygon points="45,0 100,0 100,58 0,38 0,18 45,0" fill="#E0827B" />
 
-          {/* 3. Separación Blanca entre el triángulo y el rojo */}
-          <line x1="0" y1="25" x2="35" y2="0" stroke="#F8F5EC" strokeWidth="3" />
+          {/* 3. Línea Blanca Lateral */}
+          <line x1="0" y1="18" x2="45" y2="0" stroke="#ffffff" strokeWidth="1.5" />
 
-          {/* 4. Línea Blanca Divisoria Principal (La Red) */}
-          <line x1="0" y1="40" x2="100" y2="65" stroke="#ffffff" strokeWidth="2.5" />
+          {/* ================= SOMBRA DE LA PELOTA ================= */}
+          {/* Colocada en el fondo para que pise la línea blanca y el terracota */}
+          <ellipse
+            cx="54"
+            cy="52"
+            rx="16"
+            ry="7"
+            fill="#0F2E69"
+            transform="rotate(11 54 52)"
+          />
 
-          {/* 5. Área Celeste Inferior (Fondo de cancha) */}
-          <polygon points="0,40 100,65 100,85 0,85" fill="#11B7B8" />
+          {/* 4. Línea Blanca Principal (La Red) */}
+          <line x1="0" y1="38" x2="100" y2="58" stroke="#ffffff" strokeWidth="2" />
+
+          {/* 5. Área Celeste Inferior */}
+          <polygon points="0,38 100,58 100,85 0,85" fill="#11B7B8" />
 
           {/* 6. Franja Clara (Pie de página) */}
           <rect x="0" y="85" width="100" height="15" fill="#F8F5EC" />
@@ -136,20 +147,12 @@ export default function Home() {
         )}
       </div>
 
-      {/* ================= PELOTA Y SOMBRA ================= */}
-      {/* Centrada en la línea blanca (x=50%, y=52.5%) */}
-      <div className="absolute z-30 top-[52.5%] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center">
-        
-        {/* Sombra sólida inclinada (sigue la dirección de la línea) */}
-        <div 
-          className="absolute top-[60%] left-[55%] w-28 h-10 sm:w-36 sm:h-12 bg-[#0F2E69] rounded-[100%] z-0"
-          style={{ transform: "rotate(14deg) translate(10%, 0)" }}
-        ></div>
-
-        {/* Pelota */}
+      {/* ================= PELOTA ================= */}
+      {/* Centrada exactamente en la línea (x=50%, y=48%) */}
+      <div className="absolute z-30 top-[48%] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
         <svg
           viewBox="0 0 100 100"
-          className="w-24 h-24 sm:w-32 sm:h-32 relative z-10 drop-shadow-[0_15px_15px_rgba(0,0,0,0.15)]"
+          className="w-24 h-24 sm:w-32 sm:h-32 relative z-10 drop-shadow-md"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
