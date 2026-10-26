@@ -76,20 +76,34 @@ export default function Home() {
             preserveAspectRatio="none"
             viewBox="0 0 100 100"
           >
-            {/* 1. Triángulo Celeste Superior */}
-            <polygon points="-20,-20 15,-20 15,-1 -20,14" fill="#11B7B8" />
+            {/* Fondo Terracota (Cubre toda la pantalla) */}
+            <rect width="100" height="100" fill="#E0827B" />
 
-            {/* 2. Área Terracota (Llega exactamente hasta la línea) */}
-            <polygon points="15,-1 120,-1 120,84 -20,19.38 -20,14 15,-1" fill="#E0827B" />
+            {/* 1. Triángulo Celeste Superior (Se extiende hacia arriba) */}
+            <polygon points="-10,21 40,-9 -10,-10" fill="#11B7B8" />
 
-            {/* 3. Área Celeste Inferior (Empieza exactamente donde termina la línea) */}
-            <polygon points="-20,21.38 120,86 120,100 -20,100" fill="#11B7B8" />
+            {/* 2. Área Celeste Inferior (Choca exactamente con la línea central) */}
+            <polygon points="-10,30 100,85 100,100 -10,100" fill="#11B7B8" />
 
-            {/* 4. Línea Superior Blanca (Con grosor que escala) */}
-            <polygon points="-20,14 15,-1 15,1 -20,16" fill="#ffffff" />
+            {/* 3. Línea Superior Blanca (Se pasa de largo para que el marco tape el corte) */}
+            <line 
+              x1="-10" 
+              y1="21" 
+              x2="40" 
+              y2="-9" 
+              stroke="#ffffff" 
+              strokeWidth="4" 
+            />
             
-            {/* 5. Línea Central Blanca (Pasa por la pelota y termina a la altura del 5) */}
-            <polygon points="-20,19.38 100,84 100,86 -20,21.38" fill="#ffffff" />
+            {/* 4. Línea Central Blanca (Coordenadas originales) */}
+            <line 
+              x1="-10" 
+              y1="30" 
+              x2="100" 
+              y2="85" 
+              stroke="#ffffff" 
+              strokeWidth="4" 
+            />
           </svg>
         </div>
 
@@ -137,13 +151,13 @@ export default function Home() {
           
           <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
             
-            {/* SOMBRA DEL PISO (Ángulo exacto de la línea central) */}
+            {/* SOMBRA DEL PISO (Ángulo exacto de tu línea original) */}
             <div
               className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
               style={{
                 bottom: "-20%",
                 left: "10%",
-                transform: "rotate(28.3deg)",
+                transform: "rotate(26.56deg)",
               }}
             ></div>
 
