@@ -65,52 +65,34 @@ export default function Home() {
   };
 
   return (
-    <main className="relative min-h-[100dvh] flex flex-col overflow-hidden bg-[#F9F6ED]">
-      {/* ================= FONDO GEOMÉTRICO / CANCHA ================= */}
+    <main className="relative min-h-[100dvh] flex flex-col overflow-hidden bg-[#F8F5EC]">
+      
+      {/* ================= FONDO: ESQUINA DE CANCHA CON PERSPECTIVA ================= */}
       <div className="absolute inset-0 z-0">
         <svg
           className="w-full h-full"
           preserveAspectRatio="none"
           viewBox="0 0 100 100"
         >
-          <defs>
-            {/* Gradientes para dar profundidad de cancha */}
-            <linearGradient id="terracota" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#E5817A" />
-              <stop offset="100%" stopColor="#D46A63" />
-            </linearGradient>
-            <linearGradient id="celeste" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#15C6C6" />
-              <stop offset="100%" stopColor="#0EA1A1" />
-            </linearGradient>
-          </defs>
-
-          {/* Área Terracota (Cancha Rival) */}
-          <polygon points="0,0 100,0 100,65 0,50" fill="url(#terracota)" />
+          {/* 1. Triángulo Celeste (Línea lateral de la cancha) */}
+          <polygon points="0,0 100,0 0,40" fill="#11B7B8" />
           
-          {/* Área Celeste (Cancha Propia) */}
-          <polygon points="0,50 100,65 100,82 0,82" fill="url(#celeste)" />
+          {/* 2. Área Terracota (Cancha) */}
+          <polygon points="100,0 100,55 0,85 0,40" fill="#E0827B" />
           
-          {/* Franja Clara (Fondo) */}
-          <rect x="0" y="82" width="100" height="18" fill="#F9F6ED" />
-
-          {/* --- LÍNEAS DE LA CANCHA --- */}
+          {/* 3. Área Celeste Inferior (Fondo de cancha) */}
+          <polygon points="0,85 100,55 100,100 0,100" fill="#11B7B8" />
           
-          {/* Línea Central (La Red) */}
-          <line x1="0" y1="50" x2="100" y2="65" stroke="#ffffff" strokeWidth="1.5" />
+          {/* 4. Línea Blanca Principal (La Red) */}
+          <line x1="0" y1="85" x2="100" y2="55" stroke="#ffffff" strokeWidth="2" />
 
-          {/* Líneas de Ataque (3 metros) */}
-          <line x1="0" y1="30" x2="100" y2="45" stroke="#ffffff" strokeWidth="1" opacity="0.6" />
-          <line x1="0" y1="70" x2="100" y2="85" stroke="#ffffff" strokeWidth="1" opacity="0.6" />
-
-          {/* Líneas Laterales (Bordes de la cancha) */}
-          <line x1="0" y1="0" x2="0" y2="82" stroke="#ffffff" strokeWidth="1.5" opacity="0.9" />
-          <line x1="100" y1="0" x2="100" y2="82" stroke="#ffffff" strokeWidth="1.5" opacity="0.9" />
+          {/* 5. Franja Clara (Pie de página) */}
+          <rect x="0" y="90" width="100" height="10" fill="#F8F5EC" />
         </svg>
       </div>
 
       {/* ================= FORMULARIO LOGIN ================= */}
-      <div className="relative z-20 w-full max-w-sm mx-auto px-6 pt-[12vh] sm:pt-[15vh] flex flex-col items-center">
+      <div className="relative z-20 w-full max-w-sm mx-auto px-6 pt-[18vh] sm:pt-[20vh] flex flex-col items-center">
         <div className="w-full space-y-4">
           <div className="relative">
             <input
@@ -120,14 +102,14 @@ export default function Home() {
               onKeyDown={handleKeyDown}
               disabled={cargando}
               autoFocus
-              className="w-full px-5 py-4 text-center text-lg font-mono bg-white/90 backdrop-blur-md border border-white/50 rounded-2xl focus:outline-none focus:ring-4 focus:ring-white/40 transition-all placeholder:text-slate-300 shadow-xl"
+              className="w-full px-5 py-4 text-center text-lg font-mono bg-white/95 backdrop-blur-sm border-0 rounded-2xl focus:outline-none focus:ring-4 focus:ring-white/50 transition-all placeholder:text-slate-300 shadow-xl"
             />
           </div>
 
           <button
             onClick={handleIngresar}
             disabled={cargando}
-            className="w-full bg-[#133076] hover:bg-[#0d2258] disabled:bg-slate-400 text-white font-bold py-4 rounded-2xl transition-all shadow-xl active:scale-[0.98]"
+            className="w-full bg-[#163A85] hover:bg-[#0f285e] disabled:bg-slate-400 text-white font-bold py-4 rounded-2xl transition-all shadow-xl active:scale-[0.98]"
           >
             {cargando ? "Verificando..." : "Ingresar"}
           </button>
@@ -148,49 +130,56 @@ export default function Home() {
         )}
       </div>
 
-      {/* ================= PELOTA DE VÓLEY ================= */}
-      {/* Apoyada justo en la línea central */}
-      <div className="absolute z-30 top-[57.5%] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+      {/* ================= PELOTA Y SOMBRA (En la esquina de la línea) ================= */}
+      <div className="absolute z-30 top-[70%] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center">
         
-        {/* Sombra de la pelota en el piso */}
-        <div className="absolute top-[85%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-8 sm:w-32 sm:h-10 bg-black/30 blur-md rounded-[100%]"></div>
-        
+        {/* Sombra sólida achatada (Da el efecto de piso) */}
+        <div 
+          className="absolute top-[70%] left-[55%] w-28 h-10 sm:w-36 sm:h-12 bg-[#0F2E69] rounded-[100%] z-0"
+          style={{ transform: "rotate(-15deg) translate(10%, 0)" }}
+        ></div>
+
+        {/* Pelota */}
         <svg
           viewBox="0 0 100 100"
-          className="w-28 h-28 sm:w-36 sm:h-36 relative z-10 drop-shadow-[0_10px_10px_rgba(0,0,0,0.25)]"
+          className="w-24 h-24 sm:w-32 sm:h-32 relative z-10 drop-shadow-[0_15px_15px_rgba(0,0,0,0.15)]"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
           {/* Base Blanca */}
           <circle cx="50" cy="50" r="46" fill="#F4F4F4" />
           
-          {/* Gajos */}
-          <path d="M 5 60 Q 25 55 45 80 Q 25 95 5 60 Z" fill="#133076" />
-          <path d="M 95 60 Q 75 55 55 80 Q 75 95 95 60 Z" fill="#133076" />
-          <path d="M 15 25 Q 35 35 25 65 Q 5 55 15 25 Z" fill="#F8C12D" />
-          <path d="M 85 25 Q 65 35 75 65 Q 95 55 85 25 Z" fill="#F8C12D" />
+          {/* Gajo inferior izquierdo (Azul) */}
+          <path d="M 5 60 Q 25 55 45 80 Q 25 95 5 60 Z" fill="#163A85" />
+          {/* Gajo inferior derecho (Azul) */}
+          <path d="M 95 60 Q 75 55 55 80 Q 75 95 95 60 Z" fill="#163A85" />
           
-          {/* Costuras */}
-          <circle cx="50" cy="50" r="46" stroke="#133076" strokeWidth="3" />
-          <path d="M 50 4 Q 50 25 40 45" stroke="#133076" strokeWidth="3" />
-          <path d="M 50 4 Q 50 25 60 45" stroke="#133076" strokeWidth="3" />
-          <path d="M 4 50 Q 30 50 40 45" stroke="#133076" strokeWidth="3" />
-          <path d="M 96 50 Q 70 50 60 45" stroke="#133076" strokeWidth="3" />
-          <path d="M 4 50 Q 30 70 50 96" stroke="#133076" strokeWidth="3" />
-          <path d="M 96 50 Q 70 70 50 96" stroke="#133076" strokeWidth="3" />
+          {/* Gajo superior izquierdo (Amarillo) */}
+          <path d="M 15 25 Q 35 35 25 65 Q 5 55 15 25 Z" fill="#F7C32C" />
+          {/* Gajo superior derecho (Amarillo) */}
+          <path d="M 85 25 Q 65 35 75 65 Q 95 55 85 25 Z" fill="#F7C32C" />
+          
+          {/* Costuras (Líneas Azules) */}
+          <circle cx="50" cy="50" r="46" stroke="#163A85" strokeWidth="4" />
+          <path d="M 50 4 Q 50 25 40 45" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
+          <path d="M 50 4 Q 50 25 60 45" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
+          <path d="M 4 50 Q 30 50 40 45" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
+          <path d="M 96 50 Q 70 50 60 45" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
+          <path d="M 4 50 Q 30 70 50 96" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
+          <path d="M 96 50 Q 70 70 50 96" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
         </svg>
       </div>
 
       {/* ================= TÍTULO INFERIOR ================= */}
-      <div className="absolute bottom-0 left-0 w-full h-[18%] z-20 flex flex-col items-center justify-center pb-8 sm:pb-12">
-        <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-sm">
+      <div className="absolute bottom-0 left-0 w-full h-[10%] z-20 flex flex-col items-center justify-center pb-2 sm:pb-4">
+        <h1 className="text-3xl sm:text-4xl font-black text-black tracking-tight flex items-center drop-shadow-sm">
           SALIDA
-          <span className="text-red-600 text-2xl sm:text-3xl font-black mx-[1px] sm:mx-[2px] mt-1">
+          <span className="text-red-600 text-xl sm:text-2xl font-black mx-[1px] sm:mx-[2px] mt-0.5">
             x
           </span>
           5
         </h1>
-        <p className="text-[#133076] text-[10px] sm:text-xs mt-2 font-bold tracking-[0.3em] uppercase opacity-60">
+        <p className="text-[#163A85] text-[9px] sm:text-[10px] mt-0.5 font-bold tracking-[0.3em] uppercase opacity-70">
           Estadísticas de vóley
         </p>
       </div>
