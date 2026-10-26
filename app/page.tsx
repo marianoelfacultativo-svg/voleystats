@@ -67,7 +67,7 @@ export default function Home() {
   return (
     <main className="min-h-[100dvh] bg-[#CBD5E1] p-3 sm:p-5 flex flex-col">
       
-      {/* PANTALLA DE LA TV (Mantiene el tamaño original para no estirar el fondo) */}
+      {/* PANTALLA DE LA TV (Mantiene el tamaño original) */}
       <div className="relative flex-1 flex flex-col bg-[#F8F5EC] shadow-[inset_0_0_30px_rgba(0,0,0,0.5)] border-t-[2px] border-l-[2px] border-r-[2px] border-[#94a3b8]">
         
         {/* ================= FONDO: ESQUINA DE CANCHA ================= */}
@@ -77,16 +77,16 @@ export default function Home() {
             preserveAspectRatio="none"
             viewBox="0 0 100 100"
           >
-            {/* Fondo Terracota (Cubre toda la pantalla) */}
+            {/* Fondo Terracota */}
             <rect width="100" height="100" fill="#E0827B" />
 
-            {/* 1. Triángulo Celeste Superior (Fino) */}
+            {/* 1. Triángulo Celeste Superior */}
             <polygon points="-10,22 40,-8 -10,-10" fill="#11B7B8" />
 
-            {/* 2. Área Celeste Inferior (Estirada hasta x=120 para que el borde corte parejo) */}
+            {/* 2. Área Celeste Inferior */}
             <polygon points="-10,31 120,101.2 120,120 -10,120" fill="#11B7B8" />
 
-            {/* 3. Línea Superior Blanca (Fina) */}
+            {/* 3. Línea Superior Blanca */}
             <line 
               x1="-10" 
               y1="22" 
@@ -96,7 +96,7 @@ export default function Home() {
               strokeWidth="2" 
             />
             
-            {/* 4. Línea Central Blanca (Estirada hasta x=120 y fina) */}
+            {/* 4. Línea Central Blanca */}
             <line 
               x1="-10" 
               y1="31" 
@@ -152,7 +152,7 @@ export default function Home() {
           
           <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
             
-            {/* SOMBRA DEL PISO (Ángulo exacto de 28.3 grados) */}
+            {/* SOMBRA DEL PISO */}
             <div
               className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
               style={{
@@ -197,19 +197,52 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ================= FRANJA INFERIOR (Conectada al marco exterior) ================= */}
-        {/* Usamos márgenes negativos para que la franja pise el relleno gris exterior y se fusione con el marco */}
-        <div className="absolute -bottom-3 -left-3 -right-3 sm:-bottom-5 sm:-left-5 sm:-right-5 h-[calc(15%+12px)] sm:h-[calc(15%+20px)] bg-[#CBD5E1] border-t-[3px] border-[#94A3B8] flex flex-col items-center justify-center pb-4 sm:pb-6 z-40">
-          <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-md">
-            SALIDA
-            <span className="text-red-600 text-2xl sm:text-3xl font-black mx-[1px] sm:mx-[2px] mt-1">
-              x
-            </span>
-            5
-          </h1>
-          <p className="text-[#163A85] text-[10px] sm:text-xs mt-1 font-bold tracking-[0.3em] uppercase opacity-90">
-            Estadísticas de vóley
-          </p>
+        {/* ================= FRANJA INFERIOR (Controles de TV vieja) ================= */}
+        <div className="absolute -bottom-3 -left-3 -right-3 sm:-bottom-5 sm:-left-5 sm:-right-5 h-[calc(15%+12px)] sm:h-[calc(15%+20px)] bg-[#CBD5E1] border-t-[3px] border-[#94A3B8] z-40 flex items-center justify-center px-6 sm:px-12">
+          
+          {/* Parlante (Izquierda) - Oculto en celulares muy chicos */}
+          <div className="hidden sm:flex absolute left-6 top-1/2 -translate-y-1/2 gap-1.5 opacity-40">
+            <div className="w-1.5 h-10 bg-[#64748B] rounded-full shadow-inner"></div>
+            <div className="w-1.5 h-10 bg-[#64748B] rounded-full shadow-inner"></div>
+            <div className="w-1.5 h-10 bg-[#64748B] rounded-full shadow-inner"></div>
+            <div className="w-1.5 h-10 bg-[#64748B] rounded-full shadow-inner"></div>
+            <div className="w-1.5 h-10 bg-[#64748B] rounded-full shadow-inner"></div>
+          </div>
+
+          {/* Logo Central */}
+          <div className="flex flex-col items-center justify-center pb-2 sm:pb-4 z-10">
+            <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-md">
+              SALIDA
+              <span className="text-red-600 text-2xl sm:text-3xl font-black mx-[1px] sm:mx-[2px] mt-1">
+                x
+              </span>
+              5
+            </h1>
+            <p className="text-[#163A85] text-[10px] sm:text-xs mt-1 font-bold tracking-[0.3em] uppercase opacity-90">
+              Estadísticas de vóley
+            </p>
+          </div>
+
+          {/* Perillas y Botón (Derecha) */}
+          <div className="absolute right-4 sm:right-8 top-1/2 -translate-y-1/2 flex items-center gap-3 sm:gap-4">
+            
+            {/* Perilla 1 (Volumen) */}
+            <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#F1F5F9] to-[#94A3B8] border-[2px] border-[#64748B] shadow-[2px_2px_5px_rgba(0,0,0,0.3),inset_-2px_-2px_5px_rgba(0,0,0,0.1)] flex items-center justify-center">
+              <div className="w-1 h-3 sm:h-4 bg-[#334155] rounded-full absolute top-1 sm:top-1.5"></div>
+            </div>
+
+            {/* Perilla 2 (Canal) */}
+            <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#F1F5F9] to-[#94A3B8] border-[2px] border-[#64748B] shadow-[2px_2px_5px_rgba(0,0,0,0.3),inset_-2px_-2px_5px_rgba(0,0,0,0.1)] flex items-center justify-center">
+              <div className="w-1 h-3 sm:h-4 bg-[#334155] rounded-full absolute bottom-1 sm:bottom-1.5"></div>
+            </div>
+
+            {/* Botón de Encendido */}
+            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded bg-gradient-to-br from-[#EF4444] to-[#B91C1C] border-[2px] border-[#7F1D1D] shadow-[2px_2px_4px_rgba(0,0,0,0.4),inset_1px_1px_2px_rgba(255,255,255,0.4)] flex items-center justify-center">
+              <div className="w-2 h-2 rounded-full bg-[#FCA5A5] shadow-inner"></div>
+            </div>
+
+          </div>
+
         </div>
 
       </div>
