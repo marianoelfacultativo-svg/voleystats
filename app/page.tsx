@@ -65,10 +65,10 @@ export default function Home() {
   };
 
   return (
-    /* EL MARCO EXTERIOR (Más grueso y del mismo color que la franja inferior) */
+    /* MARCO EXTERIOR (Mismo color que la franja inferior) */
     <main className="min-h-[100dvh] bg-[#CBD5E1] p-3 sm:p-5 flex flex-col">
       
-      {/* LA PANTALLA DE LA TV (Efecto hundido con sombra interior) */}
+      {/* PANTALLA (Efecto hundido de la tele vieja) */}
       <div className="relative flex-1 flex flex-col overflow-hidden bg-[#F8F5EC] shadow-[inset_0_0_20px_rgba(0,0,0,0.4)]">
         
         {/* ================= FONDO: ESQUINA DE CANCHA ================= */}
@@ -81,20 +81,20 @@ export default function Home() {
             {/* Fondo base claro */}
             <rect width="100" height="100" fill="#F8F5EC" />
 
-            {/* 1. Triángulo Celeste Superior */}
-            <polygon points="-5,0 25,0 -5,18" fill="#11B7B8" />
+            {/* 1. Triángulo Celeste Superior (Se pasa a la izquierda para que no se corte) */}
+            <polygon points="-10,0 25,0 -10,21" fill="#11B7B8" />
 
             {/* 2. Área Terracota (Cancha) */}
-            <polygon points="25,0 100,0 100,83.75 -5,27.21 -5,18 25,0" fill="#E0827B" />
+            <polygon points="25,0 100,0 100,85 -10,25.77 -10,21 25,0" fill="#E0827B" />
 
             {/* 3. Área Celeste Inferior */}
-            <polygon points="-5,29.71 100,86.25 100,100 -5,100" fill="#11B7B8" />
+            <polygon points="-10,28.27 100,87.5 100,100 -10,100" fill="#11B7B8" />
 
-            {/* 4. Línea Superior Blanca */}
-            <polygon points="-5,18 25,0 25,2.5 -5,20.5" fill="#ffffff" />
+            {/* 4. Línea Superior Blanca (Prolija hasta el borde) */}
+            <polygon points="-10,21 25,0 25,2.5 -10,23.5" fill="#ffffff" />
             
-            {/* 5. Línea Central Blanca (Pasa justo por la pelota) */}
-            <polygon points="-5,27.21 100,83.75 100,86.25 -5,29.71" fill="#ffffff" />
+            {/* 5. Línea Central Blanca (Termina exactamente a la altura de la franja del 5) */}
+            <polygon points="-10,25.77 100,85 100,87.5 -10,28.27" fill="#ffffff" />
           </svg>
         </div>
 
@@ -142,7 +142,7 @@ export default function Home() {
           
           <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
             
-            {/* SOMBRA DEL PISO (Ángulo ajustado a la línea) */}
+            {/* SOMBRA DEL PISO (Ángulo sincronizado con la línea central) */}
             <div
               className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
               style={{
@@ -188,7 +188,6 @@ export default function Home() {
         </div>
 
         {/* ================= FRANJA INFERIOR (Misma pieza que el marco) ================= */}
-        {/* Usa el mismo color #CBD5E1 que el marco exterior, y tiene un borde superior para simular la hendidura de la TV */}
         <div className="absolute bottom-0 left-0 w-full h-[15%] bg-[#CBD5E1] border-t-[3px] border-[#94A3B8] z-20 flex flex-col items-center justify-center pb-2 sm:pb-4">
           <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-sm">
             SALIDA
