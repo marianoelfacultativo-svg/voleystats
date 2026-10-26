@@ -65,7 +65,7 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center p-4 bg-[#F7F5F0]">
+    <main className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center p-6 bg-[#F7F5F0]">
       
       {/* ================= FONDO ================= */}
       <div className="absolute inset-0 z-0 pointer-events-none">
@@ -107,13 +107,10 @@ export default function Home() {
           xmlns="http://www.w3.org/2000/svg"
         >
           <circle cx="50" cy="50" r="46" fill="#ffffff" />
-          {/* Gajos inferiores */}
           <path d="M 4 50 A 46 46 0 0 0 50 96 C 50 75 25 50 4 50 Z" fill="#1e3a8a" />
           <path d="M 96 50 A 46 46 0 0 1 50 96 C 50 75 75 50 96 50 Z" fill="#1e3a8a" />
-          {/* Gajos superiores */}
           <path d="M 50 4 A 46 46 0 0 1 96 50 C 75 50 50 25 50 4 Z" fill="#FBBF24" />
           <path d="M 50 4 A 46 46 0 0 0 4 50 C 25 50 50 25 50 4 Z" fill="#FBBF24" />
-          {/* Líneas negras/grises */}
           <circle cx="50" cy="50" r="46" stroke="#1e3a8a" strokeWidth="3" />
           <path d="M 50 4 C 50 25 25 50 4 50" stroke="#1e3a8a" strokeWidth="3" />
           <path d="M 96 50 C 75 50 50 75 50 96" stroke="#1e3a8a" strokeWidth="3" />
@@ -125,14 +122,7 @@ export default function Home() {
       </div>
 
       {/* ================= FORMULARIO LOGIN ================= */}
-      <div className="relative z-20 w-full max-w-sm bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border border-white/40 p-6 sm:p-8">
-        <div className="text-center mb-6">
-          <h2 className="text-xl font-bold text-slate-800">Acceso</h2>
-          <p className="text-slate-500 text-sm mt-1">
-            Ingresá tu código de equipo o jugador
-          </p>
-        </div>
-
+      <div className="relative z-20 w-full max-w-[340px] bg-white/70 backdrop-blur-xl rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-white/60 p-6 sm:p-8">
         <div className="space-y-4">
           <div>
             <input
@@ -140,16 +130,16 @@ export default function Home() {
               value={codigo}
               onChange={(e) => setCodigo(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ej: quilmes-2025"
               disabled={cargando}
-              className="w-full px-4 py-3.5 text-center text-lg font-mono border-2 border-slate-200 rounded-xl focus:outline-none focus:border-[#0EA5B7] focus:ring-4 focus:ring-[#0EA5B7]/20 transition-all disabled:bg-slate-100 placeholder:text-slate-300 placeholder:font-sans placeholder:text-base"
+              autoFocus
+              className="w-full px-4 py-4 text-center text-lg font-mono bg-white border border-slate-200 rounded-2xl focus:outline-none focus:border-[#0EA5B7] focus:ring-4 focus:ring-[#0EA5B7]/10 transition-all disabled:opacity-50 shadow-inner"
             />
           </div>
 
           <button
             onClick={handleIngresar}
             disabled={cargando}
-            className="w-full bg-[#0EA5B7] hover:bg-[#0d96a6] disabled:bg-slate-400 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg hover:shadow-xl active:scale-[0.98]"
+            className="w-full bg-[#1e3a8a] hover:bg-[#152d6b] disabled:bg-slate-400 text-white font-bold py-3.5 rounded-2xl transition-all shadow-lg hover:shadow-xl active:scale-[0.98]"
           >
             {cargando ? "Verificando..." : "Ingresar"}
           </button>
@@ -157,12 +147,12 @@ export default function Home() {
 
         {mensaje && (
           <div
-            className={`mt-4 text-center text-sm p-3 rounded-lg ${
+            className={`mt-4 text-center text-xs font-medium p-3 rounded-xl ${
               mensaje.includes("✅")
-                ? "bg-green-50 text-green-700 border border-green-200"
+                ? "bg-green-100 text-green-800"
                 : mensaje.includes("inválido") || mensaje.includes("Error")
-                ? "bg-red-50 text-red-700 border border-red-200"
-                : "bg-slate-50 text-slate-600 border border-slate-200"
+                ? "bg-red-100 text-red-800"
+                : "bg-white/50 text-slate-700"
             }`}
           >
             {mensaje}
@@ -171,13 +161,14 @@ export default function Home() {
       </div>
 
       {/* ================= TÍTULO INFERIOR ================= */}
-      <div className="relative z-10 mt-10 sm:mt-14 text-center">
-        <h1 className="text-4xl sm:text-5xl font-black text-[#1e3a8a] tracking-widest uppercase drop-shadow-sm">
-          SALIDAx5
+      <div className="relative z-10 mt-10 sm:mt-12 text-center flex items-center justify-center">
+        <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-sm">
+          SALIDA
+          <span className="text-red-600 text-2xl sm:text-3xl font-black mx-[1px] sm:mx-[2px]">
+            x
+          </span>
+          5
         </h1>
-        <p className="text-[#1e3a8a]/70 text-xs sm:text-sm mt-2 font-semibold tracking-[0.2em] uppercase">
-          Estadísticas de vóley
-        </p>
       </div>
     </main>
   );
