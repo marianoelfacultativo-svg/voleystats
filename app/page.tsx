@@ -78,18 +78,17 @@ export default function Home() {
           <rect width="100" height="100" fill="#F8F5EC" />
 
           {/* 1. Triángulo Celeste Superior */}
-          <polygon points="0,0 25,0 0,15" fill="#11B7B8" />
+          <polygon points="-5,0 25,0 -5,18" fill="#11B7B8" />
 
           {/* 2. Área Terracota (Cancha) */}
-          <polygon points="25,0 100,0 100,85 0,35 0,15 25,0" fill="#E0827B" />
+          <polygon points="25,0 100,0 100,85 -5,11.5 -5,18 25,0" fill="#E0827B" />
 
           {/* 3. Área Celeste Inferior */}
-          <polygon points="0,35 100,85 100,100 0,100" fill="#11B7B8" />
+          <polygon points="-5,11.5 100,85 100,100 -5,100" fill="#11B7B8" />
 
           {/* 4. Líneas Blancas */}
-          <line x1="0" y1="15" x2="25" y2="0" stroke="#ffffff" strokeWidth="2" />
-          {/* Línea central (inclinación exacta de ~26.5 grados) */}
-          <line x1="0" y1="35" x2="100" y2="85" stroke="#ffffff" strokeWidth="2.5" />
+          <polygon points="-5,18 25,0 25,2.5 -5,20.5" fill="#ffffff" />
+          <polygon points="-5,11.5 100,85 100,87.5 -5,14" fill="#ffffff" />
 
           {/* 5. Franja Clara para el Título */}
           <rect x="0" y="85" width="100" height="15" fill="#F8F5EC" />
@@ -141,7 +140,7 @@ export default function Home() {
         {/* Contenedor relativo para que la sombra y la pelota se muevan juntas */}
         <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
           
-          {/* SOMBRA DEL PISO (Más grande, difuminada y rotada) */}
+          {/* SOMBRA DEL PISO */}
           <div
             className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
             style={{
@@ -151,7 +150,7 @@ export default function Home() {
             }}
           ></div>
 
-          {/* PELOTA CON VOLUMEN (Luz desde arriba a la izquierda) */}
+          {/* PELOTA CON VOLUMEN */}
           <svg
             viewBox="0 0 100 100"
             className="w-full h-full relative z-10"
@@ -159,7 +158,6 @@ export default function Home() {
             xmlns="http://www.w3.org/2000/svg"
           >
             <defs>
-              {/* Degradado para simular la esfera 3D */}
               <radialGradient id="ball-light" cx="30%" cy="30%" r="70%">
                 <stop offset="0%" stopColor="#FFFFFF" />
                 <stop offset="60%" stopColor="#F1F5F9" />
@@ -167,18 +165,14 @@ export default function Home() {
               </radialGradient>
             </defs>
 
-            {/* Base Blanca con sombreado */}
             <circle cx="50" cy="50" r="46" fill="url(#ball-light)" />
             
-            {/* Gajos Azules */}
             <path d="M 5 60 Q 25 55 45 80 Q 25 95 5 60 Z" fill="#163A85" />
             <path d="M 95 60 Q 75 55 55 80 Q 75 95 95 60 Z" fill="#163A85" />
             
-            {/* Gajos Amarillos */}
             <path d="M 15 25 Q 35 35 25 65 Q 5 55 15 25 Z" fill="#F7C32C" />
             <path d="M 85 25 Q 65 35 75 65 Q 95 55 85 25 Z" fill="#F7C32C" />
             
-            {/* Costuras */}
             <circle cx="50" cy="50" r="46" stroke="#163A85" strokeWidth="4" />
             <path d="M 50 4 Q 50 25 40 45" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
             <path d="M 50 4 Q 50 25 60 45" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
@@ -204,6 +198,10 @@ export default function Home() {
           Estadísticas de vóley
         </p>
       </div>
+
+      {/* ================= MARCO PLATEADO EXTERIOR ================= */}
+      <div className="absolute inset-0 z-50 border-[6px] border-[#CBD5E1] pointer-events-none shadow-[inset_0_0_15px_rgba(0,0,0,0.2)] sm:border-[10px]"></div>
+
     </main>
   );
 }
