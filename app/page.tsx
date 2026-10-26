@@ -67,32 +67,38 @@ export default function Home() {
   return (
     <main className="relative min-h-[100dvh] flex flex-col overflow-hidden bg-[#F8F5EC]">
       
-      {/* ================= FONDO: ESQUINA DE CANCHA CON PERSPECTIVA ================= */}
+      {/* ================= FONDO: ESQUINA DE CANCHA ================= */}
       <div className="absolute inset-0 z-0">
         <svg
           className="w-full h-full"
           preserveAspectRatio="none"
           viewBox="0 0 100 100"
         >
-          {/* 1. Triángulo Celeste (Línea lateral de la cancha) */}
-          <polygon points="0,0 100,0 0,40" fill="#11B7B8" />
-          
-          {/* 2. Área Terracota (Cancha) */}
-          <polygon points="100,0 100,55 0,85 0,40" fill="#E0827B" />
-          
-          {/* 3. Área Celeste Inferior (Fondo de cancha) */}
-          <polygon points="0,85 100,55 100,100 0,100" fill="#11B7B8" />
-          
-          {/* 4. Línea Blanca Principal (La Red) */}
-          <line x1="0" y1="85" x2="100" y2="55" stroke="#ffffff" strokeWidth="2" />
+          {/* Fondo base claro */}
+          <rect width="100" height="100" fill="#F8F5EC" />
 
-          {/* 5. Franja Clara (Pie de página) */}
-          <rect x="0" y="90" width="100" height="10" fill="#F8F5EC" />
+          {/* 1. Área Roja (Cancha principal, descendente) */}
+          <polygon points="35,0 100,0 100,65 0,40" fill="#E0827B" />
+
+          {/* 2. Triángulo Celeste Superior (Línea lateral) */}
+          <polygon points="0,0 35,0 0,25" fill="#11B7B8" />
+
+          {/* 3. Separación Blanca entre el triángulo y el rojo */}
+          <line x1="0" y1="25" x2="35" y2="0" stroke="#F8F5EC" strokeWidth="3" />
+
+          {/* 4. Línea Blanca Divisoria Principal (La Red) */}
+          <line x1="0" y1="40" x2="100" y2="65" stroke="#ffffff" strokeWidth="2.5" />
+
+          {/* 5. Área Celeste Inferior (Fondo de cancha) */}
+          <polygon points="0,40 100,65 100,85 0,85" fill="#11B7B8" />
+
+          {/* 6. Franja Clara (Pie de página) */}
+          <rect x="0" y="85" width="100" height="15" fill="#F8F5EC" />
         </svg>
       </div>
 
       {/* ================= FORMULARIO LOGIN ================= */}
-      <div className="relative z-20 w-full max-w-sm mx-auto px-6 pt-[18vh] sm:pt-[20vh] flex flex-col items-center">
+      <div className="relative z-20 w-full max-w-sm mx-auto px-6 pt-[15vh] sm:pt-[18vh] flex flex-col items-center">
         <div className="w-full space-y-4">
           <div className="relative">
             <input
@@ -130,13 +136,14 @@ export default function Home() {
         )}
       </div>
 
-      {/* ================= PELOTA Y SOMBRA (En la esquina de la línea) ================= */}
-      <div className="absolute z-30 top-[70%] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center">
+      {/* ================= PELOTA Y SOMBRA ================= */}
+      {/* Centrada en la línea blanca (x=50%, y=52.5%) */}
+      <div className="absolute z-30 top-[52.5%] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center">
         
-        {/* Sombra sólida achatada (Da el efecto de piso) */}
+        {/* Sombra sólida inclinada (sigue la dirección de la línea) */}
         <div 
-          className="absolute top-[70%] left-[55%] w-28 h-10 sm:w-36 sm:h-12 bg-[#0F2E69] rounded-[100%] z-0"
-          style={{ transform: "rotate(-15deg) translate(10%, 0)" }}
+          className="absolute top-[60%] left-[55%] w-28 h-10 sm:w-36 sm:h-12 bg-[#0F2E69] rounded-[100%] z-0"
+          style={{ transform: "rotate(14deg) translate(10%, 0)" }}
         ></div>
 
         {/* Pelota */}
@@ -149,17 +156,15 @@ export default function Home() {
           {/* Base Blanca */}
           <circle cx="50" cy="50" r="46" fill="#F4F4F4" />
           
-          {/* Gajo inferior izquierdo (Azul) */}
+          {/* Gajos Azules */}
           <path d="M 5 60 Q 25 55 45 80 Q 25 95 5 60 Z" fill="#163A85" />
-          {/* Gajo inferior derecho (Azul) */}
           <path d="M 95 60 Q 75 55 55 80 Q 75 95 95 60 Z" fill="#163A85" />
           
-          {/* Gajo superior izquierdo (Amarillo) */}
+          {/* Gajos Amarillos */}
           <path d="M 15 25 Q 35 35 25 65 Q 5 55 15 25 Z" fill="#F7C32C" />
-          {/* Gajo superior derecho (Amarillo) */}
           <path d="M 85 25 Q 65 35 75 65 Q 95 55 85 25 Z" fill="#F7C32C" />
           
-          {/* Costuras (Líneas Azules) */}
+          {/* Costuras */}
           <circle cx="50" cy="50" r="46" stroke="#163A85" strokeWidth="4" />
           <path d="M 50 4 Q 50 25 40 45" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
           <path d="M 50 4 Q 50 25 60 45" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
@@ -171,15 +176,15 @@ export default function Home() {
       </div>
 
       {/* ================= TÍTULO INFERIOR ================= */}
-      <div className="absolute bottom-0 left-0 w-full h-[10%] z-20 flex flex-col items-center justify-center pb-2 sm:pb-4">
-        <h1 className="text-3xl sm:text-4xl font-black text-black tracking-tight flex items-center drop-shadow-sm">
+      <div className="absolute bottom-0 left-0 w-full h-[15%] z-20 flex flex-col items-center justify-center pb-4 sm:pb-6">
+        <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-sm">
           SALIDA
-          <span className="text-red-600 text-xl sm:text-2xl font-black mx-[1px] sm:mx-[2px] mt-0.5">
+          <span className="text-red-600 text-2xl sm:text-3xl font-black mx-[1px] sm:mx-[2px] mt-1">
             x
           </span>
           5
         </h1>
-        <p className="text-[#163A85] text-[9px] sm:text-[10px] mt-0.5 font-bold tracking-[0.3em] uppercase opacity-70">
+        <p className="text-[#163A85] text-[10px] sm:text-xs mt-1 font-bold tracking-[0.3em] uppercase opacity-70">
           Estadísticas de vóley
         </p>
       </div>
