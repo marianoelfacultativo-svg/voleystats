@@ -65,10 +65,8 @@ export default function Home() {
   };
 
   return (
-    /* MARCO EXTERIOR METÁLICO (Envuelve todo) */
     <main className="min-h-[100dvh] bg-gradient-to-b from-[#e2e8f0] via-[#cbd5e1] to-[#94a3b8] p-3 sm:p-5 flex flex-col">
       
-      {/* PANTALLA DE LA TV (Cancha con efecto hundido) */}
       <div className="relative flex-1 flex flex-col overflow-hidden bg-[#F8F5EC] shadow-[inset_0_0_30px_rgba(0,0,0,0.5)] border-[2px] border-[#94a3b8]">
         
         {/* ================= FONDO: ESQUINA DE CANCHA ================= */}
@@ -81,21 +79,36 @@ export default function Home() {
             {/* Fondo base claro */}
             <rect width="100" height="100" fill="#F8F5EC" />
 
-            {/* 1. Triángulo Celeste Superior */}
-            <polygon points="-10,0 25,0 -10,15" fill="#11B7B8" />
+            {/* 1. Triángulo Celeste Superior (Se estira hacia arriba) */}
+            <polygon points="-20,-20 25,-20 -20,35" fill="#11B7B8" />
 
-            {/* 2. Área Terracota (Cancha) */}
-            <polygon points="25,0 110,0 110,99.04 -10,20.58 -10,15 25,0" fill="#E0827B" />
+            {/* 2. Área Terracota (Cancha) - Cubre toda la parte de arriba a la derecha */}
+            <polygon points="25,-20 120,-20 120,85 -20,30 -20,35 25,-20" fill="#E0827B" />
 
             {/* 3. Área Celeste Inferior */}
-            <polygon points="-10,24.58 110,103.04 110,110 -10,110" fill="#11B7B8" />
+            <polygon points="-20,25 120,85 120,100 -20,100" fill="#11B7B8" />
 
-            {/* 4. Líneas Blancas (Usando <line> para que el corte sea perfecto) */}
-            {/* Línea Superior */}
-            <line x1="-10" y1="15" x2="25" y2="0" stroke="#FFFFFF" strokeWidth="4" />
+            {/* 4. Línea Superior Blanca (Ahora se pasa hacia arriba y a la derecha) */}
+            <line 
+              x1="-20" 
+              y1="27" 
+              x2="50" 
+              y2="-15" 
+              stroke="#ffffff" 
+              strokeWidth="2" 
+              vectorEffect="non-scaling-stroke" 
+            />
             
-            {/* Línea Central (Pasa por la pelota y termina a la altura del 5) */}
-            <line x1="-10" y1="20.58" x2="100" y2="92.5" stroke="#FFFFFF" strokeWidth="4" />
+            {/* 5. Línea Central Blanca */}
+            <line 
+              x1="-20" 
+              y1="25" 
+              x2="100" 
+              y2="85" 
+              stroke="#ffffff" 
+              strokeWidth="2" 
+              vectorEffect="non-scaling-stroke" 
+            />
           </svg>
         </div>
 
@@ -143,13 +156,13 @@ export default function Home() {
           
           <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
             
-            {/* SOMBRA DEL PISO (Ángulo de 33.17deg para seguir la línea) */}
+            {/* SOMBRA DEL PISO */}
             <div
               className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
               style={{
                 bottom: "-20%",
                 left: "10%",
-                transform: "rotate(33.17deg)",
+                transform: "rotate(26.56deg)",
               }}
             ></div>
 
