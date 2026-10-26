@@ -80,7 +80,6 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
   const [acciones, setAcciones] = useState<AccionDB[]>([]);
   const [cargando, setCargando] = useState(true);
 
-  // Acordeones de ranking: ahora se pueden abrir varios a la vez.
   const [rankingsAbiertos, setRankingsAbiertos] = useState<Set<RankingTipo>>(
     new Set()
   );
@@ -159,7 +158,6 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
 
   const ultimoPartido = partidos[0];
 
-  // Si soy el equipo rival del partido, el rival visible es el local.
   const nombreRivalDe = (p: Partido) => {
     if (p.equipo_rival_id === equipoId) {
       const local = equipos.find((e) => e.id === p.equipo_id);
@@ -168,7 +166,6 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
     return p.rival;
   };
 
-  // Solo mostramos jugadores que tengan acciones en lo que ve este equipo
   const jugadoresDelEquipo = jugadores.filter((j) =>
     acciones.some((a) => a.jugador_id === j.id)
   );
@@ -217,7 +214,6 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
     consistencia: rankingConsistencia(porJugador, acciones),
   };
 
-  // Mapa de nombres para las tablas crudas
   const nombresJugadores: Record<string, string> = {};
   for (const j of jugadoresDelEquipo) {
     nombresJugadores[j.id] =
@@ -226,7 +222,7 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
 
   if (partidos.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 sm:p-12 text-center">
         <p className="text-5xl mb-4">📊</p>
         <p className="text-slate-600 font-medium">
           Todavía no hay partidos cargados para {nombreEquipo}
@@ -240,40 +236,38 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Barra superior con el botón (NO se captura en el PDF) */}
       <div className="flex justify-end" data-pdf-ignorar>
         <button
           onClick={handleDescargarPDF}
           disabled={descargando}
-          className="px-4 py-2 text-sm bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-medium rounded-lg transition disabled:opacity-50"
+          className="px-4 py-2 text-sm bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-medium rounded-lg transition disabled:opacity-50 w-full sm:w-auto"
         >
           {descargando ? "Generando PDF..." : "📄 Descargar PDF"}
         </button>
       </div>
 
-      {/* Contenido a capturar */}
       <div ref={refPDF} className="space-y-6">
         {ultimoPartido && statsUltimo && (
           <div>
-            <h2 className="text-xl font-semibold text-slate-900 mb-3">
+            <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-3">
               Último partido
             </h2>
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+            <div className="card-terracota rounded-2xl border p-4 sm:p-6">
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <p className="text-lg font-semibold text-slate-800">
+                  <p className="text-base sm:text-lg font-semibold text-slate-800 break-words">
                     🏐 {nombreEquipo} vs {nombreRivalDe(ultimoPartido)}
                   </p>
-                  <p className="text-sm text-slate-500 mt-1">
+                  <p className="text-sm text-slate-600 mt-1">
                     📅 {ultimoPartido.fecha}
                   </p>
-                  <p className="text-sm text-slate-600 mt-1">
+                  <p className="text-sm text-slate-700 mt-1">
                     {scoreDe(ultimoPartido)}
                   </p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
                   <p className="text-xs text-slate-500 uppercase">Acciones</p>
                   <p className="text-2xl font-bold text-slate-800">
@@ -299,38 +293,38 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
 
         {totales && (
           <div>
-            <h2 className="text-xl font-semibold text-slate-900 mb-3">
+            <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-3">
               Totales acumulados
             </h2>
-            <div className="grid grid-cols-4 gap-3 mb-4">
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4">
+              <div className="p-3 sm:p-4 bg-slate-50 border border-slate-200 rounded-lg">
                 <p className="text-xs text-slate-500 uppercase">Partidos</p>
-                <p className="text-2xl font-bold text-slate-800">
+                <p className="text-xl sm:text-2xl font-bold text-slate-800">
                   {partidos.length}
                 </p>
               </div>
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+              <div className="p-3 sm:p-4 bg-slate-50 border border-slate-200 rounded-lg">
                 <p className="text-xs text-slate-500 uppercase">Acciones</p>
-                <p className="text-2xl font-bold text-slate-800">
+                <p className="text-xl sm:text-2xl font-bold text-slate-800">
                   {totales.totalAcciones}
                 </p>
               </div>
-              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div className="p-3 sm:p-4 bg-green-50 border border-green-200 rounded-lg">
                 <p className="text-xs text-green-700 uppercase">Puntos</p>
-                <p className="text-2xl font-bold text-green-800">
+                <p className="text-xl sm:text-2xl font-bold text-green-800">
                   {totales.totalPuntos}
                 </p>
               </div>
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-xs text-red-700 uppercase">Errores</p>
-                <p className="text-2xl font-bold text-red-800">
+                <p className="text-xl sm:text-2xl font-bold text-red-800">
                   {totales.totalErrores}
                 </p>
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 sm:p-6 overflow-x-auto">
+              <table className="w-full text-sm min-w-[600px]">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-slate-500">
                     <th className="py-2 px-3">Fundamento</th>
@@ -392,13 +386,13 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
         )}
 
         <div>
-          <h2 className="text-xl font-semibold text-slate-900 mb-3">
+          <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-3">
             🏆 Rankings del plantel
           </h2>
           <p className="text-xs text-slate-500 mb-4">
             Clic en cualquier ranking para ver la tabla completa
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3">
             {RANKINGS.map((r) => {
               const items = rankings[r.id];
               const abierto = rankingsAbiertos.has(r.id);
@@ -411,7 +405,7 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
                 >
                   <button
                     onClick={() => toggleRanking(r.id)}
-                    className="w-full text-left p-4 hover:bg-slate-50 transition"
+                    className="w-full text-left p-3 sm:p-4 hover:bg-slate-50 transition"
                     data-pdf-acordeon
                     data-pdf-cerrado={abierto ? undefined : "true"}
                   >
@@ -454,8 +448,8 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
                   </button>
 
                   {abierto && items.length > 0 && (
-                    <div className="border-t border-slate-200 bg-slate-50 p-3">
-                      <table className="w-full text-sm">
+                    <div className="border-t border-slate-200 bg-slate-50 p-2 sm:p-3 overflow-x-auto">
+                      <table className="w-full text-sm min-w-[400px]">
                         <thead>
                           <tr className="text-left text-slate-500 text-xs">
                             <th className="py-1.5 px-2 w-8">#</th>
@@ -552,19 +546,15 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
           </div>
         </div>
 
-        {/* ============================================================
-            ESTADÍSTICAS CRUDAS ACUMULADAS
-            Alcance: SUMA DE TODOS LOS PARTIDOS del equipo.
-           ============================================================ */}
         {jugadoresDelEquipo.length > 0 && acciones.length > 0 && (
           <div>
-            <h2 className="text-xl font-semibold text-slate-900 mb-1">
+            <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-1">
               📋 Estadísticas crudas (acumuladas)
             </h2>
             <p className="text-xs text-slate-500 mb-3">
               Todos los partidos de {nombreEquipo} sumados.
             </p>
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 sm:p-6">
               <TablaEstadisticasCrudas
                 acciones={acciones}
                 jugadoresIds={jugadoresDelEquipo.map((j) => j.id)}

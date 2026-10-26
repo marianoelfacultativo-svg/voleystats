@@ -63,14 +63,18 @@ export default function EquipoPage() {
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 flex items-center gap-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-black flex items-center gap-2 drop-shadow-sm">
               <IconoPelota size={34} />
-              Portal del Equipo
+              <span>
+                SALIDA
+                <span className="text-red-600">x</span>5
+              </span>
+              <span className="text-slate-700 font-semibold">
+                {nombreEquipo ? `"${nombreEquipo}"` : "..."}
+              </span>
             </h1>
             <p className="text-slate-600 text-sm mt-1">
-              {nombreEquipo
-                ? `Bienvenido miembro de ${nombreEquipo}`
-                : "..."}
+              Estadísticas de vóley
             </p>
           </div>
           <button
