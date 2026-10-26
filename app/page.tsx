@@ -76,39 +76,20 @@ export default function Home() {
             preserveAspectRatio="none"
             viewBox="0 0 100 100"
           >
-            {/* Fondo base claro */}
-            <rect width="100" height="100" fill="#F8F5EC" />
-
             {/* 1. Triángulo Celeste Superior */}
-            <polygon points="-20,-20 25,-20 -20,25" fill="#11B7B8" />
+            <polygon points="-20,-20 15,-20 15,-1 -20,14" fill="#11B7B8" />
 
-            {/* 2. Área Terracota (Cancha) - Choca exactamente con la línea central y la superior */}
-            <polygon points="25,-20 120,-20 120,85 -20,20.44 -20,25" fill="#E0827B" />
+            {/* 2. Área Terracota (Llega exactamente hasta la línea) */}
+            <polygon points="15,-1 120,-1 120,84 -20,19.38 -20,14 15,-1" fill="#E0827B" />
 
-            {/* 3. Área Celeste Inferior - Arranca exactamente desde la línea central */}
-            <polygon points="-20,20.44 120,85 120,100 -20,100" fill="#11B7B8" />
+            {/* 3. Área Celeste Inferior (Empieza exactamente donde termina la línea) */}
+            <polygon points="-20,21.38 120,86 120,100 -20,100" fill="#11B7B8" />
 
-            {/* 4. Línea Superior Blanca */}
-            <line 
-              x1="-20" 
-              y1="25" 
-              x2="50" 
-              y2="-10" 
-              stroke="#ffffff" 
-              strokeWidth="4" 
-              vectorEffect="non-scaling-stroke" 
-            />
+            {/* 4. Línea Superior Blanca (Con grosor que escala) */}
+            <polygon points="-20,14 15,-1 15,1 -20,16" fill="#ffffff" />
             
-            {/* 5. Línea Central Blanca (Pasa por la pelota en y=50 y termina en el 5) */}
-            <line 
-              x1="-20" 
-              y1="20.44" 
-              x2="100" 
-              y2="85" 
-              stroke="#ffffff" 
-              strokeWidth="4" 
-              vectorEffect="non-scaling-stroke" 
-            />
+            {/* 5. Línea Central Blanca (Pasa por la pelota y termina a la altura del 5) */}
+            <polygon points="-20,19.38 100,84 100,86 -20,21.38" fill="#ffffff" />
           </svg>
         </div>
 
@@ -156,7 +137,7 @@ export default function Home() {
           
           <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
             
-            {/* SOMBRA DEL PISO */}
+            {/* SOMBRA DEL PISO (Ángulo exacto de la línea central) */}
             <div
               className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
               style={{
@@ -201,7 +182,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ================= FRANJA INFERIOR (Gris plateado limpio) ================= */}
+        {/* ================= FRANJA INFERIOR (Gris plateado) ================= */}
         <div className="absolute bottom-0 left-0 w-full h-[15%] z-40 bg-[#CBD5E1] border-t-[3px] border-[#94A3B8] flex flex-col items-center justify-center pb-2 sm:pb-4">
           <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-md">
             SALIDA
