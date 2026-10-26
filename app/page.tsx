@@ -65,10 +65,9 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-[100dvh] bg-[#CBD5E1] flex flex-col">
+    <main className="min-h-[100dvh] bg-[#CBD5E1] p-3 sm:p-5 flex flex-col">
       
-      {/* PANTALLA DE LA TV (Sin margen abajo para unirse a la franja) */}
-      <div className="relative flex-1 flex flex-col overflow-hidden bg-[#F8F5EC] m-3 mb-0 sm:m-5 sm:mb-0 border-t-[2px] border-l-[2px] border-r-[2px] border-[#94a3b8] shadow-[inset_0_0_30px_rgba(0,0,0,0.5)]">
+      <div className="relative flex-1 flex flex-col overflow-hidden bg-[#F8F5EC] shadow-[inset_0_0_30px_rgba(0,0,0,0.5)] border-[2px] border-[#94a3b8]">
         
         {/* ================= FONDO: ESQUINA DE CANCHA ================= */}
         <div className="absolute inset-0 z-0 pointer-events-none">
@@ -77,31 +76,31 @@ export default function Home() {
             preserveAspectRatio="none"
             viewBox="0 0 100 100"
           >
-            {/* Fondo base Terracota */}
+            {/* Fondo Terracota (Cubre toda la pantalla) */}
             <rect width="100" height="100" fill="#E0827B" />
 
-            {/* 1. Triángulo Celeste Superior (Exacto al original) */}
-            <polygon points="-20,-20 40,-20 40,-9 -20,21" fill="#11B7B8" />
+            {/* 1. Triángulo Celeste Superior (Bajado 0.75 para coincidir con el nuevo centro de la línea) */}
+            <polygon points="-10,21.75 40,-8.25 -10,-10" fill="#11B7B8" />
 
-            {/* 2. Área Celeste Inferior (Súper empinada, cae en x=60) */}
-            <polygon points="-20,-27 60,85 100,85 100,100 -20,100" fill="#11B7B8" />
+            {/* 2. Área Celeste Inferior (Bajada 0.75 para coincidir con el nuevo centro de la línea) */}
+            <polygon points="-10,30.75 100,85.75 100,100 -10,100" fill="#11B7B8" />
 
-            {/* 3. Línea Superior Blanca (La que dijiste que era perfecta) */}
+            {/* 3. Línea Superior Blanca (Bajada 0.75. El borde de abajo queda donde estaba) */}
             <line 
               x1="-10" 
-              y1="21" 
+              y1="21.75" 
               x2="40" 
-              y2="-9" 
+              y2="-8.25" 
               stroke="#ffffff" 
-              strokeWidth="2" 
+              strokeWidth="2.5" 
             />
             
-            {/* 4. Línea Central Blanca (De punto A a punto B, más empinada y cae antes del borde) */}
+            {/* 4. Línea Central Blanca (Bajada 0.75. El borde de abajo queda donde estaba) */}
             <line 
-              x1="-20" 
-              y1="-27" 
-              x2="60" 
-              y2="85" 
+              x1="-10" 
+              y1="30.75" 
+              x2="100" 
+              y2="85.75" 
               stroke="#ffffff" 
               strokeWidth="2.5" 
             />
@@ -152,13 +151,13 @@ export default function Home() {
           
           <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
             
-            {/* SOMBRA DEL PISO (Ángulo ajustado a la nueva inclinación de 54.46 grados) */}
+            {/* SOMBRA DEL PISO (Ángulo exacto del código original) */}
             <div
               className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
               style={{
                 bottom: "-20%",
                 left: "10%",
-                transform: "rotate(54.46deg)",
+                transform: "rotate(26.56deg)",
               }}
             ></div>
 
@@ -197,22 +196,21 @@ export default function Home() {
           </div>
         </div>
 
-      </div>
+        {/* ================= FRANJA INFERIOR (Gris plateado) ================= */}
+        <div className="absolute bottom-0 left-0 w-full h-[15%] z-40 bg-[#CBD5E1] border-t-[3px] border-[#94A3B8] flex flex-col items-center justify-center pb-2 sm:pb-4">
+          <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-md">
+            SALIDA
+            <span className="text-red-600 text-2xl sm:text-3xl font-black mx-[1px] sm:mx-[2px] mt-1">
+              x
+            </span>
+            5
+          </h1>
+          <p className="text-[#163A85] text-[10px] sm:text-xs mt-1 font-bold tracking-[0.3em] uppercase opacity-90">
+            Estadísticas de vóley
+          </p>
+        </div>
 
-      {/* ================= FRANJA INFERIOR (Conectada al marco) ================= */}
-      <div className="w-full h-[15%] bg-[#CBD5E1] border-t-[3px] border-[#94A3B8] flex flex-col items-center justify-center pb-2 sm:pb-4 z-40">
-        <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-md">
-          SALIDA
-          <span className="text-red-600 text-2xl sm:text-3xl font-black mx-[1px] sm:mx-[2px] mt-1">
-            x
-          </span>
-          5
-        </h1>
-        <p className="text-[#163A85] text-[10px] sm:text-xs mt-1 font-bold tracking-[0.3em] uppercase opacity-90">
-          Estadísticas de vóley
-        </p>
       </div>
-
     </main>
   );
 }
