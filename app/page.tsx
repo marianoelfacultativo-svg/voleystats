@@ -65,14 +65,13 @@ export default function Home() {
   };
 
   return (
-    /* MARCO EXTERIOR (Mismo color que la franja inferior) */
     <main className="min-h-[100dvh] bg-[#CBD5E1] p-3 sm:p-5 flex flex-col">
       
-      {/* PANTALLA (Efecto hundido de la tele vieja) */}
       <div className="relative flex-1 flex flex-col overflow-hidden bg-[#F8F5EC] shadow-[inset_0_0_20px_rgba(0,0,0,0.4)]">
         
         {/* ================= FONDO: ESQUINA DE CANCHA ================= */}
-        <div className="absolute inset-0 z-0">
+        {/* Le subimos el z-index a 30 para que la línea pase por encima de la franja plateada */}
+        <div className="absolute inset-0 z-30 pointer-events-none">
           <svg
             className="w-full h-full"
             preserveAspectRatio="none"
@@ -81,20 +80,20 @@ export default function Home() {
             {/* Fondo base claro */}
             <rect width="100" height="100" fill="#F8F5EC" />
 
-            {/* 1. Triángulo Celeste Superior (Se pasa a la izquierda para que no se corte) */}
-            <polygon points="-10,0 25,0 -10,21" fill="#11B7B8" />
+            {/* 1. Triángulo Celeste Superior (Se estira hacia abajo para que la línea lo cubra perfecto) */}
+            <polygon points="-10,0 25,0 -10,25" fill="#11B7B8" />
 
             {/* 2. Área Terracota (Cancha) */}
-            <polygon points="25,0 100,0 100,85 -10,25.77 -10,21 25,0" fill="#E0827B" />
+            <polygon points="25,0 100,0 100,92.5 -10,27 -10,25 25,0" fill="#E0827B" />
 
             {/* 3. Área Celeste Inferior */}
-            <polygon points="-10,28.27 100,87.5 100,100 -10,100" fill="#11B7B8" />
+            <polygon points="-10,29.5 100,95 100,100 -10,100" fill="#11B7B8" />
 
-            {/* 4. Línea Superior Blanca (Prolija hasta el borde) */}
+            {/* 4. Línea Superior Blanca (El "escalón" desaparece porque el triángulo se mete debajo) */}
             <polygon points="-10,21 25,0 25,2.5 -10,23.5" fill="#ffffff" />
             
-            {/* 5. Línea Central Blanca (Termina exactamente a la altura de la franja del 5) */}
-            <polygon points="-10,25.77 100,85 100,87.5 -10,28.27" fill="#ffffff" />
+            {/* 5. Línea Central Blanca (Baja hasta la altura exacta del "5", que está en el 92.5%) */}
+            <polygon points="-10,27 100,92.5 100,95 -10,29.5" fill="#ffffff" />
           </svg>
         </div>
 
@@ -138,11 +137,11 @@ export default function Home() {
         </div>
 
         {/* ================= PELOTA Y SOMBRA ================= */}
-        <div className="absolute z-30 top-[50%] left-[35%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+        <div className="absolute z-40 top-[50%] left-[35%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
           
           <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
             
-            {/* SOMBRA DEL PISO (Ángulo sincronizado con la línea central) */}
+            {/* SOMBRA DEL PISO */}
             <div
               className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
               style={{
