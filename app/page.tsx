@@ -65,9 +65,10 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-[100dvh] bg-[#CBD5E1] p-3 sm:p-5 flex flex-col">
+    <main className="min-h-[100dvh] bg-[#CBD5E1] flex flex-col">
       
-      <div className="relative flex-1 flex flex-col overflow-hidden bg-[#F8F5EC] shadow-[inset_0_0_30px_rgba(0,0,0,0.5)] border-[2px] border-[#94a3b8]">
+      {/* PANTALLA DE LA TV (Cancha) */}
+      <div className="relative flex-1 flex flex-col overflow-hidden bg-[#F8F5EC] m-3 mb-0 sm:m-5 sm:mb-0 border-t-[2px] border-l-[2px] border-r-[2px] border-[#94a3b8] shadow-[inset_0_0_30px_rgba(0,0,0,0.5)]">
         
         {/* ================= FONDO: ESQUINA DE CANCHA ================= */}
         <div className="absolute inset-0 z-0 pointer-events-none">
@@ -76,33 +77,33 @@ export default function Home() {
             preserveAspectRatio="none"
             viewBox="0 0 100 100"
           >
-            {/* Fondo Terracota (Cubre toda la pantalla) */}
+            {/* Fondo Terracota */}
             <rect width="100" height="100" fill="#E0827B" />
 
-            {/* 1. Triángulo Celeste Superior (Se extiende hacia arriba) */}
+            {/* 1. Triángulo Celeste Superior */}
             <polygon points="-10,21 40,-9 -10,-10" fill="#11B7B8" />
 
-            {/* 2. Área Celeste Inferior (Choca exactamente con la línea central) */}
+            {/* 2. Área Celeste Inferior */}
             <polygon points="-10,30 100,85 100,100 -10,100" fill="#11B7B8" />
 
-            {/* 3. Línea Superior Blanca (Se pasa de largo para que el marco tape el corte) */}
+            {/* 3. Línea Superior Blanca */}
             <line 
               x1="-10" 
               y1="21" 
               x2="40" 
               y2="-9" 
               stroke="#ffffff" 
-              strokeWidth="4" 
+              strokeWidth="2" 
             />
             
-            {/* 4. Línea Central Blanca (Coordenadas originales) */}
+            {/* 4. Línea Central Blanca (Termina justo donde empieza la franja) */}
             <line 
               x1="-10" 
               y1="30" 
               x2="100" 
               y2="85" 
               stroke="#ffffff" 
-              strokeWidth="4" 
+              strokeWidth="2.5" 
             />
           </svg>
         </div>
@@ -151,7 +152,7 @@ export default function Home() {
           
           <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
             
-            {/* SOMBRA DEL PISO (Ángulo exacto de tu línea original) */}
+            {/* SOMBRA DEL PISO */}
             <div
               className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
               style={{
@@ -196,21 +197,22 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ================= FRANJA INFERIOR (Gris plateado) ================= */}
-        <div className="absolute bottom-0 left-0 w-full h-[15%] z-40 bg-[#CBD5E1] border-t-[3px] border-[#94A3B8] flex flex-col items-center justify-center pb-2 sm:pb-4">
-          <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-md">
-            SALIDA
-            <span className="text-red-600 text-2xl sm:text-3xl font-black mx-[1px] sm:mx-[2px] mt-1">
-              x
-            </span>
-            5
-          </h1>
-          <p className="text-[#163A85] text-[10px] sm:text-xs mt-1 font-bold tracking-[0.3em] uppercase opacity-90">
-            Estadísticas de vóley
-          </p>
-        </div>
-
       </div>
+
+      {/* ================= FRANJA INFERIOR (Conectada al marco exterior) ================= */}
+      <div className="w-full h-[15%] bg-[#CBD5E1] border-t-[3px] border-[#94A3B8] flex flex-col items-center justify-center pb-2 sm:pb-4 z-40">
+        <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-md">
+          SALIDA
+          <span className="text-red-600 text-2xl sm:text-3xl font-black mx-[1px] sm:mx-[2px] mt-1">
+            x
+          </span>
+          5
+        </h1>
+        <p className="text-[#163A85] text-[10px] sm:text-xs mt-1 font-bold tracking-[0.3em] uppercase opacity-90">
+          Estadísticas de vóley
+        </p>
+      </div>
+
     </main>
   );
 }
