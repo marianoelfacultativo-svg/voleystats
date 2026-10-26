@@ -63,8 +63,9 @@ export default function EquipoPage() {
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
-              🏐 Portal del Equipo
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 flex items-center gap-2">
+              <IconoPelota size={34} />
+              Portal del Equipo
             </h1>
             <p className="text-slate-600 text-sm mt-1">
               {nombreEquipo
@@ -80,7 +81,7 @@ export default function EquipoPage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-6">
+        <div className="flex gap-1 sm:gap-2 mb-6 border-b-2 border-slate-300 overflow-x-auto">
           {secciones.map((s) => {
             const activo = seccion === s.id;
             const Icono = s.Icono;
@@ -88,20 +89,14 @@ export default function EquipoPage() {
               <button
                 key={s.id}
                 onClick={() => setSeccion(s.id)}
-                className={`flex flex-col items-center justify-center gap-2 py-4 sm:py-5 px-2 rounded-2xl border-2 transition-all duration-150 ${
+                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold whitespace-nowrap rounded-t-lg transition border-b-[3px] -mb-[2px] ${
                   activo
-                    ? "bg-blue-500 border-blue-600 text-white shadow-xl scale-[1.02]"
-                    : "bg-white border-slate-200 text-slate-600 hover:border-blue-300 hover:shadow-md"
+                    ? "bg-blue-500 text-white border-blue-700 shadow-md"
+                    : "bg-transparent text-slate-500 border-transparent hover:bg-white/60 hover:text-slate-800"
                 }`}
               >
-                <Icono size={32} />
-                <span
-                  className={`text-[11px] sm:text-xs font-bold uppercase tracking-wider ${
-                    activo ? "text-white" : "text-slate-700"
-                  }`}
-                >
-                  {s.nombre}
-                </span>
+                <Icono size={18} />
+                {s.nombre}
               </button>
             );
           })}
