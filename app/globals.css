@@ -3,11 +3,11 @@
 @tailwind utilities;
 
 /* ============================================ */
-/* TEMA VOLEYSTATS: Metal / Plata Brillante */
+/* TEMA VOLEYSTATS: Plata + Celeste + Terracota */
+/* Sin blancos puros en ninguna card.           */
 /* ============================================ */
 
 html, body {
-  /* Fondo general con un sutil gradiente radial para dar profundidad */
   background: radial-gradient(circle at 50% 0%, #E2E8F0 0%, #94A3B8 100%) !important;
   color: #0F172A;
   font-family: 'Inter', system-ui, sans-serif;
@@ -15,34 +15,33 @@ html, body {
   background-attachment: fixed !important;
 }
 
-/* ====== FONDOS CON BRILLO METÁLICO ====== */
-/* El gradiente de arriba hacia abajo simula la luz reflejándose */
+/* ====== FONDOS CELESTES (reemplazan los blancos) ====== */
 .bg-white { 
-  background: linear-gradient(180deg, #FFFFFF 0%, #E2E8F0 100%) !important; 
-  box-shadow: inset 0 1px 0 rgba(255,255,255,1), 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+  background: linear-gradient(180deg, #EAF2F8 0%, #C9DBE8 100%) !important; 
+  box-shadow: inset 0 1px 0 rgba(245,249,252,1), 0 4px 6px -1px rgba(15, 58, 133, 0.08) !important;
 }
-.bg-white\/95 { background: linear-gradient(180deg, #FFFFFF 0%, #E2E8F0 100%) !important; }
-.bg-white\/90 { background: linear-gradient(180deg, #FFFFFF 0%, #E2E8F0 100%) !important; }
+.bg-white\/95 { background: linear-gradient(180deg, #EAF2F8 0%, #C9DBE8 100%) !important; }
+.bg-white\/90 { background: linear-gradient(180deg, #EAF2F8 0%, #C9DBE8 100%) !important; }
 
 .bg-slate-50 { 
-  background: linear-gradient(180deg, #F8FAFC 0%, #E2E8F0 100%) !important; 
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.8) !important;
+  background: linear-gradient(180deg, #F0F6FA 0%, #D8E5EE 100%) !important; 
+  box-shadow: inset 0 1px 0 rgba(245,249,252,0.85) !important;
 }
 .bg-slate-100 { 
-  background: linear-gradient(180deg, #F1F5F9 0%, #CBD5E1 100%) !important; 
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5) !important;
+  background: linear-gradient(180deg, #D8E5EE 0%, #B8CFDD 100%) !important; 
+  box-shadow: inset 0 1px 0 rgba(245,249,252,0.6) !important;
 }
 .bg-slate-200 { 
-  background: linear-gradient(180deg, #E2E8F0 0%, #94A3B8 100%) !important; 
+  background: linear-gradient(180deg, #B8CFDD 0%, #8FAEC4 100%) !important; 
 }
 .bg-slate-300 { 
-  background: linear-gradient(180deg, #CBD5E1 0%, #64748B 100%) !important; 
+  background: linear-gradient(180deg, #8FAEC4 0%, #6B8FA8 100%) !important; 
 }
 
 /* ====== BORDES ====== */
-.border-slate-100 { border-color: #E2E8F0 !important; }
-.border-slate-200 { border-color: #CBD5E1 !important; }
-.border-slate-300 { border-color: #94A3B8 !important; }
+.border-slate-100 { border-color: #D8E5EE !important; }
+.border-slate-200 { border-color: #B8CFDD !important; }
+.border-slate-300 { border-color: #8FAEC4 !important; }
 
 /* ====== TEXTO ====== */
 .text-slate-900 { color: #0F172A !important; }
@@ -52,40 +51,70 @@ html, body {
 .text-slate-500 { color: #64748B !important; }
 .text-slate-400 { color: #94A3B8 !important; }
 
-/* ====== ACENTO: Azul → Verde esmeralda ====== */
-.bg-blue-500 { background-color: #10B981 !important; }
-.bg-blue-600 { background-color: #059669 !important; }
-.bg-blue-100 { background-color: #D1FAE5 !important; }
-.bg-blue-50 { background-color: #ECFDF5 !important; }
+/* ====== ACENTO PRIMARIO: Turquesa + Azul profundo ====== */
+.bg-blue-500 { background-color: #11B7B8 !important; }
+.bg-blue-600 { background-color: #0E9A9B !important; }
+.bg-blue-100 { background-color: #C8EFF0 !important; }
+.bg-blue-50  { background-color: #E6F7F7 !important; }
 
-.text-blue-600 { color: #059669 !important; }
-.text-blue-700 { color: #047857 !important; }
-.text-blue-800 { color: #065F46 !important; }
-.text-blue-500 { color: #10B981 !important; }
-.text-blue-100 { color: #D1FAE5 !important; }
+.text-blue-600 { color: #0E9A9B !important; }
+.text-blue-700 { color: #163A85 !important; }
+.text-blue-800 { color: #0F285E !important; }
+.text-blue-500 { color: #11B7B8 !important; }
+.text-blue-100 { color: #C8EFF0 !important; }
 
-.border-blue-500 { border-color: #10B981 !important; }
-.border-blue-200 { border-color: #A7F3D0 !important; }
-.border-blue-300 { border-color: #6EE7B7 !important; }
+.border-blue-500 { border-color: #11B7B8 !important; }
+.border-blue-200 { border-color: #A5E3E4 !important; }
+.border-blue-300 { border-color: #7FD5D6 !important; }
+
+.hover\:bg-blue-600:hover { background-color: #0E9A9B !important; }
+.hover\:bg-blue-200:hover { background-color: #A5E3E4 !important; }
+.hover\:border-blue-400:hover { border-color: #39C7C8 !important; }
+
+/* ====== BOTONES/TABS ACTIVAS (emerald → turquesa) ====== */
+.bg-emerald-500 { background-color: #11B7B8 !important; }
+.bg-emerald-600 { background-color: #0E9A9B !important; }
+.hover\:bg-emerald-600:hover { background-color: #0E9A9B !important; }
+.text-emerald-600 { color: #0E9A9B !important; }
+.border-emerald-500 { border-color: #11B7B8 !important; }
+.hover\:border-emerald-600:hover { border-color: #0E9A9B !important; }
+.focus\:border-emerald-500:focus { border-color: #11B7B8 !important; }
+.focus\:border-emerald-600:focus { border-color: #0E9A9B !important; }
+
+/* ====== FUCSIA (botones PDF) → terracota ====== */
+.bg-fuchsia-500 { background-color: #E0827B !important; }
+.hover\:bg-fuchsia-600:hover { background-color: #C86A63 !important; }
+.text-fuchsia-700 { color: #A54A44 !important; }
+.text-fuchsia-800 { color: #8A3A34 !important; }
+.bg-fuchsia-100 { background-color: #F5E2DC !important; }
+.bg-fuchsia-50  { background-color: #FAF0EC !important; }
+.border-fuchsia-200 { border-color: #E8C5BC !important; }
+.border-fuchsia-300 { border-color: #D9A59A !important; }
+.border-fuchsia-600 { border-color: #A54A44 !important; }
+.hover\:bg-fuchsia-50:hover { background-color: #FAF0EC !important; }
+.hover\:bg-fuchsia-200:hover { background-color: #E8C5BC !important; }
+
+/* ====== CARD TERRACOTA (para destacar cards clave) ====== */
+.card-terracota {
+  background: linear-gradient(180deg, #F5E2DC 0%, #E8C5BC 100%) !important;
+  border-color: #D9A59A !important;
+  box-shadow: inset 0 1px 0 rgba(255, 245, 240, 0.9), 0 4px 6px -1px rgba(165, 74, 68, 0.1) !important;
+}
 
 /* ====== HOVERS ====== */
-.hover\:bg-blue-600:hover { background-color: #059669 !important; }
-.hover\:bg-blue-200:hover { background-color: #A7F3D0 !important; }
-.hover\:border-blue-400:hover { border-color: #34D399 !important; }
-
-.hover\:bg-slate-50:hover { background: linear-gradient(180deg, #FFFFFF 0%, #F1F5F9 100%) !important; }
-.hover\:bg-slate-100:hover { background: linear-gradient(180deg, #F8FAFC 0%, #E2E8F0 100%) !important; }
-.hover\:bg-slate-200:hover { background: linear-gradient(180deg, #F1F5F9 0%, #CBD5E1 100%) !important; }
-.hover\:bg-slate-300:hover { background: linear-gradient(180deg, #E2E8F0 0%, #94A3B8 100%) !important; }
-.hover\:bg-slate-400:hover { background: linear-gradient(180deg, #CBD5E1 0%, #64748B 100%) !important; }
+.hover\:bg-slate-50:hover { background: linear-gradient(180deg, #F5FAFC 0%, #DDEAF2 100%) !important; }
+.hover\:bg-slate-100:hover { background: linear-gradient(180deg, #EAF2F8 0%, #C9DBE8 100%) !important; }
+.hover\:bg-slate-200:hover { background: linear-gradient(180deg, #D8E5EE 0%, #B8CFDD 100%) !important; }
+.hover\:bg-slate-300:hover { background: linear-gradient(180deg, #B8CFDD 0%, #8FAEC4 100%) !important; }
+.hover\:bg-slate-400:hover { background: linear-gradient(180deg, #8FAEC4 0%, #6B8FA8 100%) !important; }
 
 .hover\:text-slate-700:hover { color: #334155 !important; }
 .hover\:text-slate-800:hover { color: #1E293B !important; }
-.hover\:text-blue-800:hover { color: #047857 !important; }
+.hover\:text-blue-800:hover { color: #0F285E !important; }
 
 /* ====== FOCUS DE INPUTS ====== */
-.focus\:border-blue-500:focus { border-color: #10B981 !important; }
+.focus\:border-blue-500:focus { border-color: #11B7B8 !important; }
 
 /* ====== disabled ====== */
-.disabled\:bg-slate-300:disabled { background-color: #94A3B8 !important; }
-.disabled\:bg-slate-400:disabled { background-color: #64748B !important; }
+.disabled\:bg-slate-300:disabled { background-color: #8FAEC4 !important; }
+.disabled\:bg-slate-400:disabled { background-color: #6B8FA8 !important; }
