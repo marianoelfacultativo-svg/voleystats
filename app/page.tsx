@@ -79,13 +79,13 @@ export default function Home() {
             {/* Fondo Terracota (Cubre toda la pantalla) */}
             <rect width="100" height="100" fill="#E0827B" />
 
-            {/* 1. Triángulo Celeste Superior (Ajustado a la nueva línea fina) */}
+            {/* 1. Triángulo Celeste Superior (Queda igual) */}
             <polygon points="-10,22 40,-8 -10,-10" fill="#11B7B8" />
 
-            {/* 2. Área Celeste Inferior (Ajustada a la nueva línea fina) */}
-            <polygon points="-10,31 100,86 100,100 -10,100" fill="#11B7B8" />
+            {/* 2. Área Celeste Inferior (Se ajusta para terminar en x=90) */}
+            <polygon points="-10,31 90,85 100,85 100,100 -10,100" fill="#11B7B8" />
 
-            {/* 3. Línea Superior Blanca (Grosor 2, borde de abajo fijo) */}
+            {/* 3. Línea Superior Blanca (Queda igual) */}
             <line 
               x1="-10" 
               y1="22" 
@@ -95,12 +95,12 @@ export default function Home() {
               strokeWidth="2" 
             />
             
-            {/* 4. Línea Central Blanca (Grosor 2, borde de abajo fijo) */}
+            {/* 4. Línea Central Blanca (Termina un poco antes a la derecha: en x=90) */}
             <line 
               x1="-10" 
               y1="31" 
-              x2="100" 
-              y2="86" 
+              x2="90" 
+              y2="85" 
               stroke="#ffffff" 
               strokeWidth="2" 
             />
@@ -151,13 +151,13 @@ export default function Home() {
           
           <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
             
-            {/* SOMBRA DEL PISO (Ángulo exacto) */}
+            {/* SOMBRA DEL PISO (Ángulo actualizado a 28.3 grados por la nueva inclinación) */}
             <div
               className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
               style={{
                 bottom: "-20%",
                 left: "10%",
-                transform: "rotate(26.56deg)",
+                transform: "rotate(28.3deg)",
               }}
             ></div>
 
