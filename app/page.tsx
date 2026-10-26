@@ -65,13 +65,14 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-[100dvh] bg-[#CBD5E1] p-3 sm:p-5 flex flex-col">
+    /* MARCO EXTERIOR METÁLICO (Envuelve todo) */
+    <main className="min-h-[100dvh] bg-gradient-to-b from-[#e2e8f0] via-[#cbd5e1] to-[#94a3b8] p-3 sm:p-5 flex flex-col">
       
-      <div className="relative flex-1 flex flex-col overflow-hidden bg-[#F8F5EC] shadow-[inset_0_0_20px_rgba(0,0,0,0.4)]">
+      {/* PANTALLA DE LA TV (Cancha con efecto hundido) */}
+      <div className="relative flex-1 flex flex-col overflow-hidden bg-[#F8F5EC] shadow-[inset_0_0_30px_rgba(0,0,0,0.5)] border-[2px] border-[#94a3b8]">
         
         {/* ================= FONDO: ESQUINA DE CANCHA ================= */}
-        {/* Le subimos el z-index a 30 para que la línea pase por encima de la franja plateada */}
-        <div className="absolute inset-0 z-30 pointer-events-none">
+        <div className="absolute inset-0 z-0 pointer-events-none">
           <svg
             className="w-full h-full"
             preserveAspectRatio="none"
@@ -80,20 +81,21 @@ export default function Home() {
             {/* Fondo base claro */}
             <rect width="100" height="100" fill="#F8F5EC" />
 
-            {/* 1. Triángulo Celeste Superior (Se estira hacia abajo para que la línea lo cubra perfecto) */}
-            <polygon points="-10,0 25,0 -10,25" fill="#11B7B8" />
+            {/* 1. Triángulo Celeste Superior */}
+            <polygon points="-10,0 25,0 -10,15" fill="#11B7B8" />
 
             {/* 2. Área Terracota (Cancha) */}
-            <polygon points="25,0 100,0 100,92.5 -10,27 -10,25 25,0" fill="#E0827B" />
+            <polygon points="25,0 110,0 110,99.04 -10,20.58 -10,15 25,0" fill="#E0827B" />
 
             {/* 3. Área Celeste Inferior */}
-            <polygon points="-10,29.5 100,95 100,100 -10,100" fill="#11B7B8" />
+            <polygon points="-10,24.58 110,103.04 110,110 -10,110" fill="#11B7B8" />
 
-            {/* 4. Línea Superior Blanca (El "escalón" desaparece porque el triángulo se mete debajo) */}
-            <polygon points="-10,21 25,0 25,2.5 -10,23.5" fill="#ffffff" />
+            {/* 4. Líneas Blancas (Usando <line> para que el corte sea perfecto) */}
+            {/* Línea Superior */}
+            <line x1="-10" y1="15" x2="25" y2="0" stroke="#FFFFFF" strokeWidth="4" />
             
-            {/* 5. Línea Central Blanca (Baja hasta la altura exacta del "5", que está en el 92.5%) */}
-            <polygon points="-10,27 100,92.5 100,95 -10,29.5" fill="#ffffff" />
+            {/* Línea Central (Pasa por la pelota y termina a la altura del 5) */}
+            <line x1="-10" y1="20.58" x2="100" y2="92.5" stroke="#FFFFFF" strokeWidth="4" />
           </svg>
         </div>
 
@@ -137,17 +139,17 @@ export default function Home() {
         </div>
 
         {/* ================= PELOTA Y SOMBRA ================= */}
-        <div className="absolute z-40 top-[50%] left-[35%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+        <div className="absolute z-30 top-[50%] left-[35%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
           
           <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
             
-            {/* SOMBRA DEL PISO */}
+            {/* SOMBRA DEL PISO (Ángulo de 33.17deg para seguir la línea) */}
             <div
               className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
               style={{
                 bottom: "-20%",
                 left: "10%",
-                transform: "rotate(28.3deg)",
+                transform: "rotate(33.17deg)",
               }}
             ></div>
 
@@ -186,9 +188,9 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ================= FRANJA INFERIOR (Misma pieza que el marco) ================= */}
-        <div className="absolute bottom-0 left-0 w-full h-[15%] bg-[#CBD5E1] border-t-[3px] border-[#94A3B8] z-20 flex flex-col items-center justify-center pb-2 sm:pb-4">
-          <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-sm">
+        {/* ================= FRANJA INFERIOR (Pisa el marco) ================= */}
+        <div className="absolute bottom-0 left-0 w-full h-[15%] z-40 bg-gradient-to-b from-[#cbd5e1] to-[#94a3b8] border-t-[3px] border-[#e2e8f0] shadow-[0_-5px_15px_rgba(0,0,0,0.2)] flex flex-col items-center justify-center pb-2 sm:pb-4">
+          <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-md">
             SALIDA
             <span className="text-red-600 text-2xl sm:text-3xl font-black mx-[1px] sm:mx-[2px] mt-1">
               x
