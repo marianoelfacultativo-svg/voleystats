@@ -6,15 +6,17 @@ export default function IconoPelota({
   size = 24,
   className = "",
 }: {
-  size?: number;
+  size?: string | number;
   className?: string;
 }) {
+  const sizeNum =
+    typeof size === "number" ? size : parseInt(String(size), 10) || 24;
   const gradId = `ball-grad-${useId().replace(/:/g, "")}`;
 
   return (
     <svg
-      width={size}
-      height={size}
+      width={sizeNum}
+      height={sizeNum}
       viewBox="0 0 100 100"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
