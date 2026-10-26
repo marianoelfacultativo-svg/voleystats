@@ -77,33 +77,31 @@ export default function Home() {
             preserveAspectRatio="none"
             viewBox="0 0 100 100"
           >
-            <rect width="100" height="100" fill="#F8F5EC" />
+            {/* Fondo base Terracota */}
+            <rect width="100" height="100" fill="#E0827B" />
 
-            {/* 1. Área Terracota (Se va bien arriba a la derecha) */}
-            <polygon points="-20,-60 100,180 100,-20 -20,-20" fill="#E0827B" />
+            {/* 1. Triángulo Celeste Superior (Exacto al original) */}
+            <polygon points="-20,-20 40,-20 40,-9 -20,21" fill="#11B7B8" />
 
-            {/* 2. Área Celeste Inferior (Se va bien abajo a la derecha) */}
-            <polygon points="-20,-60 100,180 100,100 -20,100" fill="#11B7B8" />
+            {/* 2. Área Celeste Inferior (Súper empinada, cae en x=60) */}
+            <polygon points="-20,-27 60,85 100,85 100,100 -20,100" fill="#11B7B8" />
 
-            {/* 3. Triángulo Celeste Superior (Esquina superior izquierda) */}
-            <polygon points="-20,-20 30,-20 30,-15 -20,15" fill="#11B7B8" />
-
-            {/* 4. Línea Superior Blanca */}
+            {/* 3. Línea Superior Blanca (La que dijiste que era perfecta) */}
             <line 
-              x1="-20" 
-              y1="15" 
-              x2="30" 
-              y2="-15" 
+              x1="-10" 
+              y1="21" 
+              x2="40" 
+              y2="-9" 
               stroke="#ffffff" 
               strokeWidth="2" 
             />
             
-            {/* 5. Línea Central Blanca (¡SÚPER EMPINADA!) */}
+            {/* 4. Línea Central Blanca (De punto A a punto B, más empinada y cae antes del borde) */}
             <line 
               x1="-20" 
-              y1="-60" 
-              x2="100" 
-              y2="180" 
+              y1="-27" 
+              x2="60" 
+              y2="85" 
               stroke="#ffffff" 
               strokeWidth="2.5" 
             />
@@ -154,13 +152,13 @@ export default function Home() {
           
           <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
             
-            {/* SOMBRA DEL PISO (Alineada a la nueva inclinación de 63 grados) */}
+            {/* SOMBRA DEL PISO (Ángulo ajustado a la nueva inclinación de 54.46 grados) */}
             <div
               className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
               style={{
                 bottom: "-20%",
                 left: "10%",
-                transform: "rotate(63.4deg)",
+                transform: "rotate(54.46deg)",
               }}
             ></div>
 
