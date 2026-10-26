@@ -67,7 +67,7 @@ export default function Home() {
   return (
     <main className="min-h-[100dvh] bg-[#CBD5E1] flex flex-col">
       
-      {/* PANTALLA DE LA TV (Cancha) */}
+      {/* PANTALLA DE LA TV (Sin margen abajo para unirse a la franja) */}
       <div className="relative flex-1 flex flex-col overflow-hidden bg-[#F8F5EC] m-3 mb-0 sm:m-5 sm:mb-0 border-t-[2px] border-l-[2px] border-r-[2px] border-[#94a3b8] shadow-[inset_0_0_30px_rgba(0,0,0,0.5)]">
         
         {/* ================= FONDO: ESQUINA DE CANCHA ================= */}
@@ -77,31 +77,33 @@ export default function Home() {
             preserveAspectRatio="none"
             viewBox="0 0 100 100"
           >
-            {/* Fondo Terracota */}
-            <rect width="100" height="100" fill="#E0827B" />
+            <rect width="100" height="100" fill="#F8F5EC" />
 
-            {/* 1. Triángulo Celeste Superior */}
-            <polygon points="-10,21 40,-9 -10,-10" fill="#11B7B8" />
+            {/* 1. Área Terracota (Se va bien arriba a la derecha) */}
+            <polygon points="-20,-60 100,180 100,-20 -20,-20" fill="#E0827B" />
 
-            {/* 2. Área Celeste Inferior */}
-            <polygon points="-10,30 100,85 100,100 -10,100" fill="#11B7B8" />
+            {/* 2. Área Celeste Inferior (Se va bien abajo a la derecha) */}
+            <polygon points="-20,-60 100,180 100,100 -20,100" fill="#11B7B8" />
 
-            {/* 3. Línea Superior Blanca */}
+            {/* 3. Triángulo Celeste Superior (Esquina superior izquierda) */}
+            <polygon points="-20,-20 30,-20 30,-15 -20,15" fill="#11B7B8" />
+
+            {/* 4. Línea Superior Blanca */}
             <line 
-              x1="-10" 
-              y1="21" 
-              x2="40" 
-              y2="-9" 
+              x1="-20" 
+              y1="15" 
+              x2="30" 
+              y2="-15" 
               stroke="#ffffff" 
               strokeWidth="2" 
             />
             
-            {/* 4. Línea Central Blanca (Termina justo donde empieza la franja) */}
+            {/* 5. Línea Central Blanca (¡SÚPER EMPINADA!) */}
             <line 
-              x1="-10" 
-              y1="30" 
+              x1="-20" 
+              y1="-60" 
               x2="100" 
-              y2="85" 
+              y2="180" 
               stroke="#ffffff" 
               strokeWidth="2.5" 
             />
@@ -152,13 +154,13 @@ export default function Home() {
           
           <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
             
-            {/* SOMBRA DEL PISO */}
+            {/* SOMBRA DEL PISO (Alineada a la nueva inclinación de 63 grados) */}
             <div
               className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
               style={{
                 bottom: "-20%",
                 left: "10%",
-                transform: "rotate(26.56deg)",
+                transform: "rotate(63.4deg)",
               }}
             ></div>
 
@@ -199,7 +201,7 @@ export default function Home() {
 
       </div>
 
-      {/* ================= FRANJA INFERIOR (Conectada al marco exterior) ================= */}
+      {/* ================= FRANJA INFERIOR (Conectada al marco) ================= */}
       <div className="w-full h-[15%] bg-[#CBD5E1] border-t-[3px] border-[#94A3B8] flex flex-col items-center justify-center pb-2 sm:pb-4 z-40">
         <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-md">
           SALIDA
