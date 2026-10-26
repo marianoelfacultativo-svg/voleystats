@@ -74,6 +74,13 @@ export default function Home() {
           preserveAspectRatio="none"
           viewBox="0 0 100 100"
         >
+          <defs>
+            {/* Filtro para que la sombra se vea difuminada y realista */}
+            <filter id="shadow-blur" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="1.5" />
+            </filter>
+          </defs>
+
           {/* Fondo base claro */}
           <rect width="100" height="100" fill="#F8F5EC" />
 
@@ -81,27 +88,29 @@ export default function Home() {
           <polygon points="0,0 45,0 0,18" fill="#11B7B8" />
 
           {/* 2. Área Terracota (Relleno completo hasta la línea) */}
-          <polygon points="45,0 100,0 100,58 0,38 0,18 45,0" fill="#E0827B" />
+          <polygon points="45,0 100,0 100,68 0,30 0,18 45,0" fill="#E0827B" />
 
-          {/* 3. Línea Blanca Lateral */}
+          {/* 3. Área Celeste Inferior (Fondo de cancha) */}
+          <polygon points="0,30 100,68 100,85 0,85" fill="#11B7B8" />
+
+          {/* 4. Líneas Blancas Divisorias */}
+          {/* Línea lateral superior */}
           <line x1="0" y1="18" x2="45" y2="0" stroke="#ffffff" strokeWidth="1.5" />
+          {/* Línea central (La Red) - Más empinada */}
+          <line x1="0" y1="30" x2="100" y2="68" stroke="#ffffff" strokeWidth="2.5" />
 
-          {/* ================= SOMBRA DE LA PELOTA ================= */}
-          {/* Colocada en el fondo para que pise la línea blanca y el terracota */}
+          {/* 5. SOMBRA DE LA PELOTA */}
+          {/* Puesta justo debajo de la pelota para que cruce el terracota, la línea y el celeste */}
           <ellipse
             cx="54"
-            cy="52"
-            rx="16"
+            cy="54"
+            rx="20"
             ry="7"
             fill="#0F2E69"
-            transform="rotate(11 54 52)"
+            opacity="0.65"
+            transform="rotate(21 54 54)"
+            filter="url(#shadow-blur)"
           />
-
-          {/* 4. Línea Blanca Principal (La Red) */}
-          <line x1="0" y1="38" x2="100" y2="58" stroke="#ffffff" strokeWidth="2" />
-
-          {/* 5. Área Celeste Inferior */}
-          <polygon points="0,38 100,58 100,85 0,85" fill="#11B7B8" />
 
           {/* 6. Franja Clara (Pie de página) */}
           <rect x="0" y="85" width="100" height="15" fill="#F8F5EC" />
@@ -148,8 +157,8 @@ export default function Home() {
       </div>
 
       {/* ================= PELOTA ================= */}
-      {/* Centrada exactamente en la línea (x=50%, y=48%) */}
-      <div className="absolute z-30 top-[48%] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+      {/* Posicionada exactamente sobre la línea (x=50%, y=49%) */}
+      <div className="absolute z-30 top-[49%] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
         <svg
           viewBox="0 0 100 100"
           className="w-24 h-24 sm:w-32 sm:h-32 relative z-10 drop-shadow-md"
