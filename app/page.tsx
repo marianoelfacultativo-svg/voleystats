@@ -141,21 +141,20 @@ export default function Home() {
         {/* Contenedor relativo para que la sombra y la pelota se muevan juntas */}
         <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
           
-          {/* SOMBRA DEL PISO (Conectada a la pelota y rotada a 26.5 grados) */}
+          {/* SOMBRA DEL PISO (Más grande, difuminada y rotada) */}
           <div
-            className="absolute z-0 w-[85%] h-[30%] bg-[#0F2E69] rounded-[100%]"
+            className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
             style={{
-              bottom: "-10%",
-              left: "20%",
+              bottom: "-20%",
+              left: "10%",
               transform: "rotate(26.5deg)",
-              transformOrigin: "left center",
             }}
           ></div>
 
           {/* PELOTA CON VOLUMEN (Luz desde arriba a la izquierda) */}
           <svg
             viewBox="0 0 100 100"
-            className="w-full h-full relative z-10 drop-shadow-md"
+            className="w-full h-full relative z-10"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
           >
