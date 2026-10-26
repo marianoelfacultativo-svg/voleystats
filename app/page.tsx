@@ -66,34 +66,51 @@ export default function Home() {
 
   return (
     <main className="relative min-h-[100dvh] flex flex-col overflow-hidden bg-[#F9F6ED]">
-      {/* ================= FONDO GEOMÉTRICO ================= */}
+      {/* ================= FONDO GEOMÉTRICO / CANCHA ================= */}
       <div className="absolute inset-0 z-0">
         <svg
           className="w-full h-full"
           preserveAspectRatio="none"
           viewBox="0 0 100 100"
         >
-          {/* Terracota Superior */}
-          <polygon points="0,0 100,0 100,65 0,50" fill="#E5817A" />
-          {/* Celeste Inferior */}
-          <polygon points="0,50 100,65 100,82 0,82" fill="#10B5B5" />
-          {/* Franja Clara Abajo */}
+          <defs>
+            {/* Gradientes para dar profundidad de cancha */}
+            <linearGradient id="terracota" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#E5817A" />
+              <stop offset="100%" stopColor="#D46A63" />
+            </linearGradient>
+            <linearGradient id="celeste" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#15C6C6" />
+              <stop offset="100%" stopColor="#0EA1A1" />
+            </linearGradient>
+          </defs>
+
+          {/* Área Terracota (Cancha Rival) */}
+          <polygon points="0,0 100,0 100,65 0,50" fill="url(#terracota)" />
+          
+          {/* Área Celeste (Cancha Propia) */}
+          <polygon points="0,50 100,65 100,82 0,82" fill="url(#celeste)" />
+          
+          {/* Franja Clara (Fondo) */}
           <rect x="0" y="82" width="100" height="18" fill="#F9F6ED" />
-          {/* Línea Blanca Divisoria */}
-          <line
-            x1="0"
-            y1="50"
-            x2="100"
-            y2="65"
-            stroke="#ffffff"
-            strokeWidth="1.2"
-          />
+
+          {/* --- LÍNEAS DE LA CANCHA --- */}
+          
+          {/* Línea Central (La Red) */}
+          <line x1="0" y1="50" x2="100" y2="65" stroke="#ffffff" strokeWidth="1.5" />
+
+          {/* Líneas de Ataque (3 metros) */}
+          <line x1="0" y1="30" x2="100" y2="45" stroke="#ffffff" strokeWidth="1" opacity="0.6" />
+          <line x1="0" y1="70" x2="100" y2="85" stroke="#ffffff" strokeWidth="1" opacity="0.6" />
+
+          {/* Líneas Laterales (Bordes de la cancha) */}
+          <line x1="0" y1="0" x2="0" y2="82" stroke="#ffffff" strokeWidth="1.5" opacity="0.9" />
+          <line x1="100" y1="0" x2="100" y2="82" stroke="#ffffff" strokeWidth="1.5" opacity="0.9" />
         </svg>
       </div>
 
       {/* ================= FORMULARIO LOGIN ================= */}
-      {/* Ubicado en el área terracota, flotando limpio */}
-      <div className="relative z-20 w-full max-w-sm mx-auto px-6 pt-[15vh] sm:pt-[18vh] flex flex-col items-center">
+      <div className="relative z-20 w-full max-w-sm mx-auto px-6 pt-[12vh] sm:pt-[15vh] flex flex-col items-center">
         <div className="w-full space-y-4">
           <div className="relative">
             <input
@@ -103,7 +120,7 @@ export default function Home() {
               onKeyDown={handleKeyDown}
               disabled={cargando}
               autoFocus
-              className="w-full px-5 py-4 text-center text-lg font-mono bg-white/95 backdrop-blur-sm border-0 rounded-2xl focus:outline-none focus:ring-4 focus:ring-white/50 transition-all placeholder:text-slate-300 shadow-xl"
+              className="w-full px-5 py-4 text-center text-lg font-mono bg-white/90 backdrop-blur-md border border-white/50 rounded-2xl focus:outline-none focus:ring-4 focus:ring-white/40 transition-all placeholder:text-slate-300 shadow-xl"
             />
           </div>
 
@@ -132,27 +149,28 @@ export default function Home() {
       </div>
 
       {/* ================= PELOTA DE VÓLEY ================= */}
-      {/* Apoyada justo en el medio de la línea blanca */}
-      <div className="absolute z-30 top-[57.5%] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none drop-shadow-[0_15px_15px_rgba(0,0,0,0.2)]">
+      {/* Apoyada justo en la línea central */}
+      <div className="absolute z-30 top-[57.5%] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+        
+        {/* Sombra de la pelota en el piso */}
+        <div className="absolute top-[85%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-8 sm:w-32 sm:h-10 bg-black/30 blur-md rounded-[100%]"></div>
+        
         <svg
           viewBox="0 0 100 100"
-          className="w-28 h-28 sm:w-36 sm:h-36"
+          className="w-28 h-28 sm:w-36 sm:h-36 relative z-10 drop-shadow-[0_10px_10px_rgba(0,0,0,0.25)]"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
           {/* Base Blanca */}
           <circle cx="50" cy="50" r="46" fill="#F4F4F4" />
           
-          {/* Gajo Inferior Izquierdo (Azul) */}
+          {/* Gajos */}
           <path d="M 5 60 Q 25 55 45 80 Q 25 95 5 60 Z" fill="#133076" />
-          {/* Gajo Inferior Derecho (Azul) */}
           <path d="M 95 60 Q 75 55 55 80 Q 75 95 95 60 Z" fill="#133076" />
-          {/* Gajo Superior Izquierdo (Amarillo) */}
           <path d="M 15 25 Q 35 35 25 65 Q 5 55 15 25 Z" fill="#F8C12D" />
-          {/* Gajo Superior Derecho (Amarillo) */}
           <path d="M 85 25 Q 65 35 75 65 Q 95 55 85 25 Z" fill="#F8C12D" />
           
-          {/* Costuras (Líneas Azules) */}
+          {/* Costuras */}
           <circle cx="50" cy="50" r="46" stroke="#133076" strokeWidth="3" />
           <path d="M 50 4 Q 50 25 40 45" stroke="#133076" strokeWidth="3" />
           <path d="M 50 4 Q 50 25 60 45" stroke="#133076" strokeWidth="3" />
@@ -160,12 +178,10 @@ export default function Home() {
           <path d="M 96 50 Q 70 50 60 45" stroke="#133076" strokeWidth="3" />
           <path d="M 4 50 Q 30 70 50 96" stroke="#133076" strokeWidth="3" />
           <path d="M 96 50 Q 70 70 50 96" stroke="#133076" strokeWidth="3" />
-          <path d="M 50 96 Q 50 80 50 50" stroke="#133076" strokeWidth="3" strokeDasharray="4 4" opacity="0.3" />
         </svg>
       </div>
 
       {/* ================= TÍTULO INFERIOR ================= */}
-      {/* En la franja clara, bien centrado */}
       <div className="absolute bottom-0 left-0 w-full h-[18%] z-20 flex flex-col items-center justify-center pb-8 sm:pb-12">
         <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-sm">
           SALIDA
