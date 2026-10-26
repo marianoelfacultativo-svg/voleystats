@@ -79,30 +79,30 @@ export default function Home() {
             {/* Fondo Terracota (Cubre toda la pantalla) */}
             <rect width="100" height="100" fill="#E0827B" />
 
-            {/* 1. Triángulo Celeste Superior (Bajado 0.75 para coincidir con el nuevo centro de la línea) */}
-            <polygon points="-10,21.75 40,-8.25 -10,-10" fill="#11B7B8" />
+            {/* 1. Triángulo Celeste Superior (Ajustado a la nueva línea fina) */}
+            <polygon points="-10,22 40,-8 -10,-10" fill="#11B7B8" />
 
-            {/* 2. Área Celeste Inferior (Bajada 0.75 para coincidir con el nuevo centro de la línea) */}
-            <polygon points="-10,30.75 100,85.75 100,100 -10,100" fill="#11B7B8" />
+            {/* 2. Área Celeste Inferior (Ajustada a la nueva línea fina) */}
+            <polygon points="-10,31 100,86 100,100 -10,100" fill="#11B7B8" />
 
-            {/* 3. Línea Superior Blanca (Bajada 0.75. El borde de abajo queda donde estaba) */}
+            {/* 3. Línea Superior Blanca (Grosor 2, borde de abajo fijo) */}
             <line 
               x1="-10" 
-              y1="21.75" 
+              y1="22" 
               x2="40" 
-              y2="-8.25" 
+              y2="-8" 
               stroke="#ffffff" 
-              strokeWidth="2.5" 
+              strokeWidth="2" 
             />
             
-            {/* 4. Línea Central Blanca (Bajada 0.75. El borde de abajo queda donde estaba) */}
+            {/* 4. Línea Central Blanca (Grosor 2, borde de abajo fijo) */}
             <line 
               x1="-10" 
-              y1="30.75" 
+              y1="31" 
               x2="100" 
-              y2="85.75" 
+              y2="86" 
               stroke="#ffffff" 
-              strokeWidth="2.5" 
+              strokeWidth="2" 
             />
           </svg>
         </div>
@@ -151,7 +151,7 @@ export default function Home() {
           
           <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
             
-            {/* SOMBRA DEL PISO (Ángulo exacto del código original) */}
+            {/* SOMBRA DEL PISO (Ángulo exacto) */}
             <div
               className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
               style={{
