@@ -80,18 +80,23 @@ export default function Home() {
           {/* 1. Triángulo Celeste Superior */}
           <polygon points="-5,0 25,0 -5,18" fill="#11B7B8" />
 
-          {/* 2. Área Terracota (Cancha) */}
-          <polygon points="25,0 100,0 100,85 -5,11.5 -5,18 25,0" fill="#E0827B" />
+          {/* 2. Área Terracota (Cancha) - Ajustada para pasar por la pelota */}
+          <polygon points="25,0 100,0 100,83.75 -5,27.21 -5,18 25,0" fill="#E0827B" />
 
           {/* 3. Área Celeste Inferior */}
-          <polygon points="-5,11.5 100,85 100,100 -5,100" fill="#11B7B8" />
+          <polygon points="-5,29.71 100,86.25 100,100 -5,100" fill="#11B7B8" />
 
-          {/* 4. Líneas Blancas */}
+          {/* 4. Línea Superior Blanca */}
           <polygon points="-5,18 25,0 25,2.5 -5,20.5" fill="#ffffff" />
-          <polygon points="-5,11.5 100,85 100,87.5 -5,14" fill="#ffffff" />
+          
+          {/* 5. Línea Central Blanca (Movida para pasar por la pelota) */}
+          <polygon points="-5,27.21 100,83.75 100,86.25 -5,29.71" fill="#ffffff" />
 
-          {/* 5. Franja Clara para el Título */}
-          <rect x="0" y="85" width="100" height="15" fill="#F8F5EC" />
+          {/* 6. Franja Plateada Abajo (Como tele vieja) */}
+          <rect x="0" y="85" width="100" height="15" fill="#CBD5E1" />
+          
+          {/* Línea de sombra/bisel entre la cancha y la franja plateada */}
+          <rect x="0" y="85" width="100" height="0.5" fill="#94A3B8" />
         </svg>
       </div>
 
@@ -135,18 +140,19 @@ export default function Home() {
       </div>
 
       {/* ================= PELOTA Y SOMBRA ================= */}
+      {/* La pelota vuelve a su posición original */}
       <div className="absolute z-30 top-[50%] left-[35%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
         
         {/* Contenedor relativo para que la sombra y la pelota se muevan juntas */}
         <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
           
-          {/* SOMBRA DEL PISO */}
+          {/* SOMBRA DEL PISO (Ángulo ajustado a la nueva línea) */}
           <div
             className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
             style={{
               bottom: "-20%",
               left: "10%",
-              transform: "rotate(26.5deg)",
+              transform: "rotate(28.3deg)",
             }}
           ></div>
 
@@ -194,7 +200,7 @@ export default function Home() {
           </span>
           5
         </h1>
-        <p className="text-[#163A85] text-[10px] sm:text-xs mt-1 font-bold tracking-[0.3em] uppercase opacity-70">
+        <p className="text-[#163A85] text-[10px] sm:text-xs mt-1 font-bold tracking-[0.3em] uppercase opacity-90">
           Estadísticas de vóley
         </p>
       </div>
