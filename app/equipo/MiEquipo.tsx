@@ -369,7 +369,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
 
   if (jugadores.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 sm:p-12 text-center">
         <p className="text-4xl mb-3">👥</p>
         <p className="text-slate-600 font-medium">
           {nombreEquipo} todavía no tiene jugadores cargados
@@ -380,11 +380,11 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center gap-2 flex-wrap">
-        <div className="flex justify-end gap-2 ml-auto">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+        <div className="flex flex-wrap gap-2 sm:ml-auto">
           <button
             onClick={() => handleToggleModo("individual")}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition border ${
+            className={`flex-1 sm:flex-none px-4 py-2 text-sm font-medium rounded-lg transition border ${
               modo === "individual"
                 ? "bg-emerald-500 text-white border-emerald-500"
                 : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
@@ -394,7 +394,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
           </button>
           <button
             onClick={() => handleToggleModo("comparar")}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition border ${
+            className={`flex-1 sm:flex-none px-4 py-2 text-sm font-medium rounded-lg transition border ${
               modo === "comparar"
                 ? "bg-emerald-500 text-white border-emerald-500"
                 : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
@@ -406,21 +406,25 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
         <button
           onClick={handleDescargarPDF}
           disabled={descargando}
-          className="px-4 py-2 text-sm bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-medium rounded-lg transition disabled:opacity-50"
+          className="px-4 py-2 text-sm bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-medium rounded-lg transition disabled:opacity-50 w-full sm:w-auto"
           data-pdf-ignorar
         >
           {descargando ? "Generando PDF..." : "📄 Descargar PDF"}
         </button>
       </div>
 
-      <div ref={refPDF} className="grid grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 col-span-1">
+      <div
+        ref={refPDF}
+        className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4"
+      >
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 sm:p-4 col-span-1">
           <h3 className="font-semibold text-slate-800 mb-3">
             {modo === "individual" ? "Plantel" : "Elegí hasta 3 jugadores"}
           </h3>
           {modo === "comparar" && (
             <p className="text-xs text-slate-500 mb-3">
-              Armadores con armadores, jugadores de cancha con jugadores de cancha.
+              Armadores con armadores, jugadores de cancha con jugadores de
+              cancha.
             </p>
           )}
           <div className="space-y-1">
@@ -432,7 +436,11 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                 modo === "individual" && jugadorSeleccionado === j.id;
 
               let bloqueado = false;
-              if (modo === "comparar" && comparados.length > 0 && colorIdx === -1) {
+              if (
+                modo === "comparar" &&
+                comparados.length > 0 &&
+                colorIdx === -1
+              ) {
                 const primerSel = jugadores.find(
                   (x) => x.id === comparados[0]
                 );
@@ -481,7 +489,9 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     {colorIdx !== -1 && (
                       <span
                         className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-white text-[10px] font-bold flex items-center justify-center border-2 border-white"
-                        style={{ backgroundColor: COLORES_COMPARACION[colorIdx] }}
+                        style={{
+                          backgroundColor: COLORES_COMPARACION[colorIdx],
+                        }}
                       >
                         {colorIdx + 1}
                       </span>
@@ -519,10 +529,10 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
           </div>
         </div>
 
-        <div className="col-span-2">
+        <div className="col-span-1 lg:col-span-2">
           {modo === "individual" ? (
             !jugadorSeleccionado || !jugadorActual || !datosJugador ? (
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center h-full flex items-center justify-center">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 sm:p-12 text-center h-full flex items-center justify-center">
                 <div>
                   <p className="text-4xl mb-3">👈</p>
                   <p className="text-slate-600 font-medium">
@@ -531,24 +541,24 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                 </div>
               </div>
             ) : (
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-200">
+              <div className="card-terracota rounded-2xl border p-4 sm:p-6">
+                <div className="flex items-center gap-3 sm:gap-4 mb-6 pb-6 border-b border-slate-300">
                   <ImagenAmpliable
                     src={datosJugador.imagen_url}
                     alt={datosJugador.nombre}
                     inicial={datosJugador.nombre.charAt(0).toUpperCase()}
                     tamaño="lg"
                   />
-                  <div className="flex-1">
-                    <h3 className="text-2xl font-bold text-slate-900">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-xl sm:text-2xl font-bold text-slate-900 truncate">
                       {datosJugador.nombre}
                     </h3>
                     {datosJugador.numero !== null && (
-                      <p className="text-slate-500">
+                      <p className="text-slate-600">
                         #{datosJugador.numero}
                       </p>
                     )}
-                    <p className="text-sm text-slate-500 mt-1">
+                    <p className="text-sm text-slate-600 mt-1">
                       {nombreEquipo}
                     </p>
                     {esArmador && (
@@ -563,8 +573,8 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   <h4 className="font-semibold text-slate-800 mb-3">
                     Perfil de rendimiento
                   </h4>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex flex-col">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
+                    <div className="bg-white border border-slate-200 rounded-lg p-2 flex flex-col">
                       <RadarJugador
                         jugador={jugadorActual}
                         esArmador={esArmador}
@@ -587,7 +597,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   <h4 className="font-semibold text-slate-800 mb-3">
                     Mapa de calor
                   </h4>
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                  <div className="bg-white border border-slate-200 rounded-lg p-3 sm:p-4">
                     <MapaCalorJugador
                       acciones={acciones}
                       jugadorId={jugadorActual.jugador_id}
@@ -601,7 +611,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     <h4 className="font-semibold text-slate-800 mb-3">
                       Valoración ponderada por fundamento
                     </h4>
-                    <div className="grid grid-cols-5 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                       {Object.entries(
                         jugadorActual.valoracionPonderadaPorFundamento
                       ).map(([fund, val]) => {
@@ -648,7 +658,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     <h4 className="font-semibold text-slate-800 mb-3">
                       Sus números en el plantel
                     </h4>
-                    <div className="bg-slate-50 border border-slate-200 rounded-lg divide-y divide-slate-200">
+                    <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-200">
                       {ORDEN_RANKINGS.map((r) => {
                         const texto = textosRanking[r.id];
                         const puesto =
@@ -656,10 +666,14 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         return (
                           <div
                             key={r.id}
-                            className="flex items-start gap-3 px-4 py-3"
+                            className="flex items-start gap-3 px-3 sm:px-4 py-3"
                           >
                             <div className="mt-0.5 shrink-0">
-                              <IconoVoley tipo={r.id} size={20} className="text-slate-800" />
+                              <IconoVoley
+                                tipo={r.id}
+                                size={20}
+                                className="text-slate-800"
+                              />
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-0.5">
@@ -677,7 +691,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                                   </span>
                                 )}
                               </div>
-                              <p className="text-xs text-slate-500">
+                              <p className="text-xs text-slate-500 break-words">
                                 {texto ?? "Sin datos en este fundamento"}
                               </p>
                             </div>
@@ -689,8 +703,8 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                 )}
 
                 {esArmador && jugadorActual.armador && (
-                  <div className="mb-6 grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                  <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                    <div className="p-3 sm:p-4 bg-white border border-slate-200 rounded-lg">
                       <GraficoSaquePorSet
                         promedios={calcularPromedioPonderadoPorSet(
                           jugadorActual.jugador_id,
@@ -701,7 +715,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         )}
                       />
                     </div>
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="p-3 sm:p-4 bg-white border border-slate-200 rounded-lg">
                       <GraficoBloqueoPorSet
                         promedios={calcularPromedioPonderadoPorSet(
                           jugadorActual.jugador_id,
@@ -712,7 +726,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         )}
                       />
                     </div>
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="p-3 sm:p-4 bg-white border border-slate-200 rounded-lg">
                       <GraficoArmadosPorSet
                         promedios={calcularPromedioArmadosPonderadoPorSet(
                           jugadorActual.jugador_id,
@@ -721,7 +735,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         )}
                       />
                     </div>
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="p-3 sm:p-4 bg-white border border-slate-200 rounded-lg">
                       <MapaCalorTendencia
                         distribucion={
                           jugadorActual.armador.distribucionTendencia
@@ -734,8 +748,8 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                 )}
 
                 {!esArmador && (
-                  <div className="mb-6 grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                  <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                    <div className="p-3 sm:p-4 bg-white border border-slate-200 rounded-lg">
                       <GraficoSaquePorSet
                         promedios={calcularPromedioPonderadoPorSet(
                           jugadorActual.jugador_id,
@@ -746,7 +760,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         )}
                       />
                     </div>
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="p-3 sm:p-4 bg-white border border-slate-200 rounded-lg">
                       <GraficoRecepcionPorSet
                         promedios={calcularPromedioPonderadoPorSet(
                           jugadorActual.jugador_id,
@@ -757,7 +771,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         )}
                       />
                     </div>
-                    <div className="col-span-2 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="md:col-span-2 p-3 sm:p-4 bg-white border border-slate-200 rounded-lg">
                       <GraficoBloqueoPorSet
                         promedios={calcularPromedioPonderadoPorSet(
                           jugadorActual.jugador_id,
@@ -771,11 +785,11 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   </div>
                 )}
 
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
+                  <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
                     <p className="text-xs text-slate-500 uppercase">Saldo</p>
                     <p
-                      className={`text-2xl font-bold ${
+                      className={`text-xl sm:text-2xl font-bold ${
                         jugadorActual.saldoTotal > 0
                           ? "text-green-700"
                           : jugadorActual.saldoTotal < 0
@@ -787,12 +801,12 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                       {jugadorActual.saldoTotal}
                     </p>
                   </div>
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                  <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
                     <p className="text-xs text-slate-500 uppercase">
                       Saldo Defensivo
                     </p>
                     <p
-                      className={`text-2xl font-bold ${
+                      className={`text-xl sm:text-2xl font-bold ${
                         jugadorActual.saldoDefensivo > 0
                           ? "text-green-700"
                           : jugadorActual.saldoDefensivo < 0
@@ -804,12 +818,12 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                       {jugadorActual.saldoDefensivo}
                     </p>
                   </div>
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                  <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
                     <p className="text-xs text-slate-500 uppercase">
                       Valoración Media
                     </p>
                     <p
-                      className={`text-2xl font-bold ${
+                      className={`text-xl sm:text-2xl font-bold ${
                         jugadorActual.valoracionMediaNormalizada > 0
                           ? "text-green-700"
                           : jugadorActual.valoracionMediaNormalizada < 0
@@ -822,23 +836,23 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     </p>
                   </div>
 
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                  <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
                     <p className="text-xs text-slate-500 uppercase">
                       Acciones
                     </p>
-                    <p className="text-2xl font-bold text-slate-800">
+                    <p className="text-xl sm:text-2xl font-bold text-slate-800">
                       {jugadorActual.totalAcciones}
                     </p>
                   </div>
                   <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
                     <p className="text-xs text-green-700 uppercase">Puntos</p>
-                    <p className="text-2xl font-bold text-green-800">
+                    <p className="text-xl sm:text-2xl font-bold text-green-800">
                       {jugadorActual.totalPuntos}
                     </p>
                   </div>
                   <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
                     <p className="text-xs text-red-700 uppercase">Errores</p>
-                    <p className="text-2xl font-bold text-red-800">
+                    <p className="text-xl sm:text-2xl font-bold text-red-800">
                       {jugadorActual.totalErrores}
                     </p>
                   </div>
@@ -846,9 +860,9 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               </div>
             )
           ) : (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
               {comparadosData.length === 0 ? (
-                <div className="p-12 text-center h-full flex items-center justify-center">
+                <div className="p-8 sm:p-12 text-center h-full flex items-center justify-center">
                   <div>
                     <p className="text-4xl mb-3">⚖️</p>
                     <p className="text-slate-600 font-medium">
@@ -859,13 +873,13 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               ) : (
                 <>
                   <div className="mb-6 pb-4 border-b border-slate-200">
-                    <h3 className="text-xl font-bold text-slate-900 mb-3">
+                    <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-3">
                       Comparando{" "}
                       {comparadosData.length === 1
                         ? "1 jugador"
                         : `${comparadosData.length} jugadores`}
                     </h3>
-                    <div className="flex flex-wrap gap-3">
+                    <div className="flex flex-wrap gap-2 sm:gap-3">
                       {comparadosData.map((s) => (
                         <div
                           key={s.id}
@@ -893,26 +907,26 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                    <div className="p-3 sm:p-4 bg-slate-50 border border-slate-200 rounded-lg">
                       <GraficoSaquePorSet series={seriesSaque} />
                     </div>
 
                     {!esComparacionArmador && (
-                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                      <div className="p-3 sm:p-4 bg-slate-50 border border-slate-200 rounded-lg">
                         <GraficoRecepcionPorSet series={seriesRecepcion} />
                       </div>
                     )}
 
                     {esComparacionArmador && (
-                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                      <div className="p-3 sm:p-4 bg-slate-50 border border-slate-200 rounded-lg">
                         <GraficoArmadosPorSet series={seriesArmados} />
                       </div>
                     )}
 
                     <div
-                      className={`p-4 bg-slate-50 border border-slate-200 rounded-lg ${
-                        esComparacionArmador ? "" : "col-span-2"
+                      className={`p-3 sm:p-4 bg-slate-50 border border-slate-200 rounded-lg ${
+                        esComparacionArmador ? "" : "md:col-span-2"
                       }`}
                     >
                       <GraficoBloqueoPorSet series={seriesBloqueo} />
@@ -920,7 +934,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   </div>
 
                   <div className="mt-6 overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-sm min-w-[500px]">
                       <thead>
                         <tr className="text-left text-slate-500 border-b border-slate-200">
                           <th className="py-2 px-3">Jugador</th>

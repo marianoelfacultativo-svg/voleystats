@@ -3,6 +3,8 @@
 // ============================================================
 // CANCHA UNIFICADA 3D — componente principal
 // Orquesta las trayectorias y los sub-componentes visuales.
+// Responsive: usa aspect-ratio + minHeight/maxHeight para
+// adaptarse a cualquier ancho (celu, tablet, desktop).
 // ============================================================
 
 import React, { useMemo } from "react";
@@ -36,7 +38,9 @@ interface Props {
   puntos?: PuntoConAcciones[];
   puntoSeleccionado?: { set: number; punto: number } | null;
   vista?: Vista;
+  /** Solo se usa para calcular el aspect ratio (no el tamaño real). */
   width?: number;
+  /** Solo se usa para calcular el aspect ratio (no el tamaño real). */
   height?: number;
   mostrarEstelas?: boolean;
   velocidadAnimacion?: number;
@@ -117,8 +121,12 @@ export default function CanchaUnificada3D({
 
   return (
     <div
-      style={{ width: `${width}px`, height: `${height}px` }}
-      className="rounded-xl overflow-hidden bg-gradient-to-b from-sky-100 to-sky-200"
+      className="w-full rounded-xl overflow-hidden bg-gradient-to-b from-sky-100 to-sky-200"
+      style={{
+        aspectRatio: `${width} / ${height}`,
+        minHeight: "340px",
+        maxHeight: "760px",
+      }}
     >
       <Canvas
         camera={{ position: [6.5, 26, 0.01], fov: 45, near: 0.1, far: 200 }}
@@ -130,8 +138,7 @@ export default function CanchaUnificada3D({
 
         <Court />
         <Net />
-        
-        {/* Ya no le pasamos el filtro: usa las acciones que le llegan */}
+
         <BloqueadoresVisual acciones={accionesAMostrar} />
 
         {trayectorias.tipo === "individual" &&
