@@ -77,20 +77,18 @@ export default function Home() {
           {/* Fondo base claro */}
           <rect width="100" height="100" fill="#F8F5EC" />
 
-          {/* 1. Triángulo Celeste Superior (Línea lateral) */}
+          {/* 1. Triángulo Celeste Superior */}
           <polygon points="0,0 25,0 0,15" fill="#11B7B8" />
 
-          {/* 2. Área Terracota (Cancha) - El fondo se une directo sin huecos */}
+          {/* 2. Área Terracota (Cancha) */}
           <polygon points="25,0 100,0 100,85 0,35 0,15 25,0" fill="#E0827B" />
 
-          {/* 3. Área Celeste Inferior - Empieza más abajo a la izquierda */}
+          {/* 3. Área Celeste Inferior */}
           <polygon points="0,35 100,85 100,100 0,100" fill="#11B7B8" />
 
-          {/* 4. Líneas Blancas Divisorias */}
-          {/* Línea lateral superior */}
+          {/* 4. Líneas Blancas */}
           <line x1="0" y1="15" x2="25" y2="0" stroke="#ffffff" strokeWidth="2" />
-          
-          {/* Línea central (La Red) - Muy inclinada */}
+          {/* Línea central (pendiente 0.5, aprox 26.5 grados) */}
           <line x1="0" y1="35" x2="100" y2="85" stroke="#ffffff" strokeWidth="2.5" />
 
           {/* 5. Franja Clara para el Título */}
@@ -137,30 +135,40 @@ export default function Home() {
         )}
       </div>
 
-      {/* ================= PELOTA Y SOMBRA (Pegadas) ================= */}
-      {/* Movida a la izquierda, no está centrada (x=35%, y=52.5%) */}
-      <div className="absolute z-30 top-[52.5%] left-[35%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+      {/* ================= PELOTA Y SOMBRA ================= */}
+      <div className="absolute z-30 top-[50%] left-[35%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
         
         <div className="relative flex items-center justify-center">
           
-          {/* Sombra: Mismo tamaño y ángulo que te gustaba */}
+          {/* SOMBRA DEL PISO: Tamaño proporcional a la pelota, direccional hacia abajo-derecha */}
           <div
-            className="absolute z-0 w-[150%] h-[40%] bg-[#0F2E69] rounded-[100%]"
+            className="absolute z-0 w-[110%] h-[30%] bg-[#0F2E69] rounded-[100%]"
             style={{
-              transform: "translate(25%, 35%) rotate(28deg)",
+              bottom: "-10%",
+              right: "-30%",
+              transform: "rotate(26.5deg)",
               transformOrigin: "left center",
             }}
           ></div>
 
-          {/* Pelota */}
+          {/* PELOTA CON LUZ (Sombreado radial) */}
           <svg
             viewBox="0 0 100 100"
             className="w-24 h-24 sm:w-32 sm:h-32 relative z-10"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
           >
-            {/* Base Blanca */}
-            <circle cx="50" cy="50" r="46" fill="#F4F4F4" />
+            <defs>
+              {/* Degradado para dar volumen: la luz viene de arriba a la izquierda */}
+              <radialGradient id="ball-light" cx="30%" cy="30%" r="70%">
+                <stop offset="0%" stopColor="#FFFFFF" />
+                <stop offset="60%" stopColor="#F1F5F9" />
+                <stop offset="100%" stopColor="#CBD5E1" />
+              </radialGradient>
+            </defs>
+
+            {/* Base Blanca con sombreado */}
+            <circle cx="50" cy="50" r="46" fill="url(#ball-light)" />
             
             {/* Gajos Azules */}
             <path d="M 5 60 Q 25 55 45 80 Q 25 95 5 60 Z" fill="#163A85" />
@@ -178,13 +186,15 @@ export default function Home() {
             <path d="M 96 50 Q 70 50 60 45" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
             <path d="M 4 50 Q 30 70 50 96" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
             <path d="M 96 50 Q 70 70 50 96" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
+
+            {/* Reflejo suave en el borde superior izquierdo para acentuar la luz */}
+            <circle cx="50" cy="50" r="46" stroke="#FFFFFF" strokeWidth="1.5" opacity="0.6" />
           </svg>
 
         </div>
       </div>
 
       {/* ================= TÍTULO INFERIOR ================= */}
-      {/* Franja de nuevo con el tamaño correcto y el subtítulo */}
       <div className="absolute bottom-0 left-0 w-full h-[15%] z-20 flex flex-col items-center justify-center pb-4 sm:pb-6">
         <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-sm">
           SALIDA
