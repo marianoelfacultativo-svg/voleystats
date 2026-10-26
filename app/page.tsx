@@ -65,66 +65,37 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center p-6 bg-[#F7F5F0]">
-      
-      {/* ================= FONDO ================= */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
-        {/* Área Terracota */}
-        <div
-          className="absolute top-0 right-0 w-full h-[65%] bg-[#E27871]"
-          style={{ clipPath: "polygon(0 0, 100% 0, 100% 85%, 0 100%)" }}
-        />
-        {/* Área Celeste */}
-        <div
-          className="absolute bottom-0 left-0 w-full h-[45%] bg-[#0EA5B7]"
-          style={{ clipPath: "polygon(0 15%, 100% 0, 100% 100%, 0 100%)" }}
-        />
-        {/* Línea blanca divisoria */}
-        <div className="absolute inset-0">
-          <svg
-            className="w-full h-full"
-            preserveAspectRatio="none"
-            viewBox="0 0 100 100"
-          >
-            <line
-              x1="0"
-              y1="100"
-              x2="100"
-              y2="85"
-              stroke="#ffffff"
-              strokeWidth="1.5"
-            />
-          </svg>
-        </div>
-      </div>
-
-      {/* Pelota de Vóley */}
-      <div className="relative z-10 mb-8 pointer-events-none drop-shadow-2xl">
+    <main className="relative min-h-[100dvh] flex flex-col overflow-hidden bg-[#F9F6ED]">
+      {/* ================= FONDO GEOMÉTRICO ================= */}
+      <div className="absolute inset-0 z-0">
         <svg
+          className="w-full h-full"
+          preserveAspectRatio="none"
           viewBox="0 0 100 100"
-          className="w-24 h-24 sm:w-32 sm:h-32"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
         >
-          <circle cx="50" cy="50" r="46" fill="#ffffff" />
-          <path d="M 4 50 A 46 46 0 0 0 50 96 C 50 75 25 50 4 50 Z" fill="#1e3a8a" />
-          <path d="M 96 50 A 46 46 0 0 1 50 96 C 50 75 75 50 96 50 Z" fill="#1e3a8a" />
-          <path d="M 50 4 A 46 46 0 0 1 96 50 C 75 50 50 25 50 4 Z" fill="#FBBF24" />
-          <path d="M 50 4 A 46 46 0 0 0 4 50 C 25 50 50 25 50 4 Z" fill="#FBBF24" />
-          <circle cx="50" cy="50" r="46" stroke="#1e3a8a" strokeWidth="3" />
-          <path d="M 50 4 C 50 25 25 50 4 50" stroke="#1e3a8a" strokeWidth="3" />
-          <path d="M 96 50 C 75 50 50 75 50 96" stroke="#1e3a8a" strokeWidth="3" />
-          <path d="M 50 4 C 50 25 75 50 96 50" stroke="#1e3a8a" strokeWidth="3" />
-          <path d="M 4 50 C 25 50 50 75 50 96" stroke="#1e3a8a" strokeWidth="3" />
-          <path d="M 24 24 Q 50 50 76 76" stroke="#1e3a8a" strokeWidth="3" opacity="0.4" />
-          <path d="M 76 24 Q 50 50 24 76" stroke="#1e3a8a" strokeWidth="3" opacity="0.4" />
+          {/* Terracota Superior */}
+          <polygon points="0,0 100,0 100,65 0,50" fill="#E5817A" />
+          {/* Celeste Inferior */}
+          <polygon points="0,50 100,65 100,82 0,82" fill="#10B5B5" />
+          {/* Franja Clara Abajo */}
+          <rect x="0" y="82" width="100" height="18" fill="#F9F6ED" />
+          {/* Línea Blanca Divisoria */}
+          <line
+            x1="0"
+            y1="50"
+            x2="100"
+            y2="65"
+            stroke="#ffffff"
+            strokeWidth="1.2"
+          />
         </svg>
       </div>
 
       {/* ================= FORMULARIO LOGIN ================= */}
-      <div className="relative z-20 w-full max-w-[340px] bg-white/70 backdrop-blur-xl rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-white/60 p-6 sm:p-8">
-        <div className="space-y-4">
-          <div>
+      {/* Ubicado en el área terracota, flotando limpio */}
+      <div className="relative z-20 w-full max-w-sm mx-auto px-6 pt-[15vh] sm:pt-[18vh] flex flex-col items-center">
+        <div className="w-full space-y-4">
+          <div className="relative">
             <input
               type="text"
               value={codigo}
@@ -132,14 +103,14 @@ export default function Home() {
               onKeyDown={handleKeyDown}
               disabled={cargando}
               autoFocus
-              className="w-full px-4 py-4 text-center text-lg font-mono bg-white border border-slate-200 rounded-2xl focus:outline-none focus:border-[#0EA5B7] focus:ring-4 focus:ring-[#0EA5B7]/10 transition-all disabled:opacity-50 shadow-inner"
+              className="w-full px-5 py-4 text-center text-lg font-mono bg-white/95 backdrop-blur-sm border-0 rounded-2xl focus:outline-none focus:ring-4 focus:ring-white/50 transition-all placeholder:text-slate-300 shadow-xl"
             />
           </div>
 
           <button
             onClick={handleIngresar}
             disabled={cargando}
-            className="w-full bg-[#1e3a8a] hover:bg-[#152d6b] disabled:bg-slate-400 text-white font-bold py-3.5 rounded-2xl transition-all shadow-lg hover:shadow-xl active:scale-[0.98]"
+            className="w-full bg-[#133076] hover:bg-[#0d2258] disabled:bg-slate-400 text-white font-bold py-4 rounded-2xl transition-all shadow-xl active:scale-[0.98]"
           >
             {cargando ? "Verificando..." : "Ingresar"}
           </button>
@@ -147,12 +118,12 @@ export default function Home() {
 
         {mensaje && (
           <div
-            className={`mt-4 text-center text-xs font-medium p-3 rounded-xl ${
+            className={`mt-4 w-full text-center text-xs font-semibold p-3 rounded-xl backdrop-blur-md shadow-sm ${
               mensaje.includes("✅")
-                ? "bg-green-100 text-green-800"
+                ? "bg-green-100/90 text-green-800"
                 : mensaje.includes("inválido") || mensaje.includes("Error")
-                ? "bg-red-100 text-red-800"
-                : "bg-white/50 text-slate-700"
+                ? "bg-red-100/90 text-red-800"
+                : "bg-white/60 text-slate-700"
             }`}
           >
             {mensaje}
@@ -160,15 +131,52 @@ export default function Home() {
         )}
       </div>
 
+      {/* ================= PELOTA DE VÓLEY ================= */}
+      {/* Apoyada justo en el medio de la línea blanca */}
+      <div className="absolute z-30 top-[57.5%] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none drop-shadow-[0_15px_15px_rgba(0,0,0,0.2)]">
+        <svg
+          viewBox="0 0 100 100"
+          className="w-28 h-28 sm:w-36 sm:h-36"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          {/* Base Blanca */}
+          <circle cx="50" cy="50" r="46" fill="#F4F4F4" />
+          
+          {/* Gajo Inferior Izquierdo (Azul) */}
+          <path d="M 5 60 Q 25 55 45 80 Q 25 95 5 60 Z" fill="#133076" />
+          {/* Gajo Inferior Derecho (Azul) */}
+          <path d="M 95 60 Q 75 55 55 80 Q 75 95 95 60 Z" fill="#133076" />
+          {/* Gajo Superior Izquierdo (Amarillo) */}
+          <path d="M 15 25 Q 35 35 25 65 Q 5 55 15 25 Z" fill="#F8C12D" />
+          {/* Gajo Superior Derecho (Amarillo) */}
+          <path d="M 85 25 Q 65 35 75 65 Q 95 55 85 25 Z" fill="#F8C12D" />
+          
+          {/* Costuras (Líneas Azules) */}
+          <circle cx="50" cy="50" r="46" stroke="#133076" strokeWidth="3" />
+          <path d="M 50 4 Q 50 25 40 45" stroke="#133076" strokeWidth="3" />
+          <path d="M 50 4 Q 50 25 60 45" stroke="#133076" strokeWidth="3" />
+          <path d="M 4 50 Q 30 50 40 45" stroke="#133076" strokeWidth="3" />
+          <path d="M 96 50 Q 70 50 60 45" stroke="#133076" strokeWidth="3" />
+          <path d="M 4 50 Q 30 70 50 96" stroke="#133076" strokeWidth="3" />
+          <path d="M 96 50 Q 70 70 50 96" stroke="#133076" strokeWidth="3" />
+          <path d="M 50 96 Q 50 80 50 50" stroke="#133076" strokeWidth="3" strokeDasharray="4 4" opacity="0.3" />
+        </svg>
+      </div>
+
       {/* ================= TÍTULO INFERIOR ================= */}
-      <div className="relative z-10 mt-10 sm:mt-12 text-center flex items-center justify-center">
+      {/* En la franja clara, bien centrado */}
+      <div className="absolute bottom-0 left-0 w-full h-[18%] z-20 flex flex-col items-center justify-center pb-8 sm:pb-12">
         <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-sm">
           SALIDA
-          <span className="text-red-600 text-2xl sm:text-3xl font-black mx-[1px] sm:mx-[2px]">
+          <span className="text-red-600 text-2xl sm:text-3xl font-black mx-[1px] sm:mx-[2px] mt-1">
             x
           </span>
           5
         </h1>
+        <p className="text-[#133076] text-[10px] sm:text-xs mt-2 font-bold tracking-[0.3em] uppercase opacity-60">
+          Estadísticas de vóley
+        </p>
       </div>
     </main>
   );
