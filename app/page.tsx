@@ -88,7 +88,7 @@ export default function Home() {
 
           {/* 4. Líneas Blancas */}
           <line x1="0" y1="15" x2="25" y2="0" stroke="#ffffff" strokeWidth="2" />
-          {/* Línea central (pendiente 0.5, aprox 26.5 grados) */}
+          {/* Línea central (inclinación exacta de ~26.5 grados) */}
           <line x1="0" y1="35" x2="100" y2="85" stroke="#ffffff" strokeWidth="2.5" />
 
           {/* 5. Franja Clara para el Título */}
@@ -138,32 +138,33 @@ export default function Home() {
       {/* ================= PELOTA Y SOMBRA ================= */}
       <div className="absolute z-30 top-[50%] left-[35%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
         
-        <div className="relative flex items-center justify-center">
+        {/* Contenedor relativo para que la sombra y la pelota se muevan juntas */}
+        <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
           
-          {/* SOMBRA DEL PISO: Tamaño proporcional a la pelota, direccional hacia abajo-derecha */}
+          {/* SOMBRA DEL PISO (Conectada a la pelota y rotada a 26.5 grados) */}
           <div
-            className="absolute z-0 w-[110%] h-[30%] bg-[#0F2E69] rounded-[100%]"
+            className="absolute z-0 w-[85%] h-[30%] bg-[#0F2E69] rounded-[100%]"
             style={{
               bottom: "-10%",
-              right: "-30%",
+              left: "20%",
               transform: "rotate(26.5deg)",
               transformOrigin: "left center",
             }}
           ></div>
 
-          {/* PELOTA CON LUZ (Sombreado radial) */}
+          {/* PELOTA CON VOLUMEN (Luz desde arriba a la izquierda) */}
           <svg
             viewBox="0 0 100 100"
-            className="w-24 h-24 sm:w-32 sm:h-32 relative z-10"
+            className="w-full h-full relative z-10 drop-shadow-md"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
           >
             <defs>
-              {/* Degradado para dar volumen: la luz viene de arriba a la izquierda */}
+              {/* Degradado para simular la esfera 3D */}
               <radialGradient id="ball-light" cx="30%" cy="30%" r="70%">
                 <stop offset="0%" stopColor="#FFFFFF" />
                 <stop offset="60%" stopColor="#F1F5F9" />
-                <stop offset="100%" stopColor="#CBD5E1" />
+                <stop offset="100%" stopColor="#94A3B8" />
               </radialGradient>
             </defs>
 
@@ -186,9 +187,6 @@ export default function Home() {
             <path d="M 96 50 Q 70 50 60 45" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
             <path d="M 4 50 Q 30 70 50 96" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
             <path d="M 96 50 Q 70 70 50 96" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
-
-            {/* Reflejo suave en el borde superior izquierdo para acentuar la luz */}
-            <circle cx="50" cy="50" r="46" stroke="#FFFFFF" strokeWidth="1.5" opacity="0.6" />
           </svg>
 
         </div>
