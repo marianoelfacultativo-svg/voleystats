@@ -4,7 +4,6 @@
 
 /* ============================================ */
 /* TEMA VOLEYSTATS: Plata + Celeste + Terracota */
-/* Sin blancos puros en ninguna card.           */
 /* ============================================ */
 
 html, body {
@@ -15,35 +14,104 @@ html, body {
   background-attachment: fixed !important;
 }
 
-/* ====== FONDOS CELESTES (reemplazan los blancos) ====== */
-.bg-white { 
-  background: linear-gradient(180deg, #EAF2F8 0%, #C9DBE8 100%) !important; 
-  box-shadow: inset 0 1px 0 rgba(245,249,252,1), 0 4px 6px -1px rgba(15, 58, 133, 0.08) !important;
-}
-.bg-white\/95 { background: linear-gradient(180deg, #EAF2F8 0%, #C9DBE8 100%) !important; }
-.bg-white\/90 { background: linear-gradient(180deg, #EAF2F8 0%, #C9DBE8 100%) !important; }
+/* ============================================ */
+/* 1. ELIMINAR LOS "GLOBOS" (Bordes redondeados) */
+/* ============================================ */
 
+/* Aplanamos casi todos los bordes de la app */
+.rounded-2xl, 
+.rounded-xl, 
+.rounded-lg, 
+.rounded-md {
+  border-radius: 3px !important;
+}
+
+/* Los círculos perfectos (avatares) se mantienen, pero los botones no */
+button.rounded-full, 
+a.rounded-full {
+  border-radius: 3px !important;
+}
+
+/* ============================================ */
+/* 2. FONDOS Y LEGIBILIDAD                      */
+/* ============================================ */
+
+/* Fondo base de las tarjetas grandes para que el texto se lea */
+.bg-white, .bg-white\/95, .bg-white\/90 { 
+  background: #F8FAFC !important; /* Blanco roto, sólido y legible */
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important; /* Sombra mínima para separar del fondo gris */
+  border: 1px solid #CBD5E1 !important;
+}
+
+/* Fondos de tablas y listas */
 .bg-slate-50 { 
-  background: linear-gradient(180deg, #F0F6FA 0%, #D8E5EE 100%) !important; 
-  box-shadow: inset 0 1px 0 rgba(245,249,252,0.85) !important;
+  background: #F1F5F9 !important; 
 }
 .bg-slate-100 { 
-  background: linear-gradient(180deg, #D8E5EE 0%, #B8CFDD 100%) !important; 
-  box-shadow: inset 0 1px 0 rgba(245,249,252,0.6) !important;
+  background: #E2E8F0 !important; 
 }
 .bg-slate-200 { 
-  background: linear-gradient(180deg, #B8CFDD 0%, #8FAEC4 100%) !important; 
-}
-.bg-slate-300 { 
-  background: linear-gradient(180deg, #8FAEC4 0%, #6B8FA8 100%) !important; 
+  background: #CBD5E1 !important; 
 }
 
-/* ====== BORDES ====== */
-.border-slate-100 { border-color: #D8E5EE !important; }
-.border-slate-200 { border-color: #B8CFDD !important; }
-.border-slate-300 { border-color: #8FAEC4 !important; }
+/* ============================================ */
+/* 3. TARJETAS DE INFO (Stats, Puntos, Errores) */
+/* ============================================ */
 
-/* ====== TEXTO ====== */
+/* Quitamos el acento turquesa y las hacemos rectángulos con borde de color */
+.rounded-2xl.shadow-sm {
+  border-radius: 3px !important;
+  box-shadow: none !important;
+  background: #F8FAFC !important; /* Fondo legible */
+  border: 1px solid #CBD5E1 !important;
+}
+
+/* Modificamos las tarjetas de colores (bg-slate-50, bg-green-50, bg-red-50) 
+   para que parezcan fichas de archivo, no globos */
+.bg-slate-50.border, 
+.bg-green-50.border, 
+.bg-red-50.border {
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+}
+
+/* Forzamos los bordes de colores */
+.border-slate-200 { border-color: #CBD5E1 !important; }
+.border-green-200 { border-color: #86EFAC !important; }
+.border-red-200 { border-color: #FCA5A5 !important; }
+
+/* ============================================ */
+/* 4. LISTA DE JUGADORES Y PARTIDOS (Los otros globos) */
+/* ============================================ */
+
+/* Los botones de la lista de jugadores/partidos */
+button.bg-slate-50, 
+button.bg-white {
+  border-radius: 3px !important;
+  border: 1px solid #CBD5E1 !important;
+  background: #F1F5F9 !important;
+  box-shadow: none !important;
+  transition: all 0.15s ease;
+}
+
+button.bg-slate-50:hover, 
+button.bg-white:hover {
+  background: #E2E8F0 !important;
+  border-color: #94A3B8 !important;
+}
+
+/* El jugador o partido seleccionado (turquesa sólido) */
+button.bg-emerald-500 {
+  background-color: #11B7B8 !important;
+  border: 1px solid #0E9A9B !important;
+  color: white !important;
+}
+
+/* ============================================ */
+/* 5. COLORES Y TEXTOS BASE                     */
+/* ============================================ */
 .text-slate-900 { color: #0F172A !important; }
 .text-slate-800 { color: #1E293B !important; }
 .text-slate-700 { color: #334155 !important; }
@@ -51,102 +119,29 @@ html, body {
 .text-slate-500 { color: #64748B !important; }
 .text-slate-400 { color: #94A3B8 !important; }
 
-/* ====== ACENTO PRIMARIO: Turquesa + Azul profundo ====== */
+/* ====== ACENTOS (Turquesa) ====== */
 .bg-blue-500 { background-color: #11B7B8 !important; }
 .bg-blue-600 { background-color: #0E9A9B !important; }
-.bg-blue-100 { background-color: #C8EFF0 !important; }
-.bg-blue-50  { background-color: #E6F7F7 !important; }
-
 .text-blue-600 { color: #0E9A9B !important; }
-.text-blue-700 { color: #163A85 !important; }
-.text-blue-800 { color: #0F285E !important; }
-.text-blue-500 { color: #11B7B8 !important; }
-.text-blue-100 { color: #C8EFF0 !important; }
-
 .border-blue-500 { border-color: #11B7B8 !important; }
-.border-blue-200 { border-color: #A5E3E4 !important; }
-.border-blue-300 { border-color: #7FD5D6 !important; }
 
-.hover\:bg-blue-600:hover { background-color: #0E9A9B !important; }
-.hover\:bg-blue-200:hover { background-color: #A5E3E4 !important; }
-.hover\:border-blue-400:hover { border-color: #39C7C8 !important; }
-
-/* ====== BOTONES/TABS ACTIVAS (emerald → turquesa) ====== */
-.bg-emerald-500 { background-color: #11B7B8 !important; }
-.bg-emerald-600 { background-color: #0E9A9B !important; }
-.hover\:bg-emerald-600:hover { background-color: #0E9A9B !important; }
-.text-emerald-600 { color: #0E9A9B !important; }
-.border-emerald-500 { border-color: #11B7B8 !important; }
-.hover\:border-emerald-600:hover { border-color: #0E9A9B !important; }
-.focus\:border-emerald-500:focus { border-color: #11B7B8 !important; }
-.focus\:border-emerald-600:focus { border-color: #0E9A9B !important; }
-
-/* ====== FUCSIA (botones PDF) → terracota ====== */
+/* ====== ACENTOS (Terracota / PDF) ====== */
 .bg-fuchsia-500 { background-color: #E0827B !important; }
 .hover\:bg-fuchsia-600:hover { background-color: #C86A63 !important; }
 .text-fuchsia-700 { color: #A54A44 !important; }
-.text-fuchsia-800 { color: #8A3A34 !important; }
-.bg-fuchsia-100 { background-color: #F5E2DC !important; }
-.bg-fuchsia-50  { background-color: #FAF0EC !important; }
-.border-fuchsia-200 { border-color: #E8C5BC !important; }
-.border-fuchsia-300 { border-color: #D9A59A !important; }
-.border-fuchsia-600 { border-color: #A54A44 !important; }
-.hover\:bg-fuchsia-50:hover { background-color: #FAF0EC !important; }
-.hover\:bg-fuchsia-200:hover { background-color: #E8C5BC !important; }
 
-/* ====== CARD TERRACOTA (para destacar cards clave) ====== */
+/* ====== CARD TERRACOTA (Último partido, perfil) ====== */
 .card-terracota {
-  background: linear-gradient(180deg, #F5E2DC 0%, #E8C5BC 100%) !important;
-  border-color: #D9A59A !important;
-  box-shadow: inset 0 1px 0 rgba(255, 245, 240, 0.9), 0 4px 6px -1px rgba(165, 74, 68, 0.1) !important;
-}
-
-/* ====== HOVERS ====== */
-.hover\:bg-slate-50:hover { background: linear-gradient(180deg, #F5FAFC 0%, #DDEAF2 100%) !important; }
-.hover\:bg-slate-100:hover { background: linear-gradient(180deg, #EAF2F8 0%, #C9DBE8 100%) !important; }
-.hover\:bg-slate-200:hover { background: linear-gradient(180deg, #D8E5EE 0%, #B8CFDD 100%) !important; }
-.hover\:bg-slate-300:hover { background: linear-gradient(180deg, #B8CFDD 0%, #8FAEC4 100%) !important; }
-.hover\:bg-slate-400:hover { background: linear-gradient(180deg, #8FAEC4 0%, #6B8FA8 100%) !important; }
-
-.hover\:text-slate-700:hover { color: #334155 !important; }
-.hover\:text-slate-800:hover { color: #1E293B !important; }
-.hover\:text-blue-800:hover { color: #0F285E !important; }
-
-/* ====== FOCUS DE INPUTS ====== */
-.focus\:border-blue-500:focus { border-color: #11B7B8 !important; }
-
-/* ====== disabled ====== */
-.disabled\:bg-slate-300:disabled { background-color: #8FAEC4 !important; }
-.disabled\:bg-slate-400:disabled { background-color: #6B8FA8 !important; }
-
-/* ============================================ */
-/* CARDS DE INFO — ahora son SECCIONES          */
-/*                                              */
-/* Adiós "tarjetas": sin caja, sin borde,       */
-/* sin radio, sin sombra. Solo una regla fina   */
-/* arriba y aire. La textura de papel del body  */
-/* se ve a través del contenido.                */
-/* ============================================ */
-
-.rounded-2xl.shadow-sm {
-  border-radius: 0 !important;
+  background: #F5E2DC !important;
+  border: 1px solid #E8C5BC !important;
   box-shadow: none !important;
-  border: none !important;
-  background: transparent !important;
-  position: relative;
-  padding-top: 1.25rem;
-  padding-bottom: 1.25rem;
+  border-radius: 3px !important;
 }
 
-.rounded-2xl.shadow-sm::before {
-  content: "";
-  display: block;
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: #64748B;
-  opacity: 0.28;
-  pointer-events: none;
-}
+/* ====== BOTONES DE NAVEGACIÓN ====== */
+.hover\:bg-slate-50:hover { background: #F1F5F9 !important; }
+.hover\:bg-slate-100:hover { background: #E2E8F0 !important; }
+.hover\:bg-slate-200:hover { background: #CBD5E1 !important; }
+
+/* Inputs y Selects */
+.focus\:border-emerald-500:focus { border-color: #11B7B8 !important; }
