@@ -18,7 +18,29 @@ export type ValorSaque =
 
 export type ValorTipoSaque = "potencia" | "flotado";
 
-export type ValorRecepcion = 1 | 2 | 3 | 4 | 5 | 6;
+// ============================================================
+// RECEPCIÓN — sistema nuevo de 7 valores
+// ============================================================
+// El popup solo ofrece 5 valores elegidos a mano:
+//   perfecta       (R#)
+//   positiva       (R+)
+//   intermedia     (R!)
+//   negativa       (R-)
+//   doble_negativa (R--)
+//
+// Overpass (R/) y error_directo (R=) NO se eligen a mano:
+//   - error_directo: se genera automático cuando hay ace (no hay
+//                    recepción real).
+//   - overpass:      se detecta automático cuando la línea de
+//                    recepción cruza la red.
+// ------------------------------------------------------------
+
+export type ValorRecepcion =
+  | "perfecta"
+  | "positiva"
+  | "intermedia"
+  | "negativa"
+  | "doble_negativa";
 
 export type TipoDefensa = "toque" | "gran-defensa" | "libre";
 
@@ -100,25 +122,33 @@ const ORDEN_SAQUE: ValorSaque[] = [
   "negativo",
 ];
 
+// ============================================================
+// RECEPCIÓN — 5 botones a mano (R# R+ R! R- R--)
+// ============================================================
+
 const COL_RECEPCION: Record<ValorRecepcion, string> = {
-  1: "#dc2626",
-  2: "#ea580c",
-  3: "#f59e0b",
-  4: "#eab308",
-  5: "#84cc16",
-  6: "#16a34a",
+  perfecta: "#16a34a",
+  positiva: "#84cc16",
+  intermedia: "#eab308",
+  negativa: "#f59e0b",
+  doble_negativa: "#dc2626",
 };
 
 const ETIQ_RECEPCION: Record<ValorRecepcion, string> = {
-  1: "A",
-  2: "3n",
-  3: "2n",
-  4: "N",
-  5: "P",
-  6: "2p",
+  perfecta: "R#",
+  positiva: "R+",
+  intermedia: "R!",
+  negativa: "R-",
+  doble_negativa: "R--",
 };
 
-const ORDEN_RECEPCION: ValorRecepcion[] = [1, 2, 3, 4, 5, 6];
+const ORDEN_RECEPCION: ValorRecepcion[] = [
+  "perfecta",
+  "positiva",
+  "intermedia",
+  "negativa",
+  "doble_negativa",
+];
 
 const COL_DEFENSA: Record<TipoDefensa, string> = {
   toque: "#f59e0b",
@@ -433,7 +463,7 @@ export function PopupTipoSaque({
 }
 
 // ============================================================
-// POPUP RECEPCIÓN
+// POPUP RECEPCIÓN — sistema nuevo (5 botones)
 // ============================================================
 
 interface PopupRecepcionProps {
@@ -447,7 +477,7 @@ export function PopupRecepcion({
   onConfirmar,
   onCancelar,
 }: PopupRecepcionProps) {
-  const btnW = 34;
+  const btnW = 40;
   const gap = 4;
   const pad = 8;
   const ancho =

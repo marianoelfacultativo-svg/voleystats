@@ -1,7 +1,5 @@
 // ============================================================
 // HELPERS MODO ESPEJO V2 — DataEntryV2
-// Funciones para resolver jugadores y generar acciones
-// cuando se carga el partido con "Modo espejo".
 // ============================================================
 
 import {
@@ -26,7 +24,6 @@ import {
   type PosicionesFijasMap,
 } from "./tiposV2";
 
-/** Invierte una celda de un lado al otro (F1↔F4, F2↔F5, etc.). */
 export function invertirCelda(celda: string): string {
   if (celda.startsWith("F1-")) return "F4-" + celda.slice(3);
   if (celda.startsWith("F2-")) return "F5-" + celda.slice(3);
@@ -82,11 +79,6 @@ export function jugadorQueRecibeDeRot(
   return resolverRolAJugador(rot, rol);
 }
 
-/**
- * Devuelve el rol (A/O/C1/C2/P1/P2/L) y la zona de rotación (1-6) del
- * jugador dentro de la rotación dada. Si es un líbero, rol = "L" y zona
- * = null (el líbero no ocupa una zona fija de rotación).
- */
 function infoJugadorEnRotacion(
   rot: RotacionPunto,
   jugadorId: string | null
@@ -105,13 +97,15 @@ function infoJugadorEnRotacion(
 }
 
 /**
- * Genera acciones sintéticas de recepción "ace_contra" cuando un saque
- * termina en ace (cae dentro de la cancha real del receptor sin que nadie
- * la toque). Solo en modo espejo. El jugador que "recibe" se resuelve con
- * el mapeo de recepción del equipo receptor.
+ * Genera recepciones sintéticas de ace cuando un saque termina en ace.
  *
- * Nota: los 12 campos analíticos se rellenan acá porque estas acciones
- * no pasan por `construirAccion` de helpersV2.
+ * Cambio: el subtipo de la recepción ahora es "error_directo" (string),
+ * en lugar del viejo 1 numérico. Eso es lo que espera el motor de
+ * estadísticas nuevo.
+ *
+ * Modo A (siempre): la recepción sintética se genera tanto en modo
+ * espejo como en modo normal, para que las estadísticas del receptor
+ * reflejen el error directo.
  */
 export function generarRecepcionesAceContra(params: {
   pc: PuntoCerrado;
@@ -134,6 +128,12 @@ export function generarRecepcionesAceContra(params: {
     modoEspejo,
   } = params;
 
+  // Sin equipo rival no podemos saber quién recibe del otro lado
+  // en un punto donde saca el rival, así que sin equipoRivalId no
+  // se puede generar la recepción sintética cuando saca el rival.
+  // Cuando saca el propio equipo, el receptor es siempre del rival,
+  // así que tampoco hay equipo identificado. En ambos casos solo
+  // tiene sentido si tenemos las dos rotaciones (modo espejo).
   if (!modoEspejo || !pc.estadoRival || !equipoRivalId) return;
 
   for (const linea of lineas) {
@@ -143,7 +143,6 @@ export function generarRecepcionesAceContra(params: {
     const equipoSacador = esPropio ? equipoId : equipoRivalId;
     if (!equipoSacador) continue;
 
-    // ¿Es un ace?
     let esAce = false;
     if (esPropio) {
       esAce = linea.subtipo === "ace";
@@ -215,7 +214,6 @@ export function generarRecepcionesAceContra(params: {
     }
     if (!jugador) continue;
 
-    // ---------- Campos analíticos ----------
     const rotNum = numeroRotacionDesdePosiciones(rotReceptora);
     const { rol: rol_jugador, zona: zona_jugador } =
       infoJugadorEnRotacion(rotReceptora, jugador);
@@ -228,9 +226,8 @@ export function generarRecepcionesAceContra(params: {
     acciones.push({
       orden: acciones.length + 1,
       tipo: "recepcion",
-      subtipo: 1,
-      // FIX: si Quilmes sacó (esPropio), la recepción es de River → rival.
-      //      si River sacó (esPropio=false), la recepción es de Quilmes → propia.
+      // Cambio clave: "error_directo" en lugar del viejo 1.
+      subtipo: "error_directo",
       es_rival: esPropio,
       jugador_id: jugador,
       lado: esPropio ? "rival" : "propio",
@@ -242,7 +239,6 @@ export function generarRecepcionesAceContra(params: {
       zona: zonaCruda,
       equipo_id: equipoReceptor,
 
-      // Analíticos
       es_error: true,
       zona_origen: zonaCruda,
       zona_destino: zonaCruda,

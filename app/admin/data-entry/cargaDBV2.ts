@@ -2,29 +2,38 @@
 // CARGA DB V2 — DataEntryV2
 // Funciones para reconstruir el estado de la consola a partir
 // de los datos guardados en Supabase (puntos_v2 + acciones_v2).
-//
-// NOTA: los 12 campos analíticos (es_error, zona_origen,
-// zona_destino, rotacion_numero, rol_jugador, zona_jugador,
-// origen_x/y, destino_x/y, posicion_inicial_x/y) se calculan
-// al GUARDAR (en guardarSupabaseV2.ts) y NO se necesitan
-// reconstruir acá para la edición. Siguen persistidos en DB y
-// disponibles para consultas SQL / panel de filtros.
 // ============================================================
 
 import { cargarPuntosV2 } from "@/lib/dbV2";
 import type { LineaClasificada } from "@/lib/clasificacionV2";
 import type { PuntoCerrado } from "./tiposV2";
 
-/** Qué subtipos se conservan al recargar. */
+const RECEPCION_VALORES_VALIDOS = new Set<string>([
+  "perfecta",
+  "positiva",
+  "intermedia",
+  "negativa",
+  "doble_negativa",
+  "overpass",
+  "error_directo",
+]);
+
+/**
+ * Qué subtipos se conservan al recargar.
+ *
+ * Recepción: solo strings del sistema nuevo (7 valores). Los
+ * partidos viejos con subtipo numérico 1-6 quedan afuera a
+ * propósito (opción 3: empezar de cero).
+ */
 export function subtipoPreservado(tipo: string, subtipo: any): any {
-  if (tipo === "recepcion") return subtipo;
+  if (tipo === "recepcion") {
+    return typeof subtipo === "string" && RECEPCION_VALORES_VALIDOS.has(subtipo)
+      ? subtipo
+      : null;
+  }
   if (tipo === "armado") return subtipo;
   if (tipo === "roce-red") return subtipo;
   if (tipo === "defensa") {
-    // Preserva tanto los "raw" (elegidos por el usuario en el popup) como
-    // los "finales" (ya calculados por la pipeline). El recálculo de
-    // calcularSubtiposDefensa en guardarSupabaseV2 es idempotente para los
-    // valores finales, así que es seguro.
     const validos = new Set<string>([
       // raw
       "toque",

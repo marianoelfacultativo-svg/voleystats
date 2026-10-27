@@ -79,12 +79,13 @@ const VALORACIONES_POR_TIPO: Record<string, Opcion[]> = {
     { v: "error_rival", label: "Error (rival)" },
   ],
   recepcion: [
-    { v: "1", label: "1 (Ace c/)" },
-    { v: "2", label: "2 (3x Neg)" },
-    { v: "3", label: "3 (2x Neg)" },
-    { v: "4", label: "4 (Neg)" },
-    { v: "5", label: "5 (Pos)" },
-    { v: "6", label: "6 (2x Pos)" },
+    { v: "perfecta", label: "R#" },
+    { v: "positiva", label: "R+" },
+    { v: "intermedia", label: "R!" },
+    { v: "negativa", label: "R-" },
+    { v: "doble_negativa", label: "R--" },
+    { v: "overpass", label: "R/" },
+    { v: "error_directo", label: "R=" },
   ],
   armado: [
     { v: "1", label: "1" },
@@ -184,12 +185,16 @@ function nivelValoracion(
     return "neu";
   }
   if (tipo === "recepcion") {
-    const n = parseInt(sub, 10);
-    if (!isNaN(n)) {
-      if (n >= 5) return "pos";
-      if (n <= 3) return "neg";
+    if (sub === "perfecta" || sub === "positiva") return "pos";
+    if (
+      sub === "negativa" ||
+      sub === "doble_negativa" ||
+      sub === "overpass" ||
+      sub === "error_directo"
+    ) {
+      return "neg";
     }
-    return "neu";
+    return "neu"; // intermedia
   }
   if (tipo === "armado") {
     if (sub === "R") return "neu";
@@ -616,7 +621,7 @@ export default function PanelFiltros3D({
         )}
       </div>
 
-      {/* ---------- SUBTIPOS REALES (si hay tipos compatibles) ---------- */}
+      {/* ---------- SUBTIPOS REALES ---------- */}
       {subtiposDisponibles.length > 0 && (
         <div>
           <label className={labelCls}>
@@ -647,7 +652,7 @@ export default function PanelFiltros3D({
         </div>
       )}
 
-      {/* ---------- VALORACIÓN (colapsable) ---------- */}
+      {/* ---------- VALORACIÓN ---------- */}
       {filtros.tipos.length > 0 && valoracionesDisponibles.length > 0 && (
         <div className="border-t border-slate-200 pt-2">
           <button
@@ -702,7 +707,7 @@ export default function PanelFiltros3D({
         </div>
       )}
 
-      {/* ---------- AVANZADO (colapsable) ---------- */}
+      {/* ---------- AVANZADO ---------- */}
       <div className="border-t border-slate-200 pt-2">
         <button
           onClick={() => setAvanzadoAbierto((v) => !v)}

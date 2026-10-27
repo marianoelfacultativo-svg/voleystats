@@ -40,13 +40,15 @@ const COLS_SAQUE: Columna[] = [
   { key: "negativo", label: "Neg", tipo: "neg" },
 ];
 
+// Recepción — sistema nuevo de 7 valores
 const COLS_RECEPCION: Columna[] = [
-  { key: "2x_positiva", label: "2x+", tipo: "pos" },
-  { key: "positiva", label: "Pos", tipo: "pos" },
-  { key: "negativa", label: "Neg", tipo: "neg" },
-  { key: "2x_negativa", label: "2x-", tipo: "neg" },
-  { key: "3x_negativa", label: "3x-", tipo: "neg" },
-  { key: "ace_contra", label: "AceC", tipo: "neg" },
+  { key: "perfecta", label: "R#", tipo: "pos", detalle: "Doble positiva / perfecta" },
+  { key: "positiva", label: "R+", tipo: "pos", detalle: "Positiva" },
+  { key: "intermedia", label: "R!", tipo: "neu", detalle: "Exclamación (anula ataque central)" },
+  { key: "negativa", label: "R-", tipo: "neg", detalle: "Negativa" },
+  { key: "doble_negativa", label: "R--", tipo: "neg", detalle: "Doble negativa (free ball)" },
+  { key: "overpass", label: "R/", tipo: "neg", detalle: "Overpass (pasa al rival)" },
+  { key: "error_directo", label: "R=", tipo: "neg", detalle: "Ace / error directo" },
 ];
 
 const COLS_ATAQUE: Columna[] = [
@@ -417,12 +419,6 @@ interface Props {
   nombresJugadores: Record<string, string>;
   armadores?: Set<string>;
   soloJugadorId?: string;
-  /**
-   * Texto de contexto para el encabezado. Sirve para aclarar el
-   * alcance de la tabla, p. ej. "Todos los partidos · 8 partidos" o
-   * "Solo este partido · vs Quilmes · 2026-01-15".
-   * Opcional.
-   */
   contexto?: string;
 }
 

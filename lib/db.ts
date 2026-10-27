@@ -318,7 +318,7 @@ export interface AccionDB {
   subtipo_original?: string | null;
   tipo_saque?: string | null;
   velocidad?: number | null;
-  
+
   // Campos nuevos para el mapa de calor
   origen_celda?: string | null;
   origen_mini?: string | null;
@@ -327,14 +327,27 @@ export interface AccionDB {
   posicion_inicial_mini?: string | null;
 }
 
-const RECEPCION_NUM_A_STR: Record<number, string> = {
-  1: "ace_contra",
-  2: "3x_negativa",
-  3: "2x_negativa",
-  4: "negativa",
-  5: "positiva",
-  6: "2x_positiva",
-};
+// ============================================================
+// RECEPCIÓN — sistema nuevo de 7 valores
+// ============================================================
+// Los valores válidos de `subtipo` para recepción son strings:
+//   perfecta, positiva, intermedia, negativa, doble_negativa,
+//   overpass, error_directo.
+//
+// Los partidos viejos guardados con subtipo numérico (1-6) se
+// consideran fuera de soporte: no se convierten y no cuentan en
+// estadísticas.
+// ------------------------------------------------------------
+
+const RECEPCION_VALORES_VALIDOS = new Set<string>([
+  "perfecta",
+  "positiva",
+  "intermedia",
+  "negativa",
+  "doble_negativa",
+  "overpass",
+  "error_directo",
+]);
 
 const CALIDAD_A_STR: Record<number, string> = {
   1: "horrible",
@@ -388,8 +401,11 @@ function valoracionV2aV1(
   }
 
   if (tipo === "recepcion") {
-    const n = typeof subtipo === "number" ? subtipo : parseInt(String(subtipo));
-    return RECEPCION_NUM_A_STR[n] ?? null;
+    // El subtipo ya viene como string del sistema nuevo.
+    // No hay conversión numérica: los partidos viejos (1-6)
+    // quedan fuera de soporte y devuelven null.
+    const s = String(subtipo);
+    return RECEPCION_VALORES_VALIDOS.has(s) ? s : null;
   }
 
   if (tipo === "armado") {

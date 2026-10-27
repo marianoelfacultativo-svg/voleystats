@@ -106,6 +106,9 @@ function toPx(x: number, z: number): { px: number; py: number } {
   };
 }
 
+// ------------------------------------------------------------
+// Clasificación de recepción — sistema nuevo de 7 valores
+// ------------------------------------------------------------
 function clasificarNivel(
   fundamento: string,
   valoracion: string
@@ -126,14 +129,15 @@ function clasificarNivel(
     return "neu";
   }
   if (fundamento === "recepcion") {
-    if (valoracion === "positiva" || valoracion === "2x_positiva") return "pos";
+    if (valoracion === "perfecta" || valoracion === "positiva") return "pos";
     if (
-      ["negativa", "2x_negativa", "3x_negativa", "ace_contra"].includes(
-        valoracion
-      )
+      valoracion === "negativa" ||
+      valoracion === "doble_negativa" ||
+      valoracion === "overpass" ||
+      valoracion === "error_directo"
     )
       return "neg";
-    return "neu";
+    return "neu"; // intermedia
   }
   if (fundamento === "defensa") {
     if (

@@ -5,6 +5,7 @@
 
 import type { LineaClasificada } from "@/lib/clasificacionV2";
 import type { PopupEnCola } from "./tiposV2";
+import type { ValorRecepcion } from "./PopupValoracion";
 
 interface Params {
   popupActivo: PopupEnCola | null;
@@ -54,7 +55,19 @@ export function crearHandlersPopups({
     popupSiguiente();
   };
 
-  const handleRecepcionConfirmar = (v: 1 | 2 | 3 | 4 | 5 | 6) => {
+  /**
+   * Recepción — sistema nuevo de 5 valores elegidos a mano.
+   *
+   * Overpass (R/) y error_directo (R=) NO pasan por acá:
+   *   - error_directo se genera automático cuando hay ace
+   *     (ver helpersEspejoV2.ts / generarRecepcionesAceContra).
+   *   - overpass se detecta automático cuando la línea de
+   *     recepción cruza la red (ver clasificarLinea).
+   *
+   * El subtipo se guarda como string ("perfecta", "positiva", …)
+   * para que el motor de estadísticas lo reconozca directo.
+   */
+  const handleRecepcionConfirmar = (v: ValorRecepcion) => {
     actualizarLineaPopup({ subtipo: v });
     popupSiguiente();
   };

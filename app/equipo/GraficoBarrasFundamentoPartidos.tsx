@@ -14,14 +14,7 @@ import type { AccionDB } from "@/lib/estadisticas";
 
 // ------------------------------------------------------------
 // Clasificación de valoraciones en Pos / Neu / Neg.
-//   - saque:    punto = ace;            error = negativo.
-//   - ataque:   punto = punto;          error = error.
-//   - recepción: positivas = 5 / 6;     negativas = 1/2/3/4.
-//   - bloqueo:  positivas = punto/+;    negativas = use_rival/red/filtrada.
-//   - defensa:  positivas = gran_def/toque_positiva/cobertura_positiva;
-//               negativas = toque_negativa/mala_libre/error_def/
-//                           errores_graves/cobertura_negativa.
-//   Resto → neutras.
+// Recepción ahora usa el sistema nuevo de 7 valores.
 // ------------------------------------------------------------
 export function clasificarValoracion(
   fundamento: string,
@@ -38,13 +31,12 @@ export function clasificarValoracion(
     return "neu";
   }
   if (fundamento === "recepcion") {
-    if (valoracion === "positiva" || valoracion === "2x_positiva")
-      return "pos";
+    if (valoracion === "perfecta" || valoracion === "positiva") return "pos";
     if (
       valoracion === "negativa" ||
-      valoracion === "2x_negativa" ||
-      valoracion === "3x_negativa" ||
-      valoracion === "ace_contra"
+      valoracion === "doble_negativa" ||
+      valoracion === "overpass" ||
+      valoracion === "error_directo"
     )
       return "neg";
     return "neu";
@@ -155,13 +147,9 @@ const COLOR_NEG = "#dc2626";
 
 interface Props {
   fundamento: string;
-  /** Acciones ya filtradas como quieras mostrarlas. */
   acciones: AccionDB[];
-  /** Opcional: si querés contar solo las de un jugador. */
   jugadorId?: string;
-  /** Título custom (ej: nombre del jugador cuando comparás). */
   tituloOverride?: string;
-  /** Altura del área del gráfico. Default 120. */
   alto?: number;
 }
 

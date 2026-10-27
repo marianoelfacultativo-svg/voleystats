@@ -46,7 +46,7 @@ export function aLineaV2(l: LineaClasificada): LineaV2 {
 }
 
 // ------------------------------------------------------------
-// CONTEXTO ANALÍTICO — para calcular los campos extra
+// CONTEXTO ANALÍTICO
 // ------------------------------------------------------------
 
 export interface ContextoAnalitico {
@@ -62,7 +62,6 @@ export interface ContextoAnalitico {
 // Helpers internos analíticos
 // ------------------------------------------------------------
 
-/** Invierte solo la fila (F1↔F6, F2↔F5, F3↔F4) y bloqueos. */
 function invertirFila(celda: string): string {
   if (celda.startsWith("F1-")) return "F6-" + celda.slice(3);
   if (celda.startsWith("F2-")) return "F5-" + celda.slice(3);
@@ -75,12 +74,6 @@ function invertirFila(celda: string): string {
   return celda;
 }
 
-/**
- * Devuelve la zona "cruda" (4/3/2/6) normalizada al sistema de referencia
- * del equipo que la consulta. Si la celda está en el lado rival (F4/F5/F6),
- * se invierte la fila para traerla a F1/F2/F3 y así poder aplicar la
- * misma tabla.
- */
 function zonaDeCeldaNormalizada(celda: string | null): number | null {
   if (!celda) return null;
   let c = celda;
@@ -92,6 +85,9 @@ function zonaDeCeldaNormalizada(celda: string | null): number | null {
 
 /**
  * Determina si una acción debe considerarse "error" del que la ejecuta.
+ *
+ * Recepción: error_directo es el único subtipo que cuenta como error
+ * (los demás, incluyendo overpass, no). Antes se usaba parseInt(s) === 1.
  */
 function esErrorDeAccion(
   tipo: string,
@@ -104,8 +100,7 @@ function esErrorDeAccion(
     return s === "negativo";
   }
   if (tipo === "recepcion") {
-    const n = typeof subtipo === "number" ? subtipo : parseInt(s, 10);
-    return n === 1;
+    return s === "error_directo";
   }
   if (tipo === "ataque") {
     const base = s.startsWith("toque:") ? s.slice(6) : s;
@@ -133,12 +128,6 @@ function esErrorDeAccion(
   return false;
 }
 
-/**
- * Devuelve { rol, zona } del jugador dentro de la rotación (del equipo que
- * hizo la acción). Si el jugador no está mapeado en la rotación (p. ej. un
- * líbero), se busca en `liberos` y se retorna rol "L" con la zona del
- * jugador al que reemplaza (si lo hubiese).
- */
 function infoJugadorEnRotacion(
   rotacion: RotacionPunto | null,
   jugadorId: string | null
@@ -159,11 +148,6 @@ function infoJugadorEnRotacion(
   return { rol: null, zona: null };
 }
 
-/**
- * Devuelve las coordenadas (x, y) del centro de una mini en el sistema del
- * grid de CanchaV2. Devuelve null si la celda no es una celda con grilla
- * (p. ej. bloqueos, red).
- */
 function coordsDeMini(
   celda: string | null,
   mini: string | null
@@ -196,7 +180,6 @@ function construirAccion(
   ctx: ContextoAnalitico,
   override?: OverrideAccion
 ): AccionV2Data {
-  // Subtipo final (con prefijo "toque:" si es ataque con variante toque)
   let subtipoFinal: string | number | null =
     override?.subtipo !== undefined ? override.subtipo : l.subtipo ?? null;
 
@@ -212,13 +195,9 @@ function construirAccion(
   const jugadorFinal =
     override?.jugadorId !== undefined ? override.jugadorId : l.jugadorId;
 
-  // Rotación de referencia (del equipo que hizo la acción)
   const rotacionRef = l.esRival ? ctx.rotacionRival : ctx.rotacionPropia;
 
-  // Zona del origen: normalizada al sistema propio
   const zona_origen = zonaDeCeldaNormalizada(l.origen.celda);
-
-  // Zona del destino: normalizada al sistema propio
   const zona_destino = zonaDeCeldaNormalizada(l.destino.celda);
 
   const rotacion_numero = rotacionRef
@@ -262,7 +241,6 @@ function construirAccion(
     oculta: l.oculta ?? false,
     equipo_id: l.equipoId ?? null,
 
-    // Analíticos
     es_error: esErrorDeAccion(l.tipo, subtipoFinal),
     zona_origen,
     zona_destino,
@@ -295,7 +273,6 @@ export function lineasAAcciones(
         const esOrigenRival = /^F[456]-/.test(l.origen.celda);
 
         if (esOrigenRival) {
-          // 1. Ataque rival
           acciones.push(
             construirAccion(
               {
@@ -312,7 +289,6 @@ export function lineasAAcciones(
             )
           );
 
-          // 2. Bloqueo propio
           if (desviosBLOQP.length > 1) {
             const base = (l.subtipo ?? "positivo") as string;
             const esPositiva =
@@ -359,7 +335,6 @@ export function lineasAAcciones(
         }
       }
 
-      // Lógica existente para múltiples bloqueos propios seguidos
       if (desviosBLOQP.length > 1) {
         const base = (l.subtipo ?? "positivo") as string;
         const esPositiva =
