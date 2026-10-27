@@ -3,145 +3,135 @@
 @tailwind utilities;
 
 /* ============================================ */
-/* TEMA VOLEYSTATS: Plata + Celeste + Terracota */
+/* TEMA VOLEYSTATS: Papel, Tinta y Anotaciones  */
 /* ============================================ */
 
+/* 1. FONDO GENERAL: Papel de algodón con textura */
 html, body {
-  background: radial-gradient(circle at 50% 0%, #E2E8F0 0%, #94A3B8 100%) !important;
-  color: #0F172A;
+  background-color: #EAE8E3 !important;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.15'/%3E%3C/svg%3E") !important;
+  color: #1E293B;
   font-family: 'Inter', system-ui, sans-serif;
   min-height: 100vh;
   background-attachment: fixed !important;
 }
 
-/* ============================================ */
-/* 1. ELIMINAR LOS "GLOBOS" (Bordes redondeados) */
-/* ============================================ */
-
-/* Aplanamos casi todos los bordes de la app */
-.rounded-2xl, 
-.rounded-xl, 
-.rounded-lg, 
-.rounded-md {
-  border-radius: 3px !important;
-}
-
-/* Los círculos perfectos (avatares) se mantienen, pero los botones no */
-button.rounded-full, 
-a.rounded-full {
-  border-radius: 3px !important;
-}
-
-/* ============================================ */
-/* 2. FONDOS Y LEGIBILIDAD                      */
-/* ============================================ */
-
-/* Fondo base de las tarjetas grandes para que el texto se lea */
-.bg-white, .bg-white\/95, .bg-white\/90 { 
-  background: #F8FAFC !important; /* Blanco roto, sólido y legible */
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important; /* Sombra mínima para separar del fondo gris */
-  border: 1px solid #CBD5E1 !important;
-}
-
-/* Fondos de tablas y listas */
-.bg-slate-50 { 
-  background: #F1F5F9 !important; 
-}
-.bg-slate-100 { 
-  background: #E2E8F0 !important; 
-}
-.bg-slate-200 { 
-  background: #CBD5E1 !important; 
-}
-
-/* ============================================ */
-/* 3. TARJETAS DE INFO (Stats, Puntos, Errores) */
-/* ============================================ */
-
-/* Quitamos el acento turquesa y las hacemos rectángulos con borde de color */
+/* 2. LAS HOJAS DE CUADERNO (Tarjetas de info) */
+/* Eliminamos los "globos" y ponemos formato de hoja rayada */
+.bg-white, 
+.bg-white\/95, 
+.bg-white\/90,
 .rounded-2xl.shadow-sm {
-  border-radius: 3px !important;
-  box-shadow: none !important;
-  background: #F8FAFC !important; /* Fondo legible */
-  border: 1px solid #CBD5E1 !important;
+  background-color: #FDFCF9 !important; /* Blanco roto, cálido */
+  
+  /* Líneas horizontales tipo cuaderno */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 31px,
+    #CBD5E1 31px,
+    #CBD5E1 32px
+  ) !important;
+  
+  /* Borde sutil y sombra de hoja apoyada */
+  border: 1px solid #D6D3D1 !important;
+  border-radius: 2px !important; /* Casi recto, como el corte de una hoja */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
+  
+  /* Espacio superior para que el título respire antes de las líneas */
+  padding-top: 1.5rem !important;
+  padding-bottom: 1.5rem !important;
+  position: relative;
 }
 
-/* Modificamos las tarjetas de colores (bg-slate-50, bg-green-50, bg-red-50) 
-   para que parezcan fichas de archivo, no globos */
-.bg-slate-50.border, 
-.bg-green-50.border, 
-.bg-red-50.border {
-  border-width: 1px !important;
-  border-style: solid !important;
-  border-radius: 3px !important;
-  box-shadow: none !important;
+/* La "pestaña" o etiqueta en la esquina superior izquierda (como en la imagen) */
+.rounded-2xl.shadow-sm::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 60px;
+  height: 24px;
+  background-color: #FDFCF9;
+  border: 1px solid #D6D3D1;
+  border-top: none;
+  border-left: none;
+  /* Efecto de esquina doblada */
+  clip-path: polygon(0 0, 100% 0, 90% 100%, 0 100%);
+  z-index: 10;
 }
 
-/* Forzamos los bordes de colores */
-.border-slate-200 { border-color: #CBD5E1 !important; }
-.border-green-200 { border-color: #86EFAC !important; }
-.border-red-200 { border-color: #FCA5A5 !important; }
+/* 3. ARREGLOS DE VISIBILIDAD (Lo que no se veía) */
+.text-slate-900 { color: #0F172A !important; }
+.text-slate-800 { color: #1E293B !important; }
+.text-slate-700 { color: #334155 !important; }
+.text-slate-600 { color: #475569 !important; }
+.text-slate-500 { color: #64748B !important; }
 
-/* ============================================ */
-/* 4. LISTA DE JUGADORES Y PARTIDOS (Los otros globos) */
-/* ============================================ */
+/* Quitamos las cajas de fondo de las tablas y listas para que se vea el papel */
+.bg-slate-50, .bg-slate-100, .bg-slate-200 {
+  background-color: transparent !important;
+}
 
-/* Los botones de la lista de jugadores/partidos */
+/* 4. LISTA DE JUGADORES Y PARTIDOS (Los "globos" que molestaban) */
+/* Los transformamos en renglones limpios */
 button.bg-slate-50, 
 button.bg-white {
-  border-radius: 3px !important;
-  border: 1px solid #CBD5E1 !important;
-  background: #F1F5F9 !important;
+  background-color: transparent !important;
+  border-radius: 2px !important;
+  border: 1px solid transparent !important;
+  border-bottom: 1px solid #CBD5E1 !important; /* Solo una línea abajo */
   box-shadow: none !important;
   transition: all 0.15s ease;
 }
 
 button.bg-slate-50:hover, 
 button.bg-white:hover {
-  background: #E2E8F0 !important;
-  border-color: #94A3B8 !important;
+  background-color: rgba(255, 255, 255, 0.6) !important;
+  border-color: #CBD5E1 !important;
 }
 
-/* El jugador o partido seleccionado (turquesa sólido) */
+/* El jugador o partido seleccionado: parece resaltado con marcador */
 button.bg-emerald-500 {
-  background-color: #11B7B8 !important;
-  border: 1px solid #0E9A9B !important;
-  color: white !important;
+  background-color: #E6F7F7 !important; /* Turquesa muy suave */
+  border: 1px solid #11B7B8 !important;
+  color: #0F172A !important;
+  font-weight: bold;
 }
 
-/* ============================================ */
-/* 5. COLORES Y TEXTOS BASE                     */
-/* ============================================ */
-.text-slate-900 { color: #0F172A !important; }
-.text-slate-800 { color: #1E293B !important; }
-.text-slate-700 { color: #334155 !important; }
-.text-slate-600 { color: #475569 !important; }
-.text-slate-500 { color: #64748B !important; }
-.text-slate-400 { color: #94A3B8 !important; }
+/* 5. TARJETAS DE STATS (Puntos, Errores) */
+/* Parecen anotaciones al margen, no botones */
+.bg-green-50.border, 
+.bg-red-50.border, 
+.bg-slate-50.border {
+  background: transparent !important;
+  border: 1px dashed #94A3B8 !important; /* Borde punteado tipo anotación */
+  border-radius: 2px !important;
+}
 
-/* ====== ACENTOS (Turquesa) ====== */
-.bg-blue-500 { background-color: #11B7B8 !important; }
-.bg-blue-600 { background-color: #0E9A9B !important; }
-.text-blue-600 { color: #0E9A9B !important; }
-.border-blue-500 { border-color: #11B7B8 !important; }
-
-/* ====== ACENTOS (Terracota / PDF) ====== */
-.bg-fuchsia-500 { background-color: #E0827B !important; }
-.hover\:bg-fuchsia-600:hover { background-color: #C86A63 !important; }
-.text-fuchsia-700 { color: #A54A44 !important; }
-
-/* ====== CARD TERRACOTA (Último partido, perfil) ====== */
+/* 6. CARD TERRACOTA (Último partido) */
+/* Mantiene el color pero con formato de papel coloreado */
 .card-terracota {
-  background: #F5E2DC !important;
+  background-color: #FDF6F5 !important;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 31px,
+    #E8C5BC 31px,
+    #E8C5BC 32px
+  ) !important;
   border: 1px solid #E8C5BC !important;
-  box-shadow: none !important;
-  border-radius: 3px !important;
+  border-radius: 2px !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+  padding-top: 1.5rem !important;
 }
 
-/* ====== BOTONES DE NAVEGACIÓN ====== */
-.hover\:bg-slate-50:hover { background: #F1F5F9 !important; }
-.hover\:bg-slate-100:hover { background: #E2E8F0 !important; }
-.hover\:bg-slate-200:hover { background: #CBD5E1 !important; }
+/* 7. ELEMENTOS DE NAVEGACIÓN (Tabs, Botones de acento) */
+.bg-blue-500, .bg-emerald-500 { background-color: #11B7B8 !important; border-radius: 2px !important; }
+.bg-fuchsia-500 { background-color: #E0827B !important; border-radius: 2px !important; }
+.border-slate-300 { border-color: #D6D3D1 !important; }
 
-/* Inputs y Selects */
-.focus\:border-emerald-500:focus { border-color: #11B7B8 !important; }
+/* Quitamos bordes redondeados de todas partes */
+.rounded-full, .rounded-lg, .rounded-xl, .rounded-md {
+  border-radius: 2px !important;
+}
