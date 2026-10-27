@@ -251,64 +251,66 @@ interface WrapperProps {
 }
 
 function PopupWrapper({ pos, ancho, alto, titulo, children }: WrapperProps) {
-  const { ancho: W, alto: H } = CANCHA_V2_DIMS;
+  // CANCHA_V2_DIMS.ancho / .alto son el INTERIOR de la cancha.
+  // .margen es el borde celeste visible a cada lado (arriba/abajo/izq/der).
+  // El popup puede usar el margen, así que el área real disponible es
+  // [-margen, tamaño + margen].
+  const { ancho: W, alto: H, margen: M } = CANCHA_V2_DIMS;
   const { sx, sy, popupZoom } = useContext(CanchaStretchContext);
   const invSx = sx !== 0 ? 1 / sx : 1;
   const invSy = sy !== 0 ? 1 / sy : 1;
   const escX = invSx * popupZoom;
   const escY = invSy * popupZoom;
 
-  // Separación mínima entre el punto clickeado y el borde del popup.
-  const GAP = 10;
+  const minX = -M + 2;
+  const maxX = W + M - 2;
+  const minY = -M + 2;
+  const maxY = H + M - 2;
+
+  const GAP = 12;
 
   // ---------- HORIZONTAL ----------
-  // Regla: el popup crece alejándose del centro de la cancha.
-  //   - Click en la mitad izquierda  → popup se abre hacia la IZQUIERDA
-  //     (su borde derecho queda pegado al click).
-  //   - Click en la mitad derecha    → popup se abre hacia la DERECHA
-  //     (su borde izquierdo queda pegado al click).
-  // Fallback: si del lado "natural" no entra, va al lado opuesto.
   let x: number;
   const clickEnIzquierda = pos.x < W / 2;
-  if (clickEnIzquierda) {
-    x = pos.x - ancho - GAP;
-    if (x < 2) {
-      // No entra a la izquierda: probamos a la derecha.
-      x = pos.x + GAP;
-    }
+  const naturalX = clickEnIzquierda ? pos.x - ancho - GAP : pos.x + GAP;
+  const flippedX = clickEnIzquierda ? pos.x + GAP : pos.x - ancho - GAP;
+
+  const fitsNaturalX = naturalX >= minX && naturalX + ancho <= maxX;
+  const fitsFlippedX = flippedX >= minX && flippedX + ancho <= maxX;
+
+  if (fitsNaturalX) {
+    x = naturalX;
+  } else if (fitsFlippedX) {
+    x = flippedX;
   } else {
-    x = pos.x + GAP;
-    if (x + ancho > W - 2) {
-      // No entra a la derecha: probamos a la izquierda.
-      x = pos.x - ancho - GAP;
-    }
+    x = naturalX;
   }
-  // Clamp final a los bordes del canvas.
-  if (x < 2) x = 2;
-  if (x + ancho > W - 2) x = W - ancho - 2;
+  if (x < minX) x = minX;
+  if (x + ancho > maxX) x = maxX - ancho;
 
   // ---------- VERTICAL ----------
-  // Mismo criterio que horizontal:
-  //   - Click en la mitad superior → popup se abre hacia ARRIBA
-  //     (su borde inferior queda pegado al click).
-  //   - Click en la mitad inferior → popup se abre hacia ABAJO
-  //     (su borde superior queda pegado al click).
-  // Fallback: si del lado "natural" no entra, va al lado opuesto.
+  // Regla: alejarse del centro de la cancha (la red).
+  //   - Click arriba de la mitad → popup arriba
+  //   - Click abajo de la mitad  → popup abajo
+  // Si el lado natural no entra, se prueba el opuesto. Si ninguno entra,
+  // se usa el natural y se clamplea (permite entrar en el margen celeste).
   let y: number;
   const clickEnArriba = pos.y < H / 2;
-  if (clickEnArriba) {
-    y = pos.y - alto - GAP;
-    if (y < 2) {
-      y = pos.y + GAP;
-    }
+  const naturalY = clickEnArriba ? pos.y - alto - GAP : pos.y + GAP;
+  const flippedY = clickEnArriba ? pos.y + GAP : pos.y - alto - GAP;
+
+  const fitsNaturalY = naturalY >= minY && naturalY + alto <= maxY;
+  const fitsFlippedY = flippedY >= minY && flippedY + alto <= maxY;
+
+  if (fitsNaturalY) {
+    y = naturalY;
+  } else if (fitsFlippedY) {
+    y = flippedY;
   } else {
-    y = pos.y + GAP;
-    if (y + alto > H - 2) {
-      y = pos.y - alto - GAP;
-    }
+    y = naturalY;
   }
-  if (y < 2) y = 2;
-  if (y + alto > H - 2) y = H - alto - 2;
+  if (y < minY) y = minY;
+  if (y + alto > maxY) y = maxY - alto;
 
   const cx = x + ancho / 2;
   const cy = y + alto / 2;
