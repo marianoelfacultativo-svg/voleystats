@@ -17,34 +17,40 @@ html, body {
 }
 
 /* 2. LAS HOJAS DE CUADERNO (Tarjetas de info) */
-/* Eliminamos los "globos" y ponemos formato de hoja rayada */
 .bg-white, 
 .bg-white\/95, 
 .bg-white\/90,
-.rounded-2xl.shadow-sm {
+.rounded-2xl.shadow-sm,
+.card-terracota {
   background-color: #FDFCF9 !important; /* Blanco roto, cálido */
   
-  /* Líneas horizontales tipo cuaderno */
+  /* Líneas horizontales EXACTAS cada 32px */
   background-image: repeating-linear-gradient(
     to bottom,
-    transparent,
+    transparent 0,
     transparent 31px,
     #CBD5E1 31px,
     #CBD5E1 32px
   ) !important;
   
+  /* Ajustamos para que la línea caiga justo debajo de la base de la letra */
+  background-position-y: 8px !important; 
+  
   /* Borde sutil y sombra de hoja apoyada */
   border: 1px solid #D6D3D1 !important;
-  border-radius: 2px !important; /* Casi recto, como el corte de una hoja */
+  border-radius: 2px !important; 
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
   
   /* Espacio superior para que el título respire antes de las líneas */
   padding-top: 1.5rem !important;
   padding-bottom: 1.5rem !important;
   position: relative;
+  
+  /* LA CLAVE: Forzamos que todo mida 32px de alto */
+  line-height: 32px !important;
 }
 
-/* La "pestaña" o etiqueta en la esquina superior izquierda (como en la imagen) */
+/* La "pestaña" en la esquina superior izquierda */
 .rounded-2xl.shadow-sm::before {
   content: "";
   position: absolute;
@@ -56,31 +62,66 @@ html, body {
   border: 1px solid #D6D3D1;
   border-top: none;
   border-left: none;
-  /* Efecto de esquina doblada */
   clip-path: polygon(0 0, 100% 0, 90% 100%, 0 100%);
   z-index: 10;
 }
 
-/* 3. ARREGLOS DE VISIBILIDAD (Lo que no se veía) */
+/* 3. ANCLAR LAS LETRAS A LOS RENGLONES */
+/* Obligamos a los títulos, párrafos y celdas a usar el ritmo de 32px */
+.rounded-2xl.shadow-sm p, 
+.rounded-2xl.shadow-sm span, 
+.rounded-2xl.shadow-sm h2, 
+.rounded-2xl.shadow-sm h3, 
+.rounded-2xl.shadow-sm h4,
+.rounded-2xl.shadow-sm td,
+.rounded-2xl.shadow-sm th,
+.rounded-2xl.shadow-sm li,
+.card-terracota p, 
+.card-terracota span, 
+.card-terracota h2, 
+.card-terracota h3, 
+.card-terracota h4 {
+  line-height: 32px !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* Los textos grandes (números de Puntos, Errores) ocupan 2 renglones (64px) */
+.rounded-2xl.shadow-sm .text-2xl,
+.rounded-2xl.shadow-sm .text-3xl,
+.rounded-2xl.shadow-sm .text-xl,
+.card-terracota .text-2xl,
+.card-terracota .text-3xl,
+.card-terracota .text-xl {
+  line-height: 64px !important; 
+}
+
+/* Arreglamos las tablas para que sigan el mismo ritmo */
+.rounded-2xl.shadow-sm table {
+  border-collapse: collapse !important;
+}
+.rounded-2xl.shadow-sm tr {
+  height: 32px !important;
+}
+
+/* 4. ARREGLOS DE VISIBILIDAD */
 .text-slate-900 { color: #0F172A !important; }
 .text-slate-800 { color: #1E293B !important; }
 .text-slate-700 { color: #334155 !important; }
 .text-slate-600 { color: #475569 !important; }
 .text-slate-500 { color: #64748B !important; }
 
-/* Quitamos las cajas de fondo de las tablas y listas para que se vea el papel */
 .bg-slate-50, .bg-slate-100, .bg-slate-200 {
   background-color: transparent !important;
 }
 
-/* 4. LISTA DE JUGADORES Y PARTIDOS (Los "globos" que molestaban) */
-/* Los transformamos en renglones limpios */
+/* 5. LISTA DE JUGADORES Y PARTIDOS */
 button.bg-slate-50, 
 button.bg-white {
   background-color: transparent !important;
   border-radius: 2px !important;
   border: 1px solid transparent !important;
-  border-bottom: 1px solid #CBD5E1 !important; /* Solo una línea abajo */
+  border-bottom: 1px solid #CBD5E1 !important;
   box-shadow: none !important;
   transition: all 0.15s ease;
 }
@@ -91,47 +132,27 @@ button.bg-white:hover {
   border-color: #CBD5E1 !important;
 }
 
-/* El jugador o partido seleccionado: parece resaltado con marcador */
 button.bg-emerald-500 {
-  background-color: #E6F7F7 !important; /* Turquesa muy suave */
+  background-color: #E6F7F7 !important; 
   border: 1px solid #11B7B8 !important;
   color: #0F172A !important;
   font-weight: bold;
 }
 
-/* 5. TARJETAS DE STATS (Puntos, Errores) */
-/* Parecen anotaciones al margen, no botones */
+/* 6. TARJETAS DE STATS */
 .bg-green-50.border, 
 .bg-red-50.border, 
 .bg-slate-50.border {
   background: transparent !important;
-  border: 1px dashed #94A3B8 !important; /* Borde punteado tipo anotación */
+  border: 1px dashed #94A3B8 !important;
   border-radius: 2px !important;
 }
 
-/* 6. CARD TERRACOTA (Último partido) */
-/* Mantiene el color pero con formato de papel coloreado */
-.card-terracota {
-  background-color: #FDF6F5 !important;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent,
-    transparent 31px,
-    #E8C5BC 31px,
-    #E8C5BC 32px
-  ) !important;
-  border: 1px solid #E8C5BC !important;
-  border-radius: 2px !important;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
-  padding-top: 1.5rem !important;
-}
-
-/* 7. ELEMENTOS DE NAVEGACIÓN (Tabs, Botones de acento) */
+/* 7. ELEMENTOS DE NAVEGACIÓN */
 .bg-blue-500, .bg-emerald-500 { background-color: #11B7B8 !important; border-radius: 2px !important; }
 .bg-fuchsia-500 { background-color: #E0827B !important; border-radius: 2px !important; }
 .border-slate-300 { border-color: #D6D3D1 !important; }
 
-/* Quitamos bordes redondeados de todas partes */
 .rounded-full, .rounded-lg, .rounded-xl, .rounded-md {
   border-radius: 2px !important;
 }
