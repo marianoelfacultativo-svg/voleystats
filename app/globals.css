@@ -120,32 +120,33 @@ html, body {
 .disabled\:bg-slate-400:disabled { background-color: #6B8FA8 !important; }
 
 /* ============================================ */
-/* CARDS DE INFO — estilo ficha editorial       */
+/* CARDS DE INFO — ahora son SECCIONES          */
 /*                                              */
-/* Reemplaza: esquinas muy redondeadas,         */
-/* sombras difusas, "globos".                   */
-/* Ahora: esquinas casi rectas, borde fino,     */
-/* banda fina turquesa arriba.                  */
-/* Solo afecta a las cards que tienen a la vez  */
-/* rounded-2xl + shadow-sm.                     */
+/* Adiós "tarjetas": sin caja, sin borde,       */
+/* sin radio, sin sombra. Solo una regla fina   */
+/* arriba y aire. La textura de papel del body  */
+/* se ve a través del contenido.                */
 /* ============================================ */
 
 .rounded-2xl.shadow-sm {
-  border-radius: 4px !important;
+  border-radius: 0 !important;
   box-shadow: none !important;
-  border: 1px solid #B8CFDD !important;
+  border: none !important;
+  background: transparent !important;
   position: relative;
+  padding-top: 1.25rem;
+  padding-bottom: 1.25rem;
 }
 
 .rounded-2xl.shadow-sm::before {
   content: "";
+  display: block;
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 2px;
-  background: #11B7B8;
-  border-radius: 4px 4px 0 0;
+  height: 1px;
+  background: #64748B;
+  opacity: 0.28;
   pointer-events: none;
-  z-index: 2;
 }
