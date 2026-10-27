@@ -258,12 +258,56 @@ function PopupWrapper({ pos, ancho, alto, titulo, children }: WrapperProps) {
   const escX = invSx * popupZoom;
   const escY = invSy * popupZoom;
 
-  let x = pos.x - ancho / 2;
+  // Separación mínima entre el punto clickeado y el borde del popup.
+  const GAP = 10;
+
+  // ---------- HORIZONTAL ----------
+  // Regla: el popup crece alejándose del centro de la cancha.
+  //   - Click en la mitad izquierda  → popup se abre hacia la IZQUIERDA
+  //     (su borde derecho queda pegado al click).
+  //   - Click en la mitad derecha    → popup se abre hacia la DERECHA
+  //     (su borde izquierdo queda pegado al click).
+  // Fallback: si del lado "natural" no entra, va al lado opuesto.
+  let x: number;
+  const clickEnIzquierda = pos.x < W / 2;
+  if (clickEnIzquierda) {
+    x = pos.x - ancho - GAP;
+    if (x < 2) {
+      // No entra a la izquierda: probamos a la derecha.
+      x = pos.x + GAP;
+    }
+  } else {
+    x = pos.x + GAP;
+    if (x + ancho > W - 2) {
+      // No entra a la derecha: probamos a la izquierda.
+      x = pos.x - ancho - GAP;
+    }
+  }
+  // Clamp final a los bordes del canvas.
   if (x < 2) x = 2;
   if (x + ancho > W - 2) x = W - ancho - 2;
 
-  let y = pos.y - alto - 6;
-  if (y < 2) y = pos.y + 6;
+  // ---------- VERTICAL ----------
+  // Mismo criterio que horizontal:
+  //   - Click en la mitad superior → popup se abre hacia ARRIBA
+  //     (su borde inferior queda pegado al click).
+  //   - Click en la mitad inferior → popup se abre hacia ABAJO
+  //     (su borde superior queda pegado al click).
+  // Fallback: si del lado "natural" no entra, va al lado opuesto.
+  let y: number;
+  const clickEnArriba = pos.y < H / 2;
+  if (clickEnArriba) {
+    y = pos.y - alto - GAP;
+    if (y < 2) {
+      y = pos.y + GAP;
+    }
+  } else {
+    y = pos.y + GAP;
+    if (y + alto > H - 2) {
+      y = pos.y - alto - GAP;
+    }
+  }
+  if (y < 2) y = 2;
   if (y + alto > H - 2) y = H - alto - 2;
 
   const cx = x + ancho / 2;
