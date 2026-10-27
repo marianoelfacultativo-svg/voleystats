@@ -204,7 +204,7 @@ const CELDAS = generarCeldas();
 const TOTAL_ANCHO = 5 * ANCHO_CELDA;
 const TOTAL_ALTO = CELDAS.reduce((max, c) => Math.max(max, c.y + c.alto), 0);
 
-const MARGEN = ALTO_CANCHA;
+const MARGEN = 60;
 
 const TOTAL_ANCHO_EXT = TOTAL_ANCHO + 2 * MARGEN;
 const TOTAL_ALTO_EXT = TOTAL_ALTO + 2 * MARGEN;
