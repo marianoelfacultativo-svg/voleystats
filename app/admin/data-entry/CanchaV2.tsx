@@ -454,24 +454,33 @@ export default function CanchaV2({
   const handleMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const sp = svgCoordsDesdeMouse(e);
     if (!sp) {
-      setHover(null);
+      // Solo actualizamos si realmente había hover.
+      setHover((prev) => (prev === null ? prev : null));
       return;
     }
     const p = svgToLayoutCoords(sp.x, sp.y, orientacion);
     const celda = buscarCelda(p.x, p.y);
     if (!celda) {
-      setHover(null);
+      setHover((prev) => (prev === null ? prev : null));
       return;
     }
     const mini = miniDesdeCoords(celda, p.x, p.y);
     if (!mini) {
-      setHover(null);
+      setHover((prev) => (prev === null ? prev : null));
       return;
     }
-    setHover({ celda: celda.id, mini });
+    // Actualización condicional: solo si cambió celda o mini.
+    setHover((prev) => {
+      if (prev && prev.celda === celda.id && prev.mini === mini) {
+        return prev;
+      }
+      return { celda: celda.id, mini };
+    });
   };
 
-  const handleLeave = () => setHover(null);
+  const handleLeave = () => {
+    setHover((prev) => (prev === null ? prev : null));
+  };
 
   const handleClick = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!onMiniClick) return;
@@ -533,6 +542,81 @@ export default function CanchaV2({
     !!onPuntoAnterior ||
     !!onBorrarPunto ||
     !!onBorrarLinea;
+
+  // ------------------------------------------------------------
+  // Grilla memoizada: ~3600 rects que no se recalculan en hover.
+  // Solo se recalculan si cambian las celdas atenuadas o resaltadas.
+  // ------------------------------------------------------------
+  const grillaMemoizada = useMemo(() => {
+    return CELDAS.map((c) => {
+      const colores = COLORES_ZONA[c.zona];
+      const atenuada = celdasAtenuadas?.has(c.id) ?? false;
+      const resaltada = celdasResaltadas?.has(c.id) ?? false;
+
+      return (
+        <g key={c.id} opacity={atenuada ? 0.35 : 1}>
+          <rect
+            x={c.x}
+            y={c.y}
+            width={c.ancho}
+            height={c.alto}
+            fill={colores.fondo}
+            stroke={colores.borde}
+            strokeWidth={1}
+          />
+
+          {Array.from({ length: c.miniFils }).map((_, f) =>
+            Array.from({ length: c.miniCols }).map((_, col) => {
+              const r = rectMini(c, f + 1, col + 1);
+              return (
+                <rect
+                  key={`${c.id}-m-${f}-${col}`}
+                  x={r.x}
+                  y={r.y}
+                  width={r.w}
+                  height={r.h}
+                  fill="transparent"
+                  stroke={colores.borde}
+                  strokeWidth={0.25}
+                  opacity={0.4}
+                  pointerEvents="none"
+                />
+              );
+            })
+          )}
+
+          {resaltada && (
+            <rect
+              x={c.x}
+              y={c.y}
+              width={c.ancho}
+              height={c.alto}
+              fill="none"
+              stroke="#0ea5e9"
+              strokeWidth={2}
+              strokeDasharray="4 3"
+              pointerEvents="none"
+            />
+          )}
+
+          {c.alto >= 20 && (
+            <text
+              x={c.x + c.ancho / 2}
+              y={c.y + c.alto / 2 + 3}
+              textAnchor="middle"
+              fontSize={7}
+              fontWeight={700}
+              fill={colores.texto}
+              opacity={0.55}
+              pointerEvents="none"
+            >
+              {c.id}
+            </text>
+          )}
+        </g>
+      );
+    });
+  }, [celdasAtenuadas, celdasResaltadas]);
 
   // ------------------------------------------------------------
   // CONTENIDO DE LA TOOLBAR (reutilizado en los 2 layouts)
@@ -809,74 +893,7 @@ export default function CanchaV2({
               : `translate(${MARGEN} ${MARGEN})`
           }
         >
-          {CELDAS.map((c) => {
-            const colores = COLORES_ZONA[c.zona];
-            const atenuada = celdasAtenuadas?.has(c.id) ?? false;
-            const resaltada = celdasResaltadas?.has(c.id) ?? false;
-
-            return (
-              <g key={c.id} opacity={atenuada ? 0.35 : 1}>
-                <rect
-                  x={c.x}
-                  y={c.y}
-                  width={c.ancho}
-                  height={c.alto}
-                  fill={colores.fondo}
-                  stroke={colores.borde}
-                  strokeWidth={1}
-                />
-
-                {Array.from({ length: c.miniFils }).map((_, f) =>
-                  Array.from({ length: c.miniCols }).map((_, col) => {
-                    const r = rectMini(c, f + 1, col + 1);
-                    return (
-                      <rect
-                        key={`${c.id}-m-${f}-${col}`}
-                        x={r.x}
-                        y={r.y}
-                        width={r.w}
-                        height={r.h}
-                        fill="transparent"
-                        stroke={colores.borde}
-                        strokeWidth={0.25}
-                        opacity={0.4}
-                        pointerEvents="none"
-                      />
-                    );
-                  })
-                )}
-
-                {resaltada && (
-                  <rect
-                    x={c.x}
-                    y={c.y}
-                    width={c.ancho}
-                    height={c.alto}
-                    fill="none"
-                    stroke="#0ea5e9"
-                    strokeWidth={2}
-                    strokeDasharray="4 3"
-                    pointerEvents="none"
-                  />
-                )}
-
-                {c.alto >= 20 && (
-                  <text
-                    x={c.x + c.ancho / 2}
-                    y={c.y + c.alto / 2 + 3}
-                    textAnchor="middle"
-                    fontSize={7}
-                    fontWeight={700}
-                    fill={colores.texto}
-                    opacity={0.55}
-                    pointerEvents="none"
-                  >
-                    {c.id}
-                  </text>
-                )}
-              </g>
-            );
-          })}
+          {grillaMemoizada}
 
           {hoverMiniRect && (
             <rect
