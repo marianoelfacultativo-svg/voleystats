@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useContext, useMemo } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import {
   getRectMiniLayout,
   CanchaStretchContext,
@@ -112,6 +112,20 @@ export default function LineasV2({
   const invSy = sy !== 0 ? 1 / sy : 1;
   const escX = invSx * circleZoom;
   const escY = invSy * circleZoom;
+
+  // ----------------------------------------------------------
+  // Detección de fullscreen (para apagar animaciones costosas)
+  // ----------------------------------------------------------
+  const [enFullscreen, setEnFullscreen] = useState(false);
+
+  useEffect(() => {
+    const update = () => {
+      setEnFullscreen(!!document.fullscreenElement);
+    };
+    update();
+    document.addEventListener("fullscreenchange", update);
+    return () => document.removeEventListener("fullscreenchange", update);
+  }, []);
 
   const circulos = useMemo(() => {
     const map = new Map<string, PuntoV2>();
@@ -270,29 +284,44 @@ export default function LineasV2({
           pointerEvents={onClickCirculo ? "auto" : "none"}
           transform={`translate(${posOrigen.x} ${posOrigen.y}) scale(${escX} ${escY})`}
         >
-          <circle
-            cx={0}
-            cy={0}
-            r={radioCirculoActivo + radioExtra}
-            fill="none"
-            stroke={colorHalo}
-            strokeWidth={grosorHalo}
-            opacity={0.65}
-            vectorEffect="non-scaling-stroke"
-          >
-            <animate
-              attributeName="r"
-              values={`${radioCirculoActivo + radioExtra - 2};${radioCirculoActivo + radioExtra + 3};${radioCirculoActivo + radioExtra - 2}`}
-              dur="1.4s"
-              repeatCount="indefinite"
+          {/* Halo: animado solo si NO estamos en fullscreen.
+              En fullscreen queda estático para no repintar cada frame. */}
+          {enFullscreen ? (
+            <circle
+              cx={0}
+              cy={0}
+              r={radioCirculoActivo + radioExtra}
+              fill="none"
+              stroke={colorHalo}
+              strokeWidth={grosorHalo}
+              opacity={0.55}
+              vectorEffect="non-scaling-stroke"
             />
-            <animate
-              attributeName="opacity"
-              values={armado ? "0.85;0.25;0.85" : "0.6;0.1;0.6"}
-              dur="1.4s"
-              repeatCount="indefinite"
-            />
-          </circle>
+          ) : (
+            <circle
+              cx={0}
+              cy={0}
+              r={radioCirculoActivo + radioExtra}
+              fill="none"
+              stroke={colorHalo}
+              strokeWidth={grosorHalo}
+              opacity={0.65}
+              vectorEffect="non-scaling-stroke"
+            >
+              <animate
+                attributeName="r"
+                values={`${radioCirculoActivo + radioExtra - 2};${radioCirculoActivo + radioExtra + 3};${radioCirculoActivo + radioExtra - 2}`}
+                dur="1.4s"
+                repeatCount="indefinite"
+              />
+              <animate
+                attributeName="opacity"
+                values={armado ? "0.85;0.25;0.85" : "0.6;0.1;0.6"}
+                dur="1.4s"
+                repeatCount="indefinite"
+              />
+            </circle>
+          )}
 
           <circle
             cx={0}

@@ -455,7 +455,17 @@ export default function DataEntryV2({
   };
 
   const handleBorrarPunto = () => {
-    if (lineas.length > 0 && !confirm("¿Borrar todas las líneas de este punto?")) return;
+    // Los diálogos nativos (confirm/alert) fuerzan la salida de
+    // fullscreen en la mayoría de los navegadores. Si estamos en
+    // pantalla completa, borramos directo sin preguntar.
+    const enFullscreen = !!document.fullscreenElement;
+    if (
+      lineas.length > 0 &&
+      !enFullscreen &&
+      !confirm("¿Borrar todas las líneas de este punto?")
+    ) {
+      return;
+    }
     setLineas([]);
     setCirculoSinArmar(null);
     setCirculoArmado(null);
@@ -471,7 +481,15 @@ export default function DataEntryV2({
   };
 
   const handleBorrarLocal = () => {
-    if (!confirm("¿Borrar los datos guardados en ESTE navegador para este partido?\n\nNO toca Supabase. Si ya guardaste en Supabase, al recargar se recupera desde ahí.")) return;
+    const enFullscreen = !!document.fullscreenElement;
+    if (
+      !enFullscreen &&
+      !confirm(
+        "¿Borrar los datos guardados en ESTE navegador para este partido?\n\nNO toca Supabase. Si ya guardaste en Supabase, al recargar se recupera desde ahí."
+      )
+    ) {
+      return;
+    }
     try {
       localStorage.removeItem(CLAVE_V2 + partidoId);
       localStorage.removeItem(CLAVE_POSICIONES_FIJAS + partidoId);
@@ -556,7 +574,13 @@ export default function DataEntryV2({
   const handleGuardarSupabase = async () => {
     const lista = Object.values(puntosCerrados).sort((a, b) => a.numero - b.numero);
     if (lista.length === 0) { alert("No hay puntos cerrados para guardar."); return; }
-    if (!confirm(`¿Guardar ${lista.length} punto${lista.length !== 1 ? "s" : ""} en Supabase?\n\nLos mismos puntos se borrarán de las tablas V1 (reemplazo).`)) return;
+    const enFullscreen = !!document.fullscreenElement;
+    if (
+      !enFullscreen &&
+      !confirm(`¿Guardar ${lista.length} punto${lista.length !== 1 ? "s" : ""} en Supabase?\n\nLos mismos puntos se borrarán de las tablas V1 (reemplazo).`)
+    ) {
+      return;
+    }
 
     setGuardando(true);
     const res = await guardarPuntosEnSupabase({
