@@ -118,3 +118,34 @@ html, body {
 /* ====== disabled ====== */
 .disabled\:bg-slate-300:disabled { background-color: #8FAEC4 !important; }
 .disabled\:bg-slate-400:disabled { background-color: #6B8FA8 !important; }
+
+/* ============================================ */
+/* CARDS DE INFO — estilo ficha editorial       */
+/*                                              */
+/* Reemplaza: esquinas muy redondeadas,         */
+/* sombras difusas, "globos".                   */
+/* Ahora: esquinas casi rectas, borde fino,     */
+/* banda fina turquesa arriba.                  */
+/* Solo afecta a las cards que tienen a la vez  */
+/* rounded-2xl + shadow-sm.                     */
+/* ============================================ */
+
+.rounded-2xl.shadow-sm {
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  border: 1px solid #B8CFDD !important;
+  position: relative;
+}
+
+.rounded-2xl.shadow-sm::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #11B7B8;
+  border-radius: 4px 4px 0 0;
+  pointer-events: none;
+  z-index: 2;
+}
