@@ -1,1494 +1,1295 @@
-// ============================================
-// MOTOR DE ESTADÍSTICAS DE VOLEYSTATS
-// Sistema de puntaje: escala -2 a 10 (neutro 5)
-// ============================================
+// ============================================================
+// CLASIFICACIÓN V2 — motor de tipos de acción
+// ============================================================
 
-export interface AccionDB {
-  jugador_id: string;
-  partido_id?: string;
-  set_numero: number;
-  punto_numero?: number;
-  fundamento: string;
-  valoracion: string;
-  cantidad: number;
-  puntaje?: number;
-  puntajeBase?: number;
-  variante?: string | null;
-  destino_celda?: string | null;
+import {
+  numeroRotacionDesdePosiciones,
+  type Libero,
+  type RotacionPunto,
+  type Zona,
+} from "./rotaciones";
+import { jugadorQueAtacaDesdeCelda } from "./mapeoV2";
+
+// ============================================================
+// TIPOS
+// ============================================================
+
+export type TipoAccion =
+  | "saque"
+  | "recepcion"
+  | "armado"
+  | "ataque"
+  | "bloqueo"
+  | "defensa"
+  | "libre"
+  | "roce-red";
+
+export type Lado = "propio" | "rival";
+export type Situacion = "saque" | "recepcion";
+export type PopupRequerido =
+  | "saque"
+  | "tipo-saque"
+  | "recepcion"
+  | "armado"
+  | "defensa"
+  | "libre"
+  | "jugador"
+  | "roce-red"
+  | "bloqueo"
+  | "ataque-toque-libre"
+  | "remate-segunda"
+  | null;
+
+export type VarianteAtaque = "remate" | "toque";
+export type TipoSaque = "potencia" | "flotado";
+
+export interface PuntoV2 {
+  celda: string;
+  mini: string;
+  jugadorId?: string | null;
 }
 
-export const BASE_SCORES: Record<string, Record<string, number>> = {
-  saque: {
-    ace: 10,
-    positivo_mas: 8,
-    positivo: 6,
-    neutro: 5,
-    negativo: 2,
-  },
-  // ============================================================
-  // RECEPCIÓN — sistema nuevo de 7 valores (guía del club)
-  //   perfecta       (R#)  → 10
-  //   positiva       (R+)  →  8
-  //   intermedia     (R!)  →  6
-  //   negativa       (R-)  →  4
-  //   doble_negativa (R--) →  2
-  //   overpass       (R/)  →  1
-  //   error_directo  (R=)  →  0
-  // ============================================================
-  recepcion: {
-    perfecta: 10,
-    positiva: 8,
-    intermedia: 6,
-    negativa: 4,
-    doble_negativa: 2,
-    overpass: 1,
-    error_directo: 0,
-  },
-  ataque: {
-    punto: 10,
-    neutro: 2,
-    error: 0,
-  },
-  bloqueo: {
-    punto: 10,
-    positivo_mas: 8,
-    positivo: 6,
-    neutro: 5,
-    use_rival: 3,
-    filtrada: 2,
-    red: 0,
-  },
-  defensa: {
-    gran_def: 10,
-    toque_positiva: 10,
-    cobertura_positiva: 10,
-    toque_negativa: 0,
-    cobertura_negativa: 0,
-    error_def: 0,
-    errores_graves: 0,
-    mala_libre: -2,
-    neutro: 5,
-  },
-  armados: {
-    genial: 10,
-    perfecto: 8,
-    correcto: 6,
-    flojo: 3,
-    malo: 1,
-    horrible: 0,
-  },
-  toque: {
-    punto: 10,
-    neutro: 5,
-    error: 0,
-  },
-};
-
-export const PUNTAJE_NEUTRO = 5;
-export const PUNTAJE_MIN = -2;
-export const PUNTAJE_MAX = 10;
-export const FACTOR_CONTEXTO = 0.4;
-export const MIN_ACCIONES_RADAR = 10;
-
-export function puntajeBase(
-  fundamento: string,
-  valoracion: string
-): number | null {
-  const f = BASE_SCORES[fundamento];
-  if (!f) return null;
-  const v = f[valoracion];
-  return v === undefined ? null : v;
+export interface LineaInput {
+  origen: PuntoV2;
+  destino: PuntoV2;
+  desvios?: PuntoV2[];
+  posicionInicial?: PuntoV2 | null;
 }
 
-export function ajustarPorContexto(
-  base: number,
-  anteriorBase: number | null
-): number {
-  if (anteriorBase === null) return base;
-  const ajuste =
-    base - FACTOR_CONTEXTO * (anteriorBase - PUNTAJE_NEUTRO);
-  return Math.max(PUNTAJE_MIN, Math.min(PUNTAJE_MAX, ajuste));
+export interface LineaClasificada {
+  id: string;
+  tipo: TipoAccion;
+  esRival: boolean;
+  jugadorId: string | null;
+  origen: PuntoV2;
+  destino: PuntoV2;
+  desvios?: PuntoV2[];
+  subtipo?: string | number | null;
+  variante?: VarianteAtaque | null;
+  posicionInicial?: PuntoV2 | null;
+  oculta?: boolean;
+  x2?: boolean;
+  velocidad?: number | null;
+  tipoSaque?: TipoSaque | null;
+  equipoId?: string | null;
 }
 
-export const VALORES_SAQUE = BASE_SCORES.saque;
-export const VALORES_RECEPCION = BASE_SCORES.recepcion;
-export const VALORES_ATAQUE = BASE_SCORES.ataque;
-export const VALORES_BLOQUEO = BASE_SCORES.bloqueo;
-export const VALORES_DEFENSA = BASE_SCORES.defensa;
-export const VALORES_ARMADOS = BASE_SCORES.armados;
-export const VALORES_TOQUE = BASE_SCORES.toque;
-export const VALORES_POR_FUNDAMENTO = BASE_SCORES;
-
-const ACCIONES_POSITIVAS: Record<string, string[]> = {
-  saque: ["ace", "positivo_mas", "positivo"],
-  recepcion: ["perfecta", "positiva"],
-  ataque: ["punto"],
-  bloqueo: ["punto", "positivo_mas", "positivo"],
-  defensa: ["toque_positiva", "gran_def", "cobertura_positiva"],
-};
-
-const ACCIONES_NEGATIVAS: Record<string, string[]> = {
-  saque: ["negativo"],
-  recepcion: [
-    "negativa",
-    "doble_negativa",
-    "overpass",
-    "error_directo",
-  ],
-  ataque: ["error"],
-  bloqueo: ["use_rival", "red"],
-  defensa: [
-    "toque_negativa",
-    "mala_libre",
-    "error_def",
-    "cobertura_negativa",
-    "errores_graves",
-  ],
-};
-
-const DISPLAY_PUNTOS: Record<string, string[]> = {
-  saque: ["ace"],
-  recepcion: [],
-  ataque: ["punto"],
-  bloqueo: ["punto"],
-  defensa: [],
-  toque: ["punto"],
-};
-
-const DISPLAY_ERRORES: Record<string, string[]> = {
-  saque: ["negativo"],
-  recepcion: ["error_directo"],
-  ataque: ["error"],
-  bloqueo: ["use_rival", "red"],
-  defensa: ["error_def", "errores_graves"],
-  toque: ["error"],
-};
-
-const SALDO_POSITIVOS: Record<string, string[]> = {
-  saque: ["ace"],
-  recepcion: [],
-  ataque: ["punto"],
-  bloqueo: ["punto"],
-  defensa: [],
-  toque: ["punto"],
-};
-
-const SALDO_NEGATIVOS: Record<string, string[]> = {
-  saque: ["negativo"],
-  recepcion: ["error_directo"],
-  ataque: ["error"],
-  bloqueo: ["red"],
-  defensa: [],
-  toque: ["error"],
-};
-
-const SALDO_DEF_POSITIVOS = [
-  "toque_positiva",
-  "gran_def",
-  "cobertura_positiva",
-];
-
-const SALDO_DEF_NEGATIVOS = [
-  "toque_negativa",
-  "mala_libre",
-  "error_def",
-  "cobertura_negativa",
-  "errores_graves",
-];
-
-const EXPONENTES_VOLUMEN: Record<string, number> = {
-  saque: 1.0,
-  bloqueo: 1.0,
-};
-
-const EXPONENTE_DEFAULT = 0.5;
-
-function getExponente(fundamento: string): number {
-  return EXPONENTES_VOLUMEN[fundamento] ?? EXPONENTE_DEFAULT;
+export interface EstadoClasificacion {
+  saqueInicial: Lado;
+  situacion: Situacion;
+  rotacion: RotacionPunto;
+  lineas: LineaClasificada[];
+  recepcionOverrides?: Partial<Record<Zona, string | null>>;
+  modoEspejo?: boolean;
+  equipoPropioId?: string | null;
+  equipoRivalId?: string | null;
+  rotacionRival?: RotacionPunto | null;
+  situacionRival?: Situacion | null;
+  recepcionOverridesRival?: Partial<Record<Zona, string | null>>;
 }
 
-function puntajeEfectivo(a: AccionDB): number | null {
-  if (a.puntaje !== undefined) return a.puntaje;
-  return puntajeBase(a.fundamento, a.valoracion);
+export interface ResultadoClasificacion {
+  tipo: TipoAccion;
+  esRival: boolean;
+  jugadorId: string | null;
+  popup: PopupRequerido;
+  cierraPunto?: Lado;
+  desvios?: PuntoV2[];
+  subtipoFijo?: string | number;
+  tipoSaqueFijo?: TipoSaque;
+  equipoId?: string | null;
 }
 
-function normalizarPuntaje(p: number): number {
-  if (p <= PUNTAJE_NEUTRO) {
-    if (p >= 0) return (p / 5) * 0.25;
-    return (p / 2) * 0.25;
-  }
-  return ((p - 5) / 5) * 0.75 + 0.25;
+// ============================================================
+// HELPERS DE CELDA
+// ============================================================
+
+export function ladoDeCelda(celda: string): Lado | null {
+  if (/^F[123]-/.test(celda)) return "propio";
+  if (/^F[456]-/.test(celda)) return "rival";
+  if (celda.startsWith("BLOQ-P-")) return "propio";
+  if (celda.startsWith("BLOQ-R-")) return "rival";
+  if (celda.startsWith("FUERA-ARR-")) return "rival";
+  if (celda.startsWith("FUERA-ABA-")) return "propio";
+  return null;
 }
 
-export const ETIQUETAS_VALORACION: Record<string, string> = {
-  // Saque
-  ace: "Ace",
-  positivo_mas: "Positivo +",
-  positivo: "Positivo",
-  neutro: "Neutro",
-  negativo: "Negativo",
-
-  // Recepción — sistema nuevo de 7 valores
-  perfecta: "R#",
-  intermedia: "R!",
-  doble_negativa: "R--",
-  overpass: "R/",
-  error_directo: "R=",
-  // "positiva" y "negativa" ya están arriba (compartidas con otros fundamentos)
-
-  // Ataque
-  punto: "Punto",
-  error: "Error",
-
-  // Bloqueo
-  use_rival: "Use Rival",
-  red: "Red",
-  filtrada: "Filtrada",
-
-  // Defensa
-  toque_positiva: "Toque +",
-  toque_negativa: "Toque -",
-  mala_libre: "Mala Libre",
-  error_def: "Error Def",
-  gran_def: "Gran Def",
-  cobertura_positiva: "Cobertura +",
-  cobertura_negativa: "Cobertura -",
-  errores_graves: "Err. Graves",
-
-  // Armado
-  horrible: "Horrible",
-  malo: "Malo",
-  flojo: "Flojo",
-  correcto: "Correcto",
-  perfecto: "Perfecto",
-  genial: "Genial",
-
-  // Tendencias
-  zona_4: "Zona 4",
-  zona_3: "Zona 3",
-  zona_2: "Zona 2",
-  zona_6: "Zona 6",
-  zona_1: "Zona 1",
-};
-
-export interface EstadisticasFundamento {
-  fundamento: string;
-  total: number;
-  positivos: number;
-  negativos: number;
-  puntos: number;
-  errores: number;
-  saldo: number;
-  efectividad: number;
+export function esRed(celda: string): boolean {
+  return celda.startsWith("RED-");
 }
 
-export interface DistribucionTendencia {
-  zona_4: number;
-  zona_3: number;
-  zona_2: number;
-  zona_6: number;
-  zona_1: number;
-  toque: number;
-  total: number;
+export function esBloqueoPropio(celda: string): boolean {
+  return celda.startsWith("BLOQ-P-");
 }
 
-export interface PromedioPorSet {
-  set: number;
-  promedio: number;
-  total: number;
+export function esBloqueoRival(celda: string): boolean {
+  return celda.startsWith("BLOQ-R-");
 }
 
-export interface PromedioArmadosSet {
-  set: number;
-  promedio: number;
-  totalArmados: number;
+export function esBloqueo(celda: string): boolean {
+  return esBloqueoPropio(celda) || esBloqueoRival(celda);
 }
 
-export interface PromedioRecepcionSet {
-  set: number;
-  promedio: number;
-  totalRecepciones: number;
+export function esCanchaPropia(celda: string): boolean {
+  return /^F[123]-/.test(celda);
 }
 
-export interface EstadisticasArmador {
-  distribucionTendencia: DistribucionTendencia;
-  promediosArmados: PromedioArmadosSet[];
-  promedioArmadosGlobal: number;
-  toquesPunto: number;
-  toquesError: number;
-  toquesNeutro: number;
+export function esCanchaRival(celda: string): boolean {
+  return /^F[456]-/.test(celda);
 }
 
-export interface EstadisticasJugador {
-  jugador_id: string;
-  totalAcciones: number;
-  totalPositivos: number;
-  totalNegativos: number;
-  totalPuntos: number;
-  totalErrores: number;
-  saldoTotal: number;
-  saldoDefensivo: number;
-  valoracionMedia: number;
-  valoracionPorFundamento: Record<string, number>;
-  valoracionTotalPorFundamento: Record<string, number>;
-  valoracionMediaNormalizada: number;
-  valoracionPromedioNormalizado: Record<string, number>;
-  valoracionPonderadaPorFundamento: Record<string, number>;
-  factorVolumen: number;
-  porFundamento: Record<string, EstadisticasFundamento>;
-  armador?: EstadisticasArmador;
-  recepcion?: {
-    promediosPorSet: PromedioRecepcionSet[];
-    promedioGlobal: number;
-  };
+export function esFuera(celda: string): boolean {
+  if (celda.startsWith("FUERA-")) return true;
+  if (/^F[123456]-C[15]$/.test(celda)) return true;
+  return false;
 }
 
-export const MIN_SETS_RANKING = 10;
-
-function contarPorValoraciones(
-  acciones: AccionDB[],
-  fundamento: string,
-  valoraciones: string[]
-): number {
-  return acciones
-    .filter(
-      (a) =>
-        a.fundamento === fundamento && valoraciones.includes(a.valoracion)
-    )
-    .reduce((suma, a) => suma + a.cantidad, 0);
+function esCanchaPropiaReal(celda: string): boolean {
+  return /^F[123]-C[234]$/.test(celda);
 }
 
-function contarTotal(acciones: AccionDB[], fundamento: string): number {
-  return acciones
-    .filter((a) => a.fundamento === fundamento)
-    .reduce((suma, a) => suma + a.cantidad, 0);
+function esCanchaRivalReal(celda: string): boolean {
+  return /^F[456]-C[234]$/.test(celda);
 }
 
-function calcularFundamentoNormal(
-  propias: AccionDB[],
-  fund: string
-): EstadisticasFundamento {
-  const total = contarTotal(propias, fund);
-  const positivos = contarPorValoraciones(
-    propias,
-    fund,
-    ACCIONES_POSITIVAS[fund] ?? []
-  );
-  const negativos = contarPorValoraciones(
-    propias,
-    fund,
-    ACCIONES_NEGATIVAS[fund] ?? []
-  );
-  const puntos = contarPorValoraciones(
-    propias,
-    fund,
-    DISPLAY_PUNTOS[fund] ?? []
-  );
-  const errores = contarPorValoraciones(
-    propias,
-    fund,
-    DISPLAY_ERRORES[fund] ?? []
-  );
-
-  const saldoPos = contarPorValoraciones(
-    propias,
-    fund,
-    SALDO_POSITIVOS[fund] ?? []
-  );
-  const saldoNeg = contarPorValoraciones(
-    propias,
-    fund,
-    SALDO_NEGATIVOS[fund] ?? []
-  );
-  const saldo = saldoPos - saldoNeg;
-
-  const efectividad = total > 0 ? (saldo / total) * 100 : 0;
-
-  return {
-    fundamento: fund,
-    total,
-    positivos,
-    negativos,
-    puntos,
-    errores,
-    saldo,
-    efectividad,
-  };
+function tieneDesvioBloqueoRival(l: LineaClasificada): boolean {
+  return (l.desvios ?? []).some((d) => d.celda.startsWith("BLOQ-R-"));
 }
 
-function calcularValoraciones(
-  acciones: AccionDB[],
-  fundamentos: string[]
-): {
-  promedioNormalizado: Record<string, number>;
-  mediaNormalizadaBase: number;
-  valoracionMediaCruda: number;
-  totalPorFundamento: Record<string, number>;
-  promedioPorFundamento: Record<string, number>;
-} {
-  const promedioNormalizado: Record<string, number> = {};
-  const totalPorFundamento: Record<string, number> = {};
-  const promedioPorFundamento: Record<string, number> = {};
-
-  let sumaNormTotal = 0;
-  let countNormTotal = 0;
-  let sumaCrudaTotal = 0;
-  let countCrudaTotal = 0;
-
-  for (const fund of fundamentos) {
-    const propias = acciones.filter((a) => a.fundamento === fund);
-    let sumaCruda = 0;
-    let sumaNorm = 0;
-    let count = 0;
-
-    for (const a of propias) {
-      const p = puntajeEfectivo(a);
-      if (p === null) continue;
-      sumaCruda += p * a.cantidad;
-      sumaNorm += normalizarPuntaje(p) * a.cantidad;
-      count += a.cantidad;
-    }
-
-    if (count > 0) {
-      totalPorFundamento[fund] = sumaCruda;
-      promedioPorFundamento[fund] = sumaCruda / count;
-      promedioNormalizado[fund] = (sumaNorm / count) * 10;
-      sumaNormTotal += sumaNorm;
-      countNormTotal += count;
-      sumaCrudaTotal += sumaCruda;
-      countCrudaTotal += count;
-    }
-  }
-
-  return {
-    promedioNormalizado,
-    mediaNormalizadaBase:
-      countNormTotal > 0 ? (sumaNormTotal / countNormTotal) * 10 : 0,
-    valoracionMediaCruda:
-      countCrudaTotal > 0 ? sumaCrudaTotal / countCrudaTotal : 0,
-    totalPorFundamento,
-    promedioPorFundamento,
-  };
+function tieneDesvioBloqueoPropio(l: LineaInput | LineaClasificada): boolean {
+  return (l.desvios ?? []).some((d) => d.celda.startsWith("BLOQ-P-"));
 }
 
-export function calcularMaxAccionesPorFundamento(
-  acciones: AccionDB[],
-  jugadoresIds: string[]
-): Record<string, number> {
-  const fundamentos = [
-    "saque",
-    "recepcion",
-    "ataque",
-    "bloqueo",
-    "defensa",
-    "armados",
-    "toque",
-  ];
-  const max: Record<string, number> = {};
-  for (const f of fundamentos) {
-    let m = 1;
-    for (const jid of jugadoresIds) {
-      const cant = acciones
-        .filter((a) => a.jugador_id === jid && a.fundamento === f)
-        .reduce((s, a) => s + a.cantidad, 0);
-      if (cant > m) m = cant;
-    }
-    max[f] = m;
-  }
-  return max;
+export function esCeldaBloqueoPropioConPopup(celda: string): boolean {
+  return /^BLOQ-P-C[234]$/.test(celda);
 }
 
-export function calcularMaxAccionesPorSet(
-  acciones: AccionDB[],
-  jugadoresIds: string[],
-  fundamento: string
-): Record<number, number> {
-  const maxPorSet: Record<number, number> = {};
-  for (let s = 1; s <= 5; s++) maxPorSet[s] = 1;
-  for (const jid of jugadoresIds) {
-    for (let s = 1; s <= 5; s++) {
-      const cant = acciones
-        .filter(
-          (a) =>
-            a.jugador_id === jid &&
-            a.fundamento === fundamento &&
-            a.set_numero === s
-        )
-        .reduce((sum, a) => sum + a.cantidad, 0);
-      if (cant > maxPorSet[s]) maxPorSet[s] = cant;
-    }
-  }
-  return maxPorSet;
+export function esCeldaBloqueoPropioLateral(celda: string): boolean {
+  return celda === "BLOQ-P-C1" || celda === "BLOQ-P-C5";
 }
 
-export function calcularPromedioPonderadoPorSet(
-  jugadorId: string,
-  todasAcciones: AccionDB[],
-  jugadoresIdsEquipo: string[],
-  fundamento: string,
-  _valores: Record<string, number> = {}
-): PromedioPorSet[] {
-  const maxPorSet = calcularMaxAccionesPorSet(
-    todasAcciones,
-    jugadoresIdsEquipo,
-    fundamento
-  );
-  const exp = getExponente(fundamento);
-  const propias = todasAcciones.filter(
-    (a) => a.jugador_id === jugadorId && a.fundamento === fundamento
-  );
-  const result: PromedioPorSet[] = [];
-  for (let s = 1; s <= 5; s++) {
-    const delSet = propias.filter((a) => a.set_numero === s);
-    let suma = 0;
-    let total = 0;
-    for (const a of delSet) {
-      const p = puntajeEfectivo(a);
-      if (p === null) continue;
-      suma += p * a.cantidad;
-      total += a.cantidad;
-    }
-    const promedioBruto = total > 0 ? suma / total : 0;
-    const max = maxPorSet[s] ?? 1;
-    const factor = total > 0 ? Math.pow(total / max, exp) : 0;
-    const valorVisual =
-      total > 0 ? promedioBruto * factor + (1 - factor) * 5 : 0;
-    result.push({ set: s, promedio: valorVisual, total });
-  }
-  return result;
-}
+function bloqueoSeValoraComoAtaque(
+  ultima: LineaClasificada,
+  destinoActual: string
+): boolean {
+  if (esCanchaPropiaReal(destinoActual)) return false;
 
-export function calcularPromedioArmadosPonderadoPorSet(
-  jugadorId: string,
-  todasAcciones: AccionDB[],
-  jugadoresIdsEquipo: string[]
-): PromedioArmadosSet[] {
-  const maxPorSet = calcularMaxAccionesPorSet(
-    todasAcciones,
-    jugadoresIdsEquipo,
-    "armados"
-  );
-  const exp = getExponente("armados");
-  const propias = todasAcciones.filter(
-    (a) => a.jugador_id === jugadorId && a.fundamento === "armados"
-  );
-  const result: PromedioArmadosSet[] = [];
-  for (let s = 1; s <= 5; s++) {
-    const delSet = propias.filter((a) => a.set_numero === s);
-    let suma = 0;
-    let count = 0;
-    for (const a of delSet) {
-      const p = puntajeEfectivo(a);
-      if (p === null) continue;
-      suma += p * a.cantidad;
-      count += a.cantidad;
-    }
-    const promedioBruto = count > 0 ? suma / count : 0;
-    const max = maxPorSet[s] ?? 1;
-    const factor = count > 0 ? Math.pow(count / max, exp) : 0;
-    const valorVisual =
-      count > 0 ? promedioBruto * factor + (1 - factor) * 5 : 0;
-    result.push({
-      set: s,
-      promedio: valorVisual,
-      totalArmados: count,
-    });
-  }
-  return result;
-}
-
-function calcularEstadisticasArmador(
-  propias: AccionDB[]
-): EstadisticasArmador {
-  const distribucionTendencia: DistribucionTendencia = {
-    zona_4: contarPorValoraciones(propias, "tendencia", ["zona_4"]),
-    zona_3: contarPorValoraciones(propias, "tendencia", ["zona_3"]),
-    zona_2: contarPorValoraciones(propias, "tendencia", ["zona_2"]),
-    zona_6: contarPorValoraciones(propias, "tendencia", ["zona_6"]),
-    zona_1: contarPorValoraciones(propias, "tendencia", ["zona_1"]),
-    toque:
-      contarPorValoraciones(propias, "toque", ["punto"]) +
-      contarPorValoraciones(propias, "toque", ["error"]) +
-      contarPorValoraciones(propias, "toque", ["neutro"]),
-    total: 0,
-  };
-  distribucionTendencia.total =
-    distribucionTendencia.zona_4 +
-    distribucionTendencia.zona_3 +
-    distribucionTendencia.zona_2 +
-    distribucionTendencia.zona_6 +
-    distribucionTendencia.zona_1 +
-    distribucionTendencia.toque;
-
-  const toquesPunto = contarPorValoraciones(propias, "toque", ["punto"]);
-  const toquesError = contarPorValoraciones(propias, "toque", ["error"]);
-  const toquesNeutro = contarPorValoraciones(propias, "toque", ["neutro"]);
-
-  const promediosArmados: PromedioArmadosSet[] = [];
-  let sumaTotal = 0;
-  let totalArmados = 0;
-  for (let s = 1; s <= 5; s++) {
-    const delSet = propias.filter(
-      (a) => a.fundamento === "armados" && a.set_numero === s
-    );
-    let sumaSet = 0;
-    let countSet = 0;
-    for (const a of delSet) {
-      const p = puntajeEfectivo(a);
-      if (p === null) continue;
-      sumaSet += p * a.cantidad;
-      countSet += a.cantidad;
-    }
-    const promedio = countSet > 0 ? sumaSet / countSet : 0;
-    promediosArmados.push({
-      set: s,
-      promedio,
-      totalArmados: countSet,
-    });
-    sumaTotal += sumaSet;
-    totalArmados += countSet;
-  }
-  const promedioArmadosGlobal =
-    totalArmados > 0 ? sumaTotal / totalArmados : 0;
-
-  return {
-    distribucionTendencia,
-    promediosArmados,
-    promedioArmadosGlobal,
-    toquesPunto,
-    toquesError,
-    toquesNeutro,
-  };
-}
-
-function calcularEstadisticasRecepcion(propias: AccionDB[]) {
-  const promediosPorSet: PromedioRecepcionSet[] = [];
-  let sumaTotal = 0;
-  let totalRecepciones = 0;
-  for (let s = 1; s <= 5; s++) {
-    const delSet = propias.filter(
-      (a) => a.fundamento === "recepcion" && a.set_numero === s
-    );
-    let sumaSet = 0;
-    let countSet = 0;
-    for (const a of delSet) {
-      const p = puntajeEfectivo(a);
-      if (p === null) continue;
-      sumaSet += p * a.cantidad;
-      countSet += a.cantidad;
-    }
-    const promedio = countSet > 0 ? sumaSet / countSet : 0;
-    promediosPorSet.push({
-      set: s,
-      promedio,
-      totalRecepciones: countSet,
-    });
-    sumaTotal += sumaSet;
-    totalRecepciones += countSet;
-  }
-  return {
-    promediosPorSet,
-    promedioGlobal:
-      totalRecepciones > 0 ? sumaTotal / totalRecepciones : 0,
-  };
-}
-
-export function calcularPromedioPorSet(
-  jugadorId: string,
-  acciones: AccionDB[],
-  fundamento: string,
-  _valores: Record<string, number> = {}
-): PromedioPorSet[] {
-  const propias = acciones.filter(
-    (a) => a.jugador_id === jugadorId && a.fundamento === fundamento
-  );
-  const result: PromedioPorSet[] = [];
-  for (let s = 1; s <= 5; s++) {
-    const delSet = propias.filter((a) => a.set_numero === s);
-    let suma = 0;
-    let total = 0;
-    for (const a of delSet) {
-      const p = puntajeEfectivo(a);
-      if (p === null) continue;
-      suma += p * a.cantidad;
-      total += a.cantidad;
-    }
-    result.push({
-      set: s,
-      promedio: total > 0 ? suma / total : 0,
-      total,
-    });
-  }
-  return result;
-}
-
-export function calcularEstadisticasJugador(
-  jugadorId: string,
-  acciones: AccionDB[],
-  esArmador: boolean = false,
-  maxAccionesPorFundamento?: Record<string, number>,
-  maxAccionesEquipo?: number,
-  minAccionesRadar: number = MIN_ACCIONES_RADAR
-): EstadisticasJugador {
-  let propias = acciones.filter((a) => a.jugador_id === jugadorId);
-
-  if (esArmador) {
-    propias = propias.map((a) =>
-      a.fundamento === "ataque" && a.variante === "toque"
-        ? { ...a, fundamento: "toque" }
-        : a
-    );
-  }
-
-  const fundamentosDisplay = esArmador
-    ? ["saque", "bloqueo", "defensa"]
-    : ["saque", "recepcion", "ataque", "bloqueo", "defensa"];
-
-  const fundamentosValoracion = esArmador
-    ? ["saque", "bloqueo", "defensa", "armados", "toque"]
-    : ["saque", "recepcion", "ataque", "bloqueo", "defensa"];
-
-  const porFundamento: Record<string, EstadisticasFundamento> = {};
-  let totalAcciones = 0;
-  let totalPositivos = 0;
-  let totalNegativos = 0;
-  let totalPuntos = 0;
-  let totalErrores = 0;
-  let saldoTotal = 0;
-
-  for (const fund of fundamentosDisplay) {
-    const est = calcularFundamentoNormal(propias, fund);
-    porFundamento[fund] = est;
-    totalAcciones += est.total;
-    totalPositivos += est.positivos;
-    totalNegativos += est.negativos;
-    totalPuntos += est.puntos;
-    totalErrores += est.errores;
-    saldoTotal += est.saldo;
-  }
-
-  let armador: EstadisticasArmador | undefined;
-  if (esArmador) {
-    armador = calcularEstadisticasArmador(propias);
-    totalPuntos += armador.toquesPunto;
-    totalErrores += armador.toquesError;
-    saldoTotal += armador.toquesPunto - armador.toquesError;
-    totalAcciones +=
-      contarTotal(propias, "armados") +
-      contarTotal(propias, "toque");
-  }
-
-  const saldoDefPos = contarPorValoraciones(
-    propias,
-    "defensa",
-    SALDO_DEF_POSITIVOS
-  );
-  const saldoDefNeg = contarPorValoraciones(
-    propias,
-    "defensa",
-    SALDO_DEF_NEGATIVOS
-  );
-  const saldoDefensivo = saldoDefPos - saldoDefNeg;
-
-  const vals = calcularValoraciones(propias, fundamentosValoracion);
-
-  let maxAcc: number;
-  if (maxAccionesEquipo !== undefined) maxAcc = maxAccionesEquipo;
-  else {
-    const accPorJugador: Record<string, number> = {};
-    for (const a of acciones) {
-      accPorJugador[a.jugador_id] =
-        (accPorJugador[a.jugador_id] ?? 0) + a.cantidad;
-    }
-    maxAcc = Math.max(...Object.values(accPorJugador), 1);
-  }
-
-  const factorVolumen =
-    maxAcc > 0 && totalAcciones > 0
-      ? Math.sqrt(totalAcciones / maxAcc)
-      : 0;
-  const valoracionMediaNormalizada =
-    vals.mediaNormalizadaBase * factorVolumen;
-
-  const valoracionPonderadaPorFundamento: Record<string, number> = {};
-  const maxPorFund =
-    maxAccionesPorFundamento ??
-    calcularMaxAccionesPorFundamento(acciones, [jugadorId]);
-  for (const f of fundamentosValoracion) {
-    const accFund = contarTotal(propias, f);
-
-    if (accFund < minAccionesRadar) {
-      valoracionPonderadaPorFundamento[f] = 0;
-      continue;
-    }
-
-    const propiasFund = propias.filter((a) => a.fundamento === f);
-    let suma = 0;
-    let count = 0;
-    for (const a of propiasFund) {
-      const p = puntajeEfectivo(a);
-      if (p === null) continue;
-      suma += p * a.cantidad;
-      count += a.cantidad;
-    }
-    const promedio = count > 0 ? suma / count : 5;
-
-    const maxFund = maxPorFund[f] ?? 1;
-    const exp = getExponente(f);
-    const factorVol = Math.pow(count / maxFund, exp);
-
-    const valor = promedio * factorVol + 5 * (1 - factorVol);
-    valoracionPonderadaPorFundamento[f] =
-      Math.round(Math.max(0, Math.min(10, valor)) * 10) / 10;
-  }
-
-  let recepcion: EstadisticasJugador["recepcion"] | undefined;
-  if (!esArmador) recepcion = calcularEstadisticasRecepcion(propias);
-
-  return {
-    jugador_id: jugadorId,
-    totalAcciones,
-    totalPositivos,
-    totalNegativos,
-    totalPuntos,
-    totalErrores,
-    saldoTotal,
-    saldoDefensivo,
-    valoracionMedia: vals.valoracionMediaCruda,
-    valoracionPorFundamento: vals.promedioPorFundamento,
-    valoracionTotalPorFundamento: vals.totalPorFundamento,
-    valoracionMediaNormalizada,
-    valoracionPromedioNormalizado: vals.promedioNormalizado,
-    valoracionPonderadaPorFundamento,
-    factorVolumen,
-    porFundamento,
-    armador,
-    recepcion,
-  };
-}
-
-export function calcularEstadisticasEquipo(
-  jugadoresIds: string[],
-  acciones: AccionDB[],
-  jugadoresArmadores: Set<string> = new Set()
-): {
-  porJugador: Record<string, EstadisticasJugador>;
-  totales: EstadisticasJugador;
-} {
-  const accionesParaMax = acciones.filter((a) => {
-    if (a.fundamento === "ataque" && a.variante === "toque") {
-      return !jugadoresArmadores.has(a.jugador_id);
-    }
+  if (ultima.tipo === "defensa" && ultima.esRival) return true;
+  if (
+    ultima.tipo === "armado" &&
+    ultima.esRival &&
+    ultima.subtipo !== "T"
+  )
     return true;
-  });
+  return false;
+}
 
-  const maxPorFund = calcularMaxAccionesPorFundamento(
-    accionesParaMax,
-    jugadoresIds
-  );
-  let maxAccionesEquipo = 1;
-  for (const id of jugadoresIds) {
-    const totalAcc = accionesParaMax
-      .filter((a) => a.jugador_id === id)
-      .reduce((suma, a) => suma + a.cantidad, 0);
-    if (totalAcc > maxAccionesEquipo) maxAccionesEquipo = totalAcc;
+export function pasoLaRed(l: LineaClasificada): boolean {
+  if (
+    (l.desvios ?? []).some(
+      (d) => d.celda.startsWith("BLOQ-P-") || d.celda.startsWith("BLOQ-R-")
+    )
+  ) {
+    return true;
+  }
+  const ladoO = ladoDeCelda(l.origen.celda);
+  const ladoD = ladoDeCelda(l.destino.celda);
+  if (ladoO && ladoD && ladoO !== ladoD) return true;
+  return false;
+}
+
+function ultimaVisible(
+  lineas: LineaClasificada[]
+): LineaClasificada | null {
+  for (let i = lineas.length - 1; i >= 0; i--) {
+    if (!lineas[i].oculta) return lineas[i];
+  }
+  return null;
+}
+
+function anteriorVisible(
+  lineas: LineaClasificada[],
+  desdeIdx: number
+): LineaClasificada | null {
+  for (let i = desdeIdx - 1; i >= 0; i--) {
+    if (!lineas[i].oculta) return lineas[i];
+  }
+  return null;
+}
+
+// ============================================================
+// ZONA FÍSICA (1-6) A PARTIR DE LA CELDA
+// ============================================================
+
+function zonaFisicaDeCelda(celda: string): Zona | null {
+  const m = celda.match(/^F([123])-C([12345])$/);
+  if (!m) return null;
+
+  const fila = parseInt(m[1], 10);
+  const col = m[2];
+  const esDelantera = fila === 1;
+
+  if (esDelantera) {
+    if (col === "C1" || col === "C2") return 4;
+    if (col === "C3") return 3;
+    return 2;
   }
 
-  const porJugador: Record<string, EstadisticasJugador> = {};
-  const fundamentos = [
-    "saque",
-    "recepcion",
-    "ataque",
-    "bloqueo",
-    "defensa",
-  ];
+  if (col === "C1" || col === "C2") return 5;
+  if (col === "C3") return 6;
+  return 1;
+}
 
-  const totalesIniciales: EstadisticasJugador = {
-    jugador_id: "TOTAL",
-    totalAcciones: 0,
-    totalPositivos: 0,
-    totalNegativos: 0,
-    totalPuntos: 0,
-    totalErrores: 0,
-    saldoTotal: 0,
-    saldoDefensivo: 0,
-    valoracionMedia: 0,
-    valoracionPorFundamento: {},
-    valoracionTotalPorFundamento: {},
-    valoracionMediaNormalizada: 0,
-    valoracionPromedioNormalizado: {},
-    valoracionPonderadaPorFundamento: {},
-    factorVolumen: 1,
-    porFundamento: {},
-  };
+// ============================================================
+// POSICIONES DE JUEGO
+// ============================================================
+//
+// Formación de recepción confirmada por el club (izq → der):
+//   R1: Pz - L - Pd
+//   R2: Pd - L - Pz
+//   R3: Pd - Pz - L
+//   R4: Pd - Pz - L
+//   R5: Pd - L - Pz
+//   R6: Pd - Pz - L
+// ------------------------------------------------------------
 
-  for (const fund of fundamentos) {
-    totalesIniciales.porFundamento[fund] = {
-      fundamento: fund,
-      total: 0,
-      positivos: 0,
-      negativos: 0,
-      puntos: 0,
-      errores: 0,
-      saldo: 0,
-      efectividad: 0,
+export type RolJuego = "A" | "O" | "C1" | "C2" | "P1" | "P2" | "L";
+
+export const POSICIONES_JUEGO: Record<
+  number,
+  Record<Situacion, Record<Zona, RolJuego>>
+> = {
+  1: {
+    saque: { 1: "A", 2: "O", 3: "C1", 4: "P1", 5: "L", 6: "P2" },
+    recepcion: { 1: "P1", 2: "P1", 3: "C1", 4: "O", 5: "P2", 6: "L" },
+  },
+  2: {
+    saque: { 1: "P1", 2: "C1", 3: "O", 4: "P2", 5: "C2", 6: "A" },
+    recepcion: { 1: "P1", 2: "C1", 3: "O", 4: "P2", 5: "P2", 6: "L" },
+  },
+  3: {
+    saque: { 1: "C1", 2: "O", 3: "P2", 4: "C2", 5: "A", 6: "P1" },
+    recepcion: { 1: "L", 2: "O", 3: "P2", 4: "C2", 5: "P2", 6: "P1" },
+  },
+  4: {
+    saque: { 1: "O", 2: "P2", 3: "C2", 4: "A", 5: "P1", 6: "C1" },
+    recepcion: { 1: "L", 2: "P2", 3: "C2", 4: "A", 5: "P2", 6: "P1" },
+  },
+  5: {
+    saque: { 1: "P2", 2: "C2", 3: "A", 4: "P1", 5: "C1", 6: "O" },
+    recepcion: { 1: "P2", 2: "C2", 3: "A", 4: "P1", 5: "P1", 6: "L" },
+  },
+  6: {
+    saque: { 1: "C2", 2: "A", 3: "P1", 4: "C1", 5: "O", 6: "P2" },
+    recepcion: { 1: "L", 2: "A", 3: "P1", 4: "C1", 5: "P1", 6: "P2" },
+  },
+};
+
+// ============================================================
+// RESOLUCIÓN DE JUGADOR — SAQUE
+// ============================================================
+
+function jugadorQueSaca(rotacion: RotacionPunto): string | null {
+  for (const asig of Object.values(rotacion.posiciones)) {
+    if (asig.zona === 1) return asig.jugador_id;
+  }
+  return null;
+}
+
+// ============================================================
+// RESOLUCIÓN DE JUGADOR — POR ROL LÓGICO
+// ============================================================
+
+function jugadorDeTipo(
+  rotacion: RotacionPunto,
+  tipo: "A" | "O" | "C1" | "C2" | "P1" | "P2"
+): string | null {
+  for (const asig of Object.values(rotacion.posiciones)) {
+    if (asig.tipo === tipo) return asig.jugador_id;
+  }
+  return null;
+}
+
+function jugadorQueArma(rotacion: RotacionPunto): string | null {
+  return jugadorDeTipo(rotacion, "A");
+}
+
+function buscarCentralZaguero(rotacion: RotacionPunto): string | null {
+  for (const asig of Object.values(rotacion.posiciones)) {
+    if (
+      (asig.tipo === "C1" || asig.tipo === "C2") &&
+      (asig.zona === 1 || asig.zona === 5 || asig.zona === 6)
+    ) {
+      return asig.jugador_id;
+    }
+  }
+  return null;
+}
+
+function buscarCentralDelantero(rotacion: RotacionPunto): string | null {
+  for (const asig of Object.values(rotacion.posiciones)) {
+    if (
+      (asig.tipo === "C1" || asig.tipo === "C2") &&
+      (asig.zona === 2 || asig.zona === 3 || asig.zona === 4)
+    ) {
+      return asig.jugador_id;
+    }
+  }
+  return null;
+}
+
+function buscarLiberoActivo(rotacion: RotacionPunto): string | null {
+  const liberos: Libero[] = rotacion.liberos ?? [];
+  if (liberos.length === 0) return null;
+
+  if (liberos.length === 1) {
+    return liberos[0].jugador_id || null;
+  }
+
+  const esRecepcion = rotacion.saque_equipo === "rival";
+  const tipoBuscado: Libero["tipo"] = esRecepcion ? "recepcion" : "defensa";
+  const lib = liberos.find((l) => l.tipo === tipoBuscado);
+  return (lib ?? liberos[0]).jugador_id || null;
+}
+
+export function resolverRolAJugador(
+  rotacion: RotacionPunto,
+  rol: RolJuego
+): string | null {
+  if (rol === "L") {
+    const lib = buscarLiberoActivo(rotacion);
+    if (lib) return lib;
+    return buscarCentralZaguero(rotacion);
+  }
+  return jugadorDeTipo(rotacion, rol);
+}
+
+// ============================================================
+// RESOLUCIÓN DE JUGADOR — RECEPCIÓN
+// ============================================================
+
+function zonaRecepcion(celda: string): 1 | 5 | 6 | null {
+  if (!/^F[123]-/.test(celda)) return null;
+  const col = celda.split("-")[1];
+  if (col === "C1" || col === "C2") return 5;
+  if (col === "C3") return 6;
+  if (col === "C4" || col === "C5") return 1;
+  return null;
+}
+
+function jugadorQueRecibe(
+  origen: PuntoV2,
+  rotacion: RotacionPunto,
+  situacion: Situacion,
+  overrides?: Partial<Record<Zona, string | null>>
+): string | null {
+  const celda = origen.celda;
+
+  const zonaRec = zonaRecepcion(celda);
+  if (zonaRec === null) return null;
+
+  if (overrides && zonaRec in overrides) {
+    return overrides[zonaRec] ?? null;
+  }
+
+  const numeroRot = numeroRotacionDesdePosiciones(rotacion);
+  const fila = POSICIONES_JUEGO[numeroRot]?.[situacion];
+  if (!fila) return null;
+  const rol = fila[zonaRec];
+  return resolverRolAJugador(rotacion, rol);
+}
+
+// ============================================================
+// RESOLUCIÓN DE JUGADOR — DEFENSA
+// ============================================================
+
+export function resolverJugadorDefensa(
+  origen: PuntoV2,
+  rotacion: RotacionPunto,
+  _situacion: Situacion
+): string | null {
+  const zona = zonaFisicaDeCelda(origen.celda);
+  if (zona === null) return null;
+
+  const asig = rotacion.posiciones[zona];
+  if (!asig) return null;
+
+  const esZaguero = zona === 1 || zona === 5 || zona === 6;
+  const esCentral = asig.tipo === "C1" || asig.tipo === "C2";
+
+  if (esZaguero && esCentral) {
+    const lib = buscarLiberoActivo(rotacion);
+    if (lib) return lib;
+  }
+
+  return asig.jugador_id;
+}
+
+// ============================================================
+// RESOLUCIÓN DE JUGADOR — ARMADO ALTERNATIVO
+// ============================================================
+
+export function resolverJugadorArmadoAlternativo(
+  origen: PuntoV2,
+  rotacion: RotacionPunto
+): string | null {
+  const celda = origen.celda;
+  if (!/^F[123]-/.test(celda)) return null;
+
+  const fila = celda.split("-")[0];
+
+  if (fila === "F1") {
+    return buscarCentralDelantero(rotacion);
+  }
+  return buscarLiberoActivo(rotacion);
+}
+
+// ============================================================
+// CLASIFICACIÓN PRINCIPAL
+// ============================================================
+
+export function clasificarLinea(
+  estado: EstadoClasificacion,
+  linea: LineaInput
+): ResultadoClasificacion {
+  const n = estado.lineas.length;
+  const ultima = n > 0 ? estado.lineas[n - 1] : null;
+
+  if (esRed(linea.origen.celda) || esRed(linea.destino.celda)) {
+    return {
+      tipo: "roce-red",
+      esRival: false,
+      jugadorId: null,
+      popup: "roce-red",
     };
   }
 
-  let sumaNormTotal = 0;
-  let countNormTotal = 0;
-
-  for (const id of jugadoresIds) {
-    const est = calcularEstadisticasJugador(
-      id,
-      acciones,
-      jugadoresArmadores.has(id),
-      maxPorFund,
-      maxAccionesEquipo
-    );
-    porJugador[id] = est;
-
-    totalesIniciales.totalAcciones += est.totalAcciones;
-    totalesIniciales.totalPositivos += est.totalPositivos;
-    totalesIniciales.totalNegativos += est.totalNegativos;
-    totalesIniciales.totalPuntos += est.totalPuntos;
-    totalesIniciales.totalErrores += est.totalErrores;
-    totalesIniciales.saldoTotal += est.saldoTotal;
-    totalesIniciales.saldoDefensivo += est.saldoDefensivo;
-
-    for (const [fund, val] of Object.entries(
-      est.valoracionPromedioNormalizado
-    )) {
-      const totalFund = est.porFundamento[fund]?.total ?? 0;
-      if (!totalesIniciales.valoracionPromedioNormalizado[fund]) {
-        totalesIniciales.valoracionPromedioNormalizado[fund] = 0;
-      }
-      totalesIniciales.valoracionPromedioNormalizado[fund] +=
-        val * totalFund;
-      sumaNormTotal += val * totalFund;
-      countNormTotal += totalFund;
-    }
-
-    for (const fund of fundamentos) {
-      const ef = est.porFundamento[fund];
-      if (!ef) continue;
-      const tf = totalesIniciales.porFundamento[fund];
-      tf.total += ef.total;
-      tf.positivos += ef.positivos;
-      tf.negativos += ef.negativos;
-      tf.puntos += ef.puntos;
-      tf.errores += ef.errores;
-      tf.saldo += ef.saldo;
-    }
+  if (n === 0) {
+    const esRival = ladoDeCelda(linea.origen.celda) === "rival";
+    return {
+      tipo: "saque",
+      esRival,
+      jugadorId: esRival ? null : jugadorQueSaca(estado.rotacion),
+      popup: esRival ? null : "tipo-saque",
+      tipoSaqueFijo: esRival ? undefined : "flotado",
+    };
   }
 
-  for (const fund of fundamentos) {
-    const tf = totalesIniciales.porFundamento[fund];
-    tf.efectividad = tf.total > 0 ? (tf.saldo / tf.total) * 100 : 0;
+  if (n === 1 && ultima!.tipo === "saque") {
+    const esRival = !ultima!.esRival;
+    return {
+      tipo: "recepcion",
+      esRival,
+      jugadorId: esRival
+        ? null
+        : jugadorQueRecibe(
+            linea.origen,
+            estado.rotacion,
+            estado.situacion,
+            estado.recepcionOverrides
+          ),
+      popup: esRival ? null : "recepcion",
+    };
+  }
+
+  if (ultima && ultima.tipo === "libre" && ultima.esRival) {
+    return {
+      tipo: "libre",
+      esRival: false,
+      jugadorId: null,
+      popup: null,
+    };
+  }
+
+  const ladoO = ladoDeCelda(linea.origen.celda);
+  const ladoD = ladoDeCelda(linea.destino.celda);
+  const cruzaNet = ladoO !== null && ladoD !== null && ladoO !== ladoD;
+
+  if (tieneDesvioBloqueoPropio(linea) && ultima) {
+    const comoAtaque = bloqueoSeValoraComoAtaque(ultima, linea.destino.celda);
+    const primerJugador =
+      (linea.desvios ?? []).find((d) => d.celda.startsWith("BLOQ-P-"))
+        ?.jugadorId ?? null;
+    const esRemateSegunda =
+      ultima.tipo === "defensa" && ultima.esRival === true;
+    return {
+      tipo: comoAtaque ? "ataque" : "bloqueo",
+      esRival: false,
+      jugadorId: primerJugador,
+      popup: esRemateSegunda ? "remate-segunda" : null,
+    };
+  }
+
+  if (ultima && pasoLaRed(ultima)) {
     if (
-      totalesIniciales.valoracionPromedioNormalizado[fund] !== undefined
+      ultima.tipo === "ataque" &&
+      !ultima.esRival &&
+      tieneDesvioBloqueoRival(ultima) &&
+      ladoDeCelda(ultima.destino.celda) === "propio"
     ) {
-      totalesIniciales.valoracionPromedioNormalizado[fund] =
-        tf.total > 0
-          ? totalesIniciales.valoracionPromedioNormalizado[fund] / tf.total
-          : 0;
+      return {
+        tipo: "defensa",
+        esRival: false,
+        jugadorId: null,
+        popup: "jugador",
+        subtipoFijo: "cobertura",
+      };
     }
+
+    const ladoReceptor = ladoDeCelda(ultima.destino.celda);
+    const esRival = ladoReceptor === "rival";
+    return {
+      tipo: "defensa",
+      esRival,
+      jugadorId: null,
+      popup: esRival ? null : "defensa",
+    };
   }
 
-  for (const fund of fundamentos) {
-    let suma = 0;
-    let count = 0;
-    for (const id of jugadoresIds) {
-      const val = porJugador[id]?.valoracionPonderadaPorFundamento[fund] ?? 0;
-      if (val > 0) {
-        suma += val;
-        count += 1;
+  if (esBloqueo(linea.origen.celda)) {
+    const esRival = ultima!.esRival;
+    return {
+      tipo: "defensa",
+      esRival,
+      jugadorId: null,
+      popup: esRival ? null : "defensa",
+    };
+  }
+
+  if (ultima!.tipo === "armado") {
+    const esRival = ultima!.esRival;
+    const jugadorId = esRival
+      ? null
+      : jugadorQueAtacaDesdeCelda(
+          linea.origen.celda,
+          estado.rotacion,
+          estado.situacion
+        );
+    return {
+      tipo: "ataque",
+      esRival,
+      jugadorId,
+      popup: esRival ? null : "ataque-toque-libre",
+    };
+  }
+
+  const armarOlibre = (esRival: boolean): ResultadoClasificacion =>
+    cruzaNet
+      ? {
+          tipo: "libre",
+          esRival,
+          jugadorId: null,
+          popup: esRival ? "remate-segunda" : "libre",
+        }
+      : {
+          tipo: "armado",
+          esRival,
+          jugadorId: esRival ? null : jugadorQueArma(estado.rotacion),
+          popup: esRival ? null : "armado",
+        };
+
+  if (ultima!.tipo === "defensa") {
+    if (!ultima!.esRival && ultima!.x2 === true) {
+      return {
+        tipo: "defensa",
+        esRival: false,
+        jugadorId: resolverJugadorDefensa(
+          linea.origen,
+          estado.rotacion,
+          estado.situacion
+        ),
+        popup: null,
+      };
+    }
+
+    const idxUltima = estado.lineas.length - 1;
+    const anterior = anteriorVisible(estado.lineas, idxUltima);
+    if (
+      !ultima!.esRival &&
+      anterior?.tipo === "defensa" &&
+      anterior.x2 === true &&
+      !ultima!.x2
+    ) {
+      return {
+        tipo: "ataque",
+        esRival: false,
+        jugadorId: jugadorQueAtacaDesdeCelda(
+          linea.origen.celda,
+          estado.rotacion,
+          estado.situacion
+        ),
+        popup: "ataque-toque-libre",
+      };
+    }
+
+    if (!ultima!.esRival && !cruzaNet) {
+      const ultimaVis = ultimaVisible(estado.lineas);
+      const armador = jugadorQueArma(estado.rotacion);
+      if (
+        ultimaVis &&
+        ultimaVis.tipo === "defensa" &&
+        !ultimaVis.esRival &&
+        armador &&
+        ultimaVis.jugadorId === armador
+      ) {
+        const alternativo = resolverJugadorArmadoAlternativo(
+          linea.origen,
+          estado.rotacion
+        );
+        return {
+          tipo: "armado",
+          esRival: false,
+          jugadorId: alternativo,
+          popup: "armado",
+        };
       }
     }
-    totalesIniciales.valoracionPonderadaPorFundamento[fund] =
-      count > 0 ? Math.round((suma / count) * 10) / 10 : 0;
+    return armarOlibre(ultima!.esRival);
   }
 
-  totalesIniciales.valoracionMediaNormalizada =
-    countNormTotal > 0 ? sumaNormTotal / countNormTotal : 0;
+  if (ultima!.tipo === "recepcion") {
+    return armarOlibre(ultima!.esRival);
+  }
 
-  return { porJugador, totales: totalesIniciales };
-}
+  if (ultima!.tipo === "ataque") {
+    const esRival = ultima!.esRival;
+    return {
+      tipo: "libre",
+      esRival,
+      jugadorId: null,
+      popup: esRival ? null : "libre",
+    };
+  }
 
-// ============================================
-// RANKINGS
-// ============================================
+  if (ultima!.tipo === "bloqueo") {
+    const esRivalBloqueador = ultima!.esRival;
+    const ladoDestinoBloqueo = ladoDeCelda(ultima!.destino.celda);
+    const caeEnCanchaDelBloqueador =
+      (esRivalBloqueador && ladoDestinoBloqueo === "rival") ||
+      (!esRivalBloqueador && ladoDestinoBloqueo === "propio");
 
-export interface RankingCompletoItem {
-  jugador_id: string;
-  valor: number;
-  texto: string;
-  positivas?: number;
-  negativas?: number;
-  balance?: number;
-  eficacia?: number;
-  efectividad?: number;
-  puntos?: number;
-  errores?: number;
-}
-
-export function contarSetsJugados(
-  acciones: AccionDB[],
-  jugadorId: string
-): number {
-  const sets = new Set<string>();
-  for (const a of acciones) {
-    if (a.jugador_id === jugadorId) {
-      const key = `${a.partido_id ?? "sin-partido"}-${a.set_numero}`;
-      sets.add(key);
+    if (caeEnCanchaDelBloqueador) {
+      return {
+        tipo: "defensa",
+        esRival: esRivalBloqueador,
+        jugadorId: null,
+        popup: esRivalBloqueador ? null : "defensa",
+      };
     }
+
+    const esRivalDefensor = !esRivalBloqueador;
+    return {
+      tipo: "defensa",
+      esRival: esRivalDefensor,
+      jugadorId: null,
+      popup: esRivalDefensor ? null : "jugador",
+      subtipoFijo: "cobertura",
+    };
   }
-  return sets.size;
+
+  if (ultima!.tipo === "libre") {
+    if (ladoO === "propio" && ladoD === "rival") {
+      return {
+        tipo: "ataque",
+        esRival: false,
+        jugadorId: jugadorQueAtacaDesdeCelda(
+          linea.origen.celda,
+          estado.rotacion,
+          estado.situacion
+        ),
+        popup: "ataque-toque-libre",
+      };
+    }
+    if (ladoO === "rival" && ladoD === "propio") {
+      return {
+        tipo: "ataque",
+        esRival: true,
+        jugadorId: null,
+        popup: null,
+      };
+    }
+    return armarOlibre(ultima!.esRival);
+  }
+
+  const esRival = ultima!.esRival;
+  return {
+    tipo: "libre",
+    esRival,
+    jugadorId: null,
+    popup: esRival ? null : "libre",
+  };
 }
 
-function calificaParaRanking(
-  acciones: AccionDB[],
-  jugadorId: string
+// ============================================================
+// GANADOR DEL PUNTO
+// ============================================================
+
+export function ganadorDelPunto(
+  lineas: LineaClasificada[]
+): Lado | null {
+  if (lineas.length === 0) return null;
+  const ultima = lineas[lineas.length - 1];
+
+  if (ultima.tipo === "roce-red") {
+    return ultima.esRival ? "propio" : "rival";
+  }
+
+  if (esFuera(ultima.destino.celda)) {
+    if (
+      ultima.tipo === "ataque" &&
+      !ultima.esRival &&
+      tieneDesvioBloqueoRival(ultima)
+    ) {
+      return "propio";
+    }
+    return ultima.esRival ? "propio" : "rival";
+  }
+
+  const ladoDestino = ladoDeCelda(ultima.destino.celda);
+
+  if (ladoDestino === "rival") return "propio";
+  if (ladoDestino === "propio") return "rival";
+
+  return null;
+}
+
+// ============================================================
+// SUBTIPOS DE ATAQUE
+// ============================================================
+
+function hayCoberturaPropiaDespues(
+  lineas: LineaClasificada[],
+  idxAtaque: number
 ): boolean {
-  return contarSetsJugados(acciones, jugadorId) >= MIN_SETS_RANKING;
+  for (let j = idxAtaque + 1; j < lineas.length; j++) {
+    const l = lineas[j];
+    if (
+      l.tipo === "defensa" &&
+      !l.esRival &&
+      (l.subtipo === "cobertura_positiva" ||
+        l.subtipo === "cobertura" ||
+        l.subtipo === "cobertura_negativa")
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
-export function rankingRecepcion(
-  porJugador: Record<string, EstadisticasJugador>,
-  acciones: AccionDB[]
-): RankingCompletoItem[] {
-  return Object.values(porJugador)
-    .filter((est) => calificaParaRanking(acciones, est.jugador_id))
-    .map((est) => {
-      const propias = acciones.filter(
-        (a) => a.jugador_id === est.jugador_id
-      );
-      const positivos = contarPorValoraciones(propias, "recepcion", [
-        "perfecta",
-        "positiva",
-      ]);
-      const total = contarTotal(propias, "recepcion");
-      const sets = contarSetsJugados(acciones, est.jugador_id);
-      const efectividad = total > 0 ? (positivos / total) * 100 : 0;
-      const porSet = sets > 0 ? positivos / sets : 0;
-      return {
-        jugador_id: est.jugador_id,
-        valor: porSet,
-        texto: `${positivos} pases positivos / ${efectividad.toFixed(1)}% de efectividad en ${total} intentos / ${sets} sets (${porSet.toFixed(2)} por set)`,
-      };
-    })
-    .filter((r) => r.valor > 0)
-    .sort((a, b) => b.valor - a.valor);
+function proximaVisible(
+  lineas: LineaClasificada[],
+  desdeIdx: number
+): { idx: number; linea: LineaClasificada } | null {
+  for (let j = desdeIdx + 1; j < lineas.length; j++) {
+    if (!lineas[j].oculta) return { idx: j, linea: lineas[j] };
+  }
+  return null;
 }
 
-export function rankingAtaque(
-  porJugador: Record<string, EstadisticasJugador>,
-  acciones: AccionDB[]
-): RankingCompletoItem[] {
-  return Object.values(porJugador)
-    .filter((est) => calificaParaRanking(acciones, est.jugador_id))
-    .map((est) => {
-      const propias = acciones.filter(
-        (a) => a.jugador_id === est.jugador_id && a.fundamento === "ataque"
-      );
-
-      const puntos = contarPorValoraciones(propias, "ataque", ["punto"]);
-      const errores = contarPorValoraciones(propias, "ataque", ["error"]);
-      const total = contarTotal(propias, "ataque");
-
-      const eficacia = total > 0 ? (puntos / total) * 100 : 0;
-      const efectividad =
-        total > 0 ? ((puntos - errores) / total) * 100 : 0;
-
-      const valor = (efectividad + eficacia / 2) / 2;
-
-      return {
-        jugador_id: est.jugador_id,
-        valor,
-        texto: `${puntos} puntos / ${errores} errores / ${total} ataques / Eficacia: ${eficacia.toFixed(1)}% / Efectividad: ${efectividad.toFixed(1)}% / Valor: ${valor.toFixed(1)}%`,
-        puntos,
-        errores,
-        eficacia,
-        efectividad,
-      };
-    })
-    .filter((r) => r.valor !== 0 || (r.eficacia ?? 0) !== 0)
-    .sort((a, b) => b.valor - a.valor);
-}
-
-export function rankingBloqueo(
-  porJugador: Record<string, EstadisticasJugador>,
-  acciones: AccionDB[]
-): RankingCompletoItem[] {
-  const ids = Object.keys(porJugador).filter((id) =>
-    calificaParaRanking(acciones, id)
+function calcularSubtipoDeAtaque(
+  lineas: LineaClasificada[],
+  idxAtaque: number,
+  ultimoVisibleIdx: number
+): string {
+  const ataque = lineas[idxAtaque];
+  const destino = ataque.destino.celda;
+  const desvios = ataque.desvios ?? [];
+  const tocoBloqueoRival = desvios.some((d) =>
+    d.celda.startsWith("BLOQ-R-")
   );
-  const exp = 1.5;
 
-  const ratios: Record<string, number> = {};
-  let maxRatio = 1;
-  for (const id of ids) {
-    const sets = contarSetsJugados(acciones, id);
-    const total = acciones
-      .filter((a) => a.jugador_id === id && a.fundamento === "bloqueo")
-      .reduce((s, a) => s + a.cantidad, 0);
-    const ratio = sets > 0 ? total / sets : 0;
-    ratios[id] = ratio;
-    if (ratio > maxRatio) maxRatio = ratio;
+  const ultimaVisibleLinea =
+    ultimoVisibleIdx >= 0 ? lineas[ultimoVisibleIdx] : null;
+
+  if (
+    ultimaVisibleLinea &&
+    ultimaVisibleLinea.tipo === "defensa" &&
+    ultimaVisibleLinea.esRival
+  ) {
+    return "punto_desviado_ataque";
   }
 
-  return Object.values(porJugador)
-    .filter((est) => calificaParaRanking(acciones, est.jugador_id))
-    .map((est) => {
-      const propias = acciones.filter(
-        (a) =>
-          a.jugador_id === est.jugador_id && a.fundamento === "bloqueo"
-      );
-      const sets = contarSetsJugados(acciones, est.jugador_id);
+  if (tocoBloqueoRival) {
+    if (destino.startsWith("FUERA-")) {
+      return "use_rival_ataque";
+    }
+    if (destino.startsWith("RED-")) {
+      return "error_red_ataque";
+    }
+    if (/^F[123]-/.test(destino)) {
+      return hayCoberturaPropiaDespues(lineas, idxAtaque)
+        ? "neutro_bloqueo_cobertura_ataque"
+        : "gorro_ataque";
+    }
+    if (/^F[456]-/.test(destino)) {
+      return "punto_desviado_ataque";
+    }
+    return "neutro_desvio_bloqueo_defensa_ataque";
+  }
 
-      let sumaValores = 0;
-      let total = 0;
-      for (const a of propias) {
-        const p = puntajeEfectivo(a);
-        if (p === null) continue;
-        sumaValores += p * a.cantidad;
-        total += a.cantidad;
+  const sig = proximaVisible(lineas, idxAtaque);
+  if (
+    sig &&
+    sig.linea.tipo === "defensa" &&
+    sig.linea.esRival &&
+    sig.idx !== ultimoVisibleIdx
+  ) {
+    return "neutro_defensa_ataque";
+  }
+
+  const esUltimaVisible = idxAtaque === ultimoVisibleIdx;
+  if (esUltimaVisible) {
+    if (destino.startsWith("RED-")) return "error_red_ataque";
+    if (destino.startsWith("FUERA-")) return "error_afuera_ataque";
+    if (/^F[456]-/.test(destino)) return "punto_directo_ataque";
+    return "neutro_defensa_ataque";
+  }
+
+  return "neutro_defensa_ataque";
+}
+
+export function calcularSubtiposAtaque(
+  lineas: LineaClasificada[],
+  _ganador: Lado
+): LineaClasificada[] {
+  const idxAtaques: number[] = [];
+  lineas.forEach((l, i) => {
+    if (l.tipo === "ataque" && !l.esRival) idxAtaques.push(i);
+  });
+  if (idxAtaques.length === 0) return lineas;
+
+  let ultimoVisibleIdx = -1;
+  for (let i = lineas.length - 1; i >= 0; i--) {
+    if (!lineas[i].oculta) {
+      ultimoVisibleIdx = i;
+      break;
+    }
+  }
+
+  return lineas.map((l, i) => {
+    if (l.tipo !== "ataque" || l.esRival) return l;
+    if (l.subtipo && l.subtipo !== null) return l;
+    return {
+      ...l,
+      subtipo: calcularSubtipoDeAtaque(lineas, i, ultimoVisibleIdx),
+    };
+  });
+}
+
+// ============================================================
+// SUBTIPOS DE DEFENSA
+// ============================================================
+
+export function calcularSubtiposDefensa(
+  lineas: LineaClasificada[]
+): LineaClasificada[] {
+  const tieneDefensas = lineas.some((l) => l.tipo === "defensa");
+  if (!tieneDefensas) return lineas;
+
+  let ultimoVisibleIdx = -1;
+  for (let i = lineas.length - 1; i >= 0; i--) {
+    if (!lineas[i].oculta) {
+      ultimoVisibleIdx = i;
+      break;
+    }
+  }
+
+  return lineas.map((l, i) => {
+    if (l.tipo !== "defensa") return l;
+
+    const esUltima = i === ultimoVisibleIdx;
+    const subActual = l.subtipo;
+    let nuevoSubtipo = subActual;
+
+    if (esUltima) {
+      if (!subActual || subActual === "defensa_normal") {
+        nuevoSubtipo = "neutro";
+      } else if (subActual === "toque") {
+        nuevoSubtipo = "toque_negativa";
+      } else if (subActual === "gran-defensa") {
+        nuevoSubtipo = "error_def";
+      } else if (subActual === "libre") {
+        nuevoSubtipo = "error_def";
+      } else if (subActual === "cobertura") {
+        nuevoSubtipo = "cobertura_negativa";
       }
-      const promedioBruto = total > 0 ? sumaValores / total : 5;
-      const calidadPorSet = sets > 0 ? (promedioBruto - 5) * sets : 0;
-      const ratio = ratios[est.jugador_id] ?? 0;
-      const factor = maxRatio > 0 ? Math.pow(ratio / maxRatio, exp) : 0;
-      const valor = calidadPorSet * factor;
-
-      const puntos = contarPorValoraciones(propias, "bloqueo", ["punto"]);
-      const positivos = contarPorValoraciones(propias, "bloqueo", [
-        "positivo_mas",
-        "positivo",
-      ]);
-      const errores = contarPorValoraciones(propias, "bloqueo", [
-        "use_rival",
-        "red",
-      ]);
-
-      return {
-        jugador_id: est.jugador_id,
-        valor,
-        texto: `${puntos} puntos / ${positivos} positivos / ${errores} errores / ${total} bloqueos en ${sets} sets / Promedio: ${promedioBruto.toFixed(2)}`,
-      };
-    })
-    .filter((r) => r.valor !== 0)
-    .sort((a, b) => b.valor - a.valor);
-}
-
-export function rankingSaque(
-  porJugador: Record<string, EstadisticasJugador>,
-  acciones: AccionDB[]
-): RankingCompletoItem[] {
-  return Object.values(porJugador)
-    .filter((est) => calificaParaRanking(acciones, est.jugador_id))
-    .map((est) => {
-      const propias = acciones.filter(
-        (a) => a.jugador_id === est.jugador_id && a.fundamento === "saque"
-      );
-      const sets = contarSetsJugados(acciones, est.jugador_id);
-
-      let sumaValores = 0;
-      let total = 0;
-      for (const a of propias) {
-        const p = puntajeEfectivo(a);
-        if (p === null) continue;
-        sumaValores += p * a.cantidad;
-        total += a.cantidad;
+    } else {
+      if (!subActual || subActual === "defensa_normal") {
+        nuevoSubtipo = "neutro";
+      } else if (subActual === "toque") {
+        nuevoSubtipo = "toque_positiva";
+      } else if (subActual === "gran-defensa") {
+        nuevoSubtipo = "gran_def";
+      } else if (subActual === "libre") {
+        if (l.destino.celda === "F1-C3") {
+          nuevoSubtipo = "toque_positiva";
+        } else {
+          nuevoSubtipo = "mala_libre";
+        }
+      } else if (subActual === "cobertura") {
+        nuevoSubtipo = "cobertura_positiva";
       }
-      const promedio = total > 0 ? sumaValores / total : 5;
-      const valor = sets > 0 ? (promedio - 5) * sets : 0;
+    }
 
-      const aces = contarPorValoraciones(propias, "saque", ["ace"]);
-      const positivosMas = contarPorValoraciones(propias, "saque", [
-        "positivo_mas",
-      ]);
-      const positivos = contarPorValoraciones(propias, "saque", [
-        "positivo",
-      ]);
-      const errores = contarPorValoraciones(propias, "saque", ["negativo"]);
-
-      return {
-        jugador_id: est.jugador_id,
-        valor,
-        texto: `${aces} aces / ${positivosMas} pos+ / ${positivos} pos / ${errores} errores / Promedio: ${promedio.toFixed(2)} en ${sets} sets`,
-      };
-    })
-    .filter((r) => r.valor !== 0)
-    .sort((a, b) => b.valor - a.valor);
+    return {
+      ...l,
+      subtipo: nuevoSubtipo,
+      variante: "defensa_normal" as any,
+    };
+  });
 }
 
-export function rankingDefensa(
-  porJugador: Record<string, EstadisticasJugador>,
-  acciones: AccionDB[]
-): RankingCompletoItem[] {
-  return Object.values(porJugador)
-    .filter((est) => calificaParaRanking(acciones, est.jugador_id))
-    .map((est) => {
-      const propias = acciones.filter(
-        (a) => a.jugador_id === est.jugador_id && a.fundamento === "defensa"
-      );
+// ============================================================
+// SUBTIPOS DE ATAQUE RIVAL
+// ============================================================
 
-      let sumaValores = 0;
-      let total = 0;
-      for (const a of propias) {
-        const p = puntajeEfectivo(a);
-        if (p === null) continue;
-        sumaValores += p * a.cantidad;
-        total += a.cantidad;
-      }
-      const promedio = total > 0 ? sumaValores / total : 5;
-      const valor = promedio;
+export function calcularSubtiposAtaqueRival(
+  lineas: LineaClasificada[]
+): LineaClasificada[] {
+  if (lineas.length === 0) return lineas;
 
-      const positivas = contarPorValoraciones(propias, "defensa", [
-        "toque_positiva",
-        "gran_def",
-        "cobertura_positiva",
-      ]);
-      const negativas = contarPorValoraciones(propias, "defensa", [
-        "toque_negativa",
-        "mala_libre",
-        "error_def",
-        "cobertura_negativa",
-        "errores_graves",
-      ]);
+  let ultimoVisibleIdx = -1;
+  for (let i = lineas.length - 1; i >= 0; i--) {
+    if (!lineas[i].oculta) {
+      ultimoVisibleIdx = i;
+      break;
+    }
+  }
 
-      return {
-        jugador_id: est.jugador_id,
-        valor,
-        texto: `${positivas} positivas / ${negativas} negativas / Promedio: ${promedio.toFixed(2)}`,
-        positivas,
-        negativas,
-        balance: positivas - negativas,
+  const resultado = [...lineas];
+
+  for (let i = 0; i < resultado.length; i++) {
+    const l = resultado[i];
+    if (l.tipo !== "ataque" || !l.esRival) continue;
+    if (l.subtipo === "toque") continue;
+
+    const esUltima = i === ultimoVisibleIdx;
+
+    let j = i + 1;
+    while (j < resultado.length && resultado[j].oculta) j++;
+
+    if (j >= resultado.length) {
+      resultado[i] = {
+        ...l,
+        subtipo: esUltima ? "buena_rival" : "simple",
       };
-    })
-    .filter((r) => r.valor !== 0)
-    .sort((a, b) => b.valor - a.valor);
-}
+      continue;
+    }
 
-export function rankingConsistencia(
-  porJugador: Record<string, EstadisticasJugador>,
-  acciones: AccionDB[]
-): RankingCompletoItem[] {
-  const valoresPositivos = [
-    "ace",
-    "positivo_mas",
-    "positivo",
-    "perfecta",
-    "positiva",
-    "punto",
-    "toque_positiva",
-    "gran_def",
-    "cobertura_positiva",
-  ];
-  const erroresNoForzados = [
-    "negativo",
-    "error_directo",
-    "error",
-    "red",
-    "error_def",
-    "errores_graves",
-    "mala_libre",
-  ];
-  return Object.values(porJugador)
-    .filter((est) => calificaParaRanking(acciones, est.jugador_id))
-    .map((est) => {
-      const propias = acciones.filter(
-        (a) => a.jugador_id === est.jugador_id
-      );
-      const positivas = propias
-        .filter((a) => valoresPositivos.includes(a.valoracion))
-        .reduce((s, a) => s + a.cantidad, 0);
-      const errores = propias
-        .filter((a) => erroresNoForzados.includes(a.valoracion))
-        .reduce((s, a) => s + a.cantidad, 0);
-      const ratio = errores > 0 ? positivas / errores : positivas;
-      return {
-        jugador_id: est.jugador_id,
-        valor: ratio,
-        texto: `Ratio de ${ratio.toFixed(2)} acciones positivas por cada error no forzado`,
+    const siguiente = resultado[j];
+
+    if (siguiente.tipo !== "defensa" || siguiente.esRival) {
+      resultado[i] = {
+        ...l,
+        subtipo: esUltima ? "buena_rival" : "simple",
       };
-    })
-    .filter((r) => r.valor > 0)
-    .sort((a, b) => b.valor - a.valor);
-}
+      continue;
+    }
 
-export function calcularPodios(
-  porJugador: Record<string, EstadisticasJugador>,
-  acciones: AccionDB[]
-): Record<string, Record<string, number>> {
-  const resultado: Record<string, Record<string, number>> = {};
+    const subtipoDef = siguiente.subtipo;
+    let nuevoSub: string;
 
-  const agregar = (fundamento: string, items: RankingCompletoItem[]) => {
-    items.slice(0, 3).forEach((item, idx) => {
-      if (!resultado[item.jugador_id]) resultado[item.jugador_id] = {};
-      resultado[item.jugador_id][fundamento] = idx + 1;
-    });
-  };
+    if (
+      subtipoDef === "toque" ||
+      subtipoDef === "toque_positiva" ||
+      subtipoDef === "toque_negativa"
+    ) {
+      nuevoSub = "toque";
+    } else if (
+      subtipoDef === "gran-defensa" ||
+      subtipoDef === "gran_def"
+    ) {
+      nuevoSub = "peligroso";
+    } else if (
+      subtipoDef === "libre" ||
+      subtipoDef === "mala_libre"
+    ) {
+      nuevoSub = "libre";
+    } else {
+      nuevoSub = j === ultimoVisibleIdx ? "buena_rival" : "simple";
+    }
 
-  agregar("saque", rankingSaque(porJugador, acciones));
-  agregar("recepcion", rankingRecepcion(porJugador, acciones));
-  agregar("ataque", rankingAtaque(porJugador, acciones));
-  agregar("bloqueo", rankingBloqueo(porJugador, acciones));
-  agregar("defensa", rankingDefensa(porJugador, acciones));
+    resultado[i] = { ...l, subtipo: nuevoSub };
+  }
 
   return resultado;
 }
 
-export function rankingDeJugador(
-  jugadorId: string,
-  porJugador: Record<string, EstadisticasJugador>,
-  acciones: AccionDB[]
-): Record<string, string> {
-  const resultado: Record<string, string> = {};
+// ============================================================
+// ERRORES RIVALES
+// ============================================================
 
-  const buscar = (
-    fundamento: string,
-    items: RankingCompletoItem[]
-  ) => {
-    const item = items.find((i) => i.jugador_id === jugadorId);
-    if (item) resultado[fundamento] = item.texto;
-  };
+export function calcularErroresRival(
+  lineas: LineaClasificada[]
+): LineaClasificada[] {
+  return lineas.map((l) => {
+    if (!l.esRival) return l;
 
-  buscar("recepcion", rankingRecepcion(porJugador, acciones));
-  buscar("ataque", rankingAtaque(porJugador, acciones));
-  buscar("bloqueo", rankingBloqueo(porJugador, acciones));
-  buscar("saque", rankingSaque(porJugador, acciones));
-  buscar("defensa", rankingDefensa(porJugador, acciones));
-  buscar("consistencia", rankingConsistencia(porJugador, acciones));
+    if (l.tipo === "roce-red") {
+      return { ...l, subtipo: "error_rival" };
+    }
+
+    if (l.tipo === "saque" || l.tipo === "ataque") {
+      const d = l.destino.celda;
+      const esError =
+        esFuera(d) ||
+        d.startsWith("RED-") ||
+        esCanchaRival(d);
+      if (esError) {
+        return { ...l, subtipo: "error_rival" };
+      }
+    }
+
+    return l;
+  });
+}
+
+// ============================================================
+// SUBTIPOS DE BLOQUEO PROPIO
+// ============================================================
+
+function siguienteEsLibre(siguiente: LineaClasificada | undefined): boolean {
+  if (!siguiente) return false;
+  if (siguiente.tipo === "libre") return true;
+  if (siguiente.tipo === "defensa") {
+    const s = siguiente.subtipo;
+    return s === "libre" || s === "mala_libre" || s === "toque_positiva";
+  }
+  return false;
+}
+
+function contarToquesRivalesDespuesBloqueo(
+  lineas: LineaClasificada[],
+  idxBloqueo: number
+): number {
+  let count = 0;
+  for (let j = idxBloqueo + 1; j < lineas.length; j++) {
+    const l = lineas[j];
+    if (l.oculta) continue;
+    if (!l.esRival) break;
+    if (
+      l.tipo === "recepcion" ||
+      l.tipo === "armado" ||
+      l.tipo === "ataque" ||
+      l.tipo === "defensa" ||
+      l.tipo === "libre"
+    ) {
+      count++;
+    }
+  }
+  return count;
+}
+
+function hayAccionPropiaDespues(
+  lineas: LineaClasificada[],
+  idxBloqueo: number
+): boolean {
+  for (let j = idxBloqueo + 1; j < lineas.length; j++) {
+    const l = lineas[j];
+    if (l.oculta) continue;
+    if (!l.esRival) return true;
+  }
+  return false;
+}
+
+function valorarBloqueoBase(
+  lineas: LineaClasificada[],
+  idxBloqueo: number
+): string {
+  const l = lineas[idxBloqueo];
+  const destino = l.destino.celda;
+
+  if (esFuera(destino)) return "use_rival";
+  if (destino.startsWith("RED-")) return "filtrada";
+  if (esCeldaBloqueoPropioLateral(destino)) return "filtrada";
+
+  if (esCanchaPropiaReal(destino)) {
+    const siguiente = lineas[idxBloqueo + 1];
+    if (siguienteEsLibre(siguiente)) return "positivo_mas";
+    return "neutro";
+  }
+
+  const esRival =
+    esCanchaRivalReal(destino) ||
+    destino.startsWith("BLOQ-R-") ||
+    esCeldaBloqueoPropioConPopup(destino);
+
+  if (esRival) {
+    const toquesRivales = contarToquesRivalesDespuesBloqueo(
+      lineas,
+      idxBloqueo
+    );
+    const huboPropia = hayAccionPropiaDespues(lineas, idxBloqueo);
+
+    if (toquesRivales < 3 && !huboPropia) return "punto";
+
+    const siguiente = lineas[idxBloqueo + 1];
+    if (siguienteEsLibre(siguiente)) return "positivo_mas";
+    return "positivo";
+  }
+
+  return "positivo";
+}
+
+export function calcularSubtiposBloqueo(
+  lineas: LineaClasificada[]
+): LineaClasificada[] {
+  const idxBloqueos: number[] = [];
+  lineas.forEach((l, i) => {
+    if (l.tipo === "bloqueo" && !l.esRival) idxBloqueos.push(i);
+  });
+  if (idxBloqueos.length === 0) return lineas;
+
+  return lineas.map((l, i) => {
+    if (l.tipo !== "bloqueo" || l.esRival) return l;
+    const base = valorarBloqueoBase(lineas, i);
+    return { ...l, subtipo: base };
+  });
+}
+
+// ============================================================
+// SUBTIPOS DE SAQUE
+// ============================================================
+
+function valorarSaqueSinRecepcion(destino: string): string {
+  if (
+    destino.startsWith("F4-") ||
+    destino.startsWith("F5-") ||
+    destino.startsWith("F6-")
+  ) {
+    const col = destino.split("-")[1];
+    if (col === "C2" || col === "C3" || col === "C4") return "ace";
+  }
+  return "negativo";
+}
+
+function valorarSaqueConRecepcion(destino: string): string {
+  if (destino.startsWith("FUERA-ARR-")) return "positivo_mas";
+  if (destino.startsWith("FUERA-ABA-")) return "ace";
+
+  if (destino.startsWith("RED-")) return "ace";
+  if (destino.startsWith("BLOQ-R-")) return "ace";
+  if (destino.startsWith("BLOQ-P-")) return "positivo_mas";
+
+  if (
+    destino.startsWith("F1-") ||
+    destino.startsWith("F2-") ||
+    destino.startsWith("F3-")
+  ) {
+    const col = destino.split("-")[1];
+    if (col === "C2" || col === "C3" || col === "C4") return "positivo_mas";
+    return "ace";
+  }
+
+  if (
+    destino.startsWith("F4-") ||
+    destino.startsWith("F5-") ||
+    destino.startsWith("F6-")
+  ) {
+    const [fila, col] = destino.split("-");
+    if (col === "C1" || col === "C5") return "positivo_mas";
+    if (fila === "F6") return "positivo_mas";
+    if (fila === "F5") return "positivo";
+    if (fila === "F4") {
+      if (col === "C3") return "neutro";
+      return "positivo";
+    }
+  }
+
+  return "positivo";
+}
+
+function valorarSaqueRival(
+  destinoSaque: string,
+  siguiente: LineaClasificada | undefined
+): string {
+  const huboRecepcion =
+    siguiente?.tipo === "recepcion" && !siguiente.esRival;
+
+  if (!huboRecepcion) {
+    if (esCanchaPropiaReal(destinoSaque)) {
+      return "ace";
+    }
+    return "negativo";
+  }
+
+  const destinoRec = siguiente!.destino.celda;
+
+  if (esFuera(destinoRec) || destinoRec.startsWith("RED-")) {
+    return "positivo_mas";
+  }
+
+  if (destinoRec === "F1-C3") {
+    return "neutro";
+  }
+
+  if (destinoRec.startsWith("F1-")) {
+    const col = destinoRec.split("-")[1];
+    if (col === "C1" || col === "C5") return "positivo";
+    return "neutro";
+  }
+
+  return "negativo";
+}
+
+export function calcularSubtiposSaque(
+  lineas: LineaClasificada[]
+): LineaClasificada[] {
+  const resultado = [...lineas];
+
+  const idxSaquePropio = resultado.findIndex(
+    (l) => l.tipo === "saque" && !l.esRival
+  );
+  if (idxSaquePropio !== -1) {
+    const saque = resultado[idxSaquePropio];
+    const destinoSaque = saque.destino.celda;
+
+    const desvios = saque.desvios ?? [];
+    const tieneDesvioBloqueo = desvios.some((d) =>
+      d.celda.startsWith("BLOQ-R-")
+    );
+
+    let subtipo: string;
+
+    if (destinoSaque.startsWith("BLOQ-R-") && !tieneDesvioBloqueo) {
+      const siguiente = resultado[idxSaquePropio + 1];
+      if (siguiente && siguiente.origen.celda === destinoSaque) {
+        const destinoFinal = siguiente.destino.celda;
+        if (destinoFinal.startsWith("FUERA-")) {
+          subtipo = "negativo";
+        } else {
+          subtipo = valorarSaqueSinRecepcion(destinoFinal);
+        }
+      } else {
+        subtipo = "negativo";
+      }
+    } else if (tieneDesvioBloqueo) {
+      if (destinoSaque.startsWith("FUERA-")) {
+        subtipo = "negativo";
+      } else {
+        subtipo = valorarSaqueSinRecepcion(destinoSaque);
+      }
+    } else {
+      const siguiente = resultado[idxSaquePropio + 1];
+      if (siguiente && siguiente.tipo === "recepcion" && siguiente.esRival) {
+        subtipo = valorarSaqueConRecepcion(siguiente.destino.celda);
+      } else {
+        subtipo = valorarSaqueSinRecepcion(destinoSaque);
+      }
+    }
+
+    resultado[idxSaquePropio] = { ...saque, subtipo };
+  }
+
+  const idxSaqueRival = resultado.findIndex(
+    (l) => l.tipo === "saque" && l.esRival
+  );
+  if (idxSaqueRival !== -1) {
+    const saque = resultado[idxSaqueRival];
+    const siguiente = resultado[idxSaqueRival + 1];
+    const subtipo = valorarSaqueRival(saque.destino.celda, siguiente);
+    resultado[idxSaqueRival] = { ...saque, subtipo };
+  }
 
   return resultado;
 }
-
-export function calcularPromediosEquipoPorSet(
-  acciones: AccionDB[],
-  fundamento: string,
-  _valores: Record<string, number> = {}
-): PromedioPorSet[] {
-  const result: PromedioPorSet[] = [];
-  for (let s = 1; s <= 5; s++) {
-    const delSet = acciones.filter(
-      (a) => a.fundamento === fundamento && a.set_numero === s
-    );
-    let suma = 0;
-    let total = 0;
-    for (const a of delSet) {
-      const p = puntajeEfectivo(a);
-      if (p === null) continue;
-      suma += p * a.cantidad;
-      total += a.cantidad;
-    }
-    result.push({
-      set: s,
-      promedio: total > 0 ? suma / total : 0,
-      total,
-    });
-  }
-  return result;
-}
-
-export function calcularPromediosEquipoArmadosPorSet(
-  acciones: AccionDB[]
-): PromedioArmadosSet[] {
-  const result: PromedioArmadosSet[] = [];
-  for (let s = 1; s <= 5; s++) {
-    const delSet = acciones.filter(
-      (a) => a.fundamento === "armados" && a.set_numero === s
-    );
-    let suma = 0;
-    let total = 0;
-    for (const a of delSet) {
-      const p = puntajeEfectivo(a);
-      if (p === null) continue;
-      suma += p * a.cantidad;
-      total += a.cantidad;
-    }
-    result.push({
-      set: s,
-      promedio: total > 0 ? suma / total : 0,
-      totalArmados: total,
-    });
-  }
-  return result;
-}
-
-export interface RankingItem {
-  jugador_id: string;
-  valor: number;
-}
-
-export function top3(
-  stats: Record<string, EstadisticasJugador>,
-  metrica: (e: EstadisticasJugador) => number
-): RankingItem[] {
-  return Object.values(stats)
-    .map((e) => ({ jugador_id: e.jugador_id, valor: metrica(e) }))
-    .filter((r) => r.valor !== 0)
-    .sort((a, b) => b.valor - a.valor)
-    .slice(0, 3);
-}
-
-// ============================================
-// NIVELES DE VALORACIÓN (para colorear)
-// ============================================
-
-export type NivelValoracion = "bajo" | "cumple" | "bien" | "destaca";
-
-const CORTES_NIVEL: Record<
-  string,
-  { cumple: number; bien: number; destaca: number }
-> = {
-  saque: { cumple: 4.0, bien: 6.0, destaca: 7.5 },
-  recepcion: { cumple: 4.0, bien: 6.5, destaca: 8.0 },
-  ataque: { cumple: 3.5, bien: 5.5, destaca: 7.5 },
-  bloqueo: { cumple: 3.5, bien: 5.5, destaca: 7.5 },
-  defensa: { cumple: 4.0, bien: 6.0, destaca: 7.5 },
-  armados: { cumple: 4.0, bien: 6.0, destaca: 7.5 },
-  toque: { cumple: 3.5, bien: 5.0, destaca: 7.0 },
-};
-
-export function nivelDeValoracion(
-  fundamento: string,
-  valor: number
-): NivelValoracion {
-  const corte = CORTES_NIVEL[fundamento];
-  if (!corte) return "bajo";
-  if (valor >= corte.destaca) return "destaca";
-  if (valor >= corte.bien) return "bien";
-  if (valor >= corte.cumple) return "cumple";
-  return "bajo";
-}
-
-export const COLORES_NIVEL_CLASES: Record<
-  NivelValoracion,
-  { bg: string; border: string; text: string; nombre: string }
-> = {
-  bajo: {
-    bg: "bg-red-50",
-    border: "border-red-300",
-    text: "text-red-700",
-    nombre: "Bajo",
-  },
-  cumple: {
-    bg: "bg-yellow-50",
-    border: "border-yellow-300",
-    text: "text-yellow-700",
-    nombre: "Regular",
-  },
-  bien: {
-    bg: "bg-emerald-50",
-    border: "border-emerald-300",
-    text: "text-emerald-700",
-    nombre: "Bueno",
-  },
-  destaca: {
-    bg: "bg-sky-50",
-    border: "border-sky-300",
-    text: "text-sky-700",
-    nombre: "Destacado",
-  },
-};
