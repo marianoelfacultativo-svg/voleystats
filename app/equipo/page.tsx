@@ -59,15 +59,44 @@ export default function EquipoPage() {
   ];
 
   return (
-    <main className="min-h-screen p-4 sm:p-6 md:p-8">
-      <div className="max-w-6xl mx-auto">
+    <main className="relative min-h-screen p-4 sm:p-6 md:p-8">
+      {/* ─── TEXTURA DE PAPEL (grano sutil sobre toda la página) ─── */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 z-0"
+        style={{ mixBlendMode: "multiply" }}
+      >
+        <svg width="100%" height="100%">
+          <defs>
+            <filter id="grainPage" x="0" y="0" width="100%" height="100%">
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.85"
+                numOctaves="3"
+                seed="11"
+                stitchTiles="stitch"
+                result="noise"
+              />
+              <feColorMatrix
+                in="noise"
+                type="matrix"
+                values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.5 0"
+              />
+            </filter>
+          </defs>
+          <rect width="100%" height="100%" filter="url(#grainPage)" opacity="0.55" />
+        </svg>
+      </div>
+
+      <div className="relative z-10 max-w-6xl mx-auto">
         {/* ─── HEADER ─── */}
         <header className="flex items-start justify-between gap-4 flex-wrap mb-6">
           <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-[0.25em] text-[#A54A44] font-bold">
+            <p className="flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] text-[#A54A44] font-bold">
+              <span className="inline-block w-6 h-[2px] bg-[#A54A44] translate-y-[1px]" />
               Panel del club
             </p>
-            <h1 className="mt-1 flex items-baseline gap-x-2 flex-wrap text-slate-900">
+            <h1 className="mt-2 flex items-baseline gap-x-2 flex-wrap text-slate-900">
               <span className="inline-flex items-center gap-2">
                 <IconoPelota size={28} />
                 <span className="text-2xl sm:text-3xl font-black tracking-tight">
@@ -80,6 +109,11 @@ export default function EquipoPage() {
                 </span>
               )}
             </h1>
+            {/* Doble regla editorial */}
+            <div className="mt-3 flex flex-col gap-[3px]">
+              <span className="block w-full max-w-[420px] h-[1px] bg-slate-400/70" />
+              <span className="block w-full max-w-[420px] h-[1px] bg-slate-400/30" />
+            </div>
           </div>
           <button
             onClick={handleCerrar}
