@@ -303,6 +303,30 @@ function rectMini(
   };
 }
 
+/**
+ * Genera un único `d` de path que traza TODAS las líneas del mini-grid
+ * de un grupo de celdas. Reemplaza cientos/miles de `<rect>` por un
+ * solo `<path>`, mejorando enormemente el rendimiento de rasterizado.
+ */
+function generarMiniGridPath(celdas: CeldaDef[]): string {
+  const cmds: string[] = [];
+  for (const c of celdas) {
+    const miniAncho = c.ancho / c.miniCols;
+    const miniAlto = c.alto / c.miniFils;
+    // Líneas verticales (interiores)
+    for (let col = 1; col < c.miniCols; col++) {
+      const x = c.x + col * miniAncho;
+      cmds.push(`M ${x} ${c.y} L ${x} ${c.y + c.alto}`);
+    }
+    // Líneas horizontales (interiores)
+    for (let fil = 1; fil < c.miniFils; fil++) {
+      const y = c.y + fil * miniAlto;
+      cmds.push(`M ${c.x} ${y} L ${c.x + c.ancho} ${y}`);
+    }
+  }
+  return cmds.join(" ");
+}
+
 // ============================================================
 // EXPORTS PARA LA CAPA DE LÍNEAS
 // ============================================================
@@ -454,7 +478,6 @@ export default function CanchaV2({
   const handleMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const sp = svgCoordsDesdeMouse(e);
     if (!sp) {
-      // Solo actualizamos si realmente había hover.
       setHover((prev) => (prev === null ? prev : null));
       return;
     }
@@ -544,78 +567,96 @@ export default function CanchaV2({
     !!onBorrarLinea;
 
   // ------------------------------------------------------------
-  // Grilla memoizada: ~3600 rects que no se recalculan en hover.
-  // Solo se recalculan si cambian las celdas atenuadas o resaltadas.
+  // Grilla memoizada: agrupamos celdas por (zona, atenuada), dibujamos
+  // fondos como rects individuales y el mini-grid como UN `<path>` por
+  // grupo. Pasamos de ~3.500 rects a ~100 elementos SVG.
   // ------------------------------------------------------------
   const grillaMemoizada = useMemo(() => {
-    return CELDAS.map((c) => {
-      const colores = COLORES_ZONA[c.zona];
+    const mapa = new Map<
+      string,
+      { zona: ZonaCancha; atenuada: boolean; celdas: CeldaDef[] }
+    >();
+    for (const c of CELDAS) {
       const atenuada = celdasAtenuadas?.has(c.id) ?? false;
-      const resaltada = celdasResaltadas?.has(c.id) ?? false;
+      const key = `${c.zona}|${atenuada}`;
+      let g = mapa.get(key);
+      if (!g) {
+        g = { zona: c.zona, atenuada, celdas: [] };
+        mapa.set(key, g);
+      }
+      g.celdas.push(c);
+    }
+    const grupos = Array.from(mapa.values());
 
-      return (
-        <g key={c.id} opacity={atenuada ? 0.35 : 1}>
-          <rect
-            x={c.x}
-            y={c.y}
-            width={c.ancho}
-            height={c.alto}
-            fill={colores.fondo}
-            stroke={colores.borde}
-            strokeWidth={1}
-          />
-
-          {Array.from({ length: c.miniFils }).map((_, f) =>
-            Array.from({ length: c.miniCols }).map((_, col) => {
-              const r = rectMini(c, f + 1, col + 1);
-              return (
-                <rect
-                  key={`${c.id}-m-${f}-${col}`}
-                  x={r.x}
-                  y={r.y}
-                  width={r.w}
-                  height={r.h}
-                  fill="transparent"
-                  stroke={colores.borde}
-                  strokeWidth={0.25}
-                  opacity={0.4}
-                  pointerEvents="none"
-                />
-              );
-            })
-          )}
-
-          {resaltada && (
-            <rect
-              x={c.x}
-              y={c.y}
-              width={c.ancho}
-              height={c.alto}
-              fill="none"
-              stroke="#0ea5e9"
-              strokeWidth={2}
-              strokeDasharray="4 3"
-              pointerEvents="none"
-            />
-          )}
-
-          {c.alto >= 20 && (
-            <text
-              x={c.x + c.ancho / 2}
-              y={c.y + c.alto / 2 + 3}
-              textAnchor="middle"
-              fontSize={7}
-              fontWeight={700}
-              fill={colores.texto}
-              opacity={0.55}
-              pointerEvents="none"
+    return (
+      <>
+        {grupos.map((g) => {
+          const colores = COLORES_ZONA[g.zona];
+          return (
+            <g
+              key={`g-${g.zona}-${g.atenuada ? 1 : 0}`}
+              opacity={g.atenuada ? 0.35 : 1}
             >
-              {c.id}
-            </text>
-          )}
-        </g>
-      );
-    });
+              {g.celdas.map((c) => (
+                <rect
+                  key={`bg-${c.id}`}
+                  x={c.x}
+                  y={c.y}
+                  width={c.ancho}
+                  height={c.alto}
+                  fill={colores.fondo}
+                  stroke={colores.borde}
+                  strokeWidth={1}
+                />
+              ))}
+              <path
+                d={generarMiniGridPath(g.celdas)}
+                stroke={colores.borde}
+                strokeWidth={0.25}
+                opacity={0.4}
+                fill="none"
+                pointerEvents="none"
+              />
+              {g.celdas
+                .filter((c) => c.alto >= 20)
+                .map((c) => (
+                  <text
+                    key={`lbl-${c.id}`}
+                    x={c.x + c.ancho / 2}
+                    y={c.y + c.alto / 2 + 3}
+                    textAnchor="middle"
+                    fontSize={7}
+                    fontWeight={700}
+                    fill={colores.texto}
+                    opacity={0.55}
+                    pointerEvents="none"
+                  >
+                    {c.id}
+                  </text>
+                ))}
+            </g>
+          );
+        })}
+        {celdasResaltadas &&
+          CELDAS.map((c) => {
+            if (!celdasResaltadas.has(c.id)) return null;
+            return (
+              <rect
+                key={`res-${c.id}`}
+                x={c.x}
+                y={c.y}
+                width={c.ancho}
+                height={c.alto}
+                fill="none"
+                stroke="#0ea5e9"
+                strokeWidth={2}
+                strokeDasharray="4 3"
+                pointerEvents="none"
+              />
+            );
+          })}
+      </>
+    );
   }, [celdasAtenuadas, celdasResaltadas]);
 
   // ------------------------------------------------------------
@@ -872,6 +913,10 @@ export default function CanchaV2({
           cursor: onMiniClick ? "crosshair" : "default",
           flexShrink: 0,
           margin: "auto",
+          // Promover a capa compuesta: el navegador rasteriza una vez y
+          // luego sólo traslada la capa al scrollear. Evita repintar
+          // miles de elementos SVG en cada frame.
+          willChange: "transform",
         }}
         onPointerMove={handleMove}
         onPointerLeave={handleLeave}
