@@ -33,8 +33,9 @@ html, body {
     #CBD5E1 32px
   ) !important;
   
-  /* Ajustamos para que la línea caiga justo debajo de la base de la letra */
-  background-position-y: 8px !important; 
+  /* Forzamos a que el dibujo empiece desde el borde superior */
+  background-origin: border-box !important;
+  background-position-y: 0 !important; 
   
   /* Borde sutil y sombra de hoja apoyada */
   border: 1px solid #D6D3D1 !important;
@@ -42,12 +43,9 @@ html, body {
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
   
   /* Espacio superior para que el título respire antes de las líneas */
-  padding-top: 1.5rem !important;
+  padding-top: 0.5rem !important; /* Lo bajé un poco para que la primera línea no pise el borde */
   padding-bottom: 1.5rem !important;
   position: relative;
-  
-  /* LA CLAVE: Forzamos que todo mida 32px de alto */
-  line-height: 32px !important;
 }
 
 /* La "pestaña" en la esquina superior izquierda */
@@ -66,37 +64,48 @@ html, body {
   z-index: 10;
 }
 
-/* 3. ANCLAR LAS LETRAS A LOS RENGLONES */
-/* Obligamos a los títulos, párrafos y celdas a usar el ritmo de 32px */
+/* 3. ANCLAR LAS LETRAS A LOS RENGLONES (LA CLAVE) */
+/* Forzamos al texto a medir exactamente lo mismo que el renglón (32px)
+   pero lo alineamos abajo de todo para que "se apoye" en la línea. */
 .rounded-2xl.shadow-sm p, 
-.rounded-2xl.shadow-sm span, 
 .rounded-2xl.shadow-sm h2, 
 .rounded-2xl.shadow-sm h3, 
 .rounded-2xl.shadow-sm h4,
 .rounded-2xl.shadow-sm td,
 .rounded-2xl.shadow-sm th,
 .rounded-2xl.shadow-sm li,
+.rounded-2xl.shadow-sm span,
 .card-terracota p, 
-.card-terracota span, 
 .card-terracota h2, 
 .card-terracota h3, 
-.card-terracota h4 {
-  line-height: 32px !important;
+.card-terracota h4,
+.card-terracota span {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
+  height: 32px !important;
+  line-height: 32px !important;
+  
+  /* Lo alineamos al ras del fondo */
+  display: flex !important; 
+  align-items: flex-end !important;
+  padding-bottom: 4px !important; /* Empuja la letra hacia arriba para que no la toque la línea */
+  box-sizing: border-box !important;
 }
 
-/* Los textos grandes (números de Puntos, Errores) ocupan 2 renglones (64px) */
+/* Para los textos grandes (números de Puntos) que ocupan 2 renglones */
 .rounded-2xl.shadow-sm .text-2xl,
 .rounded-2xl.shadow-sm .text-3xl,
 .rounded-2xl.shadow-sm .text-xl,
 .card-terracota .text-2xl,
 .card-terracota .text-3xl,
 .card-terracota .text-xl {
-  line-height: 64px !important; 
+  height: 64px !important;
+  line-height: 64px !important;
+  align-items: flex-end !important;
+  padding-bottom: 8px !important; 
 }
 
-/* Arreglamos las tablas para que sigan el mismo ritmo */
+/* Arreglamos las tablas */
 .rounded-2xl.shadow-sm table {
   border-collapse: collapse !important;
 }
