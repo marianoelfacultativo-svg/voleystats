@@ -252,9 +252,7 @@ interface WrapperProps {
 
 function PopupWrapper({ pos, ancho, alto, titulo, children }: WrapperProps) {
   // CANCHA_V2_DIMS.ancho / .alto son el INTERIOR de la cancha.
-  // .margen es el borde celeste visible a cada lado (arriba/abajo/izq/der).
-  // El popup puede usar el margen, así que el área real disponible es
-  // [-margen, tamaño + margen].
+  // .margen es el borde celeste visible a cada lado.
   const { ancho: W, alto: H, margen: M } = CANCHA_V2_DIMS;
   const { sx, sy, popupZoom } = useContext(CanchaStretchContext);
   const invSx = sx !== 0 ? 1 / sx : 1;
@@ -262,55 +260,97 @@ function PopupWrapper({ pos, ancho, alto, titulo, children }: WrapperProps) {
   const escX = invSx * popupZoom;
   const escY = invSy * popupZoom;
 
-  const minX = -M + 2;
-  const maxX = W + M - 2;
-  const minY = -M + 2;
-  const maxY = H + M - 2;
+  // ----------------------------------------------------------
+  // GAP EN PÍXELES REALES
+  // ----------------------------------------------------------
+  // Queremos que el espacio entre el click y el borde del popup
+  // sea siempre GAP_PX píxeles en pantalla, sin importar el zoom.
+  //
+  // 1 unidad de layout (pre-transformación) se mapea a `sx` píxeles
+  // en el eje horizontal renderizado y a `sy` píxeles en el vertical
+  // (con la orientación ya tenida en cuenta por el contexto).
+  //
+  // Por lo tanto, el gap equivalente en layout units es:
+  //   gapLocalX = GAP_PX / sx
+  //   gapLocalY = GAP_PX / sy
+  // ----------------------------------------------------------
+  const GAP_PX = 12;
+  const gapLocalX = sx !== 0 ? GAP_PX / sx : GAP_PX;
+  const gapLocalY = sy !== 0 ? GAP_PX / sy : GAP_PX;
 
-  const GAP = 12;
+  // Semianchos del popup después de la transformación local.
+  // El rect se dibuja con ancho `ancho` pero la transformación
+  // scale(escX) alrededor de su centro lo deja con ancho visual
+  // `ancho * escX` en layout units → `ancho * popupZoom` px.
+  const semiAnchoT = (ancho / 2) * escX;
+  const semiAltoT = (alto / 2) * escY;
 
-  // ---------- HORIZONTAL ----------
-  let x: number;
+  // ----------------------------------------------------------
+  // HORIZONTAL
+  // ----------------------------------------------------------
   const clickEnIzquierda = pos.x < W / 2;
-  const naturalX = clickEnIzquierda ? pos.x - ancho - GAP : pos.x + GAP;
-  const flippedX = clickEnIzquierda ? pos.x + GAP : pos.x - ancho - GAP;
 
-  const fitsNaturalX = naturalX >= minX && naturalX + ancho <= maxX;
-  const fitsFlippedX = flippedX >= minX && flippedX + ancho <= maxX;
+  // Popup a la IZQUIERDA del click → borde derecho transformado a gapLocalX.
+  // bordeDer = x + ancho/2 * (1 + escX)  ⇒  x = pos.x - gapLocalX - ancho/2 - semiAnchoT
+  const natIzqX = pos.x - gapLocalX - ancho / 2 - semiAnchoT;
 
-  if (fitsNaturalX) {
-    x = naturalX;
-  } else if (fitsFlippedX) {
-    x = flippedX;
-  } else {
-    x = naturalX;
-  }
-  if (x < minX) x = minX;
-  if (x + ancho > maxX) x = maxX - ancho;
+  // Popup a la DERECHA del click → borde izquierdo transformado a gapLocalX.
+  // bordeIzq = x + ancho/2 * (1 - escX)  ⇒  x = pos.x + gapLocalX - ancho/2 + semiAnchoT
+  const natDerX = pos.x + gapLocalX - ancho / 2 + semiAnchoT;
 
-  // ---------- VERTICAL ----------
-  // Regla: alejarse del centro de la cancha (la red).
-  //   - Click arriba de la mitad → popup arriba
-  //   - Click abajo de la mitad  → popup abajo
-  // Si el lado natural no entra, se prueba el opuesto. Si ninguno entra,
-  // se usa el natural y se clamplea (permite entrar en el margen celeste).
-  let y: number;
+  const naturalX = clickEnIzquierda ? natIzqX : natDerX;
+  const flippedX = clickEnIzquierda ? natDerX : natIzqX;
+
+  const bordeIzqX = (x: number) => x + ancho / 2 - semiAnchoT;
+  const bordeDerX = (x: number) => x + ancho / 2 + semiAnchoT;
+
+  const minBordeX = -M + 2;
+  const maxBordeX = W + M - 2;
+
+  const fitsX = (x: number) =>
+    bordeIzqX(x) >= minBordeX && bordeDerX(x) <= maxBordeX;
+
+  let x: number;
+  if (fitsX(naturalX)) x = naturalX;
+  else if (fitsX(flippedX)) x = flippedX;
+  else x = naturalX;
+
+  // Clamp final sobre los BORDES transformados.
+  if (bordeIzqX(x) < minBordeX) x = minBordeX - ancho / 2 + semiAnchoT;
+  if (bordeDerX(x) > maxBordeX) x = maxBordeX - ancho / 2 - semiAnchoT;
+
+  // ----------------------------------------------------------
+  // VERTICAL
+  // ----------------------------------------------------------
   const clickEnArriba = pos.y < H / 2;
-  const naturalY = clickEnArriba ? pos.y - alto - GAP : pos.y + GAP;
-  const flippedY = clickEnArriba ? pos.y + GAP : pos.y - alto - GAP;
 
-  const fitsNaturalY = naturalY >= minY && naturalY + alto <= maxY;
-  const fitsFlippedY = flippedY >= minY && flippedY + alto <= maxY;
+  // Popup ARRIBA del click → borde inferior transformado a gapLocalY.
+  // bordeBot = y + alto/2 * (1 + escY)  ⇒  y = pos.y - gapLocalY - alto/2 - semiAltoT
+  const natArrY = pos.y - gapLocalY - alto / 2 - semiAltoT;
 
-  if (fitsNaturalY) {
-    y = naturalY;
-  } else if (fitsFlippedY) {
-    y = flippedY;
-  } else {
-    y = naturalY;
-  }
-  if (y < minY) y = minY;
-  if (y + alto > maxY) y = maxY - alto;
+  // Popup ABAJO del click → borde superior transformado a gapLocalY.
+  // bordeTop = y + alto/2 * (1 - escY)  ⇒  y = pos.y + gapLocalY - alto/2 + semiAltoT
+  const natAbaY = pos.y + gapLocalY - alto / 2 + semiAltoT;
+
+  const naturalY = clickEnArriba ? natArrY : natAbaY;
+  const flippedY = clickEnArriba ? natAbaY : natArrY;
+
+  const bordeTopY = (y: number) => y + alto / 2 - semiAltoT;
+  const bordeBotY = (y: number) => y + alto / 2 + semiAltoT;
+
+  const minBordeY = -M + 2;
+  const maxBordeY = H + M - 2;
+
+  const fitsY = (y: number) =>
+    bordeTopY(y) >= minBordeY && bordeBotY(y) <= maxBordeY;
+
+  let y: number;
+  if (fitsY(naturalY)) y = naturalY;
+  else if (fitsY(flippedY)) y = flippedY;
+  else y = naturalY;
+
+  if (bordeTopY(y) < minBordeY) y = minBordeY - alto / 2 + semiAltoT;
+  if (bordeBotY(y) > maxBordeY) y = maxBordeY - alto / 2 - semiAltoT;
 
   const cx = x + ancho / 2;
   const cy = y + alto / 2;
