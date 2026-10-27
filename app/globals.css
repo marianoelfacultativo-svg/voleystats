@@ -3,28 +3,127 @@
 @tailwind utilities;
 
 /* ============================================ */
-/* TEMA VOLEYSTATS: Papel, Tinta y Anotaciones  */
+/* TEMA VOLEYSTATS: Plata + Celeste + Terracota */
+/* Sin blancos puros en ninguna card.           */
 /* ============================================ */
 
-/* 1. FONDO GENERAL: Papel de algodón con textura */
 html, body {
-  background-color: #EAE8E3 !important;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.15'/%3E%3C/svg%3E") !important;
-  color: #1E293B;
+  background: radial-gradient(circle at 50% 0%, #E2E8F0 0%, #94A3B8 100%) !important;
+  color: #0F172A;
   font-family: 'Inter', system-ui, sans-serif;
   min-height: 100vh;
   background-attachment: fixed !important;
 }
 
-/* 2. LAS HOJAS DE CUADERNO (Tarjetas de info) */
-.bg-white, 
-.bg-white\/95, 
-.bg-white\/90,
-.rounded-2xl.shadow-sm,
+/* ====== FONDOS CELESTES (reemplazan los blancos) ====== */
+.bg-white { 
+  background: linear-gradient(180deg, #EAF2F8 0%, #C9DBE8 100%) !important; 
+  box-shadow: inset 0 1px 0 rgba(245,249,252,1), 0 4px 6px -1px rgba(15, 58, 133, 0.08) !important;
+}
+.bg-white\/95 { background: linear-gradient(180deg, #EAF2F8 0%, #C9DBE8 100%) !important; }
+.bg-white\/90 { background: linear-gradient(180deg, #EAF2F8 0%, #C9DBE8 100%) !important; }
+
+.bg-slate-50 { 
+  background: linear-gradient(180deg, #F0F6FA 0%, #D8E5EE 100%) !important; 
+  box-shadow: inset 0 1px 0 rgba(245,249,252,0.85) !important;
+}
+.bg-slate-100 { 
+  background: linear-gradient(180deg, #D8E5EE 0%, #B8CFDD 100%) !important; 
+  box-shadow: inset 0 1px 0 rgba(245,249,252,0.6) !important;
+}
+.bg-slate-200 { 
+  background: linear-gradient(180deg, #B8CFDD 0%, #8FAEC4 100%) !important; 
+}
+.bg-slate-300 { 
+  background: linear-gradient(180deg, #8FAEC4 0%, #6B8FA8 100%) !important; 
+}
+
+/* ====== BORDES ====== */
+.border-slate-100 { border-color: #D8E5EE !important; }
+.border-slate-200 { border-color: #B8CFDD !important; }
+.border-slate-300 { border-color: #8FAEC4 !important; }
+
+/* ====== TEXTO ====== */
+.text-slate-900 { color: #0F172A !important; }
+.text-slate-800 { color: #1E293B !important; }
+.text-slate-700 { color: #334155 !important; }
+.text-slate-600 { color: #475569 !important; }
+.text-slate-500 { color: #64748B !important; }
+.text-slate-400 { color: #94A3B8 !important; }
+
+/* ====== ACENTO PRIMARIO: Turquesa + Azul profundo ====== */
+.bg-blue-500 { background-color: #11B7B8 !important; }
+.bg-blue-600 { background-color: #0E9A9B !important; }
+.bg-blue-100 { background-color: #C8EFF0 !important; }
+.bg-blue-50  { background-color: #E6F7F7 !important; }
+
+.text-blue-600 { color: #0E9A9B !important; }
+.text-blue-700 { color: #163A85 !important; }
+.text-blue-800 { color: #0F285E !important; }
+.text-blue-500 { color: #11B7B8 !important; }
+.text-blue-100 { color: #C8EFF0 !important; }
+
+.border-blue-500 { border-color: #11B7B8 !important; }
+.border-blue-200 { border-color: #A5E3E4 !important; }
+.border-blue-300 { border-color: #7FD5D6 !important; }
+
+.hover\:bg-blue-600:hover { background-color: #0E9A9B !important; }
+.hover\:bg-blue-200:hover { background-color: #A5E3E4 !important; }
+.hover\:border-blue-400:hover { border-color: #39C7C8 !important; }
+
+/* ====== BOTONES/TABS ACTIVAS (emerald → turquesa) ====== */
+.bg-emerald-500 { background-color: #11B7B8 !important; }
+.bg-emerald-600 { background-color: #0E9A9B !important; }
+.hover\:bg-emerald-600:hover { background-color: #0E9A9B !important; }
+.text-emerald-600 { color: #0E9A9B !important; }
+.border-emerald-500 { border-color: #11B7B8 !important; }
+.hover\:border-emerald-600:hover { border-color: #0E9A9B !important; }
+.focus\:border-emerald-500:focus { border-color: #11B7B8 !important; }
+.focus\:border-emerald-600:focus { border-color: #0E9A9B !important; }
+
+/* ====== FUCSIA (botones PDF) → terracota ====== */
+.bg-fuchsia-500 { background-color: #E0827B !important; }
+.hover\:bg-fuchsia-600:hover { background-color: #C86A63 !important; }
+.text-fuchsia-700 { color: #A54A44 !important; }
+.text-fuchsia-800 { color: #8A3A34 !important; }
+.bg-fuchsia-100 { background-color: #F5E2DC !important; }
+.bg-fuchsia-50  { background-color: #FAF0EC !important; }
+.border-fuchsia-200 { border-color: #E8C5BC !important; }
+.border-fuchsia-300 { border-color: #D9A59A !important; }
+.border-fuchsia-600 { border-color: #A54A44 !important; }
+.hover\:bg-fuchsia-50:hover { background-color: #FAF0EC !important; }
+.hover\:bg-fuchsia-200:hover { background-color: #E8C5BC !important; }
+
+/* ====== CARD TERRACOTA (para destacar cards clave) ====== */
 .card-terracota {
-  background-color: #FDFCF9 !important; /* Blanco roto, cálido */
-  
-  /* Líneas horizontales EXACTAS cada 32px */
+  background: linear-gradient(180deg, #F5E2DC 0%, #E8C5BC 100%) !important;
+  border-color: #D9A59A !important;
+  box-shadow: inset 0 1px 0 rgba(255, 245, 240, 0.9), 0 4px 6px -1px rgba(165, 74, 68, 0.1) !important;
+}
+
+/* ====== HOVERS ====== */
+.hover\:bg-slate-50:hover { background: linear-gradient(180deg, #F5FAFC 0%, #DDEAF2 100%) !important; }
+.hover\:bg-slate-100:hover { background: linear-gradient(180deg, #EAF2F8 0%, #C9DBE8 100%) !important; }
+.hover\:bg-slate-200:hover { background: linear-gradient(180deg, #D8E5EE 0%, #B8CFDD 100%) !important; }
+.hover\:bg-slate-300:hover { background: linear-gradient(180deg, #B8CFDD 0%, #8FAEC4 100%) !important; }
+.hover\:bg-slate-400:hover { background: linear-gradient(180deg, #8FAEC4 0%, #6B8FA8 100%) !important; }
+
+.hover\:text-slate-700:hover { color: #334155 !important; }
+.hover\:text-slate-800:hover { color: #1E293B !important; }
+.hover\:text-blue-800:hover { color: #0F285E !important; }
+
+/* ====== FOCUS DE INPUTS ====== */
+.focus\:border-blue-500:focus { border-color: #11B7B8 !important; }
+
+/* ====== disabled ====== */
+.disabled\:bg-slate-300:disabled { background-color: #8FAEC4 !important; }
+.disabled\:bg-slate-400:disabled { background-color: #6B8FA8 !important; }
+
+/* ============================================ */
+/* LA ÚNICA EXCEPCIÓN: FONDO DE PAPEL PARA CHARTS */
+/* ============================================ */
+.paper-chart {
+  background-color: #FDFCF9 !important; 
   background-image: repeating-linear-gradient(
     to bottom,
     transparent 0,
@@ -32,136 +131,6 @@ html, body {
     #CBD5E1 31px,
     #CBD5E1 32px
   ) !important;
-  
-  /* Forzamos a que el dibujo empiece desde el borde superior */
-  background-origin: border-box !important;
-  background-position-y: 0 !important; 
-  
-  /* Borde sutil y sombra de hoja apoyada */
   border: 1px solid #D6D3D1 !important;
-  border-radius: 2px !important; 
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
-  
-  /* Espacio superior para que el título respire antes de las líneas */
-  padding-top: 0.5rem !important; /* Lo bajé un poco para que la primera línea no pise el borde */
-  padding-bottom: 1.5rem !important;
-  position: relative;
-}
-
-/* La "pestaña" en la esquina superior izquierda */
-.rounded-2xl.shadow-sm::before {
-  content: "";
-  position: absolute;
-  top: -1px;
-  left: -1px;
-  width: 60px;
-  height: 24px;
-  background-color: #FDFCF9;
-  border: 1px solid #D6D3D1;
-  border-top: none;
-  border-left: none;
-  clip-path: polygon(0 0, 100% 0, 90% 100%, 0 100%);
-  z-index: 10;
-}
-
-/* 3. ANCLAR LAS LETRAS A LOS RENGLONES (LA CLAVE) */
-/* Forzamos al texto a medir exactamente lo mismo que el renglón (32px)
-   pero lo alineamos abajo de todo para que "se apoye" en la línea. */
-.rounded-2xl.shadow-sm p, 
-.rounded-2xl.shadow-sm h2, 
-.rounded-2xl.shadow-sm h3, 
-.rounded-2xl.shadow-sm h4,
-.rounded-2xl.shadow-sm td,
-.rounded-2xl.shadow-sm th,
-.rounded-2xl.shadow-sm li,
-.rounded-2xl.shadow-sm span,
-.card-terracota p, 
-.card-terracota h2, 
-.card-terracota h3, 
-.card-terracota h4,
-.card-terracota span {
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
-  height: 32px !important;
-  line-height: 32px !important;
-  
-  /* Lo alineamos al ras del fondo */
-  display: flex !important; 
-  align-items: flex-end !important;
-  padding-bottom: 4px !important; /* Empuja la letra hacia arriba para que no la toque la línea */
-  box-sizing: border-box !important;
-}
-
-/* Para los textos grandes (números de Puntos) que ocupan 2 renglones */
-.rounded-2xl.shadow-sm .text-2xl,
-.rounded-2xl.shadow-sm .text-3xl,
-.rounded-2xl.shadow-sm .text-xl,
-.card-terracota .text-2xl,
-.card-terracota .text-3xl,
-.card-terracota .text-xl {
-  height: 64px !important;
-  line-height: 64px !important;
-  align-items: flex-end !important;
-  padding-bottom: 8px !important; 
-}
-
-/* Arreglamos las tablas */
-.rounded-2xl.shadow-sm table {
-  border-collapse: collapse !important;
-}
-.rounded-2xl.shadow-sm tr {
-  height: 32px !important;
-}
-
-/* 4. ARREGLOS DE VISIBILIDAD */
-.text-slate-900 { color: #0F172A !important; }
-.text-slate-800 { color: #1E293B !important; }
-.text-slate-700 { color: #334155 !important; }
-.text-slate-600 { color: #475569 !important; }
-.text-slate-500 { color: #64748B !important; }
-
-.bg-slate-50, .bg-slate-100, .bg-slate-200 {
-  background-color: transparent !important;
-}
-
-/* 5. LISTA DE JUGADORES Y PARTIDOS */
-button.bg-slate-50, 
-button.bg-white {
-  background-color: transparent !important;
-  border-radius: 2px !important;
-  border: 1px solid transparent !important;
-  border-bottom: 1px solid #CBD5E1 !important;
-  box-shadow: none !important;
-  transition: all 0.15s ease;
-}
-
-button.bg-slate-50:hover, 
-button.bg-white:hover {
-  background-color: rgba(255, 255, 255, 0.6) !important;
-  border-color: #CBD5E1 !important;
-}
-
-button.bg-emerald-500 {
-  background-color: #E6F7F7 !important; 
-  border: 1px solid #11B7B8 !important;
-  color: #0F172A !important;
-  font-weight: bold;
-}
-
-/* 6. TARJETAS DE STATS */
-.bg-green-50.border, 
-.bg-red-50.border, 
-.bg-slate-50.border {
-  background: transparent !important;
-  border: 1px dashed #94A3B8 !important;
-  border-radius: 2px !important;
-}
-
-/* 7. ELEMENTOS DE NAVEGACIÓN */
-.bg-blue-500, .bg-emerald-500 { background-color: #11B7B8 !important; border-radius: 2px !important; }
-.bg-fuchsia-500 { background-color: #E0827B !important; border-radius: 2px !important; }
-.border-slate-300 { border-color: #D6D3D1 !important; }
-
-.rounded-full, .rounded-lg, .rounded-xl, .rounded-md {
-  border-radius: 2px !important;
+  border-radius: 4px !important;
 }
