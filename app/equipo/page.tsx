@@ -61,50 +61,65 @@ export default function EquipoPage() {
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-8">
       <div className="max-w-6xl mx-auto">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-black flex items-center gap-2 drop-shadow-sm">
-              <IconoPelota size={34} />
-              <span>
-                SALIDA
-                <span className="text-red-600">x</span>5
-              </span>
-              <span className="text-slate-700 font-semibold">
-                {nombreEquipo ? `"${nombreEquipo}"` : "..."}
-              </span>
-            </h1>
-            <p className="text-slate-600 text-sm mt-1">
-              Estadísticas de vóley
+        {/* ─── HEADER ─── */}
+        <header className="flex items-start justify-between gap-4 flex-wrap mb-6">
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-[0.25em] text-[#A54A44] font-bold">
+              Panel del club
             </p>
+            <h1 className="mt-1 flex items-baseline gap-x-2 flex-wrap text-slate-900">
+              <span className="inline-flex items-center gap-2">
+                <IconoPelota size={28} />
+                <span className="text-2xl sm:text-3xl font-black tracking-tight">
+                  SALIDA<span className="text-red-600">x</span>5
+                </span>
+              </span>
+              {nombreEquipo && (
+                <span className="text-base sm:text-lg font-medium text-slate-500 truncate">
+                  {nombreEquipo}
+                </span>
+              )}
+            </h1>
           </div>
           <button
             onClick={handleCerrar}
-            className="px-4 py-2 text-sm bg-slate-200 hover:bg-slate-300 rounded-lg transition w-full sm:w-auto"
+            className="text-xs font-medium text-slate-500 hover:text-slate-800 underline underline-offset-4 decoration-slate-300 hover:decoration-slate-600 transition self-center"
           >
             Cerrar sesión
           </button>
-        </div>
+        </header>
 
-        <div className="flex gap-1 sm:gap-2 mb-6 border-b-2 border-slate-300 overflow-x-auto">
-          {secciones.map((s) => {
-            const activo = seccion === s.id;
-            const Icono = s.Icono;
-            return (
-              <button
-                key={s.id}
-                onClick={() => setSeccion(s.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold whitespace-nowrap rounded-t-lg transition border-b-[3px] -mb-[2px] ${
-                  activo
-                    ? "bg-blue-500 text-white border-blue-700 shadow-md"
-                    : "bg-transparent text-slate-500 border-transparent hover:bg-white/60 hover:text-slate-800"
-                }`}
-              >
-                <Icono size={18} />
-                {s.nombre}
-              </button>
-            );
-          })}
-        </div>
+        {/* ─── NAV ─── */}
+        <nav className="mb-6 border-b border-slate-300">
+          <ul className="flex gap-0 overflow-x-auto">
+            {secciones.map((s) => {
+              const activo = seccion === s.id;
+              const Icono = s.Icono;
+              return (
+                <li key={s.id} className="flex-shrink-0">
+                  <button
+                    onClick={() => setSeccion(s.id)}
+                    className={`group flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-sm font-semibold whitespace-nowrap transition border-b-2 -mb-px ${
+                      activo
+                        ? "border-[#11B7B8] text-slate-900"
+                        : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-400"
+                    }`}
+                  >
+                    <Icono
+                      size={16}
+                      className={
+                        activo
+                          ? "text-[#11B7B8]"
+                          : "opacity-60 group-hover:opacity-90"
+                      }
+                    />
+                    <span>{s.nombre}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
 
         {seccion === "dashboard" && (
           <Dashboard equipoId={sesion.equipo_id} nombreEquipo={nombreEquipo} />
