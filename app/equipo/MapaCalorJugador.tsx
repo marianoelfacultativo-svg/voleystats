@@ -275,7 +275,7 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
         })}
       </div>
 
-      <div className="bg-slate-900 rounded-xl overflow-hidden flex justify-center p-4">
+      <div className="bg-white rounded-xl overflow-hidden flex justify-center p-4 shadow-md">
         {!tieneDatos ? (
           <div className="h-[360px] flex items-center justify-center text-slate-400 text-sm text-center px-4">
             Sin datos de {TABS.find((t) => t.id === fundamento)?.label} para

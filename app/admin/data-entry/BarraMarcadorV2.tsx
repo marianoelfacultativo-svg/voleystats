@@ -40,7 +40,7 @@ export default function BarraMarcadorV2({
 }: Props) {
   return (
     <>
-      <div className="flex items-center justify-center gap-6 bg-slate-900 text-white rounded-2xl px-6 py-3">
+      <div className="flex items-center justify-center gap-6 bg-white text-gray-800 shadow-md rounded-2xl px-6 py-3">
         <div className="text-center">
           <p className="text-[10px] font-semibold text-slate-400 uppercase">
             {nombreMiEquipo}
