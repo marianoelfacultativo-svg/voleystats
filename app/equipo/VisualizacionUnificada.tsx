@@ -230,13 +230,18 @@ export default function VisualizacionUnificada({
   // ============================================================
   // FILTRADO
   // ============================================================
+  //
+  // `accionesPartido` se pasa como TERCER argumento a
+  // `aplicarFiltros` para que los filtros tácticos (prev/next/
+  // repetición) vean el universo COMPLETO del partido, aunque
+  // `base` venga prefiltrado por `jugadorId`.
 
   const accionesFiltradas = useMemo(() => {
     let base = accionesPartido;
     if (jugadorId) {
       base = base.filter((a) => a.jugador_id === jugadorId);
     }
-    return aplicarFiltros(base, filtros);
+    return aplicarFiltros(base, filtros, accionesPartido);
   }, [accionesPartido, filtros, jugadorId]);
 
   // Sets disponibles: derivados del partido SIN filtros para que cambiar

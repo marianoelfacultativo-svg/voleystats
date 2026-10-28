@@ -2,11 +2,18 @@
 
 // ============================================================
 // PANEL DE FILTROS 3D — controles compartidos para CanchaUnificada3D
-// Layout compacto: fila básica + fundamento + secciones colapsables.
+// Layout compacto: fila básica + fundamento + tácticos + avanzado.
 // ============================================================
 
 import { useMemo, useState } from "react";
 import type { AccionVisual } from "./adaptadorUnificadoV2";
+import {
+  aplicarFiltrosTacticos,
+  hayFiltrosTacticos,
+  FILTROS_TACTICOS_VACIO,
+  type FiltrosTacticos as FiltrosTacticosTipo,
+} from "@/lib/filtrosTacticos";
+import FiltrosTacticos from "./FiltrosTacticos";
 
 // ------------------------------------------------------------
 // TIPO DE FILTROS
@@ -26,6 +33,7 @@ export interface Filtros3D {
   zonaJugador: number | "todas";
   soloErrores: boolean;
   acciones: "propias" | "rivales" | "ambas";
+  tacticos: FiltrosTacticosTipo;
 }
 
 export const FILTROS3D_VACIO: Filtros3D = {
@@ -42,6 +50,7 @@ export const FILTROS3D_VACIO: Filtros3D = {
   zonaJugador: "todas",
   soloErrores: false,
   acciones: "propias",
+  tacticos: { ...FILTROS_TACTICOS_VACIO },
 };
 
 // ------------------------------------------------------------
@@ -247,7 +256,6 @@ function nivelValoracion(
   return "neu";
 }
 
-// Colores "chips inactivos" por nivel (dark-friendly)
 const CHIP_INACTIVO: Record<"pos" | "neu" | "neg", string> = {
   pos: "bg-emerald-500/10 text-emerald-300 border-emerald-500/40",
   neu: "bg-slate-500/10 text-slate-300 border-slate-500/40",
@@ -261,98 +269,127 @@ function toggleArrayValue<T>(arr: T[], v: T): T[] {
 // ------------------------------------------------------------
 // APLICAR FILTROS
 // ------------------------------------------------------------
+//
+// `todasLasAcciones` es OPCIONAL. Si no se pasa, se usa `acciones`
+// como universo. Es importante pasarlo cuando `acciones` ya viene
+// prefiltrado (ej. perfil de jugador), porque el contexto táctico
+// necesita ver las acciones vecinas (prev/next) para funcionar.
+// ------------------------------------------------------------
 
 export function aplicarFiltros(
   acciones: AccionVisual[],
-  f: Filtros3D
+  filtros: Filtros3D,
+  todasLasAcciones?: AccionVisual[]
 ): AccionVisual[] {
   const filtradas = acciones.filter((a) => {
     if (a.oculta) return false;
 
-    if (f.acciones === "propias" && a.es_rival) return false;
-    if (f.acciones === "rivales" && !a.es_rival) return false;
+    if (filtros.acciones === "propias" && a.es_rival) return false;
+    if (filtros.acciones === "rivales" && !a.es_rival) return false;
 
-    if (f.set !== "todos" && a.set_numero !== f.set) return false;
-    if (f.punto !== "todos" && a.punto_numero !== f.punto) return false;
-    if (f.jugador !== "todos" && a.jugador_id !== f.jugador) return false;
+    if (filtros.set !== "todos" && a.set_numero !== filtros.set) return false;
+    if (filtros.punto !== "todos" && a.punto_numero !== filtros.punto)
+      return false;
+    if (filtros.jugador !== "todos" && a.jugador_id !== filtros.jugador)
+      return false;
 
-    if (f.tipos.length > 0 && !f.tipos.includes(a.tipo)) return false;
+    if (filtros.tipos.length > 0 && !filtros.tipos.includes(a.tipo))
+      return false;
 
-    if (f.subtipos.length > 0) {
+    if (filtros.subtipos.length > 0) {
       const sr = a.subtipo_real ?? "";
-      if (!f.subtipos.includes(sr)) return false;
+      if (!filtros.subtipos.includes(sr)) return false;
     }
 
-    if (f.valoraciones.length > 0) {
+    if (filtros.valoraciones.length > 0) {
       const s =
         a.subtipo !== null && a.subtipo !== undefined
           ? String(a.subtipo)
           : "";
       const base = s.startsWith("toque:") ? s.slice(6) : s;
-      if (!f.valoraciones.includes(base)) return false;
+      if (!filtros.valoraciones.includes(base)) return false;
     }
 
-    if (f.zonasOrigen.length > 0) {
-      if (!f.zonasOrigen.includes(a.zona_origen_codigo ?? "")) return false;
+    if (filtros.zonasOrigen.length > 0) {
+      if (!filtros.zonasOrigen.includes(a.zona_origen_codigo ?? ""))
+        return false;
     }
-    if (f.zonasDestino.length > 0) {
-      if (!f.zonasDestino.includes(a.zona_destino_codigo ?? "")) return false;
+    if (filtros.zonasDestino.length > 0) {
+      if (!filtros.zonasDestino.includes(a.zona_destino_codigo ?? ""))
+        return false;
     }
 
-    if (f.rotacion !== "todas" && a.rotacion_numero !== f.rotacion)
+    if (filtros.rotacion !== "todas" && a.rotacion_numero !== filtros.rotacion)
       return false;
-    if (f.rol !== "todos" && a.rol_jugador !== f.rol) return false;
-    if (f.zonaJugador !== "todas" && a.zona_jugador !== f.zonaJugador)
+    if (filtros.rol !== "todos" && a.rol_jugador !== filtros.rol) return false;
+    if (filtros.zonaJugador !== "todas" && a.zona_jugador !== filtros.zonaJugador)
       return false;
-    if (f.soloErrores && !a.es_error) return false;
+    if (filtros.soloErrores && !a.es_error) return false;
     return true;
   });
 
+  // --- Contexto: agregar acción anterior para bloqueos/defensas ---
   const necesitaContexto =
-    f.tipos.includes("bloqueo") || f.tipos.includes("defensa");
-  if (!necesitaContexto) return filtradas;
+    filtros.tipos.includes("bloqueo") || filtros.tipos.includes("defensa");
+  let conContexto: AccionVisual[] = filtradas;
 
-  const porPunto = new Map<string, AccionVisual[]>();
-  for (const a of acciones) {
-    if (a.oculta) continue;
-    const k = `${a.set_numero}-${a.punto_numero}`;
-    let lista = porPunto.get(k);
-    if (!lista) {
-      lista = [];
-      porPunto.set(k, lista);
+  if (necesitaContexto) {
+    const universo = todasLasAcciones ?? acciones;
+    const porPunto = new Map<string, AccionVisual[]>();
+    for (const a of universo) {
+      if (a.oculta) continue;
+      const k = `${a.set_numero}-${a.punto_numero}`;
+      let lista = porPunto.get(k);
+      if (!lista) {
+        lista = [];
+        porPunto.set(k, lista);
+      }
+      lista.push(a);
     }
-    lista.push(a);
-  }
-  for (const lista of porPunto.values()) {
-    lista.sort((x, y) => x.orden - y.orden);
-  }
+    for (const lista of porPunto.values()) {
+      lista.sort((x, y) => x.orden - y.orden);
+    }
 
-  const ids = new Set(filtradas.map((a) => a.id));
-  const extras: AccionVisual[] = [];
+    const ids = new Set(filtradas.map((a) => a.id));
+    const extras: AccionVisual[] = [];
 
-  for (const a of filtradas) {
-    if (a.tipo !== "bloqueo" && a.tipo !== "defensa") continue;
-    const k = `${a.set_numero}-${a.punto_numero}`;
-    const lista = porPunto.get(k) ?? [];
-    const idx = lista.findIndex((x) => x.id === a.id);
-    if (idx <= 0) continue;
-    const anterior = lista[idx - 1];
-    if (!ids.has(anterior.id)) {
-      ids.add(anterior.id);
-      extras.push(anterior);
+    for (const a of filtradas) {
+      if (a.tipo !== "bloqueo" && a.tipo !== "defensa") continue;
+      const k = `${a.set_numero}-${a.punto_numero}`;
+      const lista = porPunto.get(k) ?? [];
+      const idx = lista.findIndex((x) => x.id === a.id);
+      if (idx <= 0) continue;
+      const anterior = lista[idx - 1];
+      if (!ids.has(anterior.id)) {
+        ids.add(anterior.id);
+        extras.push(anterior);
+      }
+    }
+
+    if (extras.length > 0) {
+      conContexto = [...filtradas, ...extras];
+      conContexto.sort((a, b) => {
+        if (a.set_numero !== b.set_numero) return a.set_numero - b.set_numero;
+        if (a.punto_numero !== b.punto_numero)
+          return a.punto_numero - b.punto_numero;
+        return a.orden - b.orden;
+      });
     }
   }
 
-  if (extras.length === 0) return filtradas;
+  // --- Filtros tácticos (prev/next/repite) ---
+  if (!hayFiltrosTacticos(filtros.tacticos)) return conContexto;
 
-  const resultado = [...filtradas, ...extras];
-  resultado.sort((a, b) => {
-    if (a.set_numero !== b.set_numero) return a.set_numero - b.set_numero;
-    if (a.punto_numero !== b.punto_numero)
-      return a.punto_numero - b.punto_numero;
-    return a.orden - b.orden;
-  });
-  return resultado;
+  const universo = todasLasAcciones ?? acciones;
+  const jugadorFiltradoId =
+    filtros.jugador !== "todos" ? filtros.jugador : null;
+
+  return aplicarFiltrosTacticos(
+    conContexto,
+    universo,
+    filtros.tacticos,
+    jugadorFiltradoId
+  );
 }
 
 // ------------------------------------------------------------
@@ -426,6 +463,11 @@ export default function PanelFiltros3D({
     return out;
   }, [filtros.tipos]);
 
+  const cantFiltrosTacticos =
+    (filtros.tacticos.contextoPrevio ? 1 : 0) +
+    (filtros.tacticos.contextoPosterior ? 1 : 0) +
+    (filtros.tacticos.repeticion ? 1 : 0);
+
   const cantFiltros =
     (filtros.set !== "todos" ? 1 : 0) +
     (filtros.punto !== "todos" ? 1 : 0) +
@@ -439,7 +481,8 @@ export default function PanelFiltros3D({
     (filtros.rol !== "todos" ? 1 : 0) +
     (filtros.zonaJugador !== "todas" ? 1 : 0) +
     (filtros.soloErrores ? 1 : 0) +
-    (filtros.acciones !== "propias" ? 1 : 0);
+    (filtros.acciones !== "propias" ? 1 : 0) +
+    cantFiltrosTacticos;
 
   const hayFiltrosActivos = cantFiltros > 0;
 
@@ -450,11 +493,14 @@ export default function PanelFiltros3D({
     filtros.rol !== "todos" ||
     filtros.zonaJugador !== "todas";
 
+  const nombreJugadorFiltrado = useMemo(() => {
+    if (filtros.jugador === "todos") return null;
+    const j = jugadores.find((x) => x.id === filtros.jugador);
+    return j ? j.nombre : null;
+  }, [filtros.jugador, jugadores]);
+
   return (
-    <div
-      className="rounded-2xl p-3 space-y-2"
-      style={cardBase}
-    >
+    <div className="rounded-2xl p-3 space-y-2" style={cardBase}>
       {/* ---------- HEADER ---------- */}
       <div className="flex items-center justify-between">
         <p
@@ -736,6 +782,13 @@ export default function PanelFiltros3D({
           )}
         </div>
       )}
+
+      {/* ---------- FILTROS TÁCTICOS ---------- */}
+      <FiltrosTacticos
+        filtros={filtros.tacticos}
+        onChange={(t) => set("tacticos", t)}
+        jugadorFiltradoNombre={nombreJugadorFiltrado}
+      />
 
       {/* ---------- AVANZADO ---------- */}
       <div

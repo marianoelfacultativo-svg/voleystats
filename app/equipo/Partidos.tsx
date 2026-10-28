@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FileDown,
   Calendar,
@@ -26,6 +26,14 @@ import {
   VALORES_BLOQUEO,
   type PromedioRecepcionSet,
 } from "@/lib/estadisticas";
+import type { AccionVisual } from "./adaptadorUnificadoV2";
+import {
+  aplicarFiltrosTacticos,
+  hayFiltrosTacticos,
+  FILTROS_TACTICOS_VACIO,
+  type FiltrosTacticos as FiltrosTacticosTipo,
+} from "@/lib/filtrosTacticos";
+import FiltrosTacticos from "./FiltrosTacticos";
 import GraficoRecepcionEquipoPorSet from "./GraficoRecepcionEquipoPorSet";
 import GraficoTortaRival from "./GraficoTortaRival";
 import RadarEquipo from "./RadarEquipo";
@@ -112,6 +120,75 @@ const labelStyle: React.CSSProperties = {
   color: "var(--sx-text-secondary)",
 };
 
+// ============================================================
+// ADAPTER: AccionDB[] → AccionVisual[] (solo para filtros tácticos)
+// ============================================================
+//
+// AccionDB no tiene `orden` ni `es_rival`. Como `cargarAccionesCompatibles`
+// filtra por equipo, todas las acciones son propias (es_rival = false).
+// El orden se infiere por índice de aparición dentro de cada punto.
+// ============================================================
+
+function accionesDBaVisualParaTactico(
+  acciones: AccionDB[]
+): AccionVisual[] {
+  const contadorPorPunto = new Map<string, number>();
+  return acciones.map((a) => {
+    const k = `${a.set_numero}-${a.punto_numero ?? 0}`;
+    const orden = (contadorPorPunto.get(k) ?? 0) + 1;
+    contadorPorPunto.set(k, orden);
+
+    const tipo = a.fundamento === "armados" ? "armado" : a.fundamento;
+
+    return {
+      id: `${a.jugador_id}|${a.set_numero}|${a.punto_numero ?? 0}|${orden}`,
+      partido_id: a.partido_id ?? "",
+      set_numero: a.set_numero,
+      punto_numero: a.punto_numero ?? 0,
+      orden,
+      tipo,
+      subtipo: a.subtipo_original ?? a.valoracion,
+      es_rival: false,
+      jugador_id: a.jugador_id,
+      lado: "propio",
+      equipo_id: null,
+      origen_celda: a.origen_celda ?? null,
+      origen_mini: a.origen_mini ?? null,
+      destino_celda: a.destino_celda ?? null,
+      destino_mini: a.destino_mini ?? null,
+      desvios: [],
+      variante: a.variante ?? null,
+      tipo_saque: a.tipo_saque ?? null,
+      velocidad: a.velocidad ?? null,
+      x2: false,
+      oculta: false,
+      posicion_inicial_celda: a.posicion_inicial_celda ?? null,
+      posicion_inicial_mini: a.posicion_inicial_mini ?? null,
+      es_error: false,
+      zona_origen: null,
+      zona_destino: null,
+      rotacion_numero: null,
+      rol_jugador: null,
+      zona_jugador: null,
+      origen_x: null,
+      origen_y: null,
+      destino_x: null,
+      destino_y: null,
+      posicion_inicial_x: null,
+      posicion_inicial_y: null,
+      zona_origen_codigo: null,
+      zona_destino_codigo: null,
+      subtipo_real: null,
+      es_ultima_del_punto: false,
+      calidad_armado_previo: null,
+    };
+  });
+}
+
+// ============================================================
+// COMPONENTE
+// ============================================================
+
 export default function Partidos({ equipoId, nombreEquipo }: Props) {
   const [partidos, setPartidos] = useState<Partido[]>([]);
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
@@ -126,6 +203,9 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   const [filtroSet, setFiltroSet] = useState<
     "todos" | "1" | "2" | "3" | "4" | "5"
   >("todos");
+
+  const [filtrosTacticos, setFiltrosTacticos] =
+    useState<FiltrosTacticosTipo>({ ...FILTROS_TACTICOS_VACIO });
 
   const [modoPrincipal, setModoPrincipal] =
     useState<ModoPrincipal>("partido");
@@ -197,11 +277,17 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     });
   }, [equipoId]);
 
+  // Reset filtros tácticos al cambiar de partido activo
+  useEffect(() => {
+    setFiltrosTacticos({ ...FILTROS_TACTICOS_VACIO });
+  }, [partidoSeleccionado]);
+
   const limpiarFiltros = () => {
     setFiltroRival("");
     setFiltroFechaDesde("");
     setFiltroFechaHasta("");
     setFiltroSet("todos");
+    setFiltrosTacticos({ ...FILTROS_TACTICOS_VACIO });
   };
 
   const nombreDe = (id: string) => {
@@ -376,7 +462,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     new Set(partidos.map((p) => nombreRivalDe(p)))
   ).sort();
   const hayFiltrosActivos =
-    filtroRival !== "" || filtroFechaDesde !== "" || filtroFechaHasta !== "";
+    filtroRival !== "" ||
+    filtroFechaDesde !== "" ||
+    filtroFechaHasta !== "" ||
+    hayFiltrosTacticos(filtrosTacticos);
 
   const scoreDe = (p: Partido) => {
     const sets = [p.set1, p.set2, p.set3, p.set4, p.set5].filter(Boolean);
@@ -387,7 +476,8 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     ? partidos.find((p) => p.id === partidoSeleccionado)
     : null;
 
-  const accionesDelPartido = partidoDetalle
+  // Acciones del partido con filtro de set (base, antes de tácticos)
+  const accionesDelPartidoBase = partidoDetalle
     ? acciones.filter((a) => {
         if (a.partido_id !== partidoDetalle.id) return false;
         if (filtroSet !== "todos" && String(a.set_numero) !== filtroSet)
@@ -395,6 +485,30 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         return true;
       })
     : [];
+
+  // Acciones del partido DESPUÉS de filtros tácticos
+  const accionesDelPartido = useMemo(() => {
+    if (!hayFiltrosTacticos(filtrosTacticos)) return accionesDelPartidoBase;
+
+    const visuales = accionesDBaVisualParaTactico(accionesDelPartidoBase);
+    const filtradas = aplicarFiltrosTacticos(
+      visuales,
+      visuales,
+      filtrosTacticos,
+      null
+    );
+    const idsOk = new Set(filtradas.map((v) => v.id));
+
+    const contadorPorPunto = new Map<string, number>();
+    return accionesDelPartidoBase.filter((a) => {
+      const k = `${a.set_numero}-${a.punto_numero ?? 0}`;
+      const orden = (contadorPorPunto.get(k) ?? 0) + 1;
+      contadorPorPunto.set(k, orden);
+      return idsOk.has(
+        `${a.jugador_id}|${a.set_numero}|${a.punto_numero ?? 0}|${orden}`
+      );
+    });
+  }, [accionesDelPartidoBase, filtrosTacticos]);
 
   const idsJugadores = jugadores.map((j) => j.id);
   const armadores = new Set(
@@ -716,10 +830,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       </div>
 
       <div ref={refPDF} className="space-y-4">
-        <div
-          className="rounded-2xl p-4 sm:p-5"
-          style={cardBase}
-        >
+        <div className="rounded-2xl p-4 sm:p-5" style={cardBase}>
           <h2 className="text-lg sm:text-xl font-black text-white break-words tracking-tight">
             {modoPrincipal === "partido" && partidoDetalle
               ? `${nombreEquipo} vs ${nombreRivalDe(partidoDetalle)}`
@@ -761,6 +872,18 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                   }}
                 >
                   Solo Set {filtroSet}
+                </span>
+              )}
+              {hayFiltrosTacticos(filtrosTacticos) && (
+                <span
+                  className="px-2 py-0.5 rounded text-[11px] font-semibold"
+                  style={{
+                    background: "rgba(167,139,250,0.15)",
+                    color: "#C4B5FD",
+                    border: "1px solid rgba(167,139,250,0.35)",
+                  }}
+                >
+                  Filtros tácticos activos
                 </span>
               )}
             </p>
@@ -827,7 +950,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
 
         {modoPrincipal !== "jugador-por-partidos" && (
           <div
-            className="rounded-2xl p-3 sm:p-4"
+            className="rounded-2xl p-3 sm:p-4 space-y-3"
             style={cardBase}
             data-pdf-ignorar
           >
@@ -893,8 +1016,19 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 </select>
               </div>
             </div>
+
+            {/* Filtros tácticos (solo cuando hay un partido abierto) */}
+            {partidoDetalle && (
+              <FiltrosTacticos
+                filtros={filtrosTacticos}
+                onChange={setFiltrosTacticos}
+                jugadorFiltradoNombre={null}
+                titulo="Conducta / Secuencia del partido"
+              />
+            )}
+
             {hayFiltrosActivos && (
-              <div className="mt-2 text-right">
+              <div className="text-right">
                 <button
                   onClick={limpiarFiltros}
                   className="text-xs font-medium"
@@ -965,10 +1099,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 </h3>
 
                 {partidosFiltrados.length === 0 ? (
-                  <div
-                    className="rounded-2xl p-6 text-center"
-                    style={cardBase}
-                  >
+                  <div className="rounded-2xl p-6 text-center" style={cardBase}>
                     <p
                       className="text-sm"
                       style={{ color: "var(--sx-text-secondary)" }}
@@ -1893,10 +2024,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 )}
 
                 {modoDetalle === "crudas" && (
-                  <div
-                    className="rounded-2xl p-3 sm:p-6"
-                    style={cardBase}
-                  >
+                  <div className="rounded-2xl p-3 sm:p-6" style={cardBase}>
                     <TablaEstadisticasCrudas
                       acciones={accionesDelPartido}
                       jugadoresIds={idsJugadores}
@@ -1907,6 +2035,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                       )} · ${partidoDetalle.fecha}${
                         filtroSet !== "todos"
                           ? ` · Set ${filtroSet}`
+                          : ""
+                      }${
+                        hayFiltrosTacticos(filtrosTacticos)
+                          ? " · con filtros tácticos"
                           : ""
                       }`}
                     />
