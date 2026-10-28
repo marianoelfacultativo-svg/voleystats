@@ -32,6 +32,7 @@ import {
   type FiltrosTacticos as FiltrosTacticosTipo,
 } from "@/lib/filtrosTacticos";
 import FiltrosTacticos from "./FiltrosTacticos";
+import AnalisisConsecuencias from "./AnalisisConsecuencias";
 import GraficoRecepcionEquipoPorSet from "./GraficoRecepcionEquipoPorSet";
 import GraficoTortaRival from "./GraficoTortaRival";
 import RadarEquipo from "./RadarEquipo";
@@ -106,7 +107,11 @@ type ModoPrincipal =
   | "partido"
   | "comparar-partidos"
   | "jugador-por-partidos";
-type ModoDetalle = "analisis" | "comparar-jugadores" | "crudas";
+type ModoDetalle =
+  | "analisis"
+  | "comparar-jugadores"
+  | "crudas"
+  | "consecuencias";
 
 const cardBase: React.CSSProperties = {
   background: "var(--sx-surface-1)",
@@ -119,7 +124,8 @@ const labelStyle: React.CSSProperties = {
 };
 
 // ============================================================
-// ADAPTER: AccionDB[] → AccionVisual[] (solo para filtros tácticos)
+// ADAPTER: AccionDB[] → AccionVisual[] (para filtros tácticos
+// y para análisis de consecuencias)
 // ============================================================
 
 function accionesDBaVisualParaTactico(
@@ -470,9 +476,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     ? partidos.find((p) => p.id === partidoSeleccionado) ?? null
     : null;
 
-  // ⚠️ Estos cálculos NO son useMemo a propósito:
-  // van después de los `return` condicionales (cargando / sin partidos),
-  // así que no pueden ser hooks — React error #310.
+  // ⚠️ Cálculos planos (no useMemo, van después de returns condicionales).
   const idsJugadores = jugadores.map((j) => j.id);
   const armadores = new Set(
     jugadores.filter((j) => j.rol === "armador").map((j) => j.id)
@@ -513,6 +517,13 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       accionesDelPartido = accionesDelPartidoBase;
     }
   }
+
+  // Conversión a AccionVisual para el análisis de consecuencias.
+  // Se recalcula solo (no useMemo por estar después de los returns).
+  const accionesVisualesParaAnalisis =
+    modoDetalle === "consecuencias"
+      ? accionesDBaVisualParaTactico(accionesDelPartido)
+      : [];
 
   const statsPartido = partidoDetalle
     ? calcularEstadisticasEquipo(idsJugadores, accionesDelPartido, armadores)
@@ -1788,6 +1799,17 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     />
                     Estadísticas crudas
                   </button>
+                  <button
+                    onClick={() => setModoDetalle("consecuencias")}
+                    className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
+                      modoDetalle === "consecuencias"
+                        ? "bg-emerald-500 text-white border-emerald-500"
+                        : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    <span className="text-sm">🔍</span>
+                    Consecuencias
+                  </button>
                 </div>
 
                 <div
@@ -1843,6 +1865,18 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     </p>
                   )}
                 </div>
+
+                {modoDetalle === "consecuencias" && (
+                  <div className="rounded-2xl p-3 sm:p-5" style={cardBase}>
+                    <AnalisisConsecuencias
+                      acciones={accionesVisualesParaAnalisis}
+                      nombreDeJugador={(id) =>
+                        id ? nombreDe(id) : "—"
+                      }
+                      titulo="Análisis de consecuencias del partido"
+                    />
+                  </div>
+                )}
 
                 {modoDetalle === "comparar-jugadores" && (
                   <>

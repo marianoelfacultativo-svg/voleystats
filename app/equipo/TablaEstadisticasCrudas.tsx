@@ -6,6 +6,9 @@ import {
   VALORES_POR_FUNDAMENTO,
   calcularEstadisticasEquipo,
 } from "@/lib/estadisticas";
+import { zonaCrudaDeCelda } from "@/lib/mapeoV2";
+import type { AccionVisual } from "./adaptadorUnificadoV2";
+import AnalisisConsecuencias from "./AnalisisConsecuencias";
 
 // ============================================================
 // TIPOS DE COLUMNA / BLOQUE
@@ -26,6 +29,76 @@ interface Bloque {
   valores: Record<string, number>;
   incluye: (a: AccionDB) => boolean;
   columnaDe: (a: AccionDB) => string | null;
+}
+
+// ============================================================
+// ADAPTER: AccionDB[] → AccionVisual[]
+// (para el panel de Análisis de consecuencias)
+// ============================================================
+
+function accionesDBaVisualParaAnalisis(
+  acciones: AccionDB[]
+): AccionVisual[] {
+  const contadorPorPunto = new Map<string, number>();
+  return acciones.map((a) => {
+    const k = `${a.set_numero}-${a.punto_numero ?? 0}`;
+    const orden = (contadorPorPunto.get(k) ?? 0) + 1;
+    contadorPorPunto.set(k, orden);
+
+    const tipo = a.fundamento === "armados" ? "armado" : a.fundamento;
+
+    const zonaOrigen =
+      a.origen_celda && /^F[1-3]-/.test(a.origen_celda)
+        ? zonaCrudaDeCelda(a.origen_celda)
+        : null;
+    const zonaDestino =
+      a.destino_celda && /^F[1-3]-/.test(a.destino_celda)
+        ? zonaCrudaDeCelda(a.destino_celda)
+        : null;
+
+    return {
+      id: `${a.jugador_id}|${a.set_numero}|${a.punto_numero ?? 0}|${orden}`,
+      partido_id: a.partido_id ?? "",
+      set_numero: a.set_numero,
+      punto_numero: a.punto_numero ?? 0,
+      orden,
+      tipo,
+      subtipo: a.subtipo_original ?? a.valoracion,
+      es_rival: false,
+      jugador_id: a.jugador_id,
+      lado: "propio",
+      equipo_id: null,
+      origen_celda: a.origen_celda ?? null,
+      origen_mini: a.origen_mini ?? null,
+      destino_celda: a.destino_celda ?? null,
+      destino_mini: a.destino_mini ?? null,
+      desvios: [],
+      variante: a.variante ?? null,
+      tipo_saque: a.tipo_saque ?? null,
+      velocidad: a.velocidad ?? null,
+      x2: false,
+      oculta: false,
+      posicion_inicial_celda: a.posicion_inicial_celda ?? null,
+      posicion_inicial_mini: a.posicion_inicial_mini ?? null,
+      es_error: false,
+      zona_origen: zonaOrigen,
+      zona_destino: zonaDestino,
+      rotacion_numero: null,
+      rol_jugador: null,
+      zona_jugador: null,
+      origen_x: null,
+      origen_y: null,
+      destino_x: null,
+      destino_y: null,
+      posicion_inicial_x: null,
+      posicion_inicial_y: null,
+      zona_origen_codigo: null,
+      zona_destino_codigo: null,
+      subtipo_real: null,
+      es_ultima_del_punto: false,
+      calidad_armado_previo: null,
+    };
+  });
 }
 
 // ============================================================
@@ -442,6 +515,7 @@ export default function TablaEstadisticasCrudas({
   const [filtroJugador, setFiltroJugador] = useState<string>("todos");
   const [filtroFundamento, setFiltroFundamento] = useState<string>("todos");
   const [ampliado, setAmpliado] = useState(false);
+  const [verConsecuencias, setVerConsecuencias] = useState(false);
 
   const armadoresSet = armadores ?? new Set<string>();
   const jugadoresAMostrar = soloJugadorId ? [soloJugadorId] : jugadoresIds;
@@ -488,9 +562,15 @@ export default function TablaEstadisticasCrudas({
     [fundamentosVisibles, ampliado]
   );
 
+  // Universo para el análisis: TODAS las acciones (sin filtros locales)
+  // así los comparadores prev/next ven la secuencia completa del punto.
+  const accionesParaAnalisis = verConsecuencias
+    ? accionesDBaVisualParaAnalisis(acciones)
+    : [];
+
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h4 className="font-semibold text-white mb-1">
             📋 Estadísticas crudas
@@ -508,16 +588,28 @@ export default function TablaEstadisticasCrudas({
             crudo (sin ponderar).
           </p>
         </div>
-        <button
-          onClick={() => setAmpliado((v) => !v)}
-          className={`px-3 py-1.5 text-xs font-semibold rounded-lg border-2 transition whitespace-nowrap ${
-            ampliado
-              ? "bg-fuchsia-500 text-white border-fuchsia-600 hover:bg-fuchsia-600"
-              : "bg-white/5 text-fuchsia-300 border-fuchsia-500/40 hover:bg-fuchsia-500/10"
-          }`}
-        >
-          {ampliado ? "🔍 Ver resumido" : "🔍 Ver ampliado"}
-        </button>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setVerConsecuencias((v) => !v)}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border-2 transition whitespace-nowrap ${
+              verConsecuencias
+                ? "bg-violet-500 text-white border-violet-600 hover:bg-violet-600"
+                : "bg-white/5 text-violet-300 border-violet-500/40 hover:bg-violet-500/10"
+            }`}
+          >
+            {verConsecuencias ? "🔍 Cerrar consecuencias" : "🔍 Consecuencias"}
+          </button>
+          <button
+            onClick={() => setAmpliado((v) => !v)}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border-2 transition whitespace-nowrap ${
+              ampliado
+                ? "bg-fuchsia-500 text-white border-fuchsia-600 hover:bg-fuchsia-600"
+                : "bg-white/5 text-fuchsia-300 border-fuchsia-500/40 hover:bg-fuchsia-500/10"
+            }`}
+          >
+            {ampliado ? "🔍 Ver resumido" : "🔍 Ver ampliado"}
+          </button>
+        </div>
       </div>
 
       {ampliado && (
@@ -533,6 +625,15 @@ export default function TablaEstadisticasCrudas({
           remate/toque, bloqueo desglosado por dónde cae el balón, y armado
           separado por zona y por velocidad.
         </div>
+      )}
+
+      {/* ANÁLISIS DE CONSECUENCIAS */}
+      {verConsecuencias && (
+        <AnalisisConsecuencias
+          acciones={accionesParaAnalisis}
+          nombreDeJugador={(id) => (id ? nombreDe(id) : "—")}
+          titulo="Análisis de consecuencias"
+        />
       )}
 
       {/* Filtros */}

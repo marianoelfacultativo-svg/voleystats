@@ -17,6 +17,8 @@ import {
   COLORES_NIVEL_CLASES,
   type EstadisticasJugador,
 } from "@/lib/estadisticas";
+import type { AccionVisual } from "./adaptadorUnificadoV2";
+import { zonaCrudaDeCelda } from "@/lib/mapeoV2";
 import RadarJugador from "./RadarJugador";
 import GraficoArmadosPorSet from "./GraficoArmadosPorSet";
 import GraficoRecepcionPorSet from "./GraficoRecepcionPorSet";
@@ -26,6 +28,7 @@ import MapaCalorTendencia from "./MapaCalorTendencia";
 import ImagenAmpliable from "./ImagenAmpliable";
 import GraficoBarrasFundamento from "./GraficoBarrasFundamento";
 import MapaCalorJugador from "./MapaCalorJugador";
+import AnalisisConsecuencias from "./AnalisisConsecuencias";
 import IconoVoley from "./IconoVoley";
 import { descargarComoPDF } from "@/lib/exportarPDF";
 
@@ -149,6 +152,84 @@ function calcularBarrasPorFundamento(
   return out;
 }
 
+// ============================================================
+// ADAPTER: AccionDB[] → AccionVisual[] (para análisis de consecuencias)
+// ============================================================
+//
+// `AccionDB` no trae zonas ni orden; las derivamos:
+//   - zona_origen/zona_destino: usando zonaCrudaDeCelda().
+//   - orden: contador incremental por punto.
+//
+// Solo se usa en MiEquipo para el panel de análisis. Todas las
+// acciones vienen del equipo propio (cargarAccionesCompatibles ya
+// filtra por equipo), así que es_rival siempre es false.
+// ============================================================
+
+function accionesDBaVisualParaAnalisis(
+  acciones: AccionDB[]
+): AccionVisual[] {
+  const contadorPorPunto = new Map<string, number>();
+  return acciones.map((a) => {
+    const k = `${a.set_numero}-${a.punto_numero ?? 0}`;
+    const orden = (contadorPorPunto.get(k) ?? 0) + 1;
+    contadorPorPunto.set(k, orden);
+
+    const tipo = a.fundamento === "armados" ? "armado" : a.fundamento;
+
+    const zonaOrigen =
+      a.origen_celda && /^F[1-3]-/.test(a.origen_celda)
+        ? zonaCrudaDeCelda(a.origen_celda)
+        : null;
+    const zonaDestino =
+      a.destino_celda && /^F[1-3]-/.test(a.destino_celda)
+        ? zonaCrudaDeCelda(a.destino_celda)
+        : null;
+
+    return {
+      id: `${a.jugador_id}|${a.set_numero}|${a.punto_numero ?? 0}|${orden}`,
+      partido_id: a.partido_id ?? "",
+      set_numero: a.set_numero,
+      punto_numero: a.punto_numero ?? 0,
+      orden,
+      tipo,
+      subtipo: a.subtipo_original ?? a.valoracion,
+      es_rival: false,
+      jugador_id: a.jugador_id,
+      lado: "propio",
+      equipo_id: null,
+      origen_celda: a.origen_celda ?? null,
+      origen_mini: a.origen_mini ?? null,
+      destino_celda: a.destino_celda ?? null,
+      destino_mini: a.destino_mini ?? null,
+      desvios: [],
+      variante: a.variante ?? null,
+      tipo_saque: a.tipo_saque ?? null,
+      velocidad: a.velocidad ?? null,
+      x2: false,
+      oculta: false,
+      posicion_inicial_celda: a.posicion_inicial_celda ?? null,
+      posicion_inicial_mini: a.posicion_inicial_mini ?? null,
+      es_error: false,
+      zona_origen: zonaOrigen,
+      zona_destino: zonaDestino,
+      rotacion_numero: null,
+      rol_jugador: null,
+      zona_jugador: null,
+      origen_x: null,
+      origen_y: null,
+      destino_x: null,
+      destino_y: null,
+      posicion_inicial_x: null,
+      posicion_inicial_y: null,
+      zona_origen_codigo: null,
+      zona_destino_codigo: null,
+      subtipo_real: null,
+      es_ultima_del_punto: false,
+      calidad_armado_previo: null,
+    };
+  });
+}
+
 export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
   const [acciones, setAcciones] = useState<AccionDB[]>([]);
@@ -159,6 +240,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
   const [comparados, setComparados] = useState<string[]>([]);
   const [cargando, setCargando] = useState(true);
   const [descargando, setDescargando] = useState(false);
+  const [verConsecuencias, setVerConsecuencias] = useState(false);
 
   const refPDF = useRef<HTMLDivElement>(null);
 
@@ -212,6 +294,11 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     });
   }, [equipoId]);
 
+  // Reset al cambiar de modo o de jugador
+  useEffect(() => {
+    setVerConsecuencias(false);
+  }, [jugadorSeleccionado, modo]);
+
   if (cargando) {
     return <p className="text-slate-500 text-center py-12">Cargando...</p>;
   }
@@ -242,6 +329,21 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
   const barrasJugadorActual = jugadorSeleccionado
     ? calcularBarrasPorFundamento(acciones, jugadorSeleccionado)
     : null;
+
+  // Helper: nombre del jugador a partir de su id
+  const nombreDeJugador = (id: string | null): string => {
+    if (!id) return "—";
+    const j = jugadores.find((x) => x.id === id);
+    if (!j) return id.slice(0, 8);
+    return j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
+  };
+
+  // Acciones para el análisis de consecuencias (solo cuando se pide).
+  // Universo: TODAS las acciones del equipo en todos sus partidos.
+  // El usuario luego filtra por comparador para acotar.
+  const accionesParaAnalisis: AccionVisual[] = verConsecuencias
+    ? accionesDBaVisualParaAnalisis(acciones)
+    : [];
 
   const handleToggleModo = (nuevo: "individual" | "comparar") => {
     setModo(nuevo);
@@ -985,6 +1087,65 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                       {jugadorActual.totalErrores}
                     </p>
                   </div>
+                </div>
+
+                {/* ANÁLISIS DE CONSECUENCIAS (a pedido) */}
+                <div
+                  className="pt-5"
+                  style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
+                  data-pdf-ignorar
+                >
+                  <button
+                    onClick={() => setVerConsecuencias((v) => !v)}
+                    className="w-full flex items-center justify-between text-left"
+                  >
+                    <div>
+                      <h4 className="font-bold text-white text-sm flex items-center gap-2">
+                        🔍 Análisis de consecuencias
+                        <span
+                          className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+                          style={{
+                            background: "rgba(167,139,250,0.15)",
+                            color: "#C4B5FD",
+                            border: "1px solid rgba(167,139,250,0.35)",
+                          }}
+                        >
+                          {verConsecuencias ? "Ocultar" : "Abrir"}
+                        </span>
+                      </h4>
+                      <p
+                        className="text-[11px] mt-1"
+                        style={{ color: "var(--sx-text-secondary)" }}
+                      >
+                        &quot;Si pasa X, ¿qué pasa después?&quot; — usá el
+                        disparador y los comparadores para responder
+                        preguntas como: &quot;cuando alguien erró un ataque,
+                        ¿volvió el mismo jugador a atacar?, ¿le armaron a la
+                        misma zona?, ¿con la misma velocidad?&quot;
+                      </p>
+                    </div>
+                    <span
+                      className="text-xl transition-transform shrink-0 ml-3"
+                      style={{
+                        color: "var(--sx-text-muted)",
+                        transform: verConsecuencias
+                          ? "rotate(180deg)"
+                          : "none",
+                      }}
+                    >
+                      ▼
+                    </span>
+                  </button>
+
+                  {verConsecuencias && (
+                    <div className="mt-3">
+                      <AnalisisConsecuencias
+                        acciones={accionesParaAnalisis}
+                        nombreDeJugador={nombreDeJugador}
+                        titulo={`Consecuencias · ${datosJugador.nombre}`}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             )
