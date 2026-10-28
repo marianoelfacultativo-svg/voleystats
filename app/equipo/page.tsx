@@ -23,6 +23,7 @@ type Seccion = "dashboard" | "mi-equipo" | "partidos" | "modelos";
 type IconoComponente = React.ComponentType<{
   size?: string | number;
   className?: string;
+  style?: React.CSSProperties;
 }>;
 
 export default function EquipoPage() {
