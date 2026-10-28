@@ -330,10 +330,6 @@ export default function VistaDetallePartido({
           <AnalisisConsecuencias
             acciones={accionesVisualesParaAnalisis}
             nombreDeJugador={(id) => (id ? nombreDe(id) : "—")}
-            jugadoresDisponibles={jugadores.map((j) => ({
-              id: j.id,
-              nombre: nombreDe(j.id),
-            }))}
             onIrAPunto={onIrAPunto}
             titulo="Análisis de consecuencias del partido"
           />
