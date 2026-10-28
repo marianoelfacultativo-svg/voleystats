@@ -44,24 +44,8 @@ const TEXTO_NIVEL: Record<NivelValoracion, string> = {
   destaca: "#0284c7",
 };
 
-// ------------------------------------------------------------
-// Escala LINEAL y SIMÉTRICA:
-//
-//   Real -2  → centro del radar
-//   Real  0  → 1/6 del radio
-//   Real  2  → 2/6 del radio
-//   Real  4  → 3/6 del radio
-//   Real  6  → 4/6 del radio
-//   Real  8  → 5/6 del radio
-//   Real 10  → borde
-//
-// Cada tramo de 2 unidades reales ocupa exactamente lo mismo.
-// ------------------------------------------------------------
-
 const REAL_MIN = -2;
 const REAL_MAX = 10;
-
-// Ticks visibles (7 valores → 6 tramos iguales).
 const TICKS_REALES = [-2, 0, 2, 4, 6, 8, 10];
 
 export default function RadarJugador({
@@ -129,7 +113,7 @@ export default function RadarJugador({
         x={x}
         y={y}
         textAnchor={textAnchor}
-        fontSize={13}
+        fontSize={12}
         fontWeight={700}
       >
         <tspan fill={colorNombre}>{nombre}</tspan>
@@ -139,10 +123,10 @@ export default function RadarJugador({
   };
 
   return (
-    <div>
-      <div className="w-full" style={{ height: 380 }}>
+    <div className="w-full h-full flex flex-col paper-chart rounded-lg p-2">
+      <div className="flex-1 w-full min-h-0 relative">
         <ResponsiveContainer width="100%" height="100%">
-          <RadarChart data={datos} outerRadius="72%">
+          <RadarChart data={datos} outerRadius="70%">
             <PolarGrid stroke="#cbd5e1" gridType="polygon" />
             <PolarAngleAxis dataKey="fundamento" tick={renderTick} />
             <PolarRadiusAxis
@@ -150,7 +134,7 @@ export default function RadarJugador({
               domain={[REAL_MIN, REAL_MAX]}
               ticks={TICKS_REALES as any}
               tickFormatter={(v) => String(v)}
-              tick={{ fill: "#94a3b8", fontSize: 10 }}
+              tick={{ fill: "#94a3b8", fontSize: 9 }}
               axisLine={false}
               tickLine={false}
             />
@@ -169,7 +153,10 @@ export default function RadarJugador({
               />
             ))}
             {esMultiple && (
-              <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
+              <Legend
+                wrapperStyle={{ fontSize: 11, paddingTop: "4px" }}
+                iconType="circle"
+              />
             )}
           </RadarChart>
         </ResponsiveContainer>

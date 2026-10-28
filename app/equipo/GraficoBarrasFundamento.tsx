@@ -13,10 +13,8 @@ import {
 
 interface Props {
   fundamento: string;
-  /** Puntos (saque/ataque) o acciones positivas (recepción/bloqueo/defensa). */
   positivas: number;
   neutras: number;
-  /** Errores (saque/ataque) o acciones negativas (recepción/bloqueo/defensa). */
   negativas: number;
   tituloOverride?: string;
 }
@@ -69,8 +67,8 @@ export default function GraficoBarrasFundamento({
   ];
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-3">
-      <div className="flex items-baseline justify-between mb-1">
+    <div className="w-full h-full flex flex-col paper-chart rounded-lg p-3">
+      <div className="flex items-baseline justify-between mb-1 shrink-0">
         <h4 className="font-semibold text-slate-800 text-sm">{titulo}</h4>
         <span className="text-[10px] text-slate-400">
           {total} acc.
@@ -78,12 +76,12 @@ export default function GraficoBarrasFundamento({
       </div>
 
       {total === 0 ? (
-        <p className="text-xs text-slate-500 text-center py-6">
-          Sin datos
-        </p>
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-xs text-slate-500">Sin datos</p>
+        </div>
       ) : (
         <>
-          <div style={{ width: "100%", height: 140 }}>
+          <div className="flex-1 w-full min-h-0 relative">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={datos}
@@ -99,7 +97,7 @@ export default function GraficoBarrasFundamento({
                   tick={{ fill: "#64748b", fontSize: 10 }}
                 />
                 <Tooltip
-                  cursor={{ fill: "#f8fafc" }}
+                  cursor={{ fill: "rgba(0,0,0,0.04)" }}
                   formatter={(value, _name, payload) => {
                     const p = payload?.payload;
                     const nombre =
@@ -122,7 +120,7 @@ export default function GraficoBarrasFundamento({
             </ResponsiveContainer>
           </div>
 
-          <div className="grid grid-cols-3 gap-1 mt-1">
+          <div className="grid grid-cols-3 gap-1 mt-1 shrink-0">
             <div className="text-center">
               <p className="text-[9px] text-slate-500 uppercase">
                 {labelPos}

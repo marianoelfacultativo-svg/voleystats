@@ -109,12 +109,15 @@ function calcularBarrasPorFundamento(
       if (v === "punto") cat = "positivas";
       else if (v === "error") cat = "negativas";
     } else if (fund === "recepcion") {
-      if (v === "positiva" || v === "2x_positiva") cat = "positivas";
+      if (v === "positiva" || v === "2x_positiva" || v === "perfecta") cat = "positivas";
       else if (
         v === "negativa" ||
         v === "2x_negativa" ||
         v === "3x_negativa" ||
-        v === "ace_contra"
+        v === "ace_contra" ||
+        v === "doble_negativa" ||
+        v === "overpass" ||
+        v === "error_directo"
       )
         cat = "negativas";
     } else if (fund === "bloqueo") {
@@ -573,8 +576,9 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   <h4 className="font-semibold text-slate-800 mb-3">
                     Perfil de rendimiento
                   </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
-                    <div className="bg-white border border-slate-200 rounded-lg p-2 flex flex-col">
+                  {/* GRILLA 2 COLUMNAS (3 FILAS DE 2) Y CUADRADOS PERFECTOS */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                    <div className="bg-white border border-slate-200 rounded-lg p-2 flex flex-col aspect-square justify-center">
                       <RadarJugador
                         jugador={jugadorActual}
                         esArmador={esArmador}
@@ -582,13 +586,14 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     </div>
                     {barrasJugadorActual &&
                       FUNDAMENTOS_BARRAS.map((f) => (
-                        <GraficoBarrasFundamento
-                          key={f}
-                          fundamento={f}
-                          positivas={barrasJugadorActual[f].positivas}
-                          neutras={barrasJugadorActual[f].neutras}
-                          negativas={barrasJugadorActual[f].negativas}
-                        />
+                        <div key={f} className="bg-white border border-slate-200 rounded-lg p-3 flex flex-col aspect-square">
+                          <GraficoBarrasFundamento
+                            fundamento={f}
+                            positivas={barrasJugadorActual[f].positivas}
+                            neutras={barrasJugadorActual[f].neutras}
+                            negativas={barrasJugadorActual[f].negativas}
+                          />
+                        </div>
                       ))}
                   </div>
                 </div>
