@@ -1,17 +1,10 @@
 "use client";
 
 // ============================================================
-// ANÁLISIS DE CONSECUENCIAS — panel de UI
+// ANÁLISIS DE CONSECUENCIAS — UI SIMPLIFICADA ("SI PASA X → ¿QUÉ PASA?")
 // ============================================================
-// "Si pasa X, ¿qué pasa después?"
-//
-// Responde preguntas tipo:
-//   - "Si el ataque fue error → ¿quién ataca después?"
-//   - "¿El mismo jugador que erró vuelve a atacar?"
-//   - "¿El armador le armó a la misma zona que antes?"
-//   - "¿Con la misma velocidad? ¿Al mismo receptor?"
-//
-// La lógica pura vive en lib/analisisConsecuencias.ts.
+// Constructor tipo frase en lenguaje natural + preguntas prearmadas de 1 clic.
+// Diseñado para entrenadores y analistas sin jerga técnica.
 // ============================================================
 
 import { useMemo, useState } from "react";
@@ -22,6 +15,7 @@ import {
   hayComparadoresActivos,
   hayFiltroAnalisisActivo,
   resultadosPorTipoAnalisis,
+  COINCIDENCIA_VACIA,
   type CoincidenciaFiltro,
   type DisparadorFiltro,
   type FiltrosAnalisis,
@@ -32,80 +26,126 @@ import {
 import type { AccionVisual } from "./adaptadorUnificadoV2";
 
 // ------------------------------------------------------------
-// OPCIONES
+// PREGUNTAS RÁPIDAS PRECONFIGURADAS (1 clic)
 // ------------------------------------------------------------
 
-const TIPOS: { v: TipoDisparador; label: string }[] = [
+interface PreguntaRapida {
+  id: string;
+  icono: string;
+  titulo: string;
+  descripcion: string;
+  tipo: TipoDisparador;
+  resultado: string;
+  ventana: Ventana;
+  coincidencias?: Partial<CoincidenciaFiltro>;
+}
+
+const PREGUNTAS_RAPIDAS: PreguntaRapida[] = [
+  {
+    id: "error-ataque",
+    icono: "💥",
+    titulo: "Tras error de ataque",
+    descripcion: "¿Quién ataca luego y si insiste el mismo jugador?",
+    tipo: "ataque",
+    resultado: "error",
+    ventana: 1,
+    coincidencias: { mismoJugadorTrigger: true },
+  },
+  {
+    id: "mala-recep",
+    icono: "🛡️",
+    titulo: "Tras mala recepción",
+    descripcion: "¿Cómo resuelve el armador la pelota negativa/overpass?",
+    tipo: "recepcion",
+    resultado: "negativa",
+    ventana: 1,
+  },
+  {
+    id: "ace-saque",
+    icono: "🎯",
+    titulo: "Tras ace / saque positivo",
+    descripcion: "¿El saque siguiente mantiene la presión o repite zona?",
+    tipo: "saque",
+    resultado: "ace",
+    ventana: 1,
+    coincidencias: { mismaZonaTriggerDestino: true },
+  },
+  {
+    id: "bloqueo-punto",
+    icono: "🧱",
+    titulo: "Tras bloqueo punto",
+    descripcion: "¿Cómo responde la siguiente jugada del equipo?",
+    tipo: "bloqueo",
+    resultado: "punto",
+    ventana: 1,
+  },
+  {
+    id: "repite-zona",
+    icono: "🔄",
+    titulo: "¿Insiste en la misma zona?",
+    descripcion: "Mide si los ataques consecutivos van al mismo sector",
+    tipo: "ataque",
+    resultado: "cualquiera",
+    ventana: 1,
+    coincidencias: { mismaZonaTriggerDestino: true },
+  },
+];
+
+// ------------------------------------------------------------
+// OPCIONES DEL CONSTRUCTOR
+// ------------------------------------------------------------
+
+const TIPOS_DISPARADOR: { v: TipoDisparador; label: string }[] = [
+  { v: "ataque", label: "Ataque" },
   { v: "saque", label: "Saque" },
   { v: "recepcion", label: "Recepción" },
-  { v: "armado", label: "Armado" },
-  { v: "ataque", label: "Ataque" },
   { v: "bloqueo", label: "Bloqueo" },
+  { v: "armado", label: "Armado" },
   { v: "defensa", label: "Defensa" },
-  { v: "libre", label: "Libre" },
+  { v: "libre", label: "Pelota libre" },
   { v: "roce-red", label: "Roce red" },
 ];
 
 const VENTANAS: { v: Ventana; label: string }[] = [
-  { v: 1, label: "1 siguiente" },
-  { v: 2, label: "2 siguientes" },
-  { v: 3, label: "3 siguientes" },
-  { v: "todas", label: "Todas" },
+  { v: 1, label: "la 1ª acción siguiente" },
+  { v: 2, label: "las 2 acciones siguientes" },
+  { v: 3, label: "las 3 acciones siguientes" },
+  { v: "todas", label: "todas las acciones del punto" },
 ];
 
-const COMPARADORES: {
+interface ComparadorSimple {
   key: keyof CoincidenciaFiltro;
-  label: string;
-  grupo: "trigger" | "anterior";
-}[] = [
+  etiqueta: string;
+  detalle: string;
+}
+
+const COMPARADORES_AMIGABLES: ComparadorSimple[] = [
   {
     key: "mismoJugadorTrigger",
-    label: "Mismo jugador que el disparador",
-    grupo: "trigger",
+    etiqueta: "👤 ¿Mismo jugador?",
+    detalle: "Si quien hace la acción siguiente es el mismo que disparó la condición",
   },
   {
     key: "mismaZonaTriggerDestino",
-    label: "Misma zona destino que el disparador",
-    grupo: "trigger",
+    etiqueta: "📍 ¿Misma zona destino?",
+    detalle: "Si la siguiente acción cae en la misma zona de la cancha",
   },
   {
     key: "mismaZonaTriggerOrigen",
-    label: "Misma zona origen que el disparador",
-    grupo: "trigger",
-  },
-  {
-    key: "mismaZonaAnteriorOrigen",
-    label: "Misma zona origen que la acción anterior",
-    grupo: "anterior",
-  },
-  {
-    key: "mismaZonaAnteriorDestino",
-    label: "Misma zona destino que la acción anterior",
-    grupo: "anterior",
+    etiqueta: "🛫 ¿Misma zona origen?",
+    detalle: "Si la siguiente acción sale desde la misma zona",
   },
   {
     key: "mismaVelocidadAnterior",
-    label: "Misma velocidad de armado que la anterior",
-    grupo: "anterior",
-  },
-  {
-    key: "mismoTipoSaqueAnterior",
-    label: "Mismo tipo de saque que la anterior",
-    grupo: "anterior",
+    etiqueta: "⚡ ¿Misma velocidad de armado?",
+    detalle: "Si el armador repite la velocidad previa",
   },
   {
     key: "mismoReceptorAnterior",
-    label: "Mismo jugador que la acción anterior",
-    grupo: "anterior",
+    etiqueta: "🎯 ¿Mismo receptor previo?",
+    detalle: "Si se vuelve a involucrar al mismo receptor",
   },
 ];
-
-const labelCls =
-  "block text-[10px] font-bold uppercase tracking-wide mb-1";
-const labelStyle: React.CSSProperties = {
-  color: "var(--sx-text-secondary)",
-};
-const selectCls = "input-dark text-xs";
 
 const cardBase: React.CSSProperties = {
   background: "var(--sx-surface-1)",
@@ -127,7 +167,7 @@ interface Props {
 }
 
 // ------------------------------------------------------------
-// COMPONENTE
+// COMPONENTE PRINCIPAL
 // ------------------------------------------------------------
 
 export default function AnalisisConsecuencias({
@@ -136,25 +176,28 @@ export default function AnalisisConsecuencias({
   nombreDeJugador,
   titulo = "Análisis de consecuencias",
 }: Props) {
-  const [disparador, setDisparador] = useState<DisparadorFiltro | null>(null);
+  // Estado del disparador ("Si pasa X...")
+  const [disparador, setDisparador] = useState<DisparadorFiltro | null>({
+    tipo: "ataque",
+    resultado: "error",
+  });
   const [ventana, setVentana] = useState<Ventana>(1);
   const [coincidencias, setCoincidencias] = useState<CoincidenciaFiltro>({
-    mismoJugadorTrigger: false,
-    mismaZonaTriggerDestino: false,
-    mismaZonaTriggerOrigen: false,
-    mismaZonaAnteriorOrigen: false,
-    mismaZonaAnteriorDestino: false,
-    mismaVelocidadAnterior: false,
-    mismoTipoSaqueAnterior: false,
-    mismoReceptorAnterior: false,
+    ...COINCIDENCIA_VACIA,
   });
+
+  const [preguntaActivaId, setPreguntaActivaId] = useState<string | null>(
+    "error-ataque"
+  );
   const [abierto, setAbierto] = useState(true);
 
+  // Filtros empaquetados
   const filtros: FiltrosAnalisis = useMemo(
     () => ({ disparador, ventana, coincidencias }),
     [disparador, ventana, coincidencias]
   );
 
+  // Motor de cálculo
   const resultado: ResultadoAnalisis | null = useMemo(() => {
     if (!disparador) return null;
     return analizarConsecuencias(acciones, filtros);
@@ -169,51 +212,81 @@ export default function AnalisisConsecuencias({
     return id.slice(0, 8);
   };
 
-  const activarDisparador = () => {
-    setDisparador(
-      disparador ? null : { tipo: "ataque", resultado: "error" }
-    );
+  // Handlers
+  const aplicarPreguntaRapida = (p: PreguntaRapida) => {
+    setPreguntaActivaId(p.id);
+    setDisparador({ tipo: p.tipo, resultado: p.resultado });
+    setVentana(p.ventana);
+    setCoincidencias({
+      ...COINCIDENCIA_VACIA,
+      ...(p.coincidencias ?? {}),
+    });
+  };
+
+  const cambiarTipoDisparador = (tipo: TipoDisparador) => {
+    setPreguntaActivaId(null);
+    setDisparador({ tipo, resultado: "cualquiera" });
+  };
+
+  const cambiarResultadoDisparador = (resultado: string) => {
+    setPreguntaActivaId(null);
+    if (!disparador) return;
+    setDisparador({ ...disparador, resultado });
   };
 
   const toggleComparador = (key: keyof CoincidenciaFiltro) => {
+    setPreguntaActivaId(null);
     setCoincidencias((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const limpiar = () => {
+    setPreguntaActivaId(null);
     setDisparador(null);
     setVentana(1);
-    setCoincidencias({
-      mismoJugadorTrigger: false,
-      mismaZonaTriggerDestino: false,
-      mismaZonaTriggerOrigen: false,
-      mismaZonaAnteriorOrigen: false,
-      mismaZonaAnteriorDestino: false,
-      mismaVelocidadAnterior: false,
-      mismoTipoSaqueAnterior: false,
-      mismoReceptorAnterior: false,
-    });
+    setCoincidencias({ ...COINCIDENCIA_VACIA });
   };
 
-  const pct = (num: number, den: number) => {
-    if (den === 0) return "0%";
-    return `${Math.round((num / den) * 100)}%`;
-  };
+  // Conclusión amigable generada automáticamente
+  const conclusionRapida = useMemo(() => {
+    if (!resultado || resultado.totalOcurrencias === 0) return null;
+    const topSiguiente = resultado.resumenPorTipo[0];
+    if (!topSiguiente) return null;
+
+    const pctTop = Math.round(
+      (topSiguiente.count / resultado.totalOcurrencias) * 100
+    );
+
+    let texto = `En el ${pctTop}% de los casos (${topSiguiente.count} de ${resultado.totalOcurrencias}), la jugada continuó con un ${topSiguiente.tipo}.`;
+
+    if (coincidencias.mismoJugadorTrigger && resultado.coincidenciasGlobales.mismoJugadorTrigger > 0) {
+      const pctMismo = Math.round(
+        (resultado.coincidenciasGlobales.mismoJugadorTrigger / resultado.totalOcurrencias) * 100
+      );
+      texto += ` El ${pctMismo}% de las veces volvió a intervenir el mismo jugador.`;
+    } else if (coincidencias.mismaZonaTriggerDestino && resultado.coincidenciasGlobales.mismaZonaTriggerDestino > 0) {
+      const pctZona = Math.round(
+        (resultado.coincidenciasGlobales.mismaZonaTriggerDestino / resultado.totalOcurrencias) * 100
+      );
+      texto += ` El ${pctZona}% repitió la misma zona.`;
+    }
+
+    return texto;
+  }, [resultado, coincidencias]);
 
   return (
-    <div className="rounded-2xl p-3 space-y-3" style={cardBase}>
-      {/* Header colapsable */}
-      <button
-        onClick={() => setAbierto((v) => !v)}
-        className="w-full flex items-center justify-between"
-      >
-        <span
-          className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-2"
-          style={{ color: "var(--sx-text-primary)" }}
+    <div className="rounded-2xl p-4 sm:p-5 space-y-4" style={cardBase}>
+      {/* ---------- HEADER DEL PANEL ---------- */}
+      <div className="flex items-center justify-between gap-2 border-b pb-3 border-white/10">
+        <button
+          onClick={() => setAbierto((v) => !v)}
+          className="flex items-center gap-2 text-left"
         >
-          🔍 {titulo}
-          {activo && resultado && (
+          <span className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+            <span>🎯</span> {titulo}
+          </span>
+          {activo && resultado && resultado.totalOcurrencias > 0 && (
             <span
-              className="text-[9px] px-1.5 py-0.5 rounded-full font-bold normal-case tracking-normal"
+              className="text-xs px-2.5 py-0.5 rounded-full font-bold"
               style={{
                 background: "rgba(167,139,250,0.2)",
                 color: "#C4B5FD",
@@ -224,94 +297,119 @@ export default function AnalisisConsecuencias({
               {resultado.totalOcurrencias !== 1 ? "s" : ""}
             </span>
           )}
-        </span>
-        <span
-          className="transition-transform"
-          style={{
-            color: "var(--sx-text-muted)",
-            transform: abierto ? "rotate(180deg)" : "none",
-          }}
-        >
-          ▼
-        </span>
-      </button>
+        </button>
+
+        <div className="flex items-center gap-2">
+          {activo && (
+            <button
+              onClick={limpiar}
+              className="text-xs font-semibold px-2.5 py-1 rounded-lg transition hover:bg-rose-500/10"
+              style={{ color: "#F87171" }}
+            >
+              Limpiar
+            </button>
+          )}
+          <button
+            onClick={() => setAbierto((v) => !v)}
+            className="text-slate-400 hover:text-white transition text-xs p-1"
+          >
+            {abierto ? "▲" : "▼"}
+          </button>
+        </div>
+      </div>
 
       {abierto && (
-        <div className="space-y-3">
-          <p
-            className="text-[10px] leading-relaxed italic"
-            style={{ color: "var(--sx-text-muted)" }}
-          >
-            Elegí un <strong>disparador</strong> (ej. ataque con error) y
-            el sistema te muestra <strong>qué vino después</strong> en cada
-            punto. Podés filtrar por comparadores para responder
-            preguntas como &quot;¿el mismo jugador que erró volvió a
-            atacar?&quot; o &quot;¿el armador le armó a la misma zona?&quot;.
-          </p>
+        <div className="space-y-4">
+          {/* ---------- PREGUNTAS TÁCTICAS RÁPIDAS (1 clic) ---------- */}
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+              Preguntas tácticas frecuentes:
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {PREGUNTAS_RAPIDAS.map((p) => {
+                const seleccionada = preguntaActivaId === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => aplicarPreguntaRapida(p)}
+                    className={`text-left p-2.5 rounded-xl border transition flex items-start gap-2.5 ${
+                      seleccionada
+                        ? "bg-violet-600/25 border-violet-400 text-white shadow-md shadow-violet-900/20"
+                        : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    <span className="text-xl shrink-0 mt-0.5">{p.icono}</span>
+                    <div className="min-w-0">
+                      <p
+                        className={`text-xs font-bold leading-tight ${
+                          seleccionada ? "text-violet-200" : "text-white"
+                        }`}
+                      >
+                        {p.titulo}
+                      </p>
+                      <p className="text-[10px] text-slate-400 leading-snug mt-0.5 line-clamp-2">
+                        {p.descripcion}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-          {/* ---------- DISPARADOR ---------- */}
+          {/* ---------- CONSTRUCTOR TIPO FRASE EN LENGUAJE NATURAL ---------- */}
           <div
-            className="rounded-xl p-2.5"
+            className="rounded-xl p-3.5 sm:p-4 space-y-3"
             style={{
-              background: "rgba(255,255,255,0.02)",
-              border: "1px solid var(--sx-border)",
+              background:
+                "linear-gradient(135deg, rgba(20,30,55,0.7) 0%, rgba(15,23,42,0.85) 100%)",
+              border: "1px solid rgba(167,139,250,0.25)",
             }}
           >
-            <div className="flex items-center justify-between mb-1">
-              <span
-                className="text-[10px] font-bold uppercase tracking-wider"
-                style={{ color: "var(--sx-text-primary)" }}
-              >
-                🎯 Disparador — &quot;si pasa...&quot;
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-violet-300 flex items-center gap-1.5">
+                <span>💬</span> Constructor de condición
               </span>
-              <button
-                onClick={activarDisparador}
-                className={`px-2 py-0.5 text-[10px] font-bold rounded border-2 transition ${
-                  disparador
-                    ? "bg-violet-500 text-white border-violet-500 hover:bg-violet-600"
-                    : "bg-white/5 text-slate-300 border-white/15 hover:bg-white/10"
-                }`}
-              >
-                {disparador ? "✓ Activo" : "Activar"}
-              </button>
+              {!disparador && (
+                <button
+                  onClick={() =>
+                    setDisparador({ tipo: "ataque", resultado: "error" })
+                  }
+                  className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-500 transition"
+                >
+                  Activar constructor
+                </button>
+              )}
             </div>
 
-            {disparador && (
-              <div className="grid grid-cols-2 gap-1.5 mt-2">
-                <div>
-                  <label className={labelCls} style={labelStyle}>
-                    Tipo
-                  </label>
+            {disparador ? (
+              <div className="space-y-3">
+                {/* Frase interactiva */}
+                <div className="flex flex-wrap items-center gap-2 text-sm sm:text-base text-slate-200 font-medium leading-relaxed bg-black/20 p-3 rounded-xl border border-white/5">
+                  <span className="text-violet-400 font-bold">Si ocurre un</span>
+
+                  {/* Selector: Tipo de acción */}
                   <select
                     value={disparador.tipo}
                     onChange={(e) =>
-                      setDisparador({
-                        tipo: e.target.value as TipoDisparador,
-                        resultado: "cualquiera",
-                      })
+                      cambiarTipoDisparador(e.target.value as TipoDisparador)
                     }
-                    className={selectCls}
+                    className="bg-violet-950/80 text-white text-xs sm:text-sm font-semibold rounded-lg px-2.5 py-1.5 border border-violet-500/40 focus:outline-none focus:border-violet-400 cursor-pointer shadow-sm"
                   >
-                    {TIPOS.map((t) => (
+                    {TIPOS_DISPARADOR.map((t) => (
                       <option key={t.v} value={t.v}>
-                        {etiquetaTipoDisparador(t.v)}
+                        {t.label}
                       </option>
                     ))}
                   </select>
-                </div>
-                <div>
-                  <label className={labelCls} style={labelStyle}>
-                    Resultado
-                  </label>
+
+                  <span className="text-violet-400 font-bold">y el resultado es</span>
+
+                  {/* Selector: Resultado */}
                   <select
                     value={disparador.resultado}
-                    onChange={(e) =>
-                      setDisparador({
-                        ...disparador,
-                        resultado: e.target.value,
-                      })
-                    }
-                    className={selectCls}
+                    onChange={(e) => cambiarResultadoDisparador(e.target.value)}
+                    className="bg-violet-950/80 text-white text-xs sm:text-sm font-semibold rounded-lg px-2.5 py-1.5 border border-violet-500/40 focus:outline-none focus:border-violet-400 cursor-pointer shadow-sm"
                   >
                     {resultadosPorTipoAnalisis(disparador.tipo).map((r) => (
                       <option key={r} value={r}>
@@ -319,561 +417,327 @@ export default function AnalisisConsecuencias({
                       </option>
                     ))}
                   </select>
-                </div>
-              </div>
-            )}
 
-            {disparador && (
-              <div className="mt-2">
-                <label className={labelCls} style={labelStyle}>
-                  Ventana (cuántas acciones después mirar)
-                </label>
-                <div className="flex flex-wrap gap-1">
-                  {VENTANAS.map((v) => {
-                    const act = ventana === v.v;
-                    return (
-                      <button
-                        key={String(v.v)}
-                        onClick={() => setVentana(v.v)}
-                        className={`px-2 py-0.5 text-[10px] font-semibold rounded border transition ${
-                          act
-                            ? "bg-violet-500 text-white border-violet-500"
-                            : "bg-white/5 text-slate-300 border-white/15 hover:bg-white/10"
-                        }`}
-                      >
+                  <span className="text-violet-400 font-bold">, observar</span>
+
+                  {/* Selector: Ventana de acciones */}
+                  <select
+                    value={String(ventana)}
+                    onChange={(e) => {
+                      setPreguntaActivaId(null);
+                      const val = e.target.value;
+                      setVentana(val === "todas" ? "todas" : (Number(val) as Ventana));
+                    }}
+                    className="bg-violet-950/80 text-white text-xs sm:text-sm font-semibold rounded-lg px-2.5 py-1.5 border border-violet-500/40 focus:outline-none focus:border-violet-400 cursor-pointer shadow-sm"
+                  >
+                    {VENTANAS.map((v) => (
+                      <option key={String(v.v)} value={String(v.v)}>
                         {v.label}
-                      </button>
-                    );
-                  })}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Preguntas adicionales / Comparadores como Chips */}
+                <div>
+                  <p className="text-[11px] font-bold text-slate-400 mb-1.5">
+                    ¿Querés verificar si se repite algún patrón en la siguiente jugada?
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {COMPARADORES_AMIGABLES.map((c) => {
+                      const activo = coincidencias[c.key];
+                      return (
+                        <button
+                          key={c.key}
+                          onClick={() => toggleComparador(c.key)}
+                          title={c.detalle}
+                          className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition flex items-center gap-1.5 ${
+                            activo
+                              ? "bg-emerald-500/20 text-emerald-200 border-emerald-500/60 shadow-sm"
+                              : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10"
+                          }`}
+                        >
+                          <span>{activo ? "✓" : "+"}</span>
+                          <span>{c.etiqueta}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
+            ) : (
+              <p className="text-xs text-slate-400 italic">
+                Elegí una pregunta rápida arriba o activá el constructor para formular una condición personalizada.
+              </p>
             )}
           </div>
 
-          {/* ---------- COMPARADORES ---------- */}
-          {disparador && (
-            <div
-              className="rounded-xl p-2.5"
-              style={{
-                background: "rgba(255,255,255,0.02)",
-                border: "1px solid var(--sx-border)",
-              }}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span
-                  className="text-[10px] font-bold uppercase tracking-wider"
-                  style={{ color: "var(--sx-text-primary)" }}
+          {/* ---------- RESULTADOS DEL ANÁLISIS ---------- */}
+          {disparador && resultado && (
+            <div className="space-y-4 pt-1">
+              {resultado.totalOcurrencias === 0 ? (
+                <div
+                  className="rounded-xl p-6 text-center text-xs sm:text-sm"
+                  style={{
+                    background: "rgba(255,255,255,0.02)",
+                    border: "1px solid var(--sx-border)",
+                    color: "var(--sx-text-muted)",
+                  }}
                 >
-                  ⚖️ Comparadores (opcional)
-                </span>
-                {hayComparadores && (
-                  <button
-                    onClick={() =>
-                      setCoincidencias({
-                        mismoJugadorTrigger: false,
-                        mismaZonaTriggerDestino: false,
-                        mismaZonaTriggerOrigen: false,
-                        mismaZonaAnteriorOrigen: false,
-                        mismaZonaAnteriorDestino: false,
-                        mismaVelocidadAnterior: false,
-                        mismoTipoSaqueAnterior: false,
-                        mismoReceptorAnterior: false,
-                      })
-                    }
-                    className="text-[10px] font-semibold"
-                    style={{ color: "#F87171" }}
-                  >
-                    ✕ Quitar todos
-                  </button>
-                )}
-              </div>
-
-              <p
-                className="text-[9px] mb-2"
-                style={{ color: "var(--sx-text-muted)" }}
-              >
-                Sirven para medir cuántas veces la <strong>próxima
-                acción</strong> repite algo del disparador o de la acción
-                anterior (ej. mismo jugador, misma zona, misma velocidad).
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
-                {(["trigger", "anterior"] as const).map((grupo) => (
-                  <div key={grupo} className="space-y-1">
-                    <p
-                      className="text-[9px] font-bold uppercase tracking-wider"
-                      style={{
-                        color: grupo === "trigger" ? "#93C5FD" : "#FBBF24",
-                      }}
-                    >
-                      {grupo === "trigger"
-                        ? "Respecto al disparador"
-                        : "Respecto a la acción anterior"}
-                    </p>
-                    {COMPARADORES.filter((c) => c.grupo === grupo).map(
-                      (c) => {
-                        const act = coincidencias[c.key];
-                        return (
-                          <button
-                            key={c.key}
-                            onClick={() => toggleComparador(c.key)}
-                            className={`w-full text-left px-2 py-1 text-[10px] font-medium rounded border transition flex items-center gap-1.5 ${
-                              act
-                                ? "bg-violet-500/20 text-violet-200 border-violet-500/50"
-                                : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10"
-                            }`}
-                          >
-                            <span
-                              className="w-3 h-3 rounded-sm border flex items-center justify-center shrink-0"
-                              style={{
-                                borderColor: act ? "#A78BFA" : "rgba(255,255,255,0.3)",
-                                background: act ? "#7C3AED" : "transparent",
-                              }}
-                            >
-                              {act && (
-                                <span className="text-[8px] text-white font-bold">
-                                  ✓
-                                </span>
-                              )}
-                            </span>
-                            <span className="truncate">{c.label}</span>
-                          </button>
-                        );
-                      }
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {activo && (
-            <div className="flex justify-end">
-              <button
-                onClick={limpiar}
-                className="text-[10px] font-semibold"
-                style={{ color: "#F87171" }}
-              >
-                ✕ Limpiar análisis
-              </button>
-            </div>
-          )}
-
-          {/* ---------- RESULTADOS ---------- */}
-          {resultado && (
-            <ResultadosPanel
-              resultado={resultado}
-              ventana={ventana}
-              hayComparadores={hayComparadores}
-              nombreDe={nombre}
-              onIrAPunto={onIrAPunto}
-            />
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================================
-// SUBCOMPONENTE: panel de resultados
-// ============================================================
-
-function ResultadosPanel({
-  resultado,
-  ventana,
-  hayComparadores,
-  nombreDe,
-  onIrAPunto,
-}: {
-  resultado: ResultadoAnalisis;
-  ventana: Ventana;
-  hayComparadores: boolean;
-  nombreDe: (id: string | null) => string;
-  onIrAPunto?: (set: number, punto: number) => void;
-}) {
-  const {
-    totalOcurrencias,
-    ocurrencias,
-    distribucionSiguiente,
-    distribucionSubtipo,
-    resumenPorTipo,
-    coincidenciasGlobales,
-  } = resultado;
-
-  if (totalOcurrencias === 0) {
-    return (
-      <div
-        className="rounded-xl p-3 text-center text-xs"
-        style={{
-          background: "rgba(255,255,255,0.02)",
-          border: "1px solid var(--sx-border)",
-          color: "var(--sx-text-muted)",
-        }}
-      >
-        Ningún punto dispara esta condición en las acciones actuales.
-      </div>
-    );
-  }
-
-  const totalesTipos = Object.values(distribucionSiguiente).reduce(
-    (s, v) => s + v,
-    0
-  );
-
-  const comparadores: {
-    key: keyof typeof coincidenciasGlobales;
-    label: string;
-  }[] = [
-    { key: "mismoJugadorTrigger", label: "Mismo jugador que el disparador" },
-    { key: "mismaZonaTriggerDestino", label: "Misma zona destino que el disparador" },
-    { key: "mismaZonaTriggerOrigen", label: "Misma zona origen que el disparador" },
-    { key: "mismaZonaAnteriorOrigen", label: "Misma zona origen que la anterior" },
-    { key: "mismaZonaAnteriorDestino", label: "Misma zona destino que la anterior" },
-    { key: "mismaVelocidadAnterior", label: "Misma velocidad de armado" },
-    { key: "mismoTipoSaqueAnterior", label: "Mismo tipo de saque" },
-    { key: "mismoReceptorAnterior", label: "Mismo jugador que la anterior" },
-  ];
-
-  return (
-    <div className="space-y-3">
-      {/* Resumen total */}
-      <div
-        className="rounded-xl p-3"
-        style={{
-          background: "rgba(167,139,250,0.08)",
-          border: "1px solid rgba(167,139,250,0.3)",
-        }}
-      >
-        <p
-          className="text-[10px] font-bold uppercase tracking-wider"
-          style={{ color: "#C4B5FD" }}
-        >
-          {totalOcurrencias} ocurrencia{totalOcurrencias !== 1 ? "s" : ""} del
-          disparador
-        </p>
-        <p
-          className="text-[10px] mt-1 leading-relaxed"
-          style={{ color: "var(--sx-text-secondary)" }}
-        >
-          Cada ocurrencia cuenta como 1. Los porcentajes de abajo se
-          calculan sobre las que tuvieron al menos una acción siguiente
-          dentro de la ventana elegida ({ventana === "todas" ? "todas" : ventana}).
-        </p>
-      </div>
-
-      {/* Distribución del siguiente tipo */}
-      <div
-        className="rounded-xl p-3"
-        style={{
-          background: "var(--sx-surface-2)",
-          border: "1px solid var(--sx-border)",
-        }}
-      >
-        <p
-          className="text-[10px] font-bold uppercase tracking-wider mb-2"
-          style={{ color: "var(--sx-text-primary)" }}
-        >
-          ¿Qué vino después?
-        </p>
-        {totalesTipos === 0 ? (
-          <p
-            className="text-[10px] italic"
-            style={{ color: "var(--sx-text-muted)" }}
-          >
-            Ninguna ocurrencia tiene acciones siguientes en la ventana
-            actual.
-          </p>
-        ) : (
-          <div className="space-y-1.5">
-            {resumenPorTipo.map((r) => {
-              const p = (r.count / totalesTipos) * 100;
-              return (
-                <div key={r.tipo}>
-                  <div className="flex items-center justify-between text-[11px] mb-0.5">
-                    <span className="font-semibold text-white capitalize">
-                      {r.tipo}
-                    </span>
-                    <span
-                      className="tabular-nums"
-                      style={{ color: "var(--sx-text-secondary)" }}
-                    >
-                      {r.count} · {Math.round(p)}%
-                    </span>
-                  </div>
-                  <div
-                    className="h-1.5 rounded overflow-hidden"
-                    style={{ background: "rgba(255,255,255,0.06)" }}
-                  >
-                    <div
-                      className="h-full rounded"
-                      style={{
-                        width: `${p}%`,
-                        background:
-                          "linear-gradient(90deg, #A78BFA 0%, #38BDF8 100%)",
-                      }}
-                    />
-                  </div>
+                  <p className="text-2xl mb-1">🔍</p>
+                  <p className="font-semibold text-slate-300">
+                    No se encontraron acciones con esta condición en los datos actuales.
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Probá cambiando el resultado o eligiendo otra acción disparadora.
+                  </p>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Distribución por subtipo */}
-      {Object.keys(distribucionSubtipo).length > 0 && (
-        <div
-          className="rounded-xl p-3"
-          style={{
-            background: "var(--sx-surface-2)",
-            border: "1px solid var(--sx-border)",
-          }}
-        >
-          <p
-            className="text-[10px] font-bold uppercase tracking-wider mb-2"
-            style={{ color: "var(--sx-text-primary)" }}
-          >
-            Subtipos específicos
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {Object.entries(distribucionSubtipo)
-              .sort((a, b) => b[1] - a[1])
-              .map(([k, v]) => {
-                const [tipo, sub] = k.split("|");
-                return (
-                  <span
-                    key={k}
-                    className="px-2 py-0.5 text-[10px] rounded-md"
-                    style={{
-                      background: "rgba(56,189,248,0.12)",
-                      border: "1px solid rgba(56,189,248,0.3)",
-                      color: "#7DD3FC",
-                    }}
-                  >
-                    <strong className="capitalize">{tipo}</strong>
-                    {sub !== "—" && ` · ${sub}`}{" "}
-                    <span className="tabular-nums">×{v}</span>
-                  </span>
-                );
-              })}
-          </div>
-        </div>
-      )}
-
-      {/* Comparadores globales */}
-      {hayComparadores && (
-        <div
-          className="rounded-xl p-3"
-          style={{
-            background: "var(--sx-surface-2)",
-            border: "1px solid var(--sx-border)",
-          }}
-        >
-          <p
-            className="text-[10px] font-bold uppercase tracking-wider mb-2"
-            style={{ color: "var(--sx-text-primary)" }}
-          >
-            Coincidencias con la 1ª acción siguiente
-          </p>
-          <table className="w-full text-[11px] border-collapse">
-            <thead>
-              <tr
-                style={{
-                  borderBottom: "1px solid rgba(255,255,255,0.08)",
-                  color: "var(--sx-text-secondary)",
-                }}
-              >
-                <th className="text-left py-1.5 px-2 font-semibold uppercase text-[9px] tracking-wider">
-                  Comparador
-                </th>
-                <th className="text-right py-1.5 px-2 font-semibold uppercase text-[9px] tracking-wider">
-                  Cuenta
-                </th>
-                <th className="text-right py-1.5 px-2 font-semibold uppercase text-[9px] tracking-wider">
-                  %
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {comparadores.map((c) => {
-                const val = coincidenciasGlobales[c.key];
-                if (val === 0 && !hayComparadores) return null;
-                return (
-                  <tr
-                    key={c.key}
-                    style={{
-                      borderBottom: "1px solid rgba(255,255,255,0.04)",
-                    }}
-                  >
-                    <td
-                      className="py-1.5 px-2"
-                      style={{ color: "var(--sx-text-secondary)" }}
-                    >
-                      {c.label}
-                    </td>
-                    <td className="py-1.5 px-2 text-right text-white font-semibold tabular-nums">
-                      {val}
-                    </td>
-                    <td
-                      className="py-1.5 px-2 text-right tabular-nums"
+              ) : (
+                <>
+                  {/* Tarjeta de conclusión táctica */}
+                  {conclusionRapida && (
+                    <div
+                      className="rounded-xl p-3.5 sm:p-4 flex items-start gap-3"
                       style={{
-                        color: val > 0 ? "#34D399" : "var(--sx-text-muted)",
+                        background:
+                          "linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(56,189,248,0.08) 100%)",
+                        border: "1px solid rgba(16,185,129,0.3)",
                       }}
                     >
-                      {totalOcurrencias > 0
-                        ? `${Math.round((val / totalOcurrencias) * 100)}%`
-                        : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Tabla de ocurrencias */}
-      <div
-        className="rounded-xl overflow-hidden"
-        style={{
-          background: "var(--sx-surface-2)",
-          border: "1px solid var(--sx-border)",
-        }}
-      >
-        <div
-          className="px-3 py-2 flex items-center justify-between"
-          style={{
-            borderBottom: "1px solid var(--sx-border)",
-            background: "rgba(255,255,255,0.03)",
-          }}
-        >
-          <p
-            className="text-[10px] font-bold uppercase tracking-wider"
-            style={{ color: "var(--sx-text-primary)" }}
-          >
-            Detalle de ocurrencias
-          </p>
-          <span
-            className="text-[10px]"
-            style={{ color: "var(--sx-text-muted)" }}
-          >
-            {ocurrencias.length} punto{ocurrencias.length !== 1 ? "s" : ""}
-          </span>
-        </div>
-        <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
-          <table className="w-full text-[11px] border-collapse min-w-[520px]">
-            <thead
-              style={{
-                position: "sticky",
-                top: 0,
-                background: "rgba(15,29,53,0.98)",
-                borderBottom: "1px solid var(--sx-border)",
-              }}
-            >
-              <tr
-                style={{
-                  color: "var(--sx-text-secondary)",
-                }}
-              >
-                <th className="text-left py-2 px-2 font-semibold uppercase text-[9px] tracking-wider">
-                  Set-P
-                </th>
-                <th className="text-left py-2 px-2 font-semibold uppercase text-[9px] tracking-wider">
-                  Disparador
-                </th>
-                <th className="text-left py-2 px-2 font-semibold uppercase text-[9px] tracking-wider">
-                  Siguiente
-                </th>
-                {onIrAPunto && (
-                  <th className="text-right py-2 px-2 font-semibold uppercase text-[9px] tracking-wider">
-                    Ir
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {ocurrencias.map((o) => {
-                const s0 = o.siguientes[0] ?? null;
-                return (
-                  <tr
-                    key={`${o.set_numero}-${o.punto_numero}-${o.triggerId}`}
-                    style={{
-                      borderBottom: "1px solid rgba(255,255,255,0.04)",
-                    }}
-                  >
-                    <td
-                      className="py-1.5 px-2 font-mono text-[10px] tabular-nums"
-                      style={{ color: "var(--sx-text-muted)" }}
-                    >
-                      S{o.set_numero}·P{o.punto_numero}
-                    </td>
-                    <td className="py-1.5 px-2">
-                      <div className="flex flex-col">
-                        <span className="text-white font-semibold capitalize">
-                          {o.triggerSubtipo
-                            ? `${o.triggerSubtipo}`
-                            : "—"}
-                        </span>
-                        <span
-                          className="text-[10px]"
-                          style={{ color: "var(--sx-text-secondary)" }}
-                        >
-                          {nombreDe(o.triggerJugadorId)}
-                        </span>
+                      <span className="text-2xl shrink-0">💡</span>
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+                          Conclusión táctica
+                        </p>
+                        <p className="text-sm font-medium text-slate-100 mt-0.5 leading-relaxed">
+                          {conclusionRapida}
+                        </p>
                       </div>
-                    </td>
-                    <td className="py-1.5 px-2">
-                      {s0 ? (
-                        <div className="flex flex-col">
-                          <span className="text-white font-semibold capitalize">
-                            {s0.tipo}
-                            {s0.subtipo !== null &&
-                              s0.subtipo !== undefined &&
-                              ` · ${String(s0.subtipo)}`}
-                          </span>
-                          <span
-                            className="text-[10px]"
-                            style={{ color: "var(--sx-text-secondary)" }}
-                          >
-                            {nombreDe(s0.jugador_id)}
-                            {s0.zona_destino !== null &&
-                              ` · Z${s0.zona_destino}`}
-                          </span>
-                        </div>
-                      ) : (
-                        <span
-                          className="italic"
-                          style={{ color: "var(--sx-text-muted)" }}
-                        >
-                          fin del punto
+                    </div>
+                  )}
+
+                  {/* Gráficos de distribución de lo que vino después */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* ¿Qué acción vino después? */}
+                    <div
+                      className="rounded-xl p-3.5 space-y-2.5"
+                      style={{
+                        background: "var(--sx-surface-2)",
+                        border: "1px solid var(--sx-border)",
+                      }}
+                    >
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center justify-between">
+                        <span>¿Qué acción vino después?</span>
+                        <span className="text-[10px] text-slate-400 font-normal">
+                          {resultado.totalOcurrencias} casos
                         </span>
+                      </p>
+                      <div className="space-y-2">
+                        {resultado.resumenPorTipo.map((r) => {
+                          const pct = Math.round(
+                            (r.count / resultado.totalOcurrencias) * 100
+                          );
+                          return (
+                            <div key={r.tipo}>
+                              <div className="flex items-center justify-between text-xs mb-1">
+                                <span className="font-semibold text-white capitalize">
+                                  {r.tipo}
+                                </span>
+                                <span className="text-slate-300 font-mono text-[11px]">
+                                  {r.count} ({pct}%)
+                                </span>
+                              </div>
+                              <div
+                                className="h-2 rounded-full overflow-hidden"
+                                style={{ background: "rgba(255,255,255,0.08)" }}
+                              >
+                                <div
+                                  className="h-full rounded-full transition-all duration-300"
+                                  style={{
+                                    width: `${pct}%`,
+                                    background:
+                                      "linear-gradient(90deg, #10B981 0%, #38BDF8 100%)",
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Subtipos específicos & Patrones repetidos */}
+                    <div
+                      className="rounded-xl p-3.5 space-y-3"
+                      style={{
+                        background: "var(--sx-surface-2)",
+                        border: "1px solid var(--sx-border)",
+                      }}
+                    >
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wider text-slate-200 mb-2">
+                          Subtipos registrados
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                          {Object.entries(resultado.distribucionSubtipo)
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([k, v]) => {
+                              const [tipo, sub] = k.split("|");
+                              return (
+                                <span
+                                  key={k}
+                                  className="px-2 py-1 text-[11px] rounded-lg border font-medium flex items-center gap-1"
+                                  style={{
+                                    background: "rgba(56,189,248,0.1)",
+                                    borderColor: "rgba(56,189,248,0.25)",
+                                    color: "#7DD3FC",
+                                  }}
+                                >
+                                  <strong className="capitalize">{tipo}</strong>
+                                  {sub !== "—" && ` · ${sub}`}
+                                  <span className="font-bold text-white ml-0.5">
+                                    ×{v}
+                                  </span>
+                                </span>
+                              );
+                            })}
+                        </div>
+                      </div>
+
+                      {hayComparadores && (
+                        <div className="pt-2 border-t border-white/10">
+                          <p className="text-xs font-bold uppercase tracking-wider text-slate-200 mb-1.5">
+                            Patrones de repetición detectados
+                          </p>
+                          <div className="space-y-1">
+                            {COMPARADORES_AMIGABLES.map((c) => {
+                              const val =
+                                resultado.coincidenciasGlobales[c.key] ?? 0;
+                              if (val === 0 && !coincidencias[c.key]) return null;
+                              const pct = Math.round(
+                                (val / resultado.totalOcurrencias) * 100
+                              );
+                              return (
+                                <div
+                                  key={c.key}
+                                  className="flex items-center justify-between text-xs py-0.5"
+                                >
+                                  <span className="text-slate-300">
+                                    {c.etiqueta}
+                                  </span>
+                                  <span className="font-bold text-emerald-400">
+                                    {val} de {resultado.totalOcurrencias} ({pct}%)
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       )}
-                    </td>
-                    {onIrAPunto && (
-                      <td className="py-1.5 px-2 text-right">
-                        <button
-                          onClick={() =>
-                            onIrAPunto(o.set_numero, o.punto_numero)
-                          }
-                          className="px-2 py-0.5 text-[10px] font-semibold rounded border"
+                    </div>
+                  </div>
+
+                  {/* Tabla de ocurrencias individuales */}
+                  <div
+                    className="rounded-xl overflow-hidden border border-white/10"
+                    style={{ background: "var(--sx-surface-2)" }}
+                  >
+                    <div className="px-3.5 py-2.5 flex items-center justify-between border-b border-white/10 bg-white/5">
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                        Puntos donde ocurrió ({resultado.ocurrencias.length})
+                      </p>
+                      <span className="text-[11px] text-slate-400">
+                        Orden cronológico
+                      </span>
+                    </div>
+
+                    <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
+                      <table className="w-full text-xs min-w-[500px]">
+                        <thead
                           style={{
-                            background: "rgba(56,189,248,0.12)",
-                            borderColor: "rgba(56,189,248,0.35)",
-                            color: "#7DD3FC",
+                            position: "sticky",
+                            top: 0,
+                            background: "rgba(15,29,53,0.98)",
+                            borderBottom: "1px solid var(--sx-border)",
                           }}
                         >
-                          →
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                          <tr className="text-left text-slate-400">
+                            <th className="py-2 px-3 font-semibold">Set y Punto</th>
+                            <th className="py-2 px-3 font-semibold">
+                              Acción disparadora
+                            </th>
+                            <th className="py-2 px-3 font-semibold">
+                              ¿Qué pasó después?
+                            </th>
+                            {onIrAPunto && (
+                              <th className="py-2 px-3 text-right font-semibold">
+                                Ver
+                              </th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {resultado.ocurrencias.map((o) => {
+                            const s0 = o.siguientes[0] ?? null;
+                            return (
+                              <tr
+                                key={`${o.set_numero}-${o.punto_numero}-${o.triggerId}`}
+                                className="border-b border-white/5 hover:bg-white/5 transition"
+                              >
+                                <td className="py-2 px-3 font-mono font-semibold text-slate-300">
+                                  Set {o.set_numero} · Punto {o.punto_numero}
+                                </td>
+                                <td className="py-2 px-3">
+                                  <span className="font-bold text-white capitalize">
+                                    {o.triggerSubtipo ?? disparador.tipo}
+                                  </span>
+                                  <span className="block text-[11px] text-slate-400">
+                                    {nombre(o.triggerJugadorId)}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3">
+                                  {s0 ? (
+                                    <div>
+                                      <span className="font-bold text-emerald-300 capitalize">
+                                        {s0.tipo}
+                                        {s0.subtipo ? ` · ${String(s0.subtipo)}` : ""}
+                                      </span>
+                                      <span className="block text-[11px] text-slate-400">
+                                        {nombre(s0.jugador_id)}
+                                        {s0.zona_destino ? ` · Zona ${s0.zona_destino}` : ""}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-500 italic">
+                                      Fin del punto
+                                    </span>
+                                  )}
+                                </td>
+                                {onIrAPunto && (
+                                  <td className="py-2 px-3 text-right">
+                                    <button
+                                      onClick={() =>
+                                        onIrAPunto(o.set_numero, o.punto_numero)
+                                      }
+                                      className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-300 hover:bg-sky-500/25 transition"
+                                    >
+                                      Ir al punto →
+                                    </button>
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
