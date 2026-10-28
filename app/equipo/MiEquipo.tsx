@@ -1123,11 +1123,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                               >
                                 {est.valoracionMediaNormalizada > 0 ? "+" : ""}
                                 {est.valoracionMediaNormalizada.toFixed(2)}
-                                    : "text-slate-600"
-                                }`}
-                              >
-                                {est.valoracionMediaNormalizada > 0 ? "+" : ""}
-                                {est.valoracionMediaNormalizada.toFixed(2)}
                               </td>
                             </tr>
                           );
