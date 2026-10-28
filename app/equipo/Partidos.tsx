@@ -102,6 +102,16 @@ type ModoPrincipal =
   | "jugador-por-partidos";
 type ModoDetalle = "analisis" | "comparar-jugadores" | "crudas";
 
+const cardBase: React.CSSProperties = {
+  background: "var(--sx-surface-1)",
+  border: "1px solid var(--sx-border)",
+  boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+};
+
+const labelStyle: React.CSSProperties = {
+  color: "var(--sx-text-secondary)",
+};
+
 export default function Partidos({ equipoId, nombreEquipo }: Props) {
   const [partidos, setPartidos] = useState<Partido[]>([]);
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
@@ -321,17 +331,34 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   };
 
   if (cargando) {
-    return <p className="text-slate-500 text-center py-12">Cargando...</p>;
+    return (
+      <p
+        className="text-center py-12"
+        style={{ color: "var(--sx-text-secondary)" }}
+      >
+        Cargando...
+      </p>
+    );
   }
 
   if (partidos.length === 0) {
     return (
-      <div className="card rounded-2xl border border-white/10 shadow-xl p-8 sm:p-12 text-center max-w-md mx-auto">
-        <CalendarDays size={36} className="text-slate-300 mx-auto mb-3" />
-        <h3 className="text-slate-200 font-bold text-base">
+      <div
+        className="rounded-2xl p-8 sm:p-12 text-center max-w-md mx-auto"
+        style={cardBase}
+      >
+        <CalendarDays
+          size={36}
+          className="mx-auto mb-3"
+          style={{ color: "var(--sx-text-muted)" }}
+        />
+        <h3 className="text-white font-bold text-base">
           Sin partidos cargados
         </h3>
-        <p className="text-slate-500 text-xs mt-1">
+        <p
+          className="text-xs mt-1"
+          style={{ color: "var(--sx-text-secondary)" }}
+        >
           {nombreEquipo} todavía no tiene partidos registrados en el sistema.
         </p>
       </div>
@@ -676,15 +703,23 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         <button
           onClick={handleDescargarPDF}
           disabled={descargando}
-          className="inline-flex items-center justify-center gap-2 px-3.5 py-2 text-xs font-semibold bg-white/10 hover:bg-white/15 text-white border border-white/15 rounded-xl shadow-sm transition-all disabled:opacity-50 w-full sm:w-auto"
+          className="inline-flex items-center justify-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl shadow-sm transition-all disabled:opacity-50 w-full sm:w-auto"
+          style={{
+            background: "rgba(15,29,53,0.8)",
+            color: "var(--sx-text-primary)",
+            border: "1px solid var(--sx-border-bright)",
+          }}
         >
-          <FileDown size={14} className="text-slate-300" />
+          <FileDown size={14} style={{ color: "var(--sx-teal)" }} />
           <span>{descargando ? "Generando PDF..." : "Exportar Informe PDF"}</span>
         </button>
       </div>
 
       <div ref={refPDF} className="space-y-4">
-        <div className="card rounded-2xl border border-white/10 shadow-xl p-4 sm:p-5">
+        <div
+          className="rounded-2xl p-4 sm:p-5"
+          style={cardBase}
+        >
           <h2 className="text-lg sm:text-xl font-black text-white break-words tracking-tight">
             {modoPrincipal === "partido" && partidoDetalle
               ? `${nombreEquipo} vs ${nombreRivalDe(partidoDetalle)}`
@@ -695,16 +730,36 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               : `Partidos · ${nombreEquipo}`}
           </h2>
           {modoPrincipal === "partido" && partidoDetalle && (
-            <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-2 flex-wrap">
+            <p
+              className="text-xs mt-1.5 flex items-center gap-2 flex-wrap"
+              style={{ color: "var(--sx-text-secondary)" }}
+            >
               <span className="inline-flex items-center gap-1 font-medium">
-                <Calendar size={13} className="text-slate-400" />
+                <Calendar
+                  size={13}
+                  style={{ color: "var(--sx-text-muted)" }}
+                />
                 {partidoDetalle.fecha}
               </span>
-              <span className="font-mono font-bold px-2 py-0.5 rounded bg-white/10 text-white border border-white/10 text-[11px]">
+              <span
+                className="font-mono font-bold px-2 py-0.5 rounded text-[11px]"
+                style={{
+                  background: "rgba(255,255,255,0.08)",
+                  color: "var(--sx-text-primary)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                }}
+              >
                 {scoreDe(partidoDetalle)}
               </span>
               {filtroSet !== "todos" && (
-                <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[11px] font-semibold border border-blue-500/30">
+                <span
+                  className="px-2 py-0.5 rounded text-[11px] font-semibold"
+                  style={{
+                    background: "rgba(37,99,235,0.15)",
+                    color: "#93C5FD",
+                    border: "1px solid rgba(37,99,235,0.35)",
+                  }}
+                >
                   Solo Set {filtroSet}
                 </span>
               )}
@@ -712,10 +767,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
           )}
         </div>
 
-        <div
-          className="flex flex-wrap justify-end gap-2"
-          data-pdf-ignorar
-        >
+        <div className="flex flex-wrap justify-end gap-2" data-pdf-ignorar>
           <button
             onClick={() => handleToggleModoPrincipal("partido")}
             className={`flex items-center gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition border ${
@@ -728,7 +780,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               tipo="partido"
               size={18}
               className={
-                modoPrincipal === "partido" ? "text-white" : "text-slate-600"
+                modoPrincipal === "partido" ? "text-white" : "text-slate-400"
               }
             />
             Ver partido
@@ -747,7 +799,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               className={
                 modoPrincipal === "comparar-partidos"
                   ? "text-white"
-                  : "text-slate-600"
+                  : "text-slate-400"
               }
             />
             Comparar partidos ({partidosComparados.length}/3)
@@ -766,7 +818,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               className={
                 modoPrincipal === "jugador-por-partidos"
                   ? "text-white"
-                  : "text-slate-600"
+                  : "text-slate-400"
               }
             />
             Jugador por partidos
@@ -775,18 +827,19 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
 
         {modoPrincipal !== "jugador-por-partidos" && (
           <div
-            className="card rounded-2xl border border-white/10 shadow-xl p-3 sm:p-4"
+            className="rounded-2xl p-3 sm:p-4"
+            style={cardBase}
             data-pdf-ignorar
           >
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">
+                <label className="block text-xs font-medium mb-1" style={labelStyle}>
                   Rival
                 </label>
                 <select
                   value={filtroRival}
                   onChange={(e) => setFiltroRival(e.target.value)}
-                  className="w-full px-2 sm:px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
+                  className="input-dark text-sm"
                 >
                   <option value="">Todos</option>
                   {rivalesUnicos.map((r) => (
@@ -797,29 +850,29 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">
+                <label className="block text-xs font-medium mb-1" style={labelStyle}>
                   Desde
                 </label>
                 <input
                   type="date"
                   value={filtroFechaDesde}
                   onChange={(e) => setFiltroFechaDesde(e.target.value)}
-                  className="w-full px-2 sm:px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
+                  className="input-dark text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">
+                <label className="block text-xs font-medium mb-1" style={labelStyle}>
                   Hasta
                 </label>
                 <input
                   type="date"
                   value={filtroFechaHasta}
                   onChange={(e) => setFiltroFechaHasta(e.target.value)}
-                  className="w-full px-2 sm:px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
+                  className="input-dark text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">
+                <label className="block text-xs font-medium mb-1" style={labelStyle}>
                   Set (en detalle)
                 </label>
                 <select
@@ -829,7 +882,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                       e.target.value as "todos" | "1" | "2" | "3" | "4" | "5"
                     )
                   }
-                  className="w-full px-2 sm:px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
+                  className="input-dark text-sm"
                 >
                   <option value="todos">Todos</option>
                   <option value="1">Set 1</option>
@@ -844,7 +897,8 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               <div className="mt-2 text-right">
                 <button
                   onClick={limpiarFiltros}
-                  className="text-xs text-emerald-600 hover:text-emerald-800 font-medium"
+                  className="text-xs font-medium"
+                  style={{ color: "#34D399" }}
                 >
                   Limpiar filtros
                 </button>
@@ -857,7 +911,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
           <div className="col-span-1" data-pdf-ignorar>
             {modoPrincipal === "jugador-por-partidos" ? (
               <>
-                <h3 className="font-semibold text-slate-200 mb-3">
+                <h3 className="font-semibold text-white mb-3">
                   Elegí un jugador
                 </h3>
                 <div className="space-y-2">
@@ -874,7 +928,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                           className={`w-full text-left p-3 rounded-lg border transition ${
                             sel
                               ? "bg-emerald-500 border-emerald-500 text-white"
-                              : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white text-slate-200"
+                              : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
                           }`}
                         >
                           <p
@@ -889,7 +943,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                                 className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full ${
                                   sel
                                     ? "bg-white/20 text-white"
-                                    : "bg-violet-100 text-violet-700"
+                                    : "bg-violet-500/20 text-violet-300"
                                 }`}
                               >
                                 Arm
@@ -903,7 +957,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               </>
             ) : (
               <>
-                <h3 className="font-semibold text-slate-200 mb-3">
+                <h3 className="font-semibold text-white mb-3">
                   {partidosFiltrados.length} partido
                   {partidosFiltrados.length !== 1 ? "s" : ""}
                   {modoPrincipal === "comparar-partidos" &&
@@ -911,8 +965,14 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 </h3>
 
                 {partidosFiltrados.length === 0 ? (
-                  <div className="card rounded-2xl border border-white/10 shadow-xl p-6 text-center">
-                    <p className="text-sm text-slate-500">
+                  <div
+                    className="rounded-2xl p-6 text-center"
+                    style={cardBase}
+                  >
+                    <p
+                      className="text-sm"
+                      style={{ color: "var(--sx-text-secondary)" }}
+                    >
                       Ningún partido cumple los filtros
                     </p>
                   </div>
@@ -973,7 +1033,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                             className={`text-xs mt-1 ${
                               seleccionadoIndividual
                                 ? "text-emerald-100"
-                                : "text-slate-500"
+                                : "text-slate-400"
                             }`}
                           >
                             📅 {p.fecha}
@@ -982,7 +1042,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                             className={`text-xs mt-1 ${
                               seleccionadoIndividual
                                 ? "text-emerald-100"
-                                : "text-slate-500"
+                                : "text-slate-400"
                             }`}
                           >
                             {scoreDe(p)}
@@ -1000,19 +1060,26 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
             {modoPrincipal === "jugador-por-partidos" ? (
               <div className="space-y-4">
                 {!jugadorSeleccionadoJxP ? (
-                  <div className="card rounded-2xl border border-white/10 shadow-xl p-8 sm:p-12 text-center">
+                  <div
+                    className="rounded-2xl p-8 sm:p-12 text-center"
+                    style={cardBase}
+                  >
                     <p className="text-4xl mb-3">👈</p>
-                    <p className="text-slate-600 font-medium">
+                    <p
+                      className="font-medium"
+                      style={{ color: "var(--sx-text-primary)" }}
+                    >
                       Elegí un jugador a la izquierda para empezar
                     </p>
                   </div>
                 ) : (
                   <>
                     <div
-                      className="card rounded-2xl border border-white/10 shadow-xl p-3 sm:p-5"
+                      className="rounded-2xl p-3 sm:p-5"
+                      style={cardBase}
                       data-pdf-ignorar
                     >
-                      <h4 className="font-semibold text-slate-200 mb-3">
+                      <h4 className="font-semibold text-white mb-3">
                         Elegí hasta 3 partidos para comparar a{" "}
                         {nombreDe(jugadorSeleccionadoJxP)}
                       </h4>
@@ -1035,7 +1102,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                                 color
                                   ? "border-2 text-white"
                                   : !tieneAcciones
-                                  ? "bg-white/5 text-slate-500 cursor-not-allowed border-white/10 opacity-50"
+                                  ? "bg-white/5 text-slate-600 cursor-not-allowed border-white/10 opacity-50"
                                   : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
                               }`}
                               style={
@@ -1063,18 +1130,31 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     </div>
 
                     {partidosJxPData.length === 0 ? (
-                      <div className="card rounded-2xl border border-white/10 shadow-xl p-8 sm:p-12 text-center max-w-sm mx-auto">
-                        <GitCompare size={36} className="text-slate-300 mx-auto mb-3" />
-                        <h4 className="text-slate-200 font-bold text-sm">
+                      <div
+                        className="rounded-2xl p-8 sm:p-12 text-center max-w-sm mx-auto"
+                        style={cardBase}
+                      >
+                        <GitCompare
+                          size={36}
+                          className="mx-auto mb-3"
+                          style={{ color: "var(--sx-text-muted)" }}
+                        />
+                        <h4 className="text-white font-bold text-sm">
                           Sin partidos seleccionados
                         </h4>
-                        <p className="text-slate-500 text-xs mt-1">
+                        <p
+                          className="text-xs mt-1"
+                          style={{ color: "var(--sx-text-secondary)" }}
+                        >
                           Elegí partidos arriba para analizar la evolución del jugador.
                         </p>
                       </div>
                     ) : (
-                      <div className="card rounded-2xl border border-white/10 shadow-xl p-4 sm:p-6">
-                        <div className="mb-6 pb-4 border-b border-white/10">
+                      <div className="rounded-2xl p-4 sm:p-6" style={cardBase}>
+                        <div
+                          className="mb-6 pb-4"
+                          style={{ borderBottom: "1px solid var(--sx-border)" }}
+                        >
                           <h3 className="text-lg sm:text-xl font-bold text-white mb-3">
                             {nombreDe(jugadorSeleccionadoJxP)} en{" "}
                             {partidosJxPData.length} partido
@@ -1084,7 +1164,11 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                             {partidosJxPData.map((s) => (
                               <div
                                 key={s.id}
-                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/10 bg-white/5"
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+                                style={{
+                                  border: "1px solid var(--sx-border)",
+                                  background: "rgba(255,255,255,0.03)",
+                                }}
                               >
                                 <span
                                   className="w-3 h-3 rounded-full"
@@ -1099,11 +1183,14 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                         </div>
 
                         <div className="mb-6">
-                          <h4 className="font-semibold text-slate-200 mb-3">
+                          <h4 className="font-semibold text-white mb-3">
                             Radar comparado
                           </h4>
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
-                            <div className="card rounded-2xl border border-white/10 p-2 col-span-1">
+                            <div
+                              className="rounded-2xl p-2 col-span-1"
+                              style={cardBase}
+                            >
                               <RadarJugador
                                 series={seriesRadarJxP}
                                 esArmador={esArmadorJxP}
@@ -1122,13 +1209,24 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                         </div>
 
                         <div className="mb-6">
-                          <h4 className="font-semibold text-slate-200 mb-3">
+                          <h4 className="font-semibold text-white mb-3">
                             Valoración ponderada por partido
                           </h4>
-                          <div className="overflow-x-auto rounded-lg border border-white/10">
+                          <div
+                            className="overflow-x-auto rounded-lg"
+                            style={{ border: "1px solid var(--sx-border)" }}
+                          >
                             <table className="w-full text-sm min-w-[500px]">
-                              <thead className="bg-white/5">
-                                <tr className="text-left text-slate-500">
+                              <thead
+                                style={{
+                                  background: "rgba(255,255,255,0.04)",
+                                  borderBottom: "1px solid var(--sx-border)",
+                                }}
+                              >
+                                <tr
+                                  className="text-left"
+                                  style={{ color: "var(--sx-text-secondary)" }}
+                                >
                                   <th className="py-2 px-3">Fundamento</th>
                                   {partidosJxPData.map((s) => (
                                     <th
@@ -1148,9 +1246,12 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                                 ).map((f) => (
                                   <tr
                                     key={f}
-                                    className="border-b border-white/5"
+                                    style={{
+                                      borderBottom:
+                                        "1px solid rgba(255,255,255,0.04)",
+                                    }}
                                   >
-                                    <td className="py-2 px-3 font-medium text-slate-200">
+                                    <td className="py-2 px-3 font-medium text-white">
                                       {NOMBRES[f] ?? f}
                                     </td>
                                     {partidosJxPData.map((s) => {
@@ -1161,7 +1262,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                                       return (
                                         <td
                                           key={s.id}
-                                          className="py-2 px-3 text-right font-semibold"
+                                          className="py-2 px-3 text-right font-semibold tabular-nums"
                                           style={{ color: s.color }}
                                         >
                                           {val > 0 ? "+" : ""}
@@ -1177,12 +1278,18 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                          <div className="card rounded-2xl border border-white/10 p-3 sm:p-4 shadow-lg">
+                          <div
+                            className="rounded-2xl p-3 sm:p-4"
+                            style={cardBase}
+                          >
                             <GraficoSaquePorSet series={seriesSaqueJxP} />
                           </div>
 
                           {!esArmadorJxP && (
-                            <div className="card rounded-2xl border border-white/10 p-3 sm:p-4 shadow-lg">
+                            <div
+                              className="rounded-2xl p-3 sm:p-4"
+                              style={cardBase}
+                            >
                               <GraficoRecepcionPorSet
                                 series={seriesRecepcionJxP}
                               />
@@ -1190,24 +1297,39 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                           )}
 
                           {esArmadorJxP && (
-                            <div className="card rounded-2xl border border-white/10 p-3 sm:p-4 shadow-lg">
+                            <div
+                              className="rounded-2xl p-3 sm:p-4"
+                              style={cardBase}
+                            >
                               <GraficoArmadosPorSet series={seriesArmadosJxP} />
                             </div>
                           )}
 
                           <div
-                            className={`card rounded-2xl border border-white/10 p-3 sm:p-4 shadow-lg ${
+                            className={`rounded-2xl p-3 sm:p-4 ${
                               esArmadorJxP ? "" : "md:col-span-2"
                             }`}
+                            style={cardBase}
                           >
                             <GraficoBloqueoPorSet series={seriesBloqueoJxP} />
                           </div>
                         </div>
 
-                        <div className="mt-6 overflow-x-auto rounded-lg border border-white/10">
+                        <div
+                          className="mt-6 overflow-x-auto rounded-lg"
+                          style={{ border: "1px solid var(--sx-border)" }}
+                        >
                           <table className="w-full text-sm min-w-[500px]">
-                            <thead className="bg-white/5">
-                              <tr className="text-left text-slate-500">
+                            <thead
+                              style={{
+                                background: "rgba(255,255,255,0.04)",
+                                borderBottom: "1px solid var(--sx-border)",
+                              }}
+                            >
+                              <tr
+                                className="text-left"
+                                style={{ color: "var(--sx-text-secondary)" }}
+                              >
                                 <th className="py-2 px-3">Partido</th>
                                 <th className="py-2 px-3 text-right">Acciones</th>
                                 <th className="py-2 px-3 text-right">Puntos</th>
@@ -1222,45 +1344,48 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                               {partidosJxPData.map((s) => (
                                 <tr
                                   key={s.id}
-                                  className="border-b border-white/5"
+                                  style={{
+                                    borderBottom:
+                                      "1px solid rgba(255,255,255,0.04)",
+                                  }}
                                 >
                                   <td className="py-2 px-3 font-medium">
                                     <span
                                       className="inline-block w-3 h-3 rounded-full mr-2 align-middle"
                                       style={{ backgroundColor: s.color }}
                                     />
-                                    <span className="text-slate-200">
+                                    <span className="text-white">
                                       {s.nombre}
                                     </span>
                                   </td>
-                                  <td className="py-2 px-3 text-right text-slate-300 font-mono">
+                                  <td className="py-2 px-3 text-right text-slate-300 font-mono tabular-nums">
                                     {s.est.totalAcciones}
                                   </td>
-                                  <td className="py-2 px-3 text-right text-emerald-400 font-mono">
+                                  <td className="py-2 px-3 text-right text-emerald-400 font-mono tabular-nums">
                                     {s.est.totalPuntos}
                                   </td>
-                                  <td className="py-2 px-3 text-right text-rose-400 font-mono">
+                                  <td className="py-2 px-3 text-right text-rose-400 font-mono tabular-nums">
                                     {s.est.totalErrores}
                                   </td>
                                   <td
-                                    className={`py-2 px-3 text-right font-semibold ${
+                                    className={`py-2 px-3 text-right font-semibold tabular-nums ${
                                       s.est.saldoTotal > 0
-                                        ? "text-green-700"
+                                        ? "text-emerald-400"
                                         : s.est.saldoTotal < 0
-                                        ? "text-red-700"
-                                        : "text-slate-600"
+                                        ? "text-rose-400"
+                                        : "text-slate-400"
                                     }`}
                                   >
                                     {s.est.saldoTotal > 0 ? "+" : ""}
                                     {s.est.saldoTotal}
                                   </td>
                                   <td
-                                    className={`py-2 px-3 text-right font-semibold ${
+                                    className={`py-2 px-3 text-right font-semibold tabular-nums ${
                                       s.est.valoracionMediaNormalizada > 0
-                                        ? "text-green-700"
+                                        ? "text-emerald-400"
                                         : s.est.valoracionMediaNormalizada < 0
-                                        ? "text-red-700"
-                                        : "text-slate-600"
+                                        ? "text-rose-400"
+                                        : "text-slate-400"
                                     }`}
                                   >
                                     {s.est.valoracionMediaNormalizada > 0
@@ -1279,20 +1404,30 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 )}
               </div>
             ) : modoPrincipal === "comparar-partidos" ? (
-              <div className="card rounded-2xl border border-white/10 shadow-xl p-4 sm:p-6">
+              <div className="rounded-2xl p-4 sm:p-6" style={cardBase}>
                 {partidosComparadosData.length === 0 ? (
                   <div className="p-8 sm:p-12 text-center max-w-sm mx-auto">
-                    <GitCompare size={36} className="text-slate-300 mx-auto mb-3" />
-                    <h4 className="text-slate-200 font-bold text-sm">
+                    <GitCompare
+                      size={36}
+                      className="mx-auto mb-3"
+                      style={{ color: "var(--sx-text-muted)" }}
+                    />
+                    <h4 className="text-white font-bold text-sm">
                       Comparativa de partidos
                     </h4>
-                    <p className="text-slate-500 text-xs mt-1">
+                    <p
+                      className="text-xs mt-1"
+                      style={{ color: "var(--sx-text-secondary)" }}
+                    >
                       Elegí hasta 3 partidos arriba para contrastar rendimiento del equipo.
                     </p>
                   </div>
                 ) : (
                   <>
-                    <div className="mb-6 pb-4 border-b border-white/10">
+                    <div
+                      className="mb-6 pb-4"
+                      style={{ borderBottom: "1px solid var(--sx-border)" }}
+                    >
                       <h3 className="text-lg sm:text-xl font-bold text-white mb-3">
                         Comparando {partidosComparadosData.length} partido
                         {partidosComparadosData.length !== 1 ? "s" : ""}
@@ -1301,7 +1436,11 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                         {partidosComparadosData.map((s) => (
                           <div
                             key={s.id}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/10 bg-white/5"
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+                            style={{
+                              border: "1px solid var(--sx-border)",
+                              background: "rgba(255,255,255,0.03)",
+                            }}
                           >
                             <span
                               className="w-3 h-3 rounded-full"
@@ -1317,7 +1456,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
 
                     <div className="mb-6">
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
-                        <div className="card rounded-2xl border border-white/10 p-2 col-span-1">
+                        <div
+                          className="rounded-2xl p-2 col-span-1"
+                          style={cardBase}
+                        >
                           <RadarEquipo
                             series={seriesRadarPartidos}
                             titulo="Radar comparativo del equipo"
@@ -1335,7 +1477,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     </div>
 
                     <div className="grid grid-cols-1 gap-3 sm:gap-4">
-                      <div className="card rounded-2xl border border-white/10 p-3 sm:p-4 shadow-lg">
+                      <div
+                        className="rounded-2xl p-3 sm:p-4"
+                        style={cardBase}
+                      >
                         <GraficoRecepcionEquipoPorSet
                           series={seriesRecepcionPartidos}
                         />
@@ -1345,7 +1490,13 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     <div className="mt-6 overflow-x-auto">
                       <table className="w-full text-sm min-w-[500px]">
                         <thead>
-                          <tr className="text-left text-slate-500 border-b border-white/10">
+                          <tr
+                            className="text-left"
+                            style={{
+                              color: "var(--sx-text-secondary)",
+                              borderBottom: "1px solid var(--sx-border)",
+                            }}
+                          >
                             <th className="py-2 px-3">Partido</th>
                             <th className="py-2 px-3 text-right">Acciones</th>
                             <th className="py-2 px-3 text-right">Puntos</th>
@@ -1355,32 +1506,38 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                         </thead>
                         <tbody>
                           {partidosComparadosData.map((s) => (
-                            <tr key={s.id} className="border-b border-white/5">
+                            <tr
+                              key={s.id}
+                              style={{
+                                borderBottom:
+                                  "1px solid rgba(255,255,255,0.04)",
+                              }}
+                            >
                               <td className="py-2 px-3 font-medium">
                                 <span
                                   className="inline-block w-3 h-3 rounded-full mr-2 align-middle"
                                   style={{ backgroundColor: s.color }}
                                 />
-                                <span className="text-slate-200">
+                                <span className="text-white">
                                   {s.nombre}
                                 </span>
                               </td>
-                              <td className="py-2 px-3 text-right text-slate-300 font-mono">
+                              <td className="py-2 px-3 text-right text-slate-300 font-mono tabular-nums">
                                 {s.stats.totalAcciones}
                               </td>
-                              <td className="py-2 px-3 text-right text-emerald-400 font-mono">
+                              <td className="py-2 px-3 text-right text-emerald-400 font-mono tabular-nums">
                                 {s.stats.totalPuntos}
                               </td>
-                              <td className="py-2 px-3 text-right text-rose-400 font-mono">
+                              <td className="py-2 px-3 text-right text-rose-400 font-mono tabular-nums">
                                 {s.stats.totalErrores}
                               </td>
                               <td
-                                className={`py-2 px-3 text-right font-semibold ${
+                                className={`py-2 px-3 text-right font-semibold tabular-nums ${
                                   s.stats.saldoTotal > 0
-                                    ? "text-green-700"
+                                    ? "text-emerald-400"
                                     : s.stats.saldoTotal < 0
-                                    ? "text-red-700"
-                                    : "text-slate-600"
+                                    ? "text-rose-400"
+                                    : "text-slate-400"
                                 }`}
                               >
                                 {s.stats.saldoTotal > 0 ? "+" : ""}
@@ -1395,20 +1552,23 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 )}
               </div>
             ) : !partidoDetalle || !statsPartido ? (
-              <div className="card rounded-2xl border border-white/10 shadow-xl p-8 sm:p-12 text-center h-full flex items-center justify-center">
+              <div
+                className="rounded-2xl p-8 sm:p-12 text-center h-full flex items-center justify-center"
+                style={cardBase}
+              >
                 <div>
                   <p className="text-4xl mb-3">👈</p>
-                  <p className="text-slate-600 font-medium">
+                  <p
+                    className="font-medium"
+                    style={{ color: "var(--sx-text-primary)" }}
+                  >
                     Elegí un partido para ver el detalle
                   </p>
                 </div>
               </div>
             ) : (
               <div className="space-y-4">
-                <div
-                  className="flex flex-wrap justify-end gap-2"
-                  data-pdf-ignorar
-                >
+                <div className="flex flex-wrap justify-end gap-2" data-pdf-ignorar>
                   <button
                     onClick={() => {
                       setModoDetalle("analisis");
@@ -1426,7 +1586,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                       className={
                         modoDetalle === "analisis"
                           ? "text-white"
-                          : "text-slate-600"
+                          : "text-slate-400"
                       }
                     />
                     Análisis
@@ -1445,7 +1605,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                       className={
                         modoDetalle === "comparar-jugadores"
                           ? "text-white"
-                          : "text-slate-600"
+                          : "text-slate-400"
                       }
                     />
                     Comparar jugadores ({jugadoresComparados.length}/3)
@@ -1464,34 +1624,62 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                       className={
                         modoDetalle === "crudas"
                           ? "text-white"
-                          : "text-slate-600"
+                          : "text-slate-400"
                       }
                     />
                     Estadísticas crudas
                   </button>
                 </div>
 
-                <div className="card-terracota rounded-2xl border p-3 sm:p-5">
+                <div
+                  className="rounded-2xl p-3 sm:p-5"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(22,14,24,0.95) 0%, rgba(15,29,53,0.92) 100%)",
+                    border: "1px solid rgba(229,62,77,0.3)",
+                    boxShadow:
+                      "0 8px 30px rgba(0,0,0,0.5), inset 0 1px 0 rgba(229,62,77,0.15)",
+                  }}
+                >
                   <div className="flex justify-between items-start gap-2">
                     <div className="min-w-0">
                       <h3 className="text-lg sm:text-xl font-bold text-white break-words">
                         {nombreEquipo} vs {nombreRivalDe(partidoDetalle)}
                       </h3>
-                      <p className="text-sm text-slate-600 mt-1">
+                      <p
+                        className="text-sm mt-1"
+                        style={{ color: "var(--sx-text-secondary)" }}
+                      >
                         📅 {partidoDetalle.fecha}
                       </p>
-                      <p className="text-sm text-slate-700 mt-1">
+                      <p
+                        className="text-sm mt-1 font-semibold"
+                        style={{ color: "#FBBF24" }}
+                      >
                         {scoreDe(partidoDetalle)}
                       </p>
                       {filtroSet !== "todos" && (
-                        <p className="text-xs text-amber-800 mt-2 bg-amber-50 border border-amber-300 rounded px-2 py-1 inline-block">
+                        <p
+                          className="text-xs mt-2 px-2 py-1 rounded inline-block"
+                          style={{
+                            background: "rgba(245,158,11,0.15)",
+                            color: "#FBBF24",
+                            border: "1px solid rgba(245,158,11,0.35)",
+                          }}
+                        >
                           Filtrando solo Set {filtroSet}
                         </p>
                       )}
                     </div>
                   </div>
                   {partidoDetalle.notas && (
-                    <p className="text-xs text-slate-600 mt-3 pt-3 border-t border-slate-300 italic">
+                    <p
+                      className="text-xs mt-3 pt-3 italic"
+                      style={{
+                        color: "var(--sx-text-secondary)",
+                        borderTop: "1px solid rgba(255,255,255,0.08)",
+                      }}
+                    >
                       &quot;{partidoDetalle.notas}&quot;
                     </p>
                   )}
@@ -1500,10 +1688,11 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 {modoDetalle === "comparar-jugadores" && (
                   <>
                     <div
-                      className="card rounded-2xl border border-white/10 shadow-xl p-3 sm:p-5"
+                      className="rounded-2xl p-3 sm:p-5"
+                      style={cardBase}
                       data-pdf-ignorar
                     >
-                      <h4 className="font-semibold text-slate-200 mb-3">
+                      <h4 className="font-semibold text-white mb-3">
                         Elegí hasta 3 jugadores (mismo rol)
                       </h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1539,8 +1728,8 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                                   colorComp
                                     ? "border-2"
                                     : bloqueado || puedeAgregarMas
-                                    ? "bg-white/5 text-slate-500 cursor-not-allowed opacity-50 border-white/10"
-                                    : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
+                                    ? "bg-white/5 text-slate-600 cursor-not-allowed opacity-50 border-white/10"
+                                    : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
                                 }`}
                                 style={
                                   colorComp
@@ -1572,7 +1761,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     </div>
 
                     {statsJugadoresComparados.length > 0 ? (
-                      <div className="card rounded-2xl border border-white/10 shadow-xl p-4 sm:p-6">
+                      <div className="rounded-2xl p-4 sm:p-6" style={cardBase}>
                         <div className="mb-6">
                           <RadarJugador
                             series={seriesRadarJugadores}
@@ -1581,12 +1770,18 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                          <div className="card rounded-2xl border border-white/10 p-3 sm:p-4 shadow-lg">
+                          <div
+                            className="rounded-2xl p-3 sm:p-4"
+                            style={cardBase}
+                          >
                             <GraficoSaquePorSet series={seriesSaqueJugadores} />
                           </div>
 
                           {!esComparacionArmador && (
-                            <div className="card rounded-2xl border border-white/10 p-3 sm:p-4 shadow-lg">
+                            <div
+                              className="rounded-2xl p-3 sm:p-4"
+                              style={cardBase}
+                            >
                               <GraficoRecepcionPorSet
                                 series={seriesRecepcionJugadores}
                               />
@@ -1594,7 +1789,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                           )}
 
                           {esComparacionArmador && (
-                            <div className="card rounded-2xl border border-white/10 p-3 sm:p-4 shadow-lg">
+                            <div
+                              className="rounded-2xl p-3 sm:p-4"
+                              style={cardBase}
+                            >
                               <GraficoArmadosPorSet
                                 series={seriesArmadosJugadores}
                               />
@@ -1602,9 +1800,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                           )}
 
                           <div
-                            className={`card rounded-2xl border border-white/10 p-3 sm:p-4 shadow-lg ${
+                            className={`rounded-2xl p-3 sm:p-4 ${
                               esComparacionArmador ? "" : "md:col-span-2"
                             }`}
+                            style={cardBase}
                           >
                             <GraficoBloqueoPorSet
                               series={seriesBloqueoJugadores}
@@ -1615,7 +1814,13 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                         <div className="mt-6 overflow-x-auto">
                           <table className="w-full text-sm min-w-[500px]">
                             <thead>
-                              <tr className="text-left text-slate-500 border-b border-white/10">
+                              <tr
+                                className="text-left"
+                                style={{
+                                  color: "var(--sx-text-secondary)",
+                                  borderBottom: "1px solid var(--sx-border)",
+                                }}
+                              >
                                 <th className="py-2 px-3">Jugador</th>
                                 <th className="py-2 px-3 text-right">Acciones</th>
                                 <th className="py-2 px-3 text-right">Puntos</th>
@@ -1629,33 +1834,36 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                                 .map((s) => (
                                   <tr
                                     key={s.id}
-                                    className="border-b border-white/5"
+                                    style={{
+                                      borderBottom:
+                                        "1px solid rgba(255,255,255,0.04)",
+                                    }}
                                   >
                                     <td className="py-2 px-3 font-medium">
                                       <span
                                         className="inline-block w-3 h-3 rounded-full mr-2 align-middle"
                                         style={{ backgroundColor: s.color }}
                                       />
-                                      <span className="text-slate-200">
+                                      <span className="text-white">
                                         {s.nombre}
                                       </span>
                                     </td>
-                                    <td className="py-2 px-3 text-right text-slate-300 font-mono">
+                                    <td className="py-2 px-3 text-right text-slate-300 font-mono tabular-nums">
                                       {s.est!.totalAcciones}
                                     </td>
-                                    <td className="py-2 px-3 text-right text-emerald-400 font-mono">
+                                    <td className="py-2 px-3 text-right text-emerald-400 font-mono tabular-nums">
                                       {s.est!.totalPuntos}
                                     </td>
-                                    <td className="py-2 px-3 text-right text-rose-400 font-mono">
+                                    <td className="py-2 px-3 text-right text-rose-400 font-mono tabular-nums">
                                       {s.est!.totalErrores}
                                     </td>
                                     <td
-                                      className={`py-2 px-3 text-right font-semibold ${
+                                      className={`py-2 px-3 text-right font-semibold tabular-nums ${
                                         s.est!.saldoTotal > 0
-                                          ? "text-green-700"
+                                          ? "text-emerald-400"
                                           : s.est!.saldoTotal < 0
-                                          ? "text-red-700"
-                                          : "text-slate-600"
+                                          ? "text-rose-400"
+                                          : "text-slate-400"
                                       }`}
                                     >
                                       {s.est!.saldoTotal > 0 ? "+" : ""}
@@ -1668,9 +1876,15 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                         </div>
                       </div>
                     ) : (
-                      <div className="card rounded-2xl border border-white/10 shadow-xl p-8 sm:p-12 text-center">
+                      <div
+                        className="rounded-2xl p-8 sm:p-12 text-center"
+                        style={cardBase}
+                      >
                         <p className="text-4xl mb-3">👆</p>
-                        <p className="text-slate-600 font-medium">
+                        <p
+                          className="font-medium"
+                          style={{ color: "var(--sx-text-primary)" }}
+                        >
                           Elegí jugadores arriba para ver la comparación
                         </p>
                       </div>
@@ -1679,7 +1893,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 )}
 
                 {modoDetalle === "crudas" && (
-                  <div className="card rounded-2xl border border-white/10 shadow-xl p-3 sm:p-6">
+                  <div
+                    className="rounded-2xl p-3 sm:p-6"
+                    style={cardBase}
+                  >
                     <TablaEstadisticasCrudas
                       acciones={accionesDelPartido}
                       jugadoresIds={idsJugadores}
@@ -1699,20 +1916,50 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 {modoDetalle === "analisis" && (
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
-                      <div className="card rounded-2xl border border-white/10 p-3 sm:p-4 text-center">
-                        <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Acciones</p>
+                      <div
+                        className="rounded-2xl p-3 sm:p-4 text-center"
+                        style={cardBase}
+                      >
+                        <p
+                          className="text-xs uppercase tracking-wider font-semibold"
+                          style={{ color: "var(--sx-text-secondary)" }}
+                        >
+                          Acciones
+                        </p>
                         <p className="text-xl sm:text-2xl font-black text-white">
                           {statsPartido.totales.totalAcciones}
                         </p>
                       </div>
-                      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 sm:p-4 text-center">
-                        <p className="text-xs text-emerald-400 uppercase tracking-wider font-semibold">Puntos</p>
+                      <div
+                        className="rounded-2xl p-3 sm:p-4 text-center"
+                        style={{
+                          background: "rgba(16,185,129,0.1)",
+                          border: "1px solid rgba(16,185,129,0.3)",
+                        }}
+                      >
+                        <p
+                          className="text-xs uppercase tracking-wider font-semibold"
+                          style={{ color: "#34D399" }}
+                        >
+                          Puntos
+                        </p>
                         <p className="text-xl sm:text-2xl font-black text-emerald-400">
                           {statsPartido.totales.totalPuntos}
                         </p>
                       </div>
-                      <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3 sm:p-4 text-center">
-                        <p className="text-xs text-rose-400 uppercase tracking-wider font-semibold">Errores</p>
+                      <div
+                        className="rounded-2xl p-3 sm:p-4 text-center"
+                        style={{
+                          background: "rgba(229,62,77,0.1)",
+                          border: "1px solid rgba(229,62,77,0.3)",
+                        }}
+                      >
+                        <p
+                          className="text-xs uppercase tracking-wider font-semibold"
+                          style={{ color: "#F87171" }}
+                        >
+                          Errores
+                        </p>
                         <p className="text-xl sm:text-2xl font-black text-rose-400">
                           {statsPartido.totales.totalErrores}
                         </p>
@@ -1720,7 +1967,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
-                      <div className="card rounded-2xl border border-white/10 shadow-xl p-2 col-span-1">
+                      <div
+                        className="rounded-2xl p-2 col-span-1"
+                        style={cardBase}
+                      >
                         <RadarEquipo equipo={statsPartido.totales} />
                       </div>
                       {FUNDAMENTOS_BARRAS.map((f) => (
@@ -1733,12 +1983,12 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                      <div className="card rounded-2xl border border-white/10 shadow-xl p-3 sm:p-5">
+                      <div className="rounded-2xl p-3 sm:p-5" style={cardBase}>
                         <GraficoRecepcionEquipoPorSet
                           promedios={promediosRecepcionEquipo}
                         />
                       </div>
-                      <div className="card rounded-2xl border border-white/10 shadow-xl p-3 sm:p-5">
+                      <div className="rounded-2xl p-3 sm:p-5" style={cardBase}>
                         <GraficoTortaRival
                           erroresRivales={datosRivalPartido.errores}
                           buenasRivales={datosRivalPartido.buenas}
@@ -1756,20 +2006,39 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                       statsEquipoTotales={statsPartido.totales}
                     />
 
-                    <div className="card rounded-2xl border border-white/10 shadow-xl p-3 sm:p-5 overflow-x-auto">
-                      <h4 className="font-semibold text-slate-200 mb-3">
+                    <div
+                      className="rounded-2xl p-3 sm:p-5 overflow-x-auto"
+                      style={cardBase}
+                    >
+                      <h4 className="font-semibold text-white mb-3">
                         Por fundamento (equipo)
                       </h4>
-                      <table className="w-full text-sm min-w-[600px]">
+                      <table className="w-full text-sm min-w-[600px] border-collapse">
                         <thead>
-                          <tr className="border-b border-white/10 text-left text-slate-500">
-                            <th className="py-2 px-3">Fundamento</th>
-                            <th className="py-2 px-3 text-right">Total</th>
-                            <th className="py-2 px-3 text-right">Pos</th>
-                            <th className="py-2 px-3 text-right">Neg</th>
-                            <th className="py-2 px-3 text-right">Puntos</th>
-                            <th className="py-2 px-3 text-right">Errores</th>
-                            <th className="py-2 px-3 text-right">Saldo</th>
+                          <tr
+                            className="text-left text-[11px] font-bold uppercase tracking-wider"
+                            style={{
+                              color: "var(--sx-text-secondary)",
+                              borderBottom: "1px solid rgba(255,255,255,0.08)",
+                            }}
+                          >
+                            <th className="py-2.5 px-3">Fundamento</th>
+                            <th className="py-2.5 px-3 text-right">Total</th>
+                            <th
+                              className="py-2.5 px-3 text-right"
+                              style={{ color: "#34D399" }}
+                            >
+                              Pos
+                            </th>
+                            <th
+                              className="py-2.5 px-3 text-right"
+                              style={{ color: "#F87171" }}
+                            >
+                              Neg
+                            </th>
+                            <th className="py-2.5 px-3 text-right">Puntos</th>
+                            <th className="py-2.5 px-3 text-right">Errores</th>
+                            <th className="py-2.5 px-3 text-right">Saldo</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1777,32 +2046,44 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                             const e = statsPartido.totales.porFundamento[f];
                             if (!e || e.total === 0) return null;
                             return (
-                              <tr key={f} className="border-b border-white/5">
-                                <td className="py-2 px-3 font-medium text-slate-700">
+                              <tr
+                                key={f}
+                                style={{
+                                  borderBottom:
+                                    "1px solid rgba(255,255,255,0.04)",
+                                }}
+                              >
+                                <td className="py-2.5 px-3 font-bold text-white">
                                   {NOMBRES[f]}
                                 </td>
-                                <td className="py-2 px-3 text-right text-slate-300 font-mono">
+                                <td className="py-2.5 px-3 text-right text-slate-200 font-mono tabular-nums">
                                   {e.total}
                                 </td>
-                                <td className="py-2 px-3 text-right text-emerald-400 font-mono">
+                                <td
+                                  className="py-2.5 px-3 text-right font-mono tabular-nums font-bold"
+                                  style={{ color: "#34D399" }}
+                                >
                                   {e.positivos}
                                 </td>
-                                <td className="py-2 px-3 text-right text-rose-400 font-mono">
+                                <td
+                                  className="py-2.5 px-3 text-right font-mono tabular-nums font-bold"
+                                  style={{ color: "#F87171" }}
+                                >
                                   {e.negativos}
                                 </td>
-                                <td className="py-2 px-3 text-right text-slate-300 font-mono">
+                                <td className="py-2.5 px-3 text-right text-slate-200 font-mono tabular-nums">
                                   {e.puntos}
                                 </td>
-                                <td className="py-2 px-3 text-right text-slate-300 font-mono">
+                                <td className="py-2.5 px-3 text-right text-slate-200 font-mono tabular-nums">
                                   {e.errores}
                                 </td>
                                 <td
-                                  className={`py-2 px-3 text-right font-semibold ${
+                                  className={`py-2.5 px-3 text-right font-black tabular-nums ${
                                     e.saldo > 0
-                                      ? "text-green-700"
+                                      ? "text-emerald-400"
                                       : e.saldo < 0
-                                      ? "text-red-700"
-                                      : "text-slate-600"
+                                      ? "text-rose-400"
+                                      : "text-slate-400"
                                   }`}
                                 >
                                   {e.saldo > 0 ? "+" : ""}
@@ -1816,7 +2097,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     </div>
 
                     {crudasEnPDF && (
-                      <div className="card rounded-2xl border border-white/10 shadow-xl p-3 sm:p-6">
+                      <div
+                        className="rounded-2xl p-3 sm:p-6"
+                        style={cardBase}
+                      >
                         <TablaEstadisticasCrudas
                           acciones={accionesDelPartido}
                           jugadoresIds={idsJugadores}

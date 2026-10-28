@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import {
   calcularEstadisticasJugador,
   calcularPromedioPonderadoPorSet,
@@ -47,6 +47,14 @@ const NOMBRES_F: Record<string, string> = {
   defensa: "Defensa",
 };
 
+const cardBase: React.CSSProperties = {
+  background: "var(--sx-surface-1)",
+  border: "1px solid var(--sx-border)",
+  boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+};
+
+const borderSuave = "1px solid rgba(255,255,255,0.04)";
+
 export default function TablaJugadoresPorSet({
   jugadoresIds,
   nombresJugadores,
@@ -54,9 +62,6 @@ export default function TablaJugadoresPorSet({
   armadores,
   statsEquipoTotales,
 }: Props) {
-  // Antes: un solo jugador expandido a la vez.
-  // Ahora: Set de jugadores expandidos, se pueden abrir varios a la vez
-  // (necesario para el PDF, que abre todo en cascada).
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
 
   const toggleExpandido = (id: string) => {
@@ -71,28 +76,44 @@ export default function TablaJugadoresPorSet({
   const nombreDe = (id: string) => nombresJugadores[id] ?? "?";
 
   return (
-    <div className="card rounded-2xl border border-white/10 shadow-xl overflow-hidden">
-      <div className="p-5 border-b border-slate-200">
-        <h4 className="font-semibold text-slate-800">
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={cardBase}
+    >
+      <div
+        className="p-5"
+        style={{ borderBottom: "1px solid var(--sx-border)" }}
+      >
+        <h4 className="font-semibold text-white">
           Estadísticas por jugador
         </h4>
-        <p className="text-xs text-slate-500 mt-1">
+        <p
+          className="text-xs mt-1"
+          style={{ color: "var(--sx-text-secondary)" }}
+        >
           Click en &quot;Ver detalle&quot; para ver el análisis completo del
           jugador en este partido
         </p>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50">
-            <tr className="text-left text-slate-500">
-              <th className="py-2 px-3">Jugador</th>
-              <th className="py-2 px-3 text-right">Acc</th>
-              <th className="py-2 px-3 text-right">Pts</th>
-              <th className="py-2 px-3 text-right">Err</th>
-              <th className="py-2 px-3 text-right">Saldo</th>
-              <th className="py-2 px-3 text-right">S.Def</th>
-              <th className="py-2 px-3 text-right">Val.Med</th>
-              <th className="py-2 px-3 text-right"></th>
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr
+              className="text-left text-[11px] font-bold uppercase tracking-wider"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                color: "var(--sx-text-secondary)",
+                borderBottom: "1px solid var(--sx-border)",
+              }}
+            >
+              <th className="py-2.5 px-3">Jugador</th>
+              <th className="py-2.5 px-3 text-right">Acc</th>
+              <th className="py-2.5 px-3 text-right">Pts</th>
+              <th className="py-2.5 px-3 text-right">Err</th>
+              <th className="py-2.5 px-3 text-right">Saldo</th>
+              <th className="py-2.5 px-3 text-right">S.Def</th>
+              <th className="py-2.5 px-3 text-right">Val.Med</th>
+              <th className="py-2.5 px-3 text-right"></th>
             </tr>
           </thead>
           <tbody>
@@ -104,68 +125,85 @@ export default function TablaJugadoresPorSet({
               const abierto = expandidos.has(id);
 
               return (
-                <>
+                <React.Fragment key={id}>
                   <tr
-                    key={id}
-                    className="border-b border-slate-100 hover:bg-slate-50"
+                    className="hover:bg-white/[0.03] transition-colors"
+                    style={{ borderBottom: borderSuave }}
                   >
-                    <td className="py-2 px-3 font-medium text-slate-700">
+                    <td className="py-2.5 px-3 font-bold text-white">
                       {nombreDe(id)}
                       {esArm && (
-                        <span className="ml-2 text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
+                        <span
+                          className="ml-2 text-[10px] px-2 py-0.5 rounded-full font-medium"
+                          style={{
+                            background: "rgba(124,58,237,0.2)",
+                            color: "#C4B5FD",
+                            border: "1px solid rgba(124,58,237,0.4)",
+                          }}
+                        >
                           Armador
                         </span>
                       )}
                     </td>
-                    <td className="py-2 px-3 text-right text-slate-600">
+                    <td className="py-2.5 px-3 text-right text-slate-200 font-mono tabular-nums">
                       {est.totalAcciones}
                     </td>
-                    <td className="py-2 px-3 text-right text-green-700">
+                    <td
+                      className="py-2.5 px-3 text-right font-mono tabular-nums font-bold"
+                      style={{ color: "#34D399" }}
+                    >
                       {est.totalPuntos}
                     </td>
-                    <td className="py-2 px-3 text-right text-red-700">
+                    <td
+                      className="py-2.5 px-3 text-right font-mono tabular-nums font-bold"
+                      style={{ color: "#F87171" }}
+                    >
                       {est.totalErrores}
                     </td>
                     <td
-                      className={`py-2 px-3 text-right font-semibold ${
+                      className={`py-2.5 px-3 text-right tabular-nums font-black ${
                         est.saldoTotal > 0
-                          ? "text-green-700"
+                          ? "text-emerald-400"
                           : est.saldoTotal < 0
-                          ? "text-red-700"
-                          : "text-slate-600"
+                          ? "text-rose-400"
+                          : "text-slate-400"
                       }`}
                     >
                       {est.saldoTotal > 0 ? "+" : ""}
                       {est.saldoTotal}
                     </td>
                     <td
-                      className={`py-2 px-3 text-right font-semibold ${
+                      className={`py-2.5 px-3 text-right tabular-nums font-semibold ${
                         est.saldoDefensivo > 0
-                          ? "text-green-700"
+                          ? "text-emerald-400"
                           : est.saldoDefensivo < 0
-                          ? "text-red-700"
-                          : "text-slate-600"
+                          ? "text-rose-400"
+                          : "text-slate-400"
                       }`}
                     >
                       {est.saldoDefensivo > 0 ? "+" : ""}
                       {est.saldoDefensivo}
                     </td>
                     <td
-                      className={`py-2 px-3 text-right font-semibold ${
+                      className={`py-2.5 px-3 text-right tabular-nums font-semibold ${
                         est.valoracionMediaNormalizada > 0
-                          ? "text-green-700"
+                          ? "text-emerald-400"
                           : est.valoracionMediaNormalizada < 0
-                          ? "text-red-700"
-                          : "text-slate-600"
+                          ? "text-rose-400"
+                          : "text-slate-400"
                       }`}
                     >
                       {est.valoracionMediaNormalizada > 0 ? "+" : ""}
                       {est.valoracionMediaNormalizada.toFixed(2)}
                     </td>
-                    <td className="py-2 px-3 text-right">
+                    <td className="py-2.5 px-3 text-right">
                       <button
                         onClick={() => toggleExpandido(id)}
-                        className="px-3 py-1 text-xs bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg transition"
+                        className={`px-3 py-1 text-xs font-semibold rounded-lg transition border ${
+                          abierto
+                            ? "bg-emerald-500 text-white border-emerald-500"
+                            : "bg-white/5 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/10"
+                        }`}
                         data-pdf-acordeon
                         data-pdf-cerrado={abierto ? undefined : "true"}
                       >
@@ -175,7 +213,12 @@ export default function TablaJugadoresPorSet({
                   </tr>
 
                   {abierto && (
-                    <tr key={`${id}-detalle`} className="bg-slate-50">
+                    <tr
+                      style={{
+                        background: "rgba(255,255,255,0.02)",
+                        borderBottom: borderSuave,
+                      }}
+                    >
                       <td colSpan={8} className="p-4">
                         <DetalleJugador
                           jugadorId={id}
@@ -188,7 +231,7 @@ export default function TablaJugadoresPorSet({
                       </td>
                     </tr>
                   )}
-                </>
+                </React.Fragment>
               );
             })}
           </tbody>
@@ -305,7 +348,12 @@ function DetalleJugador({
   return (
     <div className="space-y-4">
       <div className="flex gap-2 flex-wrap" data-pdf-ignorar>
-        <span className="text-sm text-slate-600 self-center mr-2">Ver:</span>
+        <span
+          className="text-xs uppercase tracking-wider font-semibold self-center mr-2"
+          style={{ color: "var(--sx-text-secondary)" }}
+        >
+          Ver:
+        </span>
         {(["todos", 1, 2, 3, 4, 5] as const).map((s) => (
           <button
             key={String(s)}
@@ -322,45 +370,69 @@ function DetalleJugador({
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <div className="card p-3 rounded-xl border border-white/10 text-center shadow-sm">
-          <p className="text-xs text-slate-500 uppercase">Saldo</p>
+        <div
+          className="p-3 rounded-xl text-center"
+          style={cardBase}
+        >
           <p
-            className={`text-xl font-bold ${
+            className="text-[10px] uppercase tracking-wider font-semibold"
+            style={{ color: "var(--sx-text-secondary)" }}
+          >
+            Saldo
+          </p>
+          <p
+            className={`text-xl font-black tabular-nums ${
               est.saldoTotal > 0
-                ? "text-green-700"
+                ? "text-emerald-400"
                 : est.saldoTotal < 0
-                ? "text-red-700"
-                : "text-slate-700"
+                ? "text-rose-400"
+                : "text-slate-300"
             }`}
           >
             {est.saldoTotal > 0 ? "+" : ""}
             {est.saldoTotal}
           </p>
         </div>
-        <div className="card p-3 rounded-xl border border-white/10 text-center shadow-sm">
-          <p className="text-xs text-slate-500 uppercase">Saldo Defensivo</p>
+        <div
+          className="p-3 rounded-xl text-center"
+          style={cardBase}
+        >
           <p
-            className={`text-xl font-bold ${
+            className="text-[10px] uppercase tracking-wider font-semibold"
+            style={{ color: "var(--sx-text-secondary)" }}
+          >
+            Saldo Defensivo
+          </p>
+          <p
+            className={`text-xl font-black tabular-nums ${
               est.saldoDefensivo > 0
-                ? "text-green-700"
+                ? "text-emerald-400"
                 : est.saldoDefensivo < 0
-                ? "text-red-700"
-                : "text-slate-700"
+                ? "text-rose-400"
+                : "text-slate-300"
             }`}
           >
             {est.saldoDefensivo > 0 ? "+" : ""}
             {est.saldoDefensivo}
           </p>
         </div>
-        <div className="card p-3 rounded-xl border border-white/10 text-center shadow-sm">
-          <p className="text-xs text-slate-500 uppercase">Valoración Media</p>
+        <div
+          className="p-3 rounded-xl text-center"
+          style={cardBase}
+        >
           <p
-            className={`text-xl font-bold ${
+            className="text-[10px] uppercase tracking-wider font-semibold"
+            style={{ color: "var(--sx-text-secondary)" }}
+          >
+            Valoración Media
+          </p>
+          <p
+            className={`text-xl font-black tabular-nums ${
               est.valoracionMediaNormalizada > 0
-                ? "text-green-700"
+                ? "text-emerald-400"
                 : est.valoracionMediaNormalizada < 0
-                ? "text-red-700"
-                : "text-slate-700"
+                ? "text-rose-400"
+                : "text-slate-300"
             }`}
           >
             {est.valoracionMediaNormalizada > 0 ? "+" : ""}
@@ -368,39 +440,92 @@ function DetalleJugador({
           </p>
         </div>
 
-        <div className="card p-3 rounded-xl border border-white/10 text-center shadow-sm">
-          <p className="text-xs text-slate-500 uppercase">Acciones</p>
-          <p className="text-xl font-bold text-slate-800">
+        <div
+          className="p-3 rounded-xl text-center"
+          style={cardBase}
+        >
+          <p
+            className="text-[10px] uppercase tracking-wider font-semibold"
+            style={{ color: "var(--sx-text-secondary)" }}
+          >
+            Acciones
+          </p>
+          <p className="text-xl font-black text-white tabular-nums">
             {est.totalAcciones}
           </p>
         </div>
-        <div className="p-3 bg-emerald-950/30 border border-emerald-500/30 rounded-xl text-center">
-          <p className="text-xs text-green-700 uppercase">Puntos</p>
-          <p className="text-xl font-bold text-green-800">
+        <div
+          className="p-3 rounded-xl text-center"
+          style={{
+            background: "rgba(16,185,129,0.1)",
+            border: "1px solid rgba(16,185,129,0.3)",
+          }}
+        >
+          <p
+            className="text-[10px] uppercase tracking-wider font-semibold"
+            style={{ color: "#34D399" }}
+          >
+            Puntos
+          </p>
+          <p className="text-xl font-black text-emerald-400 tabular-nums">
             {est.totalPuntos}
           </p>
         </div>
-        <div className="p-3 bg-rose-950/30 border border-rose-500/30 rounded-xl text-center">
-          <p className="text-xs text-red-700 uppercase">Errores</p>
-          <p className="text-xl font-bold text-red-800">
+        <div
+          className="p-3 rounded-xl text-center"
+          style={{
+            background: "rgba(229,62,77,0.1)",
+            border: "1px solid rgba(229,62,77,0.3)",
+          }}
+        >
+          <p
+            className="text-[10px] uppercase tracking-wider font-semibold"
+            style={{ color: "#F87171" }}
+          >
+            Errores
+          </p>
+          <p className="text-xl font-black text-rose-400 tabular-nums">
             {est.totalErrores}
           </p>
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-100">
-            <tr className="text-left text-slate-500">
-              <th className="py-2 px-3">Fundamento</th>
-              <th className="py-2 px-3 text-right">Total</th>
-              <th className="py-2 px-3 text-right">Pos</th>
-              <th className="py-2 px-3 text-right">Neg</th>
-              <th className="py-2 px-3 text-right">Puntos</th>
-              <th className="py-2 px-3 text-right">Errores</th>
-              <th className="py-2 px-3 text-right">Saldo</th>
-              <th className="py-2 px-3 text-right">Val.Pond</th>
-              <th className="py-2 px-3 text-right"></th>
+      <div
+        className="overflow-x-auto rounded-lg"
+        style={{
+          background: "var(--sx-surface-1)",
+          border: "1px solid var(--sx-border)",
+        }}
+      >
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr
+              className="text-left text-[11px] font-bold uppercase tracking-wider"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                color: "var(--sx-text-secondary)",
+                borderBottom: "1px solid var(--sx-border)",
+              }}
+            >
+              <th className="py-2.5 px-3">Fundamento</th>
+              <th className="py-2.5 px-3 text-right">Total</th>
+              <th
+                className="py-2.5 px-3 text-right"
+                style={{ color: "#34D399" }}
+              >
+                Pos
+              </th>
+              <th
+                className="py-2.5 px-3 text-right"
+                style={{ color: "#F87171" }}
+              >
+                Neg
+              </th>
+              <th className="py-2.5 px-3 text-right">Puntos</th>
+              <th className="py-2.5 px-3 text-right">Errores</th>
+              <th className="py-2.5 px-3 text-right">Saldo</th>
+              <th className="py-2.5 px-3 text-right">Val.Pond</th>
+              <th className="py-2.5 px-3 text-right"></th>
             </tr>
           </thead>
           <tbody>
@@ -413,54 +538,67 @@ function DetalleJugador({
               const valPond = est.valoracionPonderadaPorFundamento[f] ?? 0;
 
               return (
-                <>
-                  <tr key={f} className="border-b border-slate-100">
-                    <td className="py-2 px-3 font-medium text-slate-700">
+                <React.Fragment key={f}>
+                  <tr
+                    className="hover:bg-white/[0.03] transition-colors"
+                    style={{ borderBottom: borderSuave }}
+                  >
+                    <td className="py-2.5 px-3 font-bold text-white">
                       {NOMBRES_F[f]}
                     </td>
-                    <td className="py-2 px-3 text-right text-slate-600">
+                    <td className="py-2.5 px-3 text-right text-slate-200 font-mono tabular-nums">
                       {e.total}
                     </td>
-                    <td className="py-2 px-3 text-right text-green-700">
+                    <td
+                      className="py-2.5 px-3 text-right font-mono tabular-nums font-bold"
+                      style={{ color: "#34D399" }}
+                    >
                       {e.positivos}
                     </td>
-                    <td className="py-2 px-3 text-right text-red-700">
+                    <td
+                      className="py-2.5 px-3 text-right font-mono tabular-nums font-bold"
+                      style={{ color: "#F87171" }}
+                    >
                       {e.negativos}
                     </td>
-                    <td className="py-2 px-3 text-right text-slate-600">
+                    <td className="py-2.5 px-3 text-right text-slate-200 font-mono tabular-nums">
                       {e.puntos}
                     </td>
-                    <td className="py-2 px-3 text-right text-slate-600">
+                    <td className="py-2.5 px-3 text-right text-slate-200 font-mono tabular-nums">
                       {e.errores}
                     </td>
                     <td
-                      className={`py-2 px-3 text-right font-semibold ${
+                      className={`py-2.5 px-3 text-right tabular-nums font-black ${
                         e.saldo > 0
-                          ? "text-green-700"
+                          ? "text-emerald-400"
                           : e.saldo < 0
-                          ? "text-red-700"
-                          : "text-slate-600"
+                          ? "text-rose-400"
+                          : "text-slate-400"
                       }`}
                     >
                       {e.saldo > 0 ? "+" : ""}
                       {e.saldo}
                     </td>
                     <td
-                      className={`py-2 px-3 text-right font-semibold ${
+                      className={`py-2.5 px-3 text-right tabular-nums font-black ${
                         valPond > 0
-                          ? "text-green-700"
+                          ? "text-emerald-400"
                           : valPond < 0
-                          ? "text-red-700"
-                          : "text-slate-600"
+                          ? "text-rose-400"
+                          : "text-slate-400"
                       }`}
                     >
                       {valPond > 0 ? "+" : ""}
                       {valPond.toFixed(2)}
                     </td>
-                    <td className="py-2 px-3 text-right">
+                    <td className="py-2.5 px-3 text-right">
                       <button
                         onClick={() => toggleValoraciones(f)}
-                        className="px-2 py-1 text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 rounded transition"
+                        className={`px-2 py-1 text-[10px] font-semibold rounded transition border ${
+                          abierto
+                            ? "bg-slate-500 text-white border-slate-500"
+                            : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10"
+                        }`}
                         data-pdf-acordeon
                         data-pdf-cerrado={abierto ? undefined : "true"}
                       >
@@ -469,23 +607,37 @@ function DetalleJugador({
                     </td>
                   </tr>
                   {abierto && (
-                    <tr key={`${f}-valoraciones`} className="bg-slate-100">
+                    <tr
+                      style={{
+                        background: "rgba(255,255,255,0.03)",
+                        borderBottom: borderSuave,
+                      }}
+                    >
                       <td colSpan={9} className="p-3">
                         <div className="flex gap-2 flex-wrap">
                           {detalle.length === 0 ? (
-                            <p className="text-xs text-slate-500">
+                            <p
+                              className="text-xs"
+                              style={{ color: "var(--sx-text-muted)" }}
+                            >
                               Sin datos
                             </p>
                           ) : (
                             detalle.map((v) => (
                               <div
                                 key={v.key}
-                                className="px-3 py-1.5 card border border-white/10 rounded-lg text-xs"
+                                className="px-3 py-1.5 rounded-lg text-xs"
+                                style={{
+                                  background: "rgba(255,255,255,0.04)",
+                                  border: "1px solid var(--sx-border-bright)",
+                                }}
                               >
-                                <span className="text-slate-500">
+                                <span
+                                  style={{ color: "var(--sx-text-secondary)" }}
+                                >
                                   {ETIQUETAS_VALORACION[v.key] ?? v.key}:
                                 </span>{" "}
-                                <span className="font-semibold text-slate-800">
+                                <span className="font-bold text-white">
                                   {v.cantidad}
                                 </span>
                               </div>
@@ -495,14 +647,17 @@ function DetalleJugador({
                       </td>
                     </tr>
                   )}
-                </>
+                </React.Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
 
-      <div className="card border border-white/10 rounded-xl p-4">
+      <div
+        className="rounded-xl p-4"
+        style={cardBase}
+      >
         <h5 className="font-semibold text-white mb-3 text-sm">
           Radar en este partido
         </h5>
@@ -515,13 +670,13 @@ function DetalleJugador({
 
       {!esArmador && (
         <div className="grid grid-cols-3 gap-3">
-          <div className="p-3 card border border-white/10 rounded-xl">
+          <div className="p-3 rounded-xl" style={cardBase}>
             <GraficoSaquePorSet promedios={promediosSaque} />
           </div>
-          <div className="p-3 card border border-white/10 rounded-xl">
+          <div className="p-3 rounded-xl" style={cardBase}>
             <GraficoRecepcionPorSet promedios={promediosRecepcion} />
           </div>
-          <div className="p-3 card border border-white/10 rounded-xl">
+          <div className="p-3 rounded-xl" style={cardBase}>
             <GraficoBloqueoPorSet promedios={promediosBloqueo} />
           </div>
         </div>
@@ -529,17 +684,17 @@ function DetalleJugador({
 
       {esArmador && (
         <div className="grid grid-cols-3 gap-3">
-          <div className="p-3 card border border-white/10 rounded-xl">
+          <div className="p-3 rounded-xl" style={cardBase}>
             <GraficoSaquePorSet promedios={promediosSaque} />
           </div>
-          <div className="p-3 card border border-white/10 rounded-xl">
+          <div className="p-3 rounded-xl" style={cardBase}>
             <GraficoBloqueoPorSet promedios={promediosBloqueo} />
           </div>
-          <div className="p-3 card border border-white/10 rounded-xl">
+          <div className="p-3 rounded-xl" style={cardBase}>
             <GraficoArmadosPorSet promedios={promediosArmados} />
           </div>
           {est.armador && (
-            <div className="col-span-3 p-3 card border border-white/10 rounded-xl">
+            <div className="col-span-3 p-3 rounded-xl" style={cardBase}>
               <MapaCalorTendencia
                 distribucion={est.armador.distribucionTendencia}
                 acciones={accionesJugadorFiltradas}

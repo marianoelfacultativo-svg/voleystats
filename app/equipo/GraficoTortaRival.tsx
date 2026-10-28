@@ -27,16 +27,24 @@ export default function GraficoTortaRival({
 
   return (
     <div>
-      <h4 className="font-semibold text-slate-800 mb-3">Puntos del rival</h4>
+      <h4 className="font-semibold text-white mb-3">Puntos del rival</h4>
       {total === 0 ? (
-        <p className="text-sm text-slate-500 text-center py-8">
+        <p
+          className="text-sm text-center py-8"
+          style={{ color: "var(--sx-text-secondary)" }}
+        >
           No se cargaron datos del rival en este partido
         </p>
       ) : (
         <>
           <div
-            className="bg-white border border-slate-200 rounded-lg p-2"
-            style={{ height: "200px", width: "100%" }}
+            className="rounded-xl p-2"
+            style={{
+              background: "var(--sx-surface-1)",
+              border: "1px solid var(--sx-border)",
+              height: "200px",
+              width: "100%",
+            }}
           >
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -48,6 +56,8 @@ export default function GraficoTortaRival({
                   outerRadius={65}
                   paddingAngle={2}
                   dataKey="value"
+                  stroke="#0F1D35"
+                  strokeWidth={2}
                 >
                   {datos.map((d, i) => (
                     <Cell key={i} fill={d.color} />
@@ -60,14 +70,27 @@ export default function GraficoTortaRival({
                     )}%)`,
                     name,
                   ]}
-                  labelStyle={{ fontSize: 12 }}
-                  contentStyle={{ fontSize: 12 }}
+                  labelStyle={{ color: "#94a3b8", fontSize: 12 }}
+                  contentStyle={{
+                    backgroundColor: "#0F1D35",
+                    borderColor: "rgba(255,255,255,0.15)",
+                    borderRadius: "8px",
+                    color: "#F0F4FF",
+                    fontSize: 12,
+                  }}
+                  itemStyle={{ color: "#F0F4FF" }}
                 />
-                <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" />
+                <Legend
+                  wrapperStyle={{ fontSize: 11, color: "#94a3b8" }}
+                  iconType="circle"
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
-          <p className="text-xs text-slate-400 mt-2">
+          <p
+            className="text-xs mt-2"
+            style={{ color: "var(--sx-text-secondary)" }}
+          >
             Total: {total} puntos del rival
           </p>
         </>

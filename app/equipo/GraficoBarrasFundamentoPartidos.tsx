@@ -138,7 +138,7 @@ const LABEL_NEG: Record<string, string> = {
 };
 
 const COLOR_POS = "#16a34a";
-const COLOR_NEU = "#94a3b8";
+const COLOR_NEU = "#64748b";
 const COLOR_NEG = "#dc2626";
 
 // ============================================================
@@ -177,14 +177,29 @@ export default function GraficoBarrasFundamentoPartidos({
   ];
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-2">
-      <div className="flex items-baseline justify-between mb-1">
-        <h5 className="font-semibold text-slate-800 text-xs">{titulo}</h5>
-        <span className="text-[9px] text-slate-400">{total} acc.</span>
+    <div
+      className="rounded-2xl p-3"
+      style={{
+        background: "var(--sx-surface-1)",
+        border: "1px solid var(--sx-border)",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+      }}
+    >
+      <div className="flex items-baseline justify-between mb-1.5">
+        <h5 className="font-bold text-white text-sm">{titulo}</h5>
+        <span
+          className="text-[10px]"
+          style={{ color: "var(--sx-text-muted)" }}
+        >
+          {total} acc.
+        </span>
       </div>
 
       {total === 0 ? (
-        <p className="text-[10px] text-slate-500 text-center py-4">
+        <p
+          className="text-xs text-center py-8"
+          style={{ color: "var(--sx-text-secondary)" }}
+        >
           Sin datos
         </p>
       ) : (
@@ -195,17 +210,24 @@ export default function GraficoBarrasFundamentoPartidos({
                 data={datos}
                 margin={{ top: 4, right: 4, left: -26, bottom: 0 }}
               >
-                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                <CartesianGrid
+                  stroke="rgba(255,255,255,0.08)"
+                  strokeDasharray="3 3"
+                />
                 <XAxis
                   dataKey="nombre"
-                  tick={{ fill: "#64748b", fontSize: 9 }}
+                  tick={{ fill: "#94a3b8", fontSize: 9 }}
+                  axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
+                  tickLine={{ stroke: "rgba(255,255,255,0.1)" }}
                 />
                 <YAxis
                   allowDecimals={false}
-                  tick={{ fill: "#64748b", fontSize: 9 }}
+                  tick={{ fill: "#94a3b8", fontSize: 9 }}
+                  axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
+                  tickLine={{ stroke: "rgba(255,255,255,0.1)" }}
                 />
                 <Tooltip
-                  cursor={{ fill: "#f8fafc" }}
+                  cursor={{ fill: "rgba(255,255,255,0.06)" }}
                   formatter={(value, _name, payload) => {
                     const p = payload?.payload;
                     const nombre =
@@ -216,8 +238,15 @@ export default function GraficoBarrasFundamentoPartidos({
                         : "Neutras";
                     return [Number(value), nombre];
                   }}
-                  labelStyle={{ fontSize: 10 }}
-                  contentStyle={{ fontSize: 10 }}
+                  labelStyle={{ color: "#94a3b8", fontSize: 10 }}
+                  contentStyle={{
+                    backgroundColor: "#0F1D35",
+                    borderColor: "rgba(255,255,255,0.15)",
+                    borderRadius: "8px",
+                    color: "#F0F4FF",
+                    fontSize: 10,
+                  }}
+                  itemStyle={{ color: "#F0F4FF" }}
                 />
                 <Bar dataKey="valor" radius={[3, 3, 0, 0]}>
                   {datos.map((d, i) => (
@@ -228,36 +257,45 @@ export default function GraficoBarrasFundamentoPartidos({
             </ResponsiveContainer>
           </div>
 
-          <div className="grid grid-cols-3 gap-1 mt-1 text-center">
+          <div className="grid grid-cols-3 gap-1 mt-2 text-center">
             <div>
-              <p className="text-[8px] text-slate-500 uppercase">
+              <p
+                className="text-[8px] uppercase font-bold tracking-wider"
+                style={{ color: "var(--sx-text-muted)" }}
+              >
                 {labelPos}
               </p>
               <p
-                className="text-xs font-bold"
-                style={{ color: COLOR_POS }}
+                className="text-sm font-black tabular-nums"
+                style={{ color: "#34D399" }}
               >
                 {positivas}
               </p>
             </div>
             <div>
-              <p className="text-[8px] text-slate-500 uppercase">
+              <p
+                className="text-[8px] uppercase font-bold tracking-wider"
+                style={{ color: "var(--sx-text-muted)" }}
+              >
                 Neutras
               </p>
               <p
-                className="text-xs font-bold"
-                style={{ color: COLOR_NEU }}
+                className="text-sm font-black tabular-nums"
+                style={{ color: "#94A3B8" }}
               >
                 {neutras}
               </p>
             </div>
             <div>
-              <p className="text-[8px] text-slate-500 uppercase">
+              <p
+                className="text-[8px] uppercase font-bold tracking-wider"
+                style={{ color: "var(--sx-text-muted)" }}
+              >
                 {labelNeg}
               </p>
               <p
-                className="text-xs font-bold"
-                style={{ color: COLOR_NEG }}
+                className="text-sm font-black tabular-nums"
+                style={{ color: "#F87171" }}
               >
                 {negativas}
               </p>

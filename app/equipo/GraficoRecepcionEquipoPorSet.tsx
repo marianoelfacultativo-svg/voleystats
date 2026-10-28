@@ -51,36 +51,58 @@ export default function GraficoRecepcionEquipoPorSet({
 
   return (
     <div>
-      <h4 className="font-semibold text-slate-800 mb-3">
+      <h4 className="font-semibold text-white mb-3">
         Recepción del equipo por set
       </h4>
       {!hayDatos ? (
-        <p className="text-sm text-slate-500 text-center py-8">
+        <p
+          className="text-sm text-center py-8"
+          style={{ color: "var(--sx-text-secondary)" }}
+        >
           No hay recepciones
         </p>
       ) : (
         <>
           <div
-            className="bg-white border border-slate-200 rounded-lg p-2"
-            style={{ height: esMultiple ? "220px" : "200px", width: "100%" }}
+            className="rounded-xl p-2"
+            style={{
+              background: "var(--sx-surface-1)",
+              border: "1px solid var(--sx-border)",
+              height: esMultiple ? "220px" : "200px",
+              width: "100%",
+            }}
           >
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={datos}
                 margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
               >
-                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                <CartesianGrid
+                  stroke="rgba(255,255,255,0.08)"
+                  strokeDasharray="3 3"
+                />
                 <XAxis
                   dataKey="set"
-                  tick={{ fill: "#64748b", fontSize: 10 }}
+                  tick={{ fill: "#94a3b8", fontSize: 10 }}
+                  axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
+                  tickLine={{ stroke: "rgba(255,255,255,0.1)" }}
                 />
                 <YAxis
                   domain={[0, 10]}
-                  tick={{ fill: "#64748b", fontSize: 10 }}
+                  tick={{ fill: "#94a3b8", fontSize: 10 }}
+                  axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
+                  tickLine={{ stroke: "rgba(255,255,255,0.1)" }}
                 />
                 <Tooltip
-                  labelStyle={{ fontSize: 12 }}
-                  contentStyle={{ fontSize: 12 }}
+                  labelStyle={{ color: "#94a3b8", fontSize: 12 }}
+                  contentStyle={{
+                    backgroundColor: "#0F1D35",
+                    borderColor: "rgba(255,255,255,0.15)",
+                    borderRadius: "8px",
+                    color: "#F0F4FF",
+                    fontSize: 12,
+                  }}
+                  itemStyle={{ color: "#F0F4FF" }}
                 />
                 {seriesFinales.map((s) => (
                   <Line
@@ -89,17 +111,29 @@ export default function GraficoRecepcionEquipoPorSet({
                     dataKey={s.id}
                     name={s.nombre}
                     stroke={s.color}
-                    strokeWidth={2}
-                    dot={{ fill: s.color, r: 4 }}
+                    strokeWidth={2.5}
+                    dot={{
+                      fill: s.color,
+                      r: 4,
+                      stroke: "#0F1D35",
+                      strokeWidth: 1.5,
+                    }}
+                    activeDot={{ r: 6 }}
                   />
                 ))}
                 {esMultiple && (
-                  <Legend wrapperStyle={{ fontSize: 11 }} iconType="line" />
+                  <Legend
+                    wrapperStyle={{ fontSize: 11, color: "#94a3b8" }}
+                    iconType="line"
+                  />
                 )}
               </LineChart>
             </ResponsiveContainer>
           </div>
-          <p className="text-xs text-slate-400 mt-2">
+          <p
+            className="text-xs mt-2"
+            style={{ color: "var(--sx-text-secondary)" }}
+          >
             Escala: 0 (Ace en contra) a 10 (2x Positiva).
           </p>
         </>

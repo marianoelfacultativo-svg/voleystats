@@ -37,10 +37,10 @@ const ETIQUETAS: Record<string, string> = {
 };
 
 const TEXTO_NIVEL: Record<NivelValoracion, string> = {
-  bajo: "#dc2626",
-  cumple: "#eab308",
-  bien: "#16a34a",
-  destaca: "#0284c7",
+  bajo: "#F87171",
+  cumple: "#FBBF24",
+  bien: "#34D399",
+  destaca: "#38BDF8",
 };
 
 // ------------------------------------------------------------
@@ -60,7 +60,6 @@ const TEXTO_NIVEL: Record<NivelValoracion, string> = {
 const REAL_MIN = -2;
 const REAL_MAX = 10;
 
-// Ticks visibles (7 valores → 6 tramos iguales).
 const TICKS_REALES = [-2, 0, 2, 4, 6, 8, 10];
 
 const FUNDAMENTOS_EQUIPO = [
@@ -98,8 +97,6 @@ export default function RadarEquipo({ equipo, series, titulo }: Props) {
     };
     for (const s of seriesFinales) {
       const real = s.equipo.valoracionPonderadaPorFundamento[f] ?? 0;
-      // Clampeamos al rango [REAL_MIN, REAL_MAX] para evitar que un
-      // valor fuera de rango deforme el radar.
       const clamped = Math.max(REAL_MIN, Math.min(REAL_MAX, real));
       row[s.id] = Number(clamped.toFixed(3));
     }
@@ -115,8 +112,8 @@ export default function RadarEquipo({ equipo, series, titulo }: Props) {
     const count = fila.count as number;
     const nivel = fila.nivel as NivelValoracion | null;
 
-    const colorNombre = nivel ? TEXTO_NIVEL[nivel] : "#475569";
-    const colorNumero = nivel ? TEXTO_NIVEL[nivel] : "#94a3b8";
+    const colorNombre = nivel ? TEXTO_NIVEL[nivel] : "#94A3B8";
+    const colorNumero = nivel ? TEXTO_NIVEL[nivel] : "#64748B";
 
     return (
       <text
@@ -124,7 +121,7 @@ export default function RadarEquipo({ equipo, series, titulo }: Props) {
         y={y}
         textAnchor={textAnchor}
         fontSize={12}
-        fontWeight={600}
+        fontWeight={700}
       >
         <tspan fill={colorNombre}>{nombre}</tspan>
         <tspan fill={colorNumero}> ({count})</tspan>
@@ -134,21 +131,24 @@ export default function RadarEquipo({ equipo, series, titulo }: Props) {
 
   return (
     <div>
-      <h4 className="font-semibold text-slate-800 mb-3">
+      <h4 className="font-semibold text-white mb-3">
         {titulo ?? "Perfil del equipo"}
       </h4>
 
       <div className="w-full" style={{ height: 380 }}>
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart data={datos} outerRadius="72%">
-            <PolarGrid stroke="#cbd5e1" gridType="polygon" />
+            <PolarGrid
+              stroke="rgba(255,255,255,0.12)"
+              gridType="polygon"
+            />
             <PolarAngleAxis dataKey="fundamento" tick={renderTick} />
             <PolarRadiusAxis
               angle={90}
               domain={[REAL_MIN, REAL_MAX]}
               ticks={TICKS_REALES as any}
               tickFormatter={(v) => String(v)}
-              tick={{ fill: "#94a3b8", fontSize: 10 }}
+              tick={{ fill: "#64748B", fontSize: 10 }}
               axisLine={false}
               tickLine={false}
             />
@@ -167,7 +167,10 @@ export default function RadarEquipo({ equipo, series, titulo }: Props) {
               />
             ))}
             {esMultiple && (
-              <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
+              <Legend
+                wrapperStyle={{ fontSize: 12, color: "#94A3B8" }}
+                iconType="circle"
+              />
             )}
           </RadarChart>
         </ResponsiveContainer>

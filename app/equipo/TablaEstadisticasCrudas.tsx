@@ -173,10 +173,17 @@ function obtenerColumnas(fund: string): Columna[] {
   }
 }
 
-function colorTipo(tipo: "pos" | "neg" | "neu"): string {
-  if (tipo === "pos") return "text-green-700";
-  if (tipo === "neg") return "text-red-700";
-  return "text-slate-500";
+function colorHeaderTipo(tipo: "pos" | "neg" | "neu"): string {
+  if (tipo === "pos") return "#34D399";
+  if (tipo === "neg") return "#F87171";
+  return "var(--sx-text-secondary)";
+}
+
+function claseValorCelda(tipo: "pos" | "neg" | "neu", valor: number): string {
+  if (valor === 0) return "text-slate-700";
+  if (tipo === "pos") return "text-emerald-400 font-semibold";
+  if (tipo === "neg") return "text-rose-400 font-semibold";
+  return "text-slate-300";
 }
 
 function zonaDeCelda(celda: string | null | undefined): number | null {
@@ -203,10 +210,8 @@ function zonaDeCelda(celda: string | null | undefined): number | null {
   }
 }
 
-const selectCls =
-  "w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:border-emerald-500";
 const labelCls =
-  "block text-[10px] font-semibold text-slate-500 uppercase mb-1 tracking-wide";
+  "block text-[10px] font-semibold uppercase mb-1 tracking-wide";
 
 // ============================================================
 // CONSTRUCCIÓN DE BLOQUES
@@ -447,15 +452,9 @@ export default function TablaEstadisticasCrudas({
 
   const accionesDetalle = useMemo(() => {
     return acciones.filter((a) => {
-      if (
-        jugadorEfectivo !== "todos" &&
-        a.jugador_id !== jugadorEfectivo
-      )
+      if (jugadorEfectivo !== "todos" && a.jugador_id !== jugadorEfectivo)
         return false;
-      if (
-        filtroFundamento !== "todos" &&
-        a.fundamento !== filtroFundamento
-      )
+      if (filtroFundamento !== "todos" && a.fundamento !== filtroFundamento)
         return false;
       return true;
     });
@@ -463,10 +462,7 @@ export default function TablaEstadisticasCrudas({
 
   const accionesResumen = useMemo(() => {
     return acciones.filter((a) => {
-      if (
-        filtroFundamento !== "todos" &&
-        a.fundamento !== filtroFundamento
-      )
+      if (filtroFundamento !== "todos" && a.fundamento !== filtroFundamento)
         return false;
       return true;
     });
@@ -496,15 +492,18 @@ export default function TablaEstadisticasCrudas({
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h4 className="font-semibold text-slate-800 mb-1">
+          <h4 className="font-semibold text-white mb-1">
             📋 Estadísticas crudas
           </h4>
           {contexto && (
-            <p className="text-[11px] text-fuchsia-700 font-medium mb-1">
+            <p
+              className="text-[11px] font-semibold mb-1"
+              style={{ color: "#C4B5FD" }}
+            >
               {contexto}
             </p>
           )}
-          <p className="text-xs text-slate-500">
+          <p className="text-xs" style={{ color: "var(--sx-text-secondary)" }}>
             Cantidad exacta de cada valoración por jugador y promedio
             crudo (sin ponderar).
           </p>
@@ -514,7 +513,7 @@ export default function TablaEstadisticasCrudas({
           className={`px-3 py-1.5 text-xs font-semibold rounded-lg border-2 transition whitespace-nowrap ${
             ampliado
               ? "bg-fuchsia-500 text-white border-fuchsia-600 hover:bg-fuchsia-600"
-              : "bg-white text-fuchsia-700 border-fuchsia-300 hover:bg-fuchsia-50"
+              : "bg-white/5 text-fuchsia-300 border-fuchsia-500/40 hover:bg-fuchsia-500/10"
           }`}
         >
           {ampliado ? "🔍 Ver resumido" : "🔍 Ver ampliado"}
@@ -522,22 +521,41 @@ export default function TablaEstadisticasCrudas({
       </div>
 
       {ampliado && (
-        <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-lg px-3 py-2 text-xs text-fuchsia-800">
+        <div
+          className="rounded-lg px-3 py-2 text-xs"
+          style={{
+            background: "rgba(124,58,237,0.12)",
+            border: "1px solid rgba(124,58,237,0.3)",
+            color: "#C4B5FD",
+          }}
+        >
           Vista ampliada: saque separado por flotado/potencia, ataque por
           remate/toque, bloqueo desglosado por dónde cae el balón, y armado
           separado por zona y por velocidad.
         </div>
       )}
 
-      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+      {/* Filtros */}
+      <div
+        className="rounded-xl p-3"
+        style={{
+          background: "var(--sx-surface-1)",
+          border: "1px solid var(--sx-border)",
+        }}
+      >
         <div className="grid grid-cols-2 gap-2">
           {!soloJugadorId && (
             <div>
-              <label className={labelCls}>Jugador</label>
+              <label
+                className={labelCls}
+                style={{ color: "var(--sx-text-secondary)" }}
+              >
+                Jugador
+              </label>
               <select
                 value={filtroJugador}
                 onChange={(e) => setFiltroJugador(e.target.value)}
-                className={selectCls}
+                className="input-dark text-xs"
               >
                 <option value="todos">Todos</option>
                 {jugadoresIds.map((id) => (
@@ -550,11 +568,16 @@ export default function TablaEstadisticasCrudas({
           )}
 
           <div>
-            <label className={labelCls}>Fundamento</label>
+            <label
+              className={labelCls}
+              style={{ color: "var(--sx-text-secondary)" }}
+            >
+              Fundamento
+            </label>
             <select
               value={filtroFundamento}
               onChange={(e) => setFiltroFundamento(e.target.value)}
-              className={selectCls}
+              className="input-dark text-xs"
             >
               <option value="todos">Todos</option>
               {ORDEN_FUNDAMENTOS.map((f) => (
@@ -565,7 +588,7 @@ export default function TablaEstadisticasCrudas({
             </select>
           </div>
         </div>
-        <p className="text-[10px] text-slate-400 mt-2">
+        <p className="text-[10px] mt-2" style={{ color: "var(--sx-text-muted)" }}>
           {accionesDetalle.length} acción
           {accionesDetalle.length !== 1 ? "es" : ""} con los filtros
           actuales
@@ -573,88 +596,140 @@ export default function TablaEstadisticasCrudas({
       </div>
 
       {totales && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-4">
-          <h5 className="font-semibold text-slate-800 mb-3 text-sm">
+        <div
+          className="rounded-2xl p-3 sm:p-5 overflow-x-auto"
+          style={{
+            background: "var(--sx-surface-1)",
+            border: "1px solid var(--sx-border)",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+          }}
+        >
+          <h5 className="font-semibold text-white mb-3 text-sm">
             Resumen del equipo (sin filtro de jugador)
           </h5>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500 text-xs">
-                  <th className="py-2 px-2">Fundamento</th>
-                  <th className="py-2 px-2 text-right">Total</th>
-                  <th className="py-2 px-2 text-right">Pos</th>
-                  <th className="py-2 px-2 text-right">Neg</th>
-                  <th className="py-2 px-2 text-right">Puntos</th>
-                  <th className="py-2 px-2 text-right">Errores</th>
-                  <th className="py-2 px-2 text-right">Saldo</th>
-                  <th className="py-2 px-2 text-right">Efect.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ORDEN_FUNDAMENTOS.map((f) => {
-                  const e = totales.porFundamento[f];
-                  if (!e || e.total === 0) return null;
-                  return (
-                    <tr key={f} className="border-b border-slate-100">
-                      <td className="py-2 px-2 font-medium text-slate-700">
-                        {NOMBRES_FUNDAMENTO[f]}
-                      </td>
-                      <td className="py-2 px-2 text-right text-slate-600">
-                        {e.total}
-                      </td>
-                      <td className="py-2 px-2 text-right text-green-700">
-                        {e.positivos}
-                      </td>
-                      <td className="py-2 px-2 text-right text-red-700">
-                        {e.negativos}
-                      </td>
-                      <td className="py-2 px-2 text-right text-slate-600">
-                        {e.puntos}
-                      </td>
-                      <td className="py-2 px-2 text-right text-slate-600">
-                        {e.errores}
-                      </td>
-                      <td
-                        className={`py-2 px-2 text-right font-semibold ${
-                          e.saldo > 0
-                            ? "text-green-700"
-                            : e.saldo < 0
-                            ? "text-red-700"
-                            : "text-slate-600"
-                        }`}
-                      >
-                        {e.saldo > 0 ? "+" : ""}
-                        {e.saldo}
-                      </td>
-                      <td className="py-2 px-2 text-right text-slate-600">
-                        {e.efectividad.toFixed(0)}%
-                      </td>
-                    </tr>
-                  );
-                })}
-                {ORDEN_FUNDAMENTOS.every(
-                  (f) =>
-                    !totales.porFundamento[f] ||
-                    totales.porFundamento[f].total === 0
-                ) && (
-                  <tr>
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr
+                className="text-left text-[11px] font-bold uppercase tracking-wider"
+                style={{
+                  borderBottom: "1px solid rgba(255,255,255,0.08)",
+                  color: "var(--sx-text-secondary)",
+                }}
+              >
+                <th className="py-2.5 px-3">Fundamento</th>
+                <th className="py-2.5 px-3 text-right">Total</th>
+                <th
+                  className="py-2.5 px-3 text-right"
+                  style={{ color: "#34D399" }}
+                >
+                  Pos
+                </th>
+                <th
+                  className="py-2.5 px-3 text-right"
+                  style={{ color: "#F87171" }}
+                >
+                  Neg
+                </th>
+                <th className="py-2.5 px-3 text-right">Puntos</th>
+                <th className="py-2.5 px-3 text-right">Errores</th>
+                <th className="py-2.5 px-3 text-right">Saldo</th>
+                <th className="py-2.5 px-3 text-right">Efect.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ORDEN_FUNDAMENTOS.map((f) => {
+                const e = totales.porFundamento[f];
+                if (!e || e.total === 0) return null;
+                return (
+                  <tr
+                    key={f}
+                    className="hover:bg-white/[0.02] transition-colors"
+                    style={{
+                      borderBottom: "1px solid rgba(255,255,255,0.04)",
+                    }}
+                  >
+                    <td className="py-2.5 px-3 font-bold text-white">
+                      {NOMBRES_FUNDAMENTO[f]}
+                    </td>
                     <td
-                      colSpan={8}
-                      className="py-3 text-center text-xs text-slate-400"
+                      className="py-2.5 px-3 text-right tabular-nums font-semibold"
+                      style={{ color: "var(--sx-text-primary)" }}
                     >
-                      No hay acciones con los filtros actuales.
+                      {e.total}
+                    </td>
+                    <td
+                      className="py-2.5 px-3 text-right tabular-nums font-bold"
+                      style={{ color: "#34D399" }}
+                    >
+                      {e.positivos}
+                    </td>
+                    <td
+                      className="py-2.5 px-3 text-right tabular-nums font-bold"
+                      style={{ color: "#F87171" }}
+                    >
+                      {e.negativos}
+                    </td>
+                    <td className="py-2.5 px-3 text-right tabular-nums text-slate-200 font-medium">
+                      {e.puntos}
+                    </td>
+                    <td className="py-2.5 px-3 text-right tabular-nums text-slate-200 font-medium">
+                      {e.errores}
+                    </td>
+                    <td
+                      className={`py-2.5 px-3 text-right tabular-nums font-black ${
+                        e.saldo > 0
+                          ? "text-emerald-400"
+                          : e.saldo < 0
+                          ? "text-rose-400"
+                          : "text-slate-400"
+                      }`}
+                    >
+                      {e.saldo > 0 ? "+" : ""}
+                      {e.saldo}
+                    </td>
+                    <td className="py-2.5 px-3 text-right tabular-nums font-bold text-white">
+                      <span
+                        className="inline-block px-2 py-0.5 rounded text-xs"
+                        style={{
+                          background:
+                            e.efectividad >= 50
+                              ? "rgba(16,185,129,0.15)"
+                              : "rgba(255,255,255,0.06)",
+                          color:
+                            e.efectividad >= 50 ? "#34D399" : "#F0F4FF",
+                        }}
+                      >
+                        {e.efectividad.toFixed(0)}%
+                      </span>
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+              {ORDEN_FUNDAMENTOS.every(
+                (f) =>
+                  !totales.porFundamento[f] ||
+                  totales.porFundamento[f].total === 0
+              ) && (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="py-3 text-center text-xs"
+                    style={{ color: "var(--sx-text-muted)" }}
+                  >
+                    No hay acciones con los filtros actuales.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       )}
 
       {bloques.length === 0 ? (
-        <div className="p-6 text-center text-sm text-slate-500">
+        <div
+          className="p-6 text-center text-sm"
+          style={{ color: "var(--sx-text-secondary)" }}
+        >
           No hay acciones para mostrar
         </div>
       ) : (
@@ -710,41 +785,64 @@ export default function TablaEstadisticasCrudas({
             return (
               <div
                 key={bloque.id}
-                className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"
+                className="overflow-hidden"
+                style={{
+                  background: "var(--sx-surface-1)",
+                  border: "1px solid var(--sx-border)",
+                  borderRadius: "1rem",
+                  boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+                }}
               >
-                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                <div
+                  className="px-4 py-3 flex items-center justify-between"
+                  style={{
+                    background: "rgba(255,255,255,0.04)",
+                    borderBottom: "1px solid var(--sx-border)",
+                  }}
+                >
                   <div>
-                    <h5 className="font-semibold text-slate-800">
+                    <h5 className="font-semibold text-white">
                       {bloque.titulo}
                     </h5>
                     {bloque.subtitulo && (
-                      <p className="text-[10px] text-slate-500 italic">
+                      <p
+                        className="text-[10px] italic"
+                        style={{ color: "var(--sx-text-muted)" }}
+                      >
                         {bloque.subtitulo}
                       </p>
                     )}
                   </div>
-                  <span className="text-xs text-slate-500">
+                  <span
+                    className="text-xs"
+                    style={{ color: "var(--sx-text-secondary)" }}
+                  >
                     {totalTodas} acción{totalTodas !== 1 ? "es" : ""}
                   </span>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm border-collapse">
                     <thead>
-                      <tr className="text-left text-slate-500 border-b border-slate-200">
-                        <th className="py-2 px-3">Jugador</th>
+                      <tr
+                        className="text-left text-[11px] font-bold uppercase tracking-wider"
+                        style={{
+                          borderBottom: "1px solid rgba(255,255,255,0.08)",
+                          color: "var(--sx-text-secondary)",
+                        }}
+                      >
+                        <th className="py-2.5 px-3">Jugador</th>
                         {cols.map((c) => (
                           <th
                             key={c.key}
-                            className={`py-2 px-2 text-center ${colorTipo(
-                              c.tipo
-                            )}`}
+                            className="py-2.5 px-2 text-center"
+                            style={{ color: colorHeaderTipo(c.tipo) }}
                             title={c.detalle}
                           >
                             {c.label}
                           </th>
                         ))}
-                        <th className="py-2 px-3 text-right">Total</th>
-                        <th className="py-2 px-3 text-right">Prom. crudo</th>
+                        <th className="py-2.5 px-3 text-right">Total</th>
+                        <th className="py-2.5 px-3 text-right">Prom. crudo</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -753,11 +851,20 @@ export default function TablaEstadisticasCrudas({
                         const total = calcularTotal(fila);
                         const prom = calcularPromedioCrudo(fila);
                         return (
-                          <tr key={jid} className="border-b border-slate-100">
-                            <td className="py-2 px-3 font-medium text-slate-700">
+                          <tr
+                            key={jid}
+                            className="hover:bg-white/[0.02] transition-colors"
+                            style={{
+                              borderBottom: "1px solid rgba(255,255,255,0.04)",
+                            }}
+                          >
+                            <td className="py-2 px-3 font-bold text-white">
                               {nombreDe(jid)}
                               {esArmadorId(jid) && (
-                                <span className="ml-1 text-[10px] text-violet-600 font-medium">
+                                <span
+                                  className="ml-1 text-[10px] font-medium"
+                                  style={{ color: "#C4B5FD" }}
+                                >
                                   (Arm)
                                 </span>
                               )}
@@ -767,26 +874,30 @@ export default function TablaEstadisticasCrudas({
                               return (
                                 <td
                                   key={c.key}
-                                  className={`py-2 px-2 text-center font-mono ${
+                                  className={`py-2 px-2 text-center font-mono tabular-nums ${claseValorCelda(
+                                    c.tipo,
+                                    val
+                                  )}`}
+                                  style={
                                     val === 0
-                                      ? "text-slate-300"
-                                      : colorTipo(c.tipo)
-                                  }`}
+                                      ? { color: "rgba(255,255,255,0.15)" }
+                                      : undefined
+                                  }
                                 >
                                   {val}
                                 </td>
                               );
                             })}
-                            <td className="py-2 px-3 text-right font-semibold text-slate-700">
+                            <td className="py-2 px-3 text-right font-semibold text-white tabular-nums">
                               {total}
                             </td>
                             <td
-                              className={`py-2 px-3 text-right font-semibold ${
+                              className={`py-2 px-3 text-right font-semibold tabular-nums ${
                                 prom > 0
-                                  ? "text-green-700"
+                                  ? "text-emerald-400"
                                   : prom < 0
-                                  ? "text-red-700"
-                                  : "text-slate-500"
+                                  ? "text-rose-400"
+                                  : "text-slate-400"
                               }`}
                             >
                               {prom > 0 ? "+" : ""}
@@ -796,28 +907,38 @@ export default function TablaEstadisticasCrudas({
                         );
                       })}
                       {jugadoresConDatos.length > 1 && (
-                        <tr className="bg-slate-50 font-semibold border-t-2 border-slate-300">
-                          <td className="py-2 px-3 text-slate-700">TOTAL</td>
+                        <tr
+                          className="font-semibold"
+                          style={{
+                            background: "rgba(255,255,255,0.06)",
+                            borderTop: "2px solid rgba(255,255,255,0.12)",
+                          }}
+                        >
+                          <td className="py-2 px-3 text-white">TOTAL</td>
                           {cols.map((c) => (
                             <td
                               key={c.key}
-                              className={`py-2 px-2 text-center font-mono ${colorTipo(
-                                c.tipo
-                              )}`}
+                              className={`py-2 px-2 text-center font-mono tabular-nums ${
+                                c.tipo === "pos"
+                                  ? "text-emerald-400 font-bold"
+                                  : c.tipo === "neg"
+                                  ? "text-rose-400 font-bold"
+                                  : "text-slate-300"
+                              }`}
                             >
                               {totalesBloque[c.key]}
                             </td>
                           ))}
-                          <td className="py-2 px-3 text-right text-slate-700">
+                          <td className="py-2 px-3 text-right text-white tabular-nums">
                             {totalTodas}
                           </td>
                           <td
-                            className={`py-2 px-3 text-right ${
+                            className={`py-2 px-3 text-right tabular-nums ${
                               promTotal > 0
-                                ? "text-green-700"
+                                ? "text-emerald-400"
                                 : promTotal < 0
-                                ? "text-red-700"
-                                : "text-slate-500"
+                                ? "text-rose-400"
+                                : "text-slate-400"
                             }`}
                           >
                             {promTotal > 0 ? "+" : ""}
