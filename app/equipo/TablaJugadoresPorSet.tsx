@@ -71,7 +71,7 @@ export default function TablaJugadoresPorSet({
   const nombreDe = (id: string) => nombresJugadores[id] ?? "?";
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+    <div className="card rounded-2xl border border-white/10 shadow-xl overflow-hidden">
       <div className="p-5 border-b border-slate-200">
         <h4 className="font-semibold text-slate-800">
           Estadísticas por jugador
@@ -313,7 +313,7 @@ function DetalleJugador({
             className={`px-3 py-1 text-xs font-medium rounded-lg transition border ${
               setFiltro === s
                 ? "bg-emerald-500 text-white border-emerald-500"
-                : "bg-white text-slate-600 border-slate-300 hover:bg-slate-100"
+                : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
             }`}
           >
             {s === "todos" ? "Todos" : `Set ${s}`}
@@ -322,7 +322,7 @@ function DetalleJugador({
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
+        <div className="card p-3 rounded-xl border border-white/10 text-center shadow-sm">
           <p className="text-xs text-slate-500 uppercase">Saldo</p>
           <p
             className={`text-xl font-bold ${
@@ -337,7 +337,7 @@ function DetalleJugador({
             {est.saldoTotal}
           </p>
         </div>
-        <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
+        <div className="card p-3 rounded-xl border border-white/10 text-center shadow-sm">
           <p className="text-xs text-slate-500 uppercase">Saldo Defensivo</p>
           <p
             className={`text-xl font-bold ${
@@ -352,7 +352,7 @@ function DetalleJugador({
             {est.saldoDefensivo}
           </p>
         </div>
-        <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
+        <div className="card p-3 rounded-xl border border-white/10 text-center shadow-sm">
           <p className="text-xs text-slate-500 uppercase">Valoración Media</p>
           <p
             className={`text-xl font-bold ${
@@ -368,19 +368,19 @@ function DetalleJugador({
           </p>
         </div>
 
-        <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
+        <div className="card p-3 rounded-xl border border-white/10 text-center shadow-sm">
           <p className="text-xs text-slate-500 uppercase">Acciones</p>
           <p className="text-xl font-bold text-slate-800">
             {est.totalAcciones}
           </p>
         </div>
-        <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
+        <div className="p-3 bg-emerald-950/30 border border-emerald-500/30 rounded-xl text-center">
           <p className="text-xs text-green-700 uppercase">Puntos</p>
           <p className="text-xl font-bold text-green-800">
             {est.totalPuntos}
           </p>
         </div>
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
+        <div className="p-3 bg-rose-950/30 border border-rose-500/30 rounded-xl text-center">
           <p className="text-xs text-red-700 uppercase">Errores</p>
           <p className="text-xl font-bold text-red-800">
             {est.totalErrores}
@@ -480,7 +480,7 @@ function DetalleJugador({
                             detalle.map((v) => (
                               <div
                                 key={v.key}
-                                className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
+                                className="px-3 py-1.5 card border border-white/10 rounded-lg text-xs"
                               >
                                 <span className="text-slate-500">
                                   {ETIQUETAS_VALORACION[v.key] ?? v.key}:
@@ -502,8 +502,8 @@ function DetalleJugador({
         </table>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg p-4">
-        <h5 className="font-semibold text-slate-800 mb-3 text-sm">
+      <div className="card border border-white/10 rounded-xl p-4">
+        <h5 className="font-semibold text-white mb-3 text-sm">
           Radar en este partido
         </h5>
         <RadarJugador
@@ -515,13 +515,13 @@ function DetalleJugador({
 
       {!esArmador && (
         <div className="grid grid-cols-3 gap-3">
-          <div className="p-3 bg-white border border-slate-200 rounded-lg">
+          <div className="p-3 card border border-white/10 rounded-xl">
             <GraficoSaquePorSet promedios={promediosSaque} />
           </div>
-          <div className="p-3 bg-white border border-slate-200 rounded-lg">
+          <div className="p-3 card border border-white/10 rounded-xl">
             <GraficoRecepcionPorSet promedios={promediosRecepcion} />
           </div>
-          <div className="p-3 bg-white border border-slate-200 rounded-lg">
+          <div className="p-3 card border border-white/10 rounded-xl">
             <GraficoBloqueoPorSet promedios={promediosBloqueo} />
           </div>
         </div>
@@ -529,17 +529,17 @@ function DetalleJugador({
 
       {esArmador && (
         <div className="grid grid-cols-3 gap-3">
-          <div className="p-3 bg-white border border-slate-200 rounded-lg">
+          <div className="p-3 card border border-white/10 rounded-xl">
             <GraficoSaquePorSet promedios={promediosSaque} />
           </div>
-          <div className="p-3 bg-white border border-slate-200 rounded-lg">
+          <div className="p-3 card border border-white/10 rounded-xl">
             <GraficoBloqueoPorSet promedios={promediosBloqueo} />
           </div>
-          <div className="p-3 bg-white border border-slate-200 rounded-lg">
+          <div className="p-3 card border border-white/10 rounded-xl">
             <GraficoArmadosPorSet promedios={promediosArmados} />
           </div>
           {est.armador && (
-            <div className="col-span-3 p-3 bg-white border border-slate-200 rounded-lg">
+            <div className="col-span-3 p-3 card border border-white/10 rounded-xl">
               <MapaCalorTendencia
                 distribucion={est.armador.distribucionTendencia}
                 acciones={accionesJugadorFiltradas}

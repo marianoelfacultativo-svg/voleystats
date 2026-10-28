@@ -252,7 +252,7 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
       </div>
 
       {!partidoSeleccionado && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+        <div className="card rounded-2xl border border-white/10 shadow-xl p-12 text-center">
           <p className="text-5xl mb-4">🔭</p>
           <p className="text-slate-600 font-medium">
             Elegí un partido arriba para ver las visualizaciones
@@ -265,7 +265,7 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
 
       {partidoSeleccionado && (
         <>
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 flex flex-wrap gap-1">
+          <div className="card rounded-2xl border border-white/10 shadow-xl p-2 flex flex-wrap gap-1">
             {TABS.map((t) => (
               <button
                 key={t.id}
@@ -288,7 +288,7 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
           {!cargando && tab === "armados" && (
             <>
               {armados.length === 0 ? (
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+                <div className="card rounded-2xl border border-white/10 shadow-xl p-12 text-center">
                   <p className="text-4xl mb-3">🏐</p>
                   <p className="text-slate-600 font-medium">
                     Este partido no tiene armados cargados
@@ -296,7 +296,7 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
                 </div>
               ) : (
                 <>
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+                  <div className="card rounded-2xl border border-white/10 shadow-xl p-4">
                     <div className="grid grid-cols-2 gap-4 mb-3">
                       <div>
                         <label className="block text-xs font-medium text-slate-500 mb-1">
@@ -552,7 +552,7 @@ export default function VisualizacionArmador({ equipoId, jugadorId }: Props) {
                     </div>
                   </div>
 
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex items-center justify-center">
+                  <div className="card rounded-2xl border border-white/10 shadow-xl p-4 flex items-center justify-center">
                     {webglOk === null ? (
                       <p className="text-sm text-slate-500 py-12">
                         Cargando cancha...

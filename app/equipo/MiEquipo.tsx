@@ -833,7 +833,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
 
                 {esArmador && jugadorActual.armador && (
                   <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                    <div className="p-3 sm:p-4 bg-white border border-slate-200 rounded-lg">
+                    <div className="p-3 sm:p-4 card rounded-xl border border-white/10">
                       <GraficoSaquePorSet
                         promedios={calcularPromedioPonderadoPorSet(
                           jugadorActual.jugador_id,
@@ -844,7 +844,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         )}
                       />
                     </div>
-                    <div className="p-3 sm:p-4 bg-white border border-slate-200 rounded-lg">
+                    <div className="p-3 sm:p-4 card rounded-xl border border-white/10">
                       <GraficoBloqueoPorSet
                         promedios={calcularPromedioPonderadoPorSet(
                           jugadorActual.jugador_id,
@@ -855,7 +855,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         )}
                       />
                     </div>
-                    <div className="p-3 sm:p-4 bg-white border border-slate-200 rounded-lg">
+                    <div className="p-3 sm:p-4 card rounded-xl border border-white/10">
                       <GraficoArmadosPorSet
                         promedios={calcularPromedioArmadosPonderadoPorSet(
                           jugadorActual.jugador_id,
@@ -864,7 +864,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         )}
                       />
                     </div>
-                    <div className="p-3 sm:p-4 bg-white border border-slate-200 rounded-lg">
+                    <div className="p-3 sm:p-4 card rounded-xl border border-white/10">
                       <MapaCalorTendencia
                         distribucion={
                           jugadorActual.armador.distribucionTendencia
@@ -878,7 +878,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
 
                 {!esArmador && (
                   <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                    <div className="p-3 sm:p-4 bg-white border border-slate-200 rounded-lg">
+                    <div className="p-3 sm:p-4 card rounded-xl border border-white/10">
                       <GraficoSaquePorSet
                         promedios={calcularPromedioPonderadoPorSet(
                           jugadorActual.jugador_id,
@@ -889,7 +889,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         )}
                       />
                     </div>
-                    <div className="p-3 sm:p-4 bg-white border border-slate-200 rounded-lg">
+                    <div className="p-3 sm:p-4 card rounded-xl border border-white/10">
                       <GraficoRecepcionPorSet
                         promedios={calcularPromedioPonderadoPorSet(
                           jugadorActual.jugador_id,
@@ -900,7 +900,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         )}
                       />
                     </div>
-                    <div className="md:col-span-2 p-3 sm:p-4 bg-white border border-slate-200 rounded-lg">
+                    <div className="md:col-span-2 p-3 sm:p-4 card rounded-xl border border-white/10">
                       <GraficoBloqueoPorSet
                         promedios={calcularPromedioPonderadoPorSet(
                           jugadorActual.jugador_id,
@@ -915,49 +915,49 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                 )}
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
-                  <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
-                    <p className="text-xs text-slate-500 uppercase">Saldo</p>
+                  <div className="card p-3 rounded-xl text-center border border-white/10 shadow-sm">
+                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Saldo</p>
                     <p
-                      className={`text-xl sm:text-2xl font-bold ${
+                      className={`text-xl sm:text-2xl font-bold tabular-nums ${
                         jugadorActual.saldoTotal > 0
-                          ? "text-green-700"
+                          ? "text-emerald-400"
                           : jugadorActual.saldoTotal < 0
-                          ? "text-red-700"
-                          : "text-slate-700"
+                          ? "text-rose-400"
+                          : "text-slate-300"
                       }`}
                     >
                       {jugadorActual.saldoTotal > 0 ? "+" : ""}
                       {jugadorActual.saldoTotal}
                     </p>
                   </div>
-                  <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
-                    <p className="text-xs text-slate-500 uppercase">
+                  <div className="card p-3 rounded-xl text-center border border-white/10 shadow-sm">
+                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                       Saldo Defensivo
                     </p>
                     <p
-                      className={`text-xl sm:text-2xl font-bold ${
+                      className={`text-xl sm:text-2xl font-bold tabular-nums ${
                         jugadorActual.saldoDefensivo > 0
-                          ? "text-green-700"
+                          ? "text-emerald-400"
                           : jugadorActual.saldoDefensivo < 0
-                          ? "text-red-700"
-                          : "text-slate-700"
+                          ? "text-rose-400"
+                          : "text-slate-300"
                       }`}
                     >
                       {jugadorActual.saldoDefensivo > 0 ? "+" : ""}
                       {jugadorActual.saldoDefensivo}
                     </p>
                   </div>
-                  <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
-                    <p className="text-xs text-slate-500 uppercase">
+                  <div className="card p-3 rounded-xl text-center border border-white/10 shadow-sm">
+                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                       Valoración Media
                     </p>
                     <p
-                      className={`text-xl sm:text-2xl font-bold ${
+                      className={`text-xl sm:text-2xl font-bold tabular-nums ${
                         jugadorActual.valoracionMediaNormalizada > 0
-                          ? "text-green-700"
+                          ? "text-emerald-400"
                           : jugadorActual.valoracionMediaNormalizada < 0
-                          ? "text-red-700"
-                          : "text-slate-700"
+                          ? "text-rose-400"
+                          : "text-slate-300"
                       }`}
                     >
                       {jugadorActual.valoracionMediaNormalizada > 0 ? "+" : ""}
@@ -965,23 +965,23 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     </p>
                   </div>
 
-                  <div className="p-3 bg-white border border-slate-200 rounded-lg text-center">
-                    <p className="text-xs text-slate-500 uppercase">
+                  <div className="card p-3 rounded-xl text-center border border-white/10 shadow-sm">
+                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                       Acciones
                     </p>
-                    <p className="text-xl sm:text-2xl font-bold text-slate-800">
+                    <p className="text-xl sm:text-2xl font-bold text-white tabular-nums">
                       {jugadorActual.totalAcciones}
                     </p>
                   </div>
-                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
-                    <p className="text-xs text-green-700 uppercase">Puntos</p>
-                    <p className="text-xl sm:text-2xl font-bold text-green-800">
+                  <div className="p-3 bg-emerald-950/30 border border-emerald-500/30 rounded-xl text-center shadow-sm">
+                    <p className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">Puntos</p>
+                    <p className="text-xl sm:text-2xl font-bold text-emerald-300 tabular-nums">
                       {jugadorActual.totalPuntos}
                     </p>
                   </div>
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
-                    <p className="text-xs text-red-700 uppercase">Errores</p>
-                    <p className="text-xl sm:text-2xl font-bold text-red-800">
+                  <div className="p-3 bg-rose-950/30 border border-rose-500/30 rounded-xl text-center shadow-sm">
+                    <p className="text-[11px] font-semibold text-rose-400 uppercase tracking-wider">Errores</p>
+                    <p className="text-xl sm:text-2xl font-bold text-rose-300 tabular-nums">
                       {jugadorActual.totalErrores}
                     </p>
                   </div>
@@ -989,20 +989,20 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               </div>
             )
           ) : (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+            <div className="card rounded-2xl border border-white/10 p-4 sm:p-6 shadow-xl">
               {comparadosData.length === 0 ? (
                 <div className="p-8 sm:p-12 text-center h-full flex items-center justify-center">
                   <div>
-                    <GitCompare size={36} className="text-slate-300 mx-auto mb-3" />
-                    <p className="text-slate-700 font-semibold text-sm">
+                    <GitCompare size={36} className="text-slate-400 mx-auto mb-3" />
+                    <p className="text-slate-200 font-semibold text-sm">
                       Elegí hasta 3 jugadores del plantel para comparar
                     </p>
                   </div>
                 </div>
               ) : (
                 <>
-                  <div className="mb-6 pb-4 border-b border-slate-200">
-                    <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-3">
+                  <div className="mb-6 pb-4 border-b border-white/10">
+                    <h3 className="text-lg sm:text-xl font-bold text-white mb-3">
                       Comparando{" "}
                       {comparadosData.length === 1
                         ? "1 jugador"
@@ -1012,13 +1012,13 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                       {comparadosData.map((s) => (
                         <div
                           key={s.id}
-                          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50"
+                          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/10 card"
                         >
                           <span
                             className="w-3 h-3 rounded-full"
                             style={{ backgroundColor: s.color }}
                           />
-                          <span className="text-sm font-medium text-slate-700">
+                          <span className="text-sm font-medium text-slate-200">
                             {s.nombre}
                           </span>
                         </div>
@@ -1027,7 +1027,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   </div>
 
                   <div className="mb-6">
-                    <h4 className="font-semibold text-slate-800 mb-3">
+                    <h4 className="font-semibold text-white mb-3">
                       Radar comparativo
                     </h4>
                     <RadarJugador
@@ -1037,24 +1037,24 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                    <div className="p-3 sm:p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="p-3 sm:p-4 card rounded-xl border border-white/10">
                       <GraficoSaquePorSet series={seriesSaque} />
                     </div>
 
                     {!esComparacionArmador && (
-                      <div className="p-3 sm:p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                      <div className="p-3 sm:p-4 card rounded-xl border border-white/10">
                         <GraficoRecepcionPorSet series={seriesRecepcion} />
                       </div>
                     )}
 
                     {esComparacionArmador && (
-                      <div className="p-3 sm:p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                      <div className="p-3 sm:p-4 card rounded-xl border border-white/10">
                         <GraficoArmadosPorSet series={seriesArmados} />
                       </div>
                     )}
 
                     <div
-                      className={`p-3 sm:p-4 bg-slate-50 border border-slate-200 rounded-lg ${
+                      className={`p-3 sm:p-4 card rounded-xl border border-white/10 ${
                         esComparacionArmador ? "" : "md:col-span-2"
                       }`}
                     >
@@ -1062,16 +1062,16 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     </div>
                   </div>
 
-                  <div className="mt-6 overflow-x-auto">
+                  <div className="mt-6 overflow-x-auto rounded-xl border border-white/10 card">
                     <table className="w-full text-sm min-w-[500px]">
-                      <thead>
-                        <tr className="text-left text-slate-500 border-b border-slate-200">
-                          <th className="py-2 px-3">Jugador</th>
-                          <th className="py-2 px-3 text-right">Acciones</th>
-                          <th className="py-2 px-3 text-right">Puntos</th>
-                          <th className="py-2 px-3 text-right">Errores</th>
-                          <th className="py-2 px-3 text-right">Saldo</th>
-                          <th className="py-2 px-3 text-right">Val. Media</th>
+                      <thead className="bg-white/5 border-b border-white/10">
+                        <tr className="text-left text-slate-400">
+                          <th className="py-2.5 px-3">Jugador</th>
+                          <th className="py-2.5 px-3 text-right">Acciones</th>
+                          <th className="py-2.5 px-3 text-right">Puntos</th>
+                          <th className="py-2.5 px-3 text-right">Errores</th>
+                          <th className="py-2.5 px-3 text-right">Saldo</th>
+                          <th className="py-2.5 px-3 text-right">Val. Media</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1080,44 +1080,49 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                           return (
                             <tr
                               key={s.id}
-                              className="border-b border-slate-100"
+                              className="border-b border-white/5 hover:bg-white/5 transition-colors"
                             >
-                              <td className="py-2 px-3 font-medium">
+                              <td className="py-2.5 px-3 font-medium">
                                 <span
                                   className="inline-block w-3 h-3 rounded-full mr-2 align-middle"
                                   style={{ backgroundColor: s.color }}
                                 />
-                                <span className="text-slate-800">
+                                <span className="text-white">
                                   {s.nombre}
                                 </span>
                               </td>
-                              <td className="py-2 px-3 text-right text-slate-600">
+                              <td className="py-2.5 px-3 text-right text-slate-300 tabular-nums">
                                 {est.totalAcciones}
                               </td>
-                              <td className="py-2 px-3 text-right text-green-700">
+                              <td className="py-2.5 px-3 text-right text-emerald-400 font-semibold tabular-nums">
                                 {est.totalPuntos}
                               </td>
-                              <td className="py-2 px-3 text-right text-red-700">
+                              <td className="py-2.5 px-3 text-right text-rose-400 font-semibold tabular-nums">
                                 {est.totalErrores}
                               </td>
                               <td
-                                className={`py-2 px-3 text-right font-semibold ${
+                                className={`py-2.5 px-3 text-right font-semibold tabular-nums ${
                                   est.saldoTotal > 0
-                                    ? "text-green-700"
+                                    ? "text-emerald-400"
                                     : est.saldoTotal < 0
-                                    ? "text-red-700"
-                                    : "text-slate-600"
+                                    ? "text-rose-400"
+                                    : "text-slate-300"
                                 }`}
                               >
                                 {est.saldoTotal > 0 ? "+" : ""}
                                 {est.saldoTotal}
                               </td>
                               <td
-                                className={`py-2 px-3 text-right font-semibold ${
+                                className={`py-2.5 px-3 text-right font-semibold tabular-nums ${
                                   est.valoracionMediaNormalizada > 0
-                                    ? "text-green-700"
+                                    ? "text-emerald-400"
                                     : est.valoracionMediaNormalizada < 0
-                                    ? "text-red-700"
+                                    ? "text-rose-400"
+                                    : "text-slate-300"
+                                }`}
+                              >
+                                {est.valoracionMediaNormalizada > 0 ? "+" : ""}
+                                {est.valoracionMediaNormalizada.toFixed(2)}
                                     : "text-slate-600"
                                 }`}
                               >

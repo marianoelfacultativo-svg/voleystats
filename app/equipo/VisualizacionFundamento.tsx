@@ -244,7 +244,7 @@ export default function VisualizacionFundamento({
 
   if (acciones.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+      <div className="card rounded-2xl border border-white/10 shadow-xl p-12 text-center">
         <p className="text-4xl mb-3">🏐</p>
         <p className="text-slate-600 font-medium">
           Todavía no hay acciones de {etiquetaTipo.toLowerCase()} cargadas
@@ -255,7 +255,7 @@ export default function VisualizacionFundamento({
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+      <div className="card rounded-2xl border border-white/10 shadow-xl p-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">
@@ -419,7 +419,7 @@ export default function VisualizacionFundamento({
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3">
+      <div className="card rounded-2xl border border-white/10 shadow-xl p-3">
         <div className="flex flex-wrap gap-3 items-center justify-center text-xs">
           <span className="font-semibold text-slate-600">Colores:</span>
           {tipo === "saque" &&
@@ -457,7 +457,7 @@ export default function VisualizacionFundamento({
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex items-center justify-center">
+      <div className="card rounded-2xl border border-white/10 shadow-xl p-4 flex items-center justify-center">
         {items.length === 0 ? (
           <p className="text-sm text-slate-500 py-12">
             No hay acciones que cumplan los filtros

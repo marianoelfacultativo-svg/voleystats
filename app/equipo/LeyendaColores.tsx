@@ -21,9 +21,9 @@ const NIVELES: NivelInfo[] = [
     id: "destaca",
     label: "Destacado",
     ancho: "100%",
-    bg: "bg-sky-100",
-    border: "border-sky-400",
-    text: "text-sky-800",
+    bg: "bg-sky-500/15",
+    border: "border-sky-500/40",
+    text: "text-sky-300 font-semibold",
     saque: "≥ 7.5",
     recepcion: "≥ 8.0",
     ataque: "≥ 7.5",
@@ -34,9 +34,9 @@ const NIVELES: NivelInfo[] = [
     id: "bien",
     label: "Bueno",
     ancho: "100%",
-    bg: "bg-emerald-100",
-    border: "border-emerald-400",
-    text: "text-emerald-800",
+    bg: "bg-emerald-500/15",
+    border: "border-emerald-500/40",
+    text: "text-emerald-300 font-semibold",
     saque: "6.0 – 7.4",
     recepcion: "6.5 – 7.9",
     ataque: "5.5 – 7.4",
@@ -47,9 +47,9 @@ const NIVELES: NivelInfo[] = [
     id: "cumple",
     label: "Regular",
     ancho: "100%",
-    bg: "bg-yellow-100",
-    border: "border-yellow-400",
-    text: "text-yellow-800",
+    bg: "bg-amber-500/15",
+    border: "border-amber-500/40",
+    text: "text-amber-300 font-semibold",
     saque: "4.0 – 5.9",
     recepcion: "4.0 – 6.4",
     ataque: "3.5 – 5.4",
@@ -60,9 +60,9 @@ const NIVELES: NivelInfo[] = [
     id: "bajo",
     label: "Bajo",
     ancho: "100%",
-    bg: "bg-red-100",
-    border: "border-red-400",
-    text: "text-red-800",
+    bg: "bg-rose-500/15",
+    border: "border-rose-500/40",
+    text: "text-rose-300 font-semibold",
     saque: "< 4.0",
     recepcion: "< 4.0",
     ataque: "< 3.5",
@@ -81,9 +81,9 @@ const FUNDAMENTOS: { key: keyof NivelInfo; label: string; short: string }[] = [
 
 export default function LeyendaColores() {
   return (
-    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-      <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4 text-center flex items-center justify-center gap-1.5">
-        <Activity size={14} className="text-[#163A85]" />
+    <div className="card border border-white/10 rounded-2xl p-4 shadow-xl">
+      <p className="text-xs font-bold text-slate-200 uppercase tracking-wider mb-4 text-center flex items-center justify-center gap-1.5">
+        <Activity size={14} className="text-sky-400" />
         <span>Niveles de Rendimiento</span>
       </p>
 
@@ -91,13 +91,13 @@ export default function LeyendaColores() {
         <table className="w-full text-xs border-separate border-spacing-0">
           <thead>
             <tr>
-              <th className="text-left px-2 py-1 text-slate-500 font-medium text-[10px] uppercase tracking-wider">
+              <th className="text-left px-2 py-1 text-slate-400 font-medium text-[10px] uppercase tracking-wider">
                 Nivel
               </th>
               {FUNDAMENTOS.map((f) => (
                 <th
                   key={String(f.key)}
-                  className="text-center px-2 py-1 text-slate-500 font-medium text-[10px] uppercase tracking-wider"
+                  className="text-center px-2 py-1 text-slate-400 font-medium text-[10px] uppercase tracking-wider"
                   title={f.label}
                 >
                   {f.short}
@@ -131,7 +131,7 @@ export default function LeyendaColores() {
         </table>
       </div>
 
-      <p className="text-[10px] text-slate-500 text-center mt-3 leading-relaxed">
+      <p className="text-[10px] text-slate-400 text-center mt-3 leading-relaxed">
         Valoración ponderada por fundamento. <br />
         SAQ = Saque · REC = Recepción · ATK = Ataque · BLQ = Bloqueo · DEF = Defensa
       </p>

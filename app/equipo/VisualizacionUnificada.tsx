@@ -399,7 +399,7 @@ export default function VisualizacionUnificada({
 
       {/* ============ EMPTY STATE ============ */}
       {!partidoSeleccionado && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+        <div className="card rounded-2xl border border-white/10 shadow-xl p-12 text-center">
           <p className="text-5xl mb-4">🔭</p>
           <p className="text-slate-600 font-medium">
             Elegí un partido arriba para ver las visualizaciones
@@ -413,7 +413,7 @@ export default function VisualizacionUnificada({
       {partidoSeleccionado && (
         <>
           {/* ============ TABS DE MODO ============ */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 flex flex-wrap gap-1">
+          <div className="card rounded-2xl border border-white/10 shadow-xl p-2 flex flex-wrap gap-1">
             {MODOS.map((m) => (
               <button
                 key={m.id}
@@ -475,7 +475,7 @@ export default function VisualizacionUnificada({
           </div>
 
           {/* ============ VISTAS ============ */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 flex flex-wrap gap-1">
+          <div className="card rounded-2xl border border-white/10 shadow-xl p-2 flex flex-wrap gap-1">
             <span className="text-[10px] font-semibold text-slate-500 uppercase self-center mr-2">
               Vista:
             </span>
@@ -596,7 +596,7 @@ export default function VisualizacionUnificada({
           )}
 
           {/* ============ CANCHA 3D ============ */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex items-center justify-center">
+          <div className="card rounded-2xl border border-white/10 shadow-xl p-4 flex items-center justify-center">
             {cargando ? (
               <p className="text-sm text-slate-500 py-12">Cargando...</p>
             ) : accionesFiltradas.length === 0 ? (
