@@ -165,8 +165,11 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
   if (cargando) {
     return (
       <div className="flex items-center justify-center py-16">
-        <div className="flex items-center gap-2.5 text-slate-500 font-medium text-sm">
-          <div className="w-4 h-4 border-2 border-slate-300 border-t-[#163A85] rounded-full animate-spin" />
+        <div className="flex items-center gap-2.5 font-medium text-sm" style={{ color: "var(--sx-text-secondary)" }}>
+          <div
+            className="w-4 h-4 border-2 rounded-full animate-spin"
+            style={{ borderColor: "var(--sx-border-bright)", borderTopColor: "#2563EB" }}
+          />
           <span>Cargando estadísticas de {nombreEquipo}...</span>
         </div>
       </div>
@@ -239,15 +242,28 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
 
   if (partidos.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-8 sm:p-12 text-center max-w-lg mx-auto">
-        <div className="w-12 h-12 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
-          <BarChart2 size={24} />
+      <div
+        className="card p-8 sm:p-12 text-center max-w-lg mx-auto"
+        style={{
+          background: "linear-gradient(145deg, rgba(15,29,53,0.9), rgba(10,22,40,0.95))",
+          borderColor: "var(--sx-border-bright)",
+        }}
+      >
+        <div
+          className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+          style={{
+            background: "rgba(37,99,235,0.12)",
+            border: "1px solid rgba(37,99,235,0.25)",
+            color: "var(--sx-teal)",
+          }}
+        >
+          <BarChart2 size={26} />
         </div>
-        <h3 className="text-slate-800 font-bold text-base">
+        <h3 className="text-lg font-bold text-white">
           Sin partidos registrados
         </h3>
-        <p className="text-slate-500 text-xs mt-1">
-          Todavía no hay partidos cargados para {nombreEquipo}. Cuando el analista cargue el primer encuentro, aparecerán aquí las métricas.
+        <p className="text-sm mt-1.5" style={{ color: "var(--sx-text-secondary)" }}>
+          Todavía no hay partidos cargados para <span className="text-white font-semibold">{nombreEquipo}</span>. Cuando el cuerpo técnico o analista registre el primer encuentro, aparecerán aquí las métricas de rendimiento.
         </p>
       </div>
     );
@@ -260,68 +276,139 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
         <button
           onClick={handleDescargarPDF}
           disabled={descargando}
-          className="inline-flex items-center justify-center gap-2 px-3.5 py-2 text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/90 hover:border-slate-300 rounded-xl shadow-sm transition-all disabled:opacity-50 w-full sm:w-auto"
+          className="btn-outline flex items-center gap-2"
+          style={{
+            background: "rgba(15,29,53,0.8)",
+            color: "var(--sx-text-primary)",
+            borderColor: "var(--sx-border-bright)",
+          }}
         >
-          <FileDown size={14} className="text-slate-500" />
+          <FileDown size={14} style={{ color: "var(--sx-teal)" }} />
           <span>{descargando ? "Generando PDF..." : "Exportar Informe PDF"}</span>
         </button>
       </div>
 
       <div ref={refPDF} className="space-y-6">
-        {/* ─── CARD ÚLTIMO PARTIDO ─── */}
+        {/* ─── CARD ÚLTIMO PARTIDO (ESTILO ESTADIO / BROADCAST) ─── */}
         {ultimoPartido && statsUltimo && (
-          <section className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-4 sm:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
+          <section
+            className="rounded-2xl p-5 sm:p-6 transition-all"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(22,14,24,0.95) 0%, rgba(15,29,53,0.92) 100%)",
+              border: "1px solid rgba(229,62,77,0.3)",
+              boxShadow:
+                "0 8px 30px rgba(0,0,0,0.5), inset 0 1px 0 rgba(229,62,77,0.15)",
+            }}
+          >
+            <div
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4"
+              style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}
+            >
               <div>
-                <div className="flex items-center gap-2 mb-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200/60">
+                <div className="flex items-center gap-2 mb-2">
+                  <span
+                    className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full"
+                    style={{
+                      background: "rgba(229,62,77,0.18)",
+                      color: "#F87171",
+                      border: "1px solid rgba(229,62,77,0.35)",
+                    }}
+                  >
                     Último Partido
                   </span>
-                  <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
-                    <Calendar size={13} className="text-slate-400" />
+                  <span
+                    className="text-xs font-semibold flex items-center gap-1.5"
+                    style={{ color: "var(--sx-text-secondary)" }}
+                  >
+                    <Calendar size={13} style={{ color: "var(--sx-teal)" }} />
                     {ultimoPartido.fecha}
                   </span>
                 </div>
-                <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
+                <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2 flex-wrap">
                   <span>{nombreEquipo}</span>
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1.5 py-0.5 bg-slate-100 rounded">
-                    vs
+                  <span
+                    className="text-xs font-bold uppercase tracking-widest px-2 py-0.5 rounded-md"
+                    style={{
+                      background: "rgba(255,255,255,0.08)",
+                      color: "var(--sx-text-secondary)",
+                      border: "1px solid rgba(255,255,255,0.05)",
+                    }}
+                  >
+                    VS
                   </span>
-                  <span className="text-slate-700">{nombreRivalDe(ultimoPartido)}</span>
+                  <span style={{ color: "#38BDF8" }}>
+                    {nombreRivalDe(ultimoPartido)}
+                  </span>
                 </h3>
               </div>
 
               <div className="self-start sm:self-center">
-                <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono font-bold text-slate-700">
+                <span
+                  className="inline-flex items-center px-4 py-2 rounded-xl text-xs sm:text-sm font-mono font-black tracking-wider"
+                  style={{
+                    background: "rgba(0,0,0,0.6)",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    color: "#FBBF24",
+                    boxShadow: "inset 0 2px 4px rgba(0,0,0,0.5)",
+                  }}
+                >
                   {scoreDe(ultimoPartido)}
                 </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
-              <div className="p-3.5 bg-slate-50/80 border border-slate-200/80 rounded-xl text-center">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div
+                className="p-4 rounded-xl text-center"
+                style={{
+                  background: "rgba(14,165,201,0.08)",
+                  border: "1px solid rgba(14,165,201,0.25)",
+                }}
+              >
+                <p
+                  className="text-[11px] font-bold uppercase tracking-wider"
+                  style={{ color: "#38BDF8" }}
+                >
                   Total Acciones
                 </p>
-                <p className="text-2xl sm:text-3xl font-black tabular-nums text-slate-800 mt-0.5">
+                <p className="text-2xl sm:text-3xl font-black tabular-nums text-white mt-1">
                   {statsUltimo.totales.totalAcciones}
                 </p>
               </div>
 
-              <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-center">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">
+              <div
+                className="p-4 rounded-xl text-center"
+                style={{
+                  background: "rgba(16,185,129,0.1)",
+                  border: "1px solid rgba(16,185,129,0.3)",
+                }}
+              >
+                <p
+                  className="text-[11px] font-bold uppercase tracking-wider"
+                  style={{ color: "#34D399" }}
+                >
                   Puntos
                 </p>
-                <p className="text-2xl sm:text-3xl font-black tabular-nums text-emerald-700 mt-0.5">
+                <p className="text-2xl sm:text-3xl font-black tabular-nums text-emerald-400 mt-1">
                   {statsUltimo.totales.totalPuntos}
                 </p>
               </div>
 
-              <div className="p-3.5 bg-rose-50/70 border border-rose-200/80 rounded-xl text-center">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-rose-800">
+              <div
+                className="p-4 rounded-xl text-center"
+                style={{
+                  background: "rgba(229,62,77,0.1)",
+                  border: "1px solid rgba(229,62,77,0.3)",
+                }}
+              >
+                <p
+                  className="text-[11px] font-bold uppercase tracking-wider"
+                  style={{ color: "#F87171" }}
+                >
                   Errores
                 </p>
-                <p className="text-2xl sm:text-3xl font-black tabular-nums text-rose-700 mt-0.5">
+                <p className="text-2xl sm:text-3xl font-black tabular-nums text-rose-400 mt-1">
                   {statsUltimo.totales.totalErrores}
                 </p>
               </div>
@@ -332,102 +419,178 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
         {/* ─── TOTALES ACUMULADOS ─── */}
         {totales && (
           <section className="space-y-3">
-            <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <TrendingUp size={17} className="text-[#163A85]" />
+            <h3 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
+              <TrendingUp size={18} style={{ color: "var(--sx-teal)" }} />
               <span>Totales Acumulados</span>
             </h3>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
-              <div className="p-3.5 bg-white border border-slate-200/90 rounded-xl shadow-sm">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              <div
+                className="p-3.5 rounded-xl"
+                style={{
+                  background: "var(--sx-surface-1)",
+                  border: "1px solid var(--sx-border-bright)",
+                }}
+              >
+                <p
+                  className="text-[11px] font-bold uppercase tracking-wider"
+                  style={{ color: "var(--sx-text-muted)" }}
+                >
                   Partidos
                 </p>
-                <p className="text-xl sm:text-2xl font-black tabular-nums text-slate-900 mt-0.5">
+                <p className="text-xl sm:text-2xl font-black tabular-nums text-white mt-1">
                   {partidos.length}
                 </p>
               </div>
 
-              <div className="p-3.5 bg-white border border-slate-200/90 rounded-xl shadow-sm">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              <div
+                className="p-3.5 rounded-xl"
+                style={{
+                  background: "var(--sx-surface-1)",
+                  border: "1px solid var(--sx-border-bright)",
+                }}
+              >
+                <p
+                  className="text-[11px] font-bold uppercase tracking-wider"
+                  style={{ color: "var(--sx-text-muted)" }}
+                >
                   Acciones
                 </p>
-                <p className="text-xl sm:text-2xl font-black tabular-nums text-slate-900 mt-0.5">
+                <p className="text-xl sm:text-2xl font-black tabular-nums text-white mt-1">
                   {totales.totalAcciones}
                 </p>
               </div>
 
-              <div className="p-3.5 bg-emerald-50/50 border border-emerald-200/70 rounded-xl shadow-sm">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">
+              <div
+                className="p-3.5 rounded-xl"
+                style={{
+                  background: "rgba(16,185,129,0.08)",
+                  border: "1px solid rgba(16,185,129,0.25)",
+                }}
+              >
+                <p
+                  className="text-[11px] font-bold uppercase tracking-wider"
+                  style={{ color: "#34D399" }}
+                >
                   Puntos
                 </p>
-                <p className="text-xl sm:text-2xl font-black tabular-nums text-emerald-700 mt-0.5">
+                <p className="text-xl sm:text-2xl font-black tabular-nums text-emerald-400 mt-1">
                   {totales.totalPuntos}
                 </p>
               </div>
 
-              <div className="p-3.5 bg-rose-50/50 border border-rose-200/70 rounded-xl shadow-sm">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-rose-800">
+              <div
+                className="p-3.5 rounded-xl"
+                style={{
+                  background: "rgba(229,62,77,0.08)",
+                  border: "1px solid rgba(229,62,77,0.25)",
+                }}
+              >
+                <p
+                  className="text-[11px] font-bold uppercase tracking-wider"
+                  style={{ color: "#F87171" }}
+                >
                   Errores
                 </p>
-                <p className="text-xl sm:text-2xl font-black tabular-nums text-rose-700 mt-0.5">
+                <p className="text-xl sm:text-2xl font-black tabular-nums text-rose-400 mt-1">
                   {totales.totalErrores}
                 </p>
               </div>
             </div>
 
             {/* Tabla de Fundamentos */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-3 sm:p-5 overflow-x-auto">
+            <div
+              className="rounded-2xl p-3 sm:p-5 overflow-x-auto"
+              style={{
+                background: "var(--sx-surface-1)",
+                border: "1px solid var(--sx-border)",
+                boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+              }}
+            >
               <table className="w-full text-sm min-w-[600px] border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  <tr
+                    className="text-left text-[11px] font-bold uppercase tracking-wider"
+                    style={{
+                      borderBottom: "1px solid rgba(255,255,255,0.08)",
+                      color: "var(--sx-text-secondary)",
+                    }}
+                  >
                     <th className="py-2.5 px-3">Fundamento</th>
                     <th className="py-2.5 px-3 text-right">Total</th>
-                    <th className="py-2.5 px-3 text-right text-emerald-700">Pos</th>
-                    <th className="py-2.5 px-3 text-right text-rose-700">Neg</th>
+                    <th className="py-2.5 px-3 text-right" style={{ color: "#34D399" }}>
+                      Pos
+                    </th>
+                    <th className="py-2.5 px-3 text-right" style={{ color: "#F87171" }}>
+                      Neg
+                    </th>
                     <th className="py-2.5 px-3 text-right">Puntos</th>
                     <th className="py-2.5 px-3 text-right">Errores</th>
                     <th className="py-2.5 px-3 text-right">Saldo</th>
                     <th className="py-2.5 px-3 text-right">Efectividad</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
                   {FUNDAMENTOS.map((f) => {
                     const e = totales.porFundamento[f];
                     if (!e || e.total === 0) return null;
                     return (
-                      <tr key={f} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-2.5 px-3 font-semibold text-slate-800">
+                      <tr
+                        key={f}
+                        className="hover:bg-white/[0.02] transition-colors"
+                      >
+                        <td className="py-2.5 px-3 font-bold text-white">
                           {NOMBRES[f]}
                         </td>
-                        <td className="py-2.5 px-3 text-right tabular-nums text-slate-600 font-medium">
+                        <td
+                          className="py-2.5 px-3 text-right tabular-nums font-semibold"
+                          style={{ color: "var(--sx-text-primary)" }}
+                        >
                           {e.total}
                         </td>
-                        <td className="py-2.5 px-3 text-right tabular-nums text-emerald-700 font-semibold">
+                        <td
+                          className="py-2.5 px-3 text-right tabular-nums font-bold"
+                          style={{ color: "#34D399" }}
+                        >
                           {e.positivos}
                         </td>
-                        <td className="py-2.5 px-3 text-right tabular-nums text-rose-700 font-semibold">
+                        <td
+                          className="py-2.5 px-3 text-right tabular-nums font-bold"
+                          style={{ color: "#F87171" }}
+                        >
                           {e.negativos}
                         </td>
-                        <td className="py-2.5 px-3 text-right tabular-nums text-slate-700 font-medium">
+                        <td className="py-2.5 px-3 text-right tabular-nums text-slate-200 font-medium">
                           {e.puntos}
                         </td>
-                        <td className="py-2.5 px-3 text-right tabular-nums text-slate-700 font-medium">
+                        <td className="py-2.5 px-3 text-right tabular-nums text-slate-200 font-medium">
                           {e.errores}
                         </td>
                         <td
-                          className={`py-2.5 px-3 text-right tabular-nums font-bold ${
+                          className={`py-2.5 px-3 text-right tabular-nums font-black ${
                             e.saldo > 0
-                              ? "text-emerald-700"
+                              ? "text-emerald-400"
                               : e.saldo < 0
-                              ? "text-rose-700"
-                              : "text-slate-600"
+                              ? "text-rose-400"
+                              : "text-slate-400"
                           }`}
                         >
                           {e.saldo > 0 ? "+" : ""}
                           {e.saldo}
                         </td>
-                        <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-slate-800">
-                          {e.efectividad.toFixed(0)}%
+                        <td className="py-2.5 px-3 text-right tabular-nums font-bold text-white">
+                          <span
+                            className="inline-block px-2 py-0.5 rounded text-xs"
+                            style={{
+                              background:
+                                e.efectividad >= 50
+                                  ? "rgba(16,185,129,0.15)"
+                                  : "rgba(255,255,255,0.06)",
+                              color: e.efectividad >= 50 ? "#34D399" : "#F0F4FF",
+                            }}
+                          >
+                            {e.efectividad.toFixed(0)}%
+                          </span>
                         </td>
                       </tr>
                     );
@@ -442,17 +605,17 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <Trophy size={18} className="text-amber-500" />
+              <h3 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                <Trophy size={18} style={{ color: "#FBBF24" }} />
                 <span>Rankings de Rendimiento</span>
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Líderes por fundamento estadístico. Clic para ver desglose completo.
+              <p className="text-xs mt-0.5" style={{ color: "var(--sx-text-secondary)" }}>
+                Líderes por fundamento estadístico. Clic en cada tarjeta para desplegar el podio completo.
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 sm:gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {RANKINGS.map((r) => {
               const items = rankings[r.id];
               const abierto = rankingsAbiertos.has(r.id);
@@ -461,11 +624,16 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
               return (
                 <div
                   key={r.id}
-                  className="bg-white rounded-xl shadow-sm border border-slate-200/90 overflow-hidden transition-all hover:border-slate-300"
+                  className="rounded-xl overflow-hidden transition-all"
+                  style={{
+                    background: "var(--sx-surface-1)",
+                    border: "1px solid var(--sx-border)",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                  }}
                 >
                   <button
                     onClick={() => toggleRanking(r.id)}
-                    className="w-full text-left p-3.5 sm:p-4 hover:bg-slate-50/70 transition flex flex-col justify-between"
+                    className="w-full text-left p-3.5 sm:p-4 hover:bg-white/[0.03] transition flex flex-col justify-between"
                     data-pdf-acordeon
                     data-pdf-cerrado={abierto ? undefined : "true"}
                   >
@@ -474,50 +642,84 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
                         <IconoVoley
                           tipo={r.id}
                           size={20}
-                          className="text-[#163A85]"
+                          className="text-[#38BDF8]"
                         />
-                        <span className="font-bold text-slate-800 text-sm">
+                        <span className="font-bold text-white text-sm">
                           {r.titulo}
                         </span>
                       </div>
                       <ChevronDown
                         size={15}
-                        className={`text-slate-400 transition-transform ${
-                          abierto ? "rotate-180 text-slate-800" : ""
+                        className={`transition-transform ${
+                          abierto ? "rotate-180 text-white" : "text-slate-400"
                         }`}
                       />
                     </div>
 
                     {top1 ? (
                       <div className="flex items-baseline justify-between gap-2 w-full pt-1">
-                        <p className="text-sm font-semibold text-slate-900 truncate">
+                        <p className="text-sm font-bold text-white truncate">
                           {nombreDe(top1.jugador_id)}
                           {esArmadorId(top1.jugador_id) && (
-                            <span className="ml-1.5 text-[10px] font-bold text-violet-700 bg-violet-50 border border-violet-200/60 px-1.5 py-0.5 rounded">
+                            <span
+                              className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded"
+                              style={{
+                                background: "rgba(124,58,237,0.2)",
+                                color: "#C4B5FD",
+                                border: "1px solid rgba(124,58,237,0.4)",
+                              }}
+                            >
                               Armador
                             </span>
                           )}
                         </p>
-                        <p className="text-xs font-mono font-medium text-slate-500 shrink-0">
+                        <p
+                          className="text-xs font-mono font-bold shrink-0"
+                          style={{ color: "#FBBF24" }}
+                        >
                           {top1.texto}
                         </p>
                       </div>
                     ) : (
-                      <p className="text-xs text-slate-400">Sin datos registrados</p>
+                      <p
+                        className="text-xs"
+                        style={{ color: "var(--sx-text-muted)" }}
+                      >
+                        Sin datos registrados
+                      </p>
                     )}
                   </button>
 
                   {abierto && items.length > 0 && (
-                    <div className="border-t border-slate-100 bg-slate-50/60 p-2 sm:p-3 overflow-x-auto">
+                    <div
+                      className="p-2 sm:p-3 overflow-x-auto"
+                      style={{
+                        borderTop: "1px solid rgba(255,255,255,0.08)",
+                        background: "rgba(8,15,30,0.6)",
+                      }}
+                    >
                       <table className="w-full text-xs min-w-[380px]">
                         <thead>
-                          <tr className="text-left text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                          <tr
+                            className="text-left font-bold uppercase tracking-wider text-[10px]"
+                            style={{ color: "var(--sx-text-secondary)" }}
+                          >
                             <th className="py-1.5 px-2 w-8">#</th>
                             <th className="py-1.5 px-2">Jugador</th>
                             {r.id === "defensa" ? (
                               <>
-                                <th className="py-1.5 px-2 text-right">Pos</th>
-                                <th className="py-1.5 px-2 text-right">Neg</th>
+                                <th
+                                  className="py-1.5 px-2 text-right"
+                                  style={{ color: "#34D399" }}
+                                >
+                                  Pos
+                                </th>
+                                <th
+                                  className="py-1.5 px-2 text-right"
+                                  style={{ color: "#F87171" }}
+                                >
+                                  Neg
+                                </th>
                                 <th className="py-1.5 px-2 text-right">Bal</th>
                                 <th className="py-1.5 px-2 text-right">Valor</th>
                               </>
@@ -528,61 +730,76 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
                             )}
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
+                        <tbody
+                          className="divide-y"
+                          style={{ borderColor: "rgba(255,255,255,0.04)" }}
+                        >
                           {items.map((it, i) => (
                             <tr
                               key={it.jugador_id}
-                              className="hover:bg-white/80 transition-colors"
+                              className="hover:bg-white/[0.03] transition-colors"
                             >
                               <td className="py-1.5 px-2">
                                 <span
                                   className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
                                     i === 0
-                                      ? "bg-amber-100 text-amber-800 border border-amber-300"
+                                      ? "bg-amber-400/20 text-amber-300 border border-amber-400/50"
                                       : i === 1
-                                      ? "bg-slate-200 text-slate-700"
+                                      ? "bg-slate-300/20 text-slate-200 border border-slate-300/30"
                                       : i === 2
-                                      ? "bg-amber-900/15 text-amber-900"
+                                      ? "bg-amber-700/20 text-amber-200 border border-amber-700/30"
                                       : "text-slate-400"
                                   }`}
                                 >
                                   {i + 1}
                                 </span>
                               </td>
-                              <td className="py-1.5 px-2 font-medium text-slate-800">
+                              <td className="py-1.5 px-2 font-semibold text-white">
                                 {nombreDe(it.jugador_id)}
                                 {esArmadorId(it.jugador_id) && (
-                                  <span className="ml-1 text-[10px] text-violet-600 font-medium">
+                                  <span
+                                    className="ml-1 text-[10px] font-medium"
+                                    style={{ color: "#C4B5FD" }}
+                                  >
                                     (Armador)
                                   </span>
                                 )}
                               </td>
                               {r.id === "defensa" ? (
                                 <>
-                                  <td className="py-1.5 px-2 text-right tabular-nums text-emerald-700 font-medium">
+                                  <td
+                                    className="py-1.5 px-2 text-right tabular-nums font-semibold"
+                                    style={{ color: "#34D399" }}
+                                  >
                                     {it.positivas ?? 0}
                                   </td>
-                                  <td className="py-1.5 px-2 text-right tabular-nums text-rose-700 font-medium">
+                                  <td
+                                    className="py-1.5 px-2 text-right tabular-nums font-semibold"
+                                    style={{ color: "#F87171" }}
+                                  >
                                     {it.negativas ?? 0}
                                   </td>
                                   <td
-                                    className={`py-1.5 px-2 text-right tabular-nums font-bold ${
+                                    className={`py-1.5 px-2 text-right tabular-nums font-black ${
                                       (it.balance ?? 0) > 0
-                                        ? "text-emerald-700"
+                                        ? "text-emerald-400"
                                         : (it.balance ?? 0) < 0
-                                        ? "text-rose-700"
-                                        : "text-slate-500"
+                                        ? "text-rose-400"
+                                        : "text-slate-400"
                                     }`}
                                   >
                                     {(it.balance ?? 0) > 0 ? "+" : ""}
                                     {it.balance ?? 0}
                                   </td>
-                                  <td className="py-1.5 px-2 text-right tabular-nums font-bold text-slate-900">
+                                  <td className="py-1.5 px-2 text-right tabular-nums font-bold text-white">
                                     {it.valor.toFixed(2)}
                                   </td>
                                 </>
                               ) : (
-                                <td className="py-1.5 px-2 text-right tabular-nums font-medium text-slate-700">
+                                <td
+                                  className="py-1.5 px-2 text-right tabular-nums font-medium"
+                                  style={{ color: "var(--sx-text-primary)" }}
+                                >
                                   {it.texto}
                                 </td>
                               )}
@@ -602,16 +819,25 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
         {jugadoresDelEquipo.length > 0 && acciones.length > 0 && (
           <section className="space-y-3">
             <div>
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <FileSpreadsheet size={18} className="text-slate-600" />
+              <h3 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                <FileSpreadsheet size={18} style={{ color: "var(--sx-teal)" }} />
                 <span>Registro Detallado de Acciones</span>
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p
+                className="text-xs mt-0.5"
+                style={{ color: "var(--sx-text-secondary)" }}
+              >
                 Suma acumulada de todos los partidos registrados de {nombreEquipo}.
               </p>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-3 sm:p-5">
+            <div
+              className="rounded-2xl p-3 sm:p-5"
+              style={{
+                background: "var(--sx-surface-1)",
+                border: "1px solid var(--sx-border)",
+              }}
+            >
               <TablaEstadisticasCrudas
                 acciones={acciones}
                 jugadoresIds={jugadoresDelEquipo.map((j) => j.id)}

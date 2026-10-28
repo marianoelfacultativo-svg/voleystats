@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { User, GitCompare, FileDown } from "lucide-react";
+import { User, GitCompare, FileDown, Users } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { cargarAccionesCompatibles, type AccionDB } from "@/lib/db";
 import {
@@ -75,9 +75,9 @@ const ORDEN_RANKINGS: {
 const COLORES_COMPARACION = ["#EF4444", "#8B5CF6", "#3B82F6"];
 
 function colorPodio(puesto: number): string {
-  if (puesto === 1) return "bg-yellow-400 text-yellow-900";
-  if (puesto === 2) return "bg-slate-300 text-slate-800";
-  return "bg-amber-700 text-amber-100";
+  if (puesto === 1) return "bg-amber-400/20 text-amber-300 border border-amber-400/50";
+  if (puesto === 2) return "bg-slate-300/20 text-slate-200 border border-slate-300/40";
+  return "bg-amber-700/25 text-amber-200 border border-amber-700/40";
 }
 
 function calcularBarrasPorFundamento(
@@ -373,10 +373,28 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
 
   if (jugadores.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 sm:p-12 text-center">
-        <p className="text-4xl mb-3">👥</p>
-        <p className="text-slate-600 font-medium">
-          {nombreEquipo} todavía no tiene jugadores cargados
+      <div
+        className="card p-8 sm:p-12 text-center max-w-lg mx-auto"
+        style={{
+          background: "linear-gradient(145deg, rgba(15,29,53,0.9), rgba(10,22,40,0.95))",
+          borderColor: "var(--sx-border-bright)",
+        }}
+      >
+        <div
+          className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+          style={{
+            background: "rgba(37,99,235,0.12)",
+            border: "1px solid rgba(37,99,235,0.25)",
+            color: "var(--sx-teal)",
+          }}
+        >
+          <Users size={26} />
+        </div>
+        <h3 className="text-lg font-bold text-white">
+          Sin jugadores registrados
+        </h3>
+        <p className="text-sm mt-1.5" style={{ color: "var(--sx-text-secondary)" }}>
+          <span className="text-white font-semibold">{nombreEquipo}</span> todavía no tiene jugadores cargados en la plantilla.
         </p>
       </div>
     );
@@ -385,37 +403,42 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-        <div className="bg-slate-200/60 p-1 rounded-xl inline-flex gap-1">
+        <div className="nav-pill inline-flex gap-1">
           <button
             onClick={() => handleToggleModo("individual")}
             className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
               modo === "individual"
-                ? "bg-white text-slate-900 shadow-sm border border-slate-200/80"
-                : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                ? "tab-active"
+                : "text-slate-400 hover:text-white hover:bg-white/[0.05]"
             }`}
           >
-            <User size={13} className={modo === "individual" ? "text-[#163A85]" : "text-slate-400"} />
+            <User size={13} className={modo === "individual" ? "text-white" : "text-slate-400"} />
             <span>Ficha Individual</span>
           </button>
           <button
             onClick={() => handleToggleModo("comparar")}
             className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
               modo === "comparar"
-                ? "bg-white text-slate-900 shadow-sm border border-slate-200/80"
-                : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                ? "tab-active"
+                : "text-slate-400 hover:text-white hover:bg-white/[0.05]"
             }`}
           >
-            <GitCompare size={13} className={modo === "comparar" ? "text-[#163A85]" : "text-slate-400"} />
+            <GitCompare size={13} className={modo === "comparar" ? "text-white" : "text-slate-400"} />
             <span>Comparar ({comparados.length}/3)</span>
           </button>
         </div>
         <button
           onClick={handleDescargarPDF}
           disabled={descargando}
-          className="inline-flex items-center justify-center gap-2 px-3.5 py-2 text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200 hover:border-slate-300 rounded-xl shadow-sm transition-all disabled:opacity-50 w-full sm:w-auto"
+          className="btn-outline flex items-center justify-center gap-2"
+          style={{
+            background: "rgba(15,29,53,0.8)",
+            color: "var(--sx-text-primary)",
+            borderColor: "var(--sx-border-bright)",
+          }}
           data-pdf-ignorar
         >
-          <FileDown size={14} className="text-slate-500" />
+          <FileDown size={14} style={{ color: "var(--sx-teal)" }} />
           <span>{descargando ? "Generando PDF..." : "Exportar Informe PDF"}</span>
         </button>
       </div>
@@ -424,17 +447,23 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
         ref={refPDF}
         className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4"
       >
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 sm:p-4 col-span-1">
-          <h3 className="font-semibold text-slate-800 mb-3">
+        <div
+          className="rounded-2xl p-3 sm:p-4 col-span-1"
+          style={{
+            background: "var(--sx-surface-1)",
+            border: "1px solid var(--sx-border)",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+          }}
+        >
+          <h3 className="font-bold text-white mb-2 text-sm">
             {modo === "individual" ? "Plantel" : "Elegí hasta 3 jugadores"}
           </h3>
           {modo === "comparar" && (
-            <p className="text-xs text-slate-500 mb-3">
-              Armadores con armadores, jugadores de cancha con jugadores de
-              cancha.
+            <p className="text-xs mb-3" style={{ color: "var(--sx-text-secondary)" }}>
+              Armadores con armadores, jugadores de cancha con jugadores de cancha.
             </p>
           )}
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {jugadores.map((j) => {
               const est = porJugador[j.id];
               const accionesJ = est?.totalAcciones ?? 0;
@@ -471,22 +500,29 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                       : handleClickComparar(j.id)
                   }
                   disabled={bloqueado || puedeAgregarMas}
-                  className={`w-full flex items-center gap-3 text-left px-3 py-2 rounded-lg transition text-sm ${
+                  className={`w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-xl transition-all text-sm ${
                     seleccionadoIndividual
-                      ? "bg-emerald-500 text-white"
+                      ? "text-white shadow-md font-bold"
                       : colorIdx !== -1
-                      ? "text-white"
+                      ? "text-white shadow-md font-bold"
                       : bloqueado || puedeAgregarMas
-                      ? "bg-slate-50 text-slate-300 cursor-not-allowed opacity-50"
-                      : "bg-slate-50 hover:bg-slate-100 text-slate-700"
+                      ? "opacity-30 cursor-not-allowed text-slate-500"
+                      : "text-slate-300 hover:text-white hover:bg-white/[0.04]"
                   }`}
-                  style={
-                    colorIdx !== -1
-                      ? { backgroundColor: COLORES_COMPARACION[colorIdx] }
-                      : undefined
-                  }
+                  style={{
+                    background: seleccionadoIndividual
+                      ? "linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)"
+                      : colorIdx !== -1
+                      ? COLORES_COMPARACION[colorIdx]
+                      : "rgba(255,255,255,0.02)",
+                    border: seleccionadoIndividual
+                      ? "1px solid rgba(255,255,255,0.25)"
+                      : colorIdx !== -1
+                      ? "1px solid rgba(255,255,255,0.3)"
+                      : "1px solid rgba(255,255,255,0.04)",
+                  }}
                 >
-                  <span className="relative">
+                  <span className="relative shrink-0">
                     <ImagenAmpliable
                       src={j.imagen_url}
                       alt={j.nombre}
@@ -495,7 +531,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     />
                     {colorIdx !== -1 && (
                       <span
-                        className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-white text-[10px] font-bold flex items-center justify-center border-2 border-white"
+                        className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-white text-[10px] font-bold flex items-center justify-center border-2 border-slate-900"
                         style={{
                           backgroundColor: COLORES_COMPARACION[colorIdx],
                         }}
@@ -505,23 +541,27 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     )}
                   </span>
                   <span className="flex-1 min-w-0">
-                    <span className="font-medium block truncate">
+                    <span className="font-semibold block truncate">
                       {j.nombre}
-                      {j.numero !== null && ` #${j.numero}`}
+                      {j.numero !== null && (
+                        <span className="ml-1 text-xs opacity-75 font-mono">
+                          #{j.numero}
+                        </span>
+                      )}
                     </span>
                     {j.rol === "armador" && (
                       <span
-                        className={`block text-xs ${
+                        className={`block text-[11px] font-medium ${
                           seleccionadoIndividual || colorIdx !== -1
                             ? "text-white/90"
-                            : "text-violet-600"
+                            : "text-violet-400"
                         }`}
                       >
                         Armador
                       </span>
                     )}
                     <span
-                      className={`block text-xs ${
+                      className={`block text-[10px] ${
                         seleccionadoIndividual || colorIdx !== -1
                           ? "text-white/80"
                           : "text-slate-400"
@@ -539,17 +579,46 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
         <div className="col-span-1 lg:col-span-2">
           {modo === "individual" ? (
             !jugadorSeleccionado || !jugadorActual || !datosJugador ? (
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 sm:p-12 text-center h-full flex items-center justify-center">
+              <div
+                className="rounded-2xl p-8 sm:p-12 text-center h-full flex items-center justify-center"
+                style={{
+                  background: "var(--sx-surface-1)",
+                  border: "1px dashed var(--sx-border-bright)",
+                }}
+              >
                 <div>
-                  <p className="text-4xl mb-3">👈</p>
-                  <p className="text-slate-600 font-medium">
-                    Elegí un jugador para ver su perfil
+                  <div
+                    className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3"
+                    style={{
+                      background: "rgba(37,99,235,0.12)",
+                      border: "1px solid rgba(37,99,235,0.25)",
+                      color: "var(--sx-teal)",
+                    }}
+                  >
+                    <User size={26} />
+                  </div>
+                  <p className="text-white font-bold text-base">
+                    Elegí un jugador del plantel
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: "var(--sx-text-secondary)" }}>
+                    Seleccioná una ficha en la lista izquierda para visualizar su radar, mapa de calor y desglose estadístico.
                   </p>
                 </div>
               </div>
             ) : (
-              <div className="card-terracota rounded-2xl border p-4 sm:p-6">
-                <div className="flex items-center gap-3 sm:gap-4 mb-6 pb-6 border-b border-slate-300">
+              <div
+                className="rounded-2xl p-4 sm:p-6 space-y-6"
+                style={{
+                  background: "var(--sx-surface-1)",
+                  border: "1px solid var(--sx-border-bright)",
+                  boxShadow: "0 8px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)",
+                }}
+              >
+                {/* Header de la ficha */}
+                <div
+                  className="flex items-center gap-4 pb-5"
+                  style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}
+                >
                   <ImagenAmpliable
                     src={datosJugador.imagen_url}
                     alt={datosJugador.nombre}
@@ -557,32 +626,54 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     tamaño="lg"
                   />
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-xl sm:text-2xl font-bold text-slate-900 truncate">
-                      {datosJugador.nombre}
-                    </h3>
-                    {datosJugador.numero !== null && (
-                      <p className="text-slate-600">
-                        #{datosJugador.numero}
-                      </p>
-                    )}
-                    <p className="text-sm text-slate-600 mt-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight truncate">
+                        {datosJugador.nombre}
+                      </h3>
+                      {datosJugador.numero !== null && (
+                        <span
+                          className="px-2 py-0.5 rounded-md text-xs font-mono font-bold"
+                          style={{
+                            background: "rgba(245,158,11,0.15)",
+                            color: "#FBBF24",
+                            border: "1px solid rgba(245,158,11,0.3)",
+                          }}
+                        >
+                          #{datosJugador.numero}
+                        </span>
+                      )}
+                      {esArmador && (
+                        <span
+                          className="text-xs font-bold px-2 py-0.5 rounded-md"
+                          style={{
+                            background: "rgba(124,58,237,0.2)",
+                            color: "#C4B5FD",
+                            border: "1px solid rgba(124,58,237,0.4)",
+                          }}
+                        >
+                          Armador
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs mt-1 font-semibold" style={{ color: "var(--sx-text-secondary)" }}>
                       {nombreEquipo}
                     </p>
-                    {esArmador && (
-                      <span className="inline-block mt-1 text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
-                        Armador
-                      </span>
-                    )}
                   </div>
                 </div>
 
-                <div className="mb-6">
-                  <h4 className="font-semibold text-slate-800 mb-3">
-                    Perfil de rendimiento
+                {/* Perfil de rendimiento */}
+                <div>
+                  <h4 className="font-bold text-white text-sm mb-3">
+                    Perfil de Rendimiento
                   </h4>
-                  {/* GRILLA 2 COLUMNAS (3 FILAS DE 2) Y CUADRADOS PERFECTOS */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                    <div className="bg-white border border-slate-200 rounded-lg p-2 flex flex-col aspect-square justify-center">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div
+                      className="rounded-xl p-2 flex flex-col aspect-square justify-center"
+                      style={{
+                        background: "rgba(8,15,30,0.65)",
+                        border: "1px solid var(--sx-border)",
+                      }}
+                    >
                       <RadarJugador
                         jugador={jugadorActual}
                         esArmador={esArmador}
@@ -590,7 +681,14 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     </div>
                     {barrasJugadorActual &&
                       FUNDAMENTOS_BARRAS.map((f) => (
-                        <div key={f} className="bg-white border border-slate-200 rounded-lg p-3 flex flex-col aspect-square">
+                        <div
+                          key={f}
+                          className="rounded-xl p-3 flex flex-col aspect-square"
+                          style={{
+                            background: "rgba(8,15,30,0.65)",
+                            border: "1px solid var(--sx-border)",
+                          }}
+                        >
                           <GraficoBarrasFundamento
                             fundamento={f}
                             positivas={barrasJugadorActual[f].positivas}
@@ -602,11 +700,18 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   </div>
                 </div>
 
-                <div className="mb-6">
-                  <h4 className="font-semibold text-slate-800 mb-3">
-                    Mapa de calor
+                {/* Mapa de calor */}
+                <div>
+                  <h4 className="font-bold text-white text-sm mb-3">
+                    Mapa de Calor en Cancha
                   </h4>
-                  <div className="bg-white border border-slate-200 rounded-lg p-3 sm:p-4">
+                  <div
+                    className="rounded-xl p-3 sm:p-4"
+                    style={{
+                      background: "rgba(8,15,30,0.65)",
+                      border: "1px solid var(--sx-border)",
+                    }}
+                  >
                     <MapaCalorJugador
                       acciones={acciones}
                       jugadorId={jugadorActual.jugador_id}
@@ -614,13 +719,14 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   </div>
                 </div>
 
+                {/* Valoración ponderada */}
                 {Object.keys(jugadorActual.valoracionPonderadaPorFundamento)
                   .length > 0 && (
-                  <div className="mb-6">
-                    <h4 className="font-semibold text-slate-800 mb-3">
-                      Valoración ponderada por fundamento
+                  <div>
+                    <h4 className="font-bold text-white text-sm mb-3">
+                      Valoración Ponderada por Fundamento
                     </h4>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
                       {Object.entries(
                         jugadorActual.valoracionPonderadaPorFundamento
                       ).map(([fund, val]) => {
@@ -631,27 +737,30 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         return (
                           <div
                             key={fund}
-                            className={`p-3 rounded-lg text-center relative border-2 ${col.bg} ${col.border}`}
+                            className={`p-3 rounded-xl text-center relative border ${col.bg} ${col.border}`}
+                            style={{
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+                            }}
                           >
                             {puesto !== undefined && (
                               <span
-                                className={`absolute -top-2 -right-2 inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold shadow-sm border-2 border-white ${colorPodio(
+                                className={`absolute -top-2 -right-2 inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold shadow-md ${colorPodio(
                                   puesto
                                 )}`}
                                 title={`${puesto}° puesto del plantel`}
                               >
-                                ⭐{puesto}
+                                #{puesto}
                               </span>
                             )}
-                            <p className="text-xs text-slate-600 font-medium">
+                            <p className="text-xs font-semibold text-slate-300">
                               {NOMBRES_FUNDAMENTO[fund] ?? fund}
                             </p>
-                            <p className={`text-lg font-bold ${col.text}`}>
+                            <p className={`text-lg font-black mt-0.5 ${col.text}`}>
                               {val > 0 ? "+" : ""}
                               {val.toFixed(2)}
                             </p>
                             <p
-                              className={`text-[9px] uppercase font-semibold ${col.text} opacity-70`}
+                              className={`text-[9px] uppercase font-bold tracking-wider ${col.text} opacity-80`}
                             >
                               {col.nombre}
                             </p>
@@ -662,12 +771,20 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   </div>
                 )}
 
+                {/* Sus números en el plantel */}
                 {Object.keys(textosRanking).length > 0 && (
-                  <div className="mb-6">
-                    <h4 className="font-semibold text-slate-800 mb-3">
-                      Sus números en el plantel
+                  <div>
+                    <h4 className="font-bold text-white text-sm mb-3">
+                      Sus Números en el Plantel
                     </h4>
-                    <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-200">
+                    <div
+                      className="rounded-xl divide-y"
+                      style={{
+                        background: "rgba(8,15,30,0.65)",
+                        border: "1px solid var(--sx-border)",
+                        borderColor: "rgba(255,255,255,0.06)",
+                      }}
+                    >
                       {ORDEN_RANKINGS.map((r) => {
                         const texto = textosRanking[r.id];
                         const puesto =
@@ -675,18 +792,18 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         return (
                           <div
                             key={r.id}
-                            className="flex items-start gap-3 px-3 sm:px-4 py-3"
+                            className="flex items-start gap-3 px-3.5 sm:px-4 py-3"
                           >
                             <div className="mt-0.5 shrink-0">
                               <IconoVoley
                                 tipo={r.id}
-                                size={20}
-                                className="text-slate-800"
+                                size={18}
+                                className="text-[#38BDF8]"
                               />
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-0.5">
-                                <p className="text-sm font-semibold text-slate-700">
+                                <p className="text-sm font-bold text-white">
                                   {r.titulo}
                                 </p>
                                 {puesto !== undefined && (
@@ -700,7 +817,10 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                                   </span>
                                 )}
                               </div>
-                              <p className="text-xs text-slate-500 break-words">
+                              <p
+                                className="text-xs break-words"
+                                style={{ color: "var(--sx-text-secondary)" }}
+                              >
                                 {texto ?? "Sin datos en este fundamento"}
                               </p>
                             </div>
