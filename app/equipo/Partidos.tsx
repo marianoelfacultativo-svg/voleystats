@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   FileDown,
   Calendar,
@@ -470,32 +470,25 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     ? partidos.find((p) => p.id === partidoSeleccionado) ?? null
     : null;
 
-  const idsJugadores = useMemo(
-    () => jugadores.map((j) => j.id),
-    [jugadores]
-  );
-  const armadores = useMemo(
-    () =>
-      new Set(
-        jugadores.filter((j) => j.rol === "armador").map((j) => j.id)
-      ),
-    [jugadores]
+  // ⚠️ Estos cálculos NO son useMemo a propósito:
+  // van después de los `return` condicionales (cargando / sin partidos),
+  // así que no pueden ser hooks — React error #310.
+  const idsJugadores = jugadores.map((j) => j.id);
+  const armadores = new Set(
+    jugadores.filter((j) => j.rol === "armador").map((j) => j.id)
   );
 
-  const accionesDelPartidoBase = useMemo(() => {
-    if (!partidoDetalle) return [];
-    return acciones.filter((a) => {
-      if (a.partido_id !== partidoDetalle.id) return false;
-      if (filtroSet !== "todos" && String(a.set_numero) !== filtroSet)
-        return false;
-      return true;
-    });
-  }, [acciones, partidoDetalle, filtroSet]);
+  const accionesDelPartidoBase = !partidoDetalle
+    ? []
+    : acciones.filter((a) => {
+        if (a.partido_id !== partidoDetalle.id) return false;
+        if (filtroSet !== "todos" && String(a.set_numero) !== filtroSet)
+          return false;
+        return true;
+      });
 
-  const accionesDelPartido = useMemo(() => {
-    if (!filtrosTacticos || !hayFiltrosTacticos(filtrosTacticos)) {
-      return accionesDelPartidoBase;
-    }
+  let accionesDelPartido = accionesDelPartidoBase;
+  if (filtrosTacticos && hayFiltrosTacticos(filtrosTacticos)) {
     try {
       const visuales = accionesDBaVisualParaTactico(accionesDelPartidoBase);
       const filtradas = aplicarFiltrosTacticos(
@@ -506,7 +499,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       );
       const idsOk = new Set(filtradas.map((v) => v.id));
       const contadorPorPunto = new Map<string, number>();
-      return accionesDelPartidoBase.filter((a) => {
+      accionesDelPartido = accionesDelPartidoBase.filter((a) => {
         const k = `${a.set_numero}-${a.punto_numero ?? 0}`;
         const orden = (contadorPorPunto.get(k) ?? 0) + 1;
         contadorPorPunto.set(k, orden);
@@ -517,9 +510,9 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("Error aplicando filtros tácticos:", err);
-      return accionesDelPartidoBase;
+      accionesDelPartido = accionesDelPartidoBase;
     }
-  }, [accionesDelPartidoBase, filtrosTacticos]);
+  }
 
   const statsPartido = partidoDetalle
     ? calcularEstadisticasEquipo(idsJugadores, accionesDelPartido, armadores)
