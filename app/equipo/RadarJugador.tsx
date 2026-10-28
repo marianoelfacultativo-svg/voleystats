@@ -38,10 +38,10 @@ const ETIQUETAS: Record<string, string> = {
 };
 
 const TEXTO_NIVEL: Record<NivelValoracion, string> = {
-  bajo: "#dc2626",
-  cumple: "#eab308",
-  bien: "#16a34a",
-  destaca: "#0284c7",
+  bajo: "#F87171",
+  cumple: "#FBBF24",
+  bien: "#34D399",
+  destaca: "#38BDF8",
 };
 
 const REAL_MIN = -2;
@@ -105,8 +105,8 @@ export default function RadarJugador({
     const count = fila.count as number;
     const nivel = fila.nivel as NivelValoracion | null;
 
-    const colorNombre = nivel ? TEXTO_NIVEL[nivel] : "#475569";
-    const colorNumero = nivel ? TEXTO_NIVEL[nivel] : "#94a3b8";
+    const colorNombre = nivel ? TEXTO_NIVEL[nivel] : "#94A3B8";
+    const colorNumero = nivel ? TEXTO_NIVEL[nivel] : "#64748B";
 
     return (
       <text
@@ -123,11 +123,11 @@ export default function RadarJugador({
   };
 
   return (
-    <div className="w-full h-full flex flex-col paper-chart rounded-lg p-2">
+    <div className="w-full h-full flex flex-col rounded-lg p-2">
       <div className="flex-1 w-full min-h-0 relative">
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart data={datos} outerRadius="70%">
-            <PolarGrid stroke="#cbd5e1" gridType="polygon" />
+            <PolarGrid stroke="rgba(255,255,255,0.12)" gridType="polygon" />
             <PolarAngleAxis dataKey="fundamento" tick={renderTick} />
             <PolarRadiusAxis
               angle={90}

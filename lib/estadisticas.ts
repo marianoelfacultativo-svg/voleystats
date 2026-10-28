@@ -1456,27 +1456,27 @@ export const COLORES_NIVEL_CLASES: Record<
   { bg: string; border: string; text: string; nombre: string }
 > = {
   bajo: {
-    bg: "bg-red-50",
-    border: "border-red-300",
-    text: "text-red-700",
+    bg: "bg-red-950/40",
+    border: "border-red-500/40",
+    text: "text-red-400",
     nombre: "Bajo",
   },
   cumple: {
-    bg: "bg-yellow-50",
-    border: "border-yellow-300",
-    text: "text-yellow-700",
+    bg: "bg-amber-950/40",
+    border: "border-amber-500/40",
+    text: "text-amber-400",
     nombre: "Regular",
   },
   bien: {
-    bg: "bg-emerald-50",
-    border: "border-emerald-300",
-    text: "text-emerald-700",
+    bg: "bg-emerald-950/40",
+    border: "border-emerald-500/40",
+    text: "text-emerald-400",
     nombre: "Bueno",
   },
   destaca: {
-    bg: "bg-sky-50",
-    border: "border-sky-300",
-    text: "text-sky-700",
+    bg: "bg-sky-950/40",
+    border: "border-sky-500/40",
+    text: "text-sky-400",
     nombre: "Destacado",
   },
 };

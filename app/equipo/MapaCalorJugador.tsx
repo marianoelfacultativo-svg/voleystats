@@ -232,8 +232,8 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
             onClick={() => setFundamento(t.id)}
             className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition ${
               fundamento === t.id
-                ? "bg-emerald-500 text-white border-emerald-600"
-                : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                ? "bg-[var(--sx-blue-bright)] text-white border-[var(--sx-blue-bright)] shadow-[0_2px_8px_rgba(37,99,235,0.45)]"
+                : "bg-[var(--sx-surface-2)] text-[var(--sx-text-secondary)] border-[var(--sx-border-bright)] hover:bg-[var(--sx-surface-3)] hover:text-[var(--sx-text-primary)]"
             }`}
           >
             {t.icono} {t.label}
@@ -242,7 +242,7 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
       </div>
 
       <div className="flex flex-wrap items-center gap-1">
-        <span className="text-[10px] font-semibold text-slate-500 uppercase mr-1">
+        <span className="text-[10px] font-semibold text-[var(--sx-text-muted)] uppercase mr-1">
           Nivel:
         </span>
         {(["todas", "pos", "neu", "neg"] as Nivel[]).map((n) => {
@@ -253,10 +253,10 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
             neg: "Negativas",
           };
           const colores: Record<Nivel, string> = {
-            todas: "bg-slate-100 text-slate-700 border-slate-300",
-            pos: "bg-green-100 text-green-800 border-green-400",
-            neu: "bg-slate-100 text-slate-700 border-slate-400",
-            neg: "bg-red-100 text-red-800 border-red-400",
+            todas: "bg-[var(--sx-surface-2)] text-[var(--sx-text-secondary)] border-[var(--sx-border-bright)]",
+            pos: "bg-[rgba(16,185,129,0.15)] text-[#6ee7b7] border-[rgba(16,185,129,0.3)]",
+            neu: "bg-[var(--sx-surface-2)] text-[var(--sx-text-secondary)] border-[var(--sx-border-bright)]",
+            neg: "bg-[rgba(229,62,77,0.15)] text-[#fca5a5] border-[rgba(229,62,77,0.3)]",
           };
           const activo = nivel === n;
           return (
@@ -265,8 +265,8 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
               onClick={() => setNivel(n)}
               className={`px-2 py-1 text-[11px] font-semibold rounded border-2 transition ${
                 activo
-                  ? "bg-emerald-500 text-white border-emerald-600"
-                  : `${colores[n]} hover:brightness-95`
+                  ? "bg-[var(--sx-blue-bright)] text-white border-[var(--sx-blue-bright)] shadow-[0_2px_8px_rgba(37,99,235,0.45)]"
+                  : `${colores[n]} hover:brightness-110`
               }`}
             >
               {labels[n]}
@@ -275,9 +275,9 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
         })}
       </div>
 
-      <div className="bg-white rounded-xl overflow-hidden flex justify-center p-4 shadow-md">
+      <div className="card rounded-xl overflow-hidden flex justify-center p-4">
         {!tieneDatos ? (
-          <div className="h-[360px] flex items-center justify-center text-slate-400 text-sm text-center px-4">
+          <div className="h-[360px] flex items-center justify-center text-[var(--sx-text-muted)] text-sm text-center px-4">
             Sin datos de {TABS.find((t) => t.id === fundamento)?.label} para
             este jugador con los filtros actuales
           </div>
@@ -290,111 +290,123 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
           >
             <defs>
               <radialGradient id="heatColor" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#ff0000" stopOpacity="0.85" />
-                <stop offset="25%" stopColor="#ff4500" stopOpacity="0.65" />
-                <stop offset="50%" stopColor="#ffa500" stopOpacity="0.45" />
-                <stop offset="75%" stopColor="#ffff00" stopOpacity="0.25" />
-                <stop offset="100%" stopColor="#00ff00" stopOpacity="0" />
+                <stop offset="0%" stopColor="#EF4444" stopOpacity="0.9" />
+                <stop offset="30%" stopColor="#F97316" stopOpacity="0.75" />
+                <stop offset="60%" stopColor="#FBBF24" stopOpacity="0.5" />
+                <stop offset="85%" stopColor="#38BDF8" stopOpacity="0.2" />
+                <stop offset="100%" stopColor="#38BDF8" stopOpacity="0" />
               </radialGradient>
               <filter id="heatBlur">
-                <feGaussianBlur stdDeviation="8" />
+                <feGaussianBlur stdDeviation="6.5" />
               </filter>
             </defs>
 
-            <rect x={0} y={0} width={260} height={360} fill="#1e293b" />
+            {/* Fondo Cancha */}
+            <rect x={0} y={0} width={260} height={360} rx={8} fill="#0A1628" />
+            <rect x={0} y={0} width={260} height={360} rx={8} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
 
-            <g stroke="#ffffff" strokeWidth="1.5" fill="none" opacity="0.4">
-              <rect x={0} y={0} width={260} height={360} />
+            {/* Líneas de la Cancha */}
+            <g stroke="#94A3B8" strokeWidth="1.2" fill="none" opacity="0.6">
+              {/* Perímetro */}
+              <rect x={6} y={6} width={248} height={348} strokeWidth="1.5" />
+              {/* Línea de ataque rival */}
+              <line x1={6} y1={120} x2={254} y2={120} strokeDasharray="3 3" />
+              {/* Red central */}
               <line
-                x1={0}
+                x1={2}
                 y1={180}
-                x2={260}
+                x2={258}
                 y2={180}
-                strokeWidth="4"
-                opacity="0.8"
+                stroke="#F87171"
+                strokeWidth="3"
+                opacity="0.9"
               />
-              <line x1={0} y1={120} x2={260} y2={120} />
-              <line x1={0} y1={240} x2={260} y2={240} />
+              {/* Línea de ataque propia */}
+              <line x1={6} y1={240} x2={254} y2={240} strokeDasharray="3 3" />
+              {/* Eje central vertical */}
               <line
                 x1={130}
-                y1={0}
+                y1={6}
                 x2={130}
-                y2={360}
+                y2={354}
                 strokeDasharray="4 4"
-                opacity="0.2"
+                opacity="0.25"
               />
             </g>
 
-            <g stroke="#ffffff" strokeWidth="0.5" opacity="0.15">
+            {/* Zonas de la red */}
+            <g stroke="#64748B" strokeWidth="0.5" opacity="0.25">
               {Array.from({ length: 13 }).map((_, i) => (
                 <line
                   key={`v-${i}`}
-                  x1={i * 20}
-                  y1={174}
-                  x2={i * 20}
-                  y2={186}
-                />
-              ))}
-              {Array.from({ length: 3 }).map((_, i) => (
-                <line
-                  key={`h-${i}`}
-                  x1={0}
-                  y1={174 + i * 6}
-                  x2={260}
-                  y2={174 + i * 6}
+                  x1={6 + i * 19}
+                  y1={175}
+                  x2={6 + i * 19}
+                  y2={185}
                 />
               ))}
             </g>
 
-            <g filter="url(#heatBlur)" opacity="0.85">
+            {/* Manchas de calor */}
+            <g filter="url(#heatBlur)" opacity="0.88">
               {heatPoints.map((p, i) => (
                 <circle
                   key={`h-${i}`}
                   cx={p.px}
                   cy={p.py}
-                  r={p.peso > 1 ? 20 + p.peso * 3 : 20}
+                  r={p.peso > 1 ? Math.min(30, 16 + p.peso * 2.5) : 17}
                   fill="url(#heatColor)"
                 />
               ))}
             </g>
 
+            {/* Estrellas tácticas de posición inicial */}
             <g>
               {stars.map((s, i) => (
-                <text
-                  key={`star-${i}`}
-                  x={s.px}
-                  y={s.py}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize={16}
-                  style={{
-                    filter: "drop-shadow(0px 2px 2px rgba(0,0,0,0.6))",
-                  }}
-                >
-                  ⭐
-                </text>
+                <g key={`star-${i}`} transform={`translate(${s.px}, ${s.py})`}>
+                  <circle
+                    r={9}
+                    fill="#1D4ED8"
+                    stroke="#93C5FD"
+                    strokeWidth="1.5"
+                    style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.5))" }}
+                  />
+                  <text
+                    x={0}
+                    y={3.5}
+                    textAnchor="middle"
+                    fill="#FFFFFF"
+                    fontSize={10}
+                    fontWeight="bold"
+                  >
+                    ★
+                  </text>
+                </g>
               ))}
             </g>
 
+            {/* Etiquetas de cancha */}
             <text
               x={130}
-              y={16}
+              y={24}
               textAnchor="middle"
-              fill="#ffffff"
-              opacity="0.5"
-              fontSize={10}
-              fontWeight="bold"
+              fill="#94A3B8"
+              fontSize={8.5}
+              fontWeight="700"
+              letterSpacing="0.1em"
+              opacity="0.7"
             >
               CANCHA RIVAL
             </text>
             <text
               x={130}
-              y={352}
+              y={344}
               textAnchor="middle"
-              fill="#ffffff"
-              opacity="0.5"
-              fontSize={10}
-              fontWeight="bold"
+              fill="#94A3B8"
+              fontSize={8.5}
+              fontWeight="700"
+              letterSpacing="0.1em"
+              opacity="0.7"
             >
               CANCHA PROPIA
             </text>
@@ -402,7 +414,7 @@ export default function MapaCalorJugador({ acciones, jugadorId }: Props) {
         )}
       </div>
 
-      <p className="text-[10px] text-slate-500 text-center">
+      <p className="text-[10px] text-[var(--sx-text-muted)] text-center">
         {fundamento === "saque" || fundamento === "ataque"
           ? "El mapa muestra los destinos de las acciones."
           : "El mapa muestra los orígenes de las acciones y las estrellas indican la posición inicial."}

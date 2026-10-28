@@ -49,36 +49,43 @@ export default function GraficoBloqueoPorSet({ promedios, series }: Props) {
 
   return (
     <div>
-      <h4 className="font-semibold text-slate-800 mb-3">Bloqueo por set</h4>
+      <h4 className="font-semibold text-white mb-3">Bloqueo por set</h4>
       {!hayDatos ? (
-        <p className="text-sm text-slate-500 text-center py-8">
+        <p className="text-sm text-slate-400 text-center py-8">
           Todavía no hay bloqueos cargados
         </p>
       ) : (
         <>
           <div
-            className="bg-white border border-slate-200 rounded-lg p-2"
-            style={{ height: esMultiple ? "220px" : "200px", width: "100%" }}
+            className="card border border-white/10 rounded-xl p-3"
+            style={{ height: esMultiple ? "230px" : "210px", width: "100%" }}
           >
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={datos}
                 margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
               >
-                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                <CartesianGrid stroke="rgba(255,255,255,0.08)" strokeDasharray="3 3" />
                 <XAxis
                   dataKey="set"
-                  tick={{ fill: "#64748b", fontSize: 10 }}
+                  tick={{ fill: "#94a3b8", fontSize: 10 }}
                 />
                 <YAxis
                   domain={[-2, 10]}
-                  tick={{ fill: "#64748b", fontSize: 10 }}
+                  tick={{ fill: "#94a3b8", fontSize: 10 }}
                 />
                 <Tooltip
-                  labelStyle={{ fontSize: 12 }}
-                  contentStyle={{ fontSize: 12 }}
+                  labelStyle={{ color: "#94a3b8", fontSize: 12 }}
+                  contentStyle={{
+                    backgroundColor: "#0F1D35",
+                    borderColor: "rgba(255,255,255,0.15)",
+                    borderRadius: "8px",
+                    color: "#F0F4FF",
+                    fontSize: 12,
+                  }}
+                  itemStyle={{ color: "#F0F4FF" }}
                 />
-                <ReferenceLine y={0} stroke="#cbd5e1" strokeWidth={1} />
+                <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" strokeWidth={1} />
                 {seriesFinales.map((s) => (
                   <Line
                     key={s.id}
@@ -86,13 +93,14 @@ export default function GraficoBloqueoPorSet({ promedios, series }: Props) {
                     dataKey={s.id}
                     name={s.nombre}
                     stroke={s.color}
-                    strokeWidth={2}
-                    dot={{ fill: s.color, r: 4 }}
+                    strokeWidth={2.5}
+                    dot={{ fill: s.color, r: 4, stroke: "#0F1D35", strokeWidth: 1.5 }}
+                    activeDot={{ r: 6 }}
                   />
                 ))}
                 {esMultiple && (
                   <Legend
-                    wrapperStyle={{ fontSize: 11 }}
+                    wrapperStyle={{ fontSize: 11, color: "#94a3b8" }}
                     iconType="line"
                   />
                 )}

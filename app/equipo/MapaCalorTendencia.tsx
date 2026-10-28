@@ -87,44 +87,36 @@ function nivelToque(valoracion: string): "pos" | "neu" | "neg" {
 }
 
 function calcularColor(pct: number) {
-  if (pct <= 0) return { r: 219, g: 234, b: 254 };
+  if (pct <= 0) return { r: 30, g: 41, b: 59 };
   if (pct < 20) {
     const t = pct / 20;
     return {
-      r: Math.round(96 + t * (147 - 96)),
-      g: Math.round(165 + t * (197 - 165)),
-      b: Math.round(250 + t * (253 - 250)),
+      r: Math.round(30 + t * (14 - 30)),
+      g: Math.round(58 + t * (165 - 58)),
+      b: Math.round(138 + t * (233 - 138)),
     };
   }
-  if (pct < 35) {
-    const t = (pct - 20) / 15;
+  if (pct < 40) {
+    const t = (pct - 20) / 20;
     return {
-      r: Math.round(147 + t * (250 - 147)),
-      g: Math.round(197 + t * (204 - 197)),
-      b: Math.round(253 + t * (21 - 253)),
+      r: Math.round(14 + t * (245 - 14)),
+      g: Math.round(165 + t * (158 - 165)),
+      b: Math.round(233 + t * (11 - 233)),
     };
   }
-  if (pct < 50) {
-    const t = (pct - 35) / 15;
+  if (pct < 65) {
+    const t = (pct - 40) / 25;
     return {
-      r: Math.round(250 + t * (239 - 250)),
-      g: Math.round(204 + t * (68 - 204)),
-      b: Math.round(21 + t * (68 - 21)),
+      r: Math.round(245 + t * (239 - 245)),
+      g: Math.round(158 - t * (158 - 68)),
+      b: Math.round(11 + t * (68 - 11)),
     };
   }
-  if (pct < 75) {
-    const t = (pct - 50) / 25;
-    return {
-      r: Math.round(239 - t * 60),
-      g: Math.round(68 - t * 40),
-      b: Math.round(68 - t * 40),
-    };
-  }
-  const t = (pct - 75) / 25;
+  const t = Math.min(1, (pct - 65) / 35);
   return {
-    r: Math.round(179 - t * 60),
-    g: Math.round(28 - t * 15),
-    b: Math.round(28 - t * 15),
+    r: Math.round(239 + t * 16),
+    g: Math.round(68 - t * 40),
+    b: Math.round(68 - t * 40),
   };
 }
 
@@ -228,21 +220,21 @@ export default function MapaCalorTendencia({
   });
   const maxPct = Math.max(...pcts, 1);
 
-  const tamañoMax = 70;
-  const tamañoMin = 12;
+  const tamañoMax = 68;
+  const tamañoMin = 22;
 
   return (
-    <div className="space-y-2">
-      <h4 className="font-semibold text-slate-800">
+    <div className="space-y-3">
+      <h4 className="font-semibold text-white">
         Distribución de tendencia
       </h4>
 
       {/* Filtros (solo si hay acciones) */}
       {modoFiltrable && (
-        <div className="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-2">
+        <div className="space-y-2 card border border-white/10 rounded-xl p-3">
           {/* Nivel */}
           <div className="flex flex-wrap items-center gap-1">
-            <span className="text-[9px] font-semibold text-slate-500 uppercase mr-1">
+            <span className="text-[9px] font-semibold text-slate-400 uppercase mr-1">
               Nivel:
             </span>
             {(["todas", "pos", "neu", "neg"] as Nivel[]).map((n) => {
@@ -253,10 +245,10 @@ export default function MapaCalorTendencia({
                 neg: "Negativas",
               };
               const colores: Record<Nivel, string> = {
-                todas: "bg-slate-100 text-slate-700 border-slate-300",
-                pos: "bg-green-100 text-green-800 border-green-400",
-                neu: "bg-slate-100 text-slate-700 border-slate-400",
-                neg: "bg-red-100 text-red-800 border-red-400",
+                todas: "bg-[var(--sx-surface-2)] text-[var(--sx-text-secondary)] border-[var(--sx-border-bright)]",
+                pos: "bg-[rgba(16,185,129,0.15)] text-[#6ee7b7] border-[rgba(16,185,129,0.3)]",
+                neu: "bg-[var(--sx-surface-2)] text-[var(--sx-text-secondary)] border-[var(--sx-border-bright)]",
+                neg: "bg-[rgba(229,62,77,0.15)] text-[#fca5a5] border-[rgba(229,62,77,0.3)]",
               };
               const activo = nivel === n;
               return (
@@ -265,8 +257,8 @@ export default function MapaCalorTendencia({
                   onClick={() => setNivel(n)}
                   className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border-2 transition ${
                     activo
-                      ? "bg-emerald-500 text-white border-emerald-600"
-                      : `${colores[n]} hover:brightness-95`
+                      ? "bg-[var(--sx-blue-bright)] text-white border-[var(--sx-blue-bright)] shadow-[0_2px_8px_rgba(37,99,235,0.45)]"
+                      : `${colores[n]} hover:brightness-110`
                   }`}
                 >
                   {labels[n]}
@@ -276,15 +268,15 @@ export default function MapaCalorTendencia({
           </div>
 
           {/* Velocidad / Zona / Valoración */}
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-3 gap-2">
             <div>
-              <label className="block text-[9px] font-semibold text-slate-500 uppercase mb-0.5">
+              <label className="block text-[9px] font-semibold text-slate-400 uppercase mb-0.5">
                 Velocidad
               </label>
               <select
                 value={velocidad}
                 onChange={(e) => setVelocidad(e.target.value)}
-                className="w-full px-1.5 py-0.5 text-[10px] border border-slate-300 rounded bg-white focus:outline-none focus:border-emerald-500"
+                className="w-full px-1.5 py-1 text-[10px] border border-white/15 rounded-lg bg-[var(--sx-surface-2)] text-white focus:outline-none focus:border-blue-500"
               >
                 <option value="todas">Todas</option>
                 <option value="1">1</option>
@@ -297,13 +289,13 @@ export default function MapaCalorTendencia({
             </div>
 
             <div>
-              <label className="block text-[9px] font-semibold text-slate-500 uppercase mb-0.5">
+              <label className="block text-[9px] font-semibold text-slate-400 uppercase mb-0.5">
                 Zona origen
               </label>
               <select
                 value={zonaOrigen}
                 onChange={(e) => setZonaOrigen(e.target.value)}
-                className="w-full px-1.5 py-0.5 text-[10px] border border-slate-300 rounded bg-white focus:outline-none focus:border-emerald-500"
+                className="w-full px-1.5 py-1 text-[10px] border border-white/15 rounded-lg bg-[var(--sx-surface-2)] text-white focus:outline-none focus:border-blue-500"
               >
                 <option value="todas">Todas</option>
                 {[1, 2, 3, 4, 5, 6].map((z) => (
@@ -315,13 +307,13 @@ export default function MapaCalorTendencia({
             </div>
 
             <div>
-              <label className="block text-[9px] font-semibold text-slate-500 uppercase mb-0.5">
+              <label className="block text-[9px] font-semibold text-slate-400 uppercase mb-0.5">
                 Valoración
               </label>
               <select
                 value={valoracion}
                 onChange={(e) => setValoracion(e.target.value)}
-                className="w-full px-1.5 py-0.5 text-[10px] border border-slate-300 rounded bg-white focus:outline-none focus:border-emerald-500"
+                className="w-full px-1.5 py-1 text-[10px] border border-white/15 rounded-lg bg-[var(--sx-surface-2)] text-white focus:outline-none focus:border-blue-500"
               >
                 <option value="todas">Todas</option>
                 <option value="horrible">Horrible</option>
@@ -337,7 +329,7 @@ export default function MapaCalorTendencia({
       )}
 
       {total === 0 ? (
-        <p className="text-sm text-slate-500 text-center py-8">
+        <p className="text-sm text-slate-400 text-center py-8">
           No hay tendencias con los filtros actuales
         </p>
       ) : (
@@ -357,31 +349,29 @@ export default function MapaCalorTendencia({
               return (
                 <div
                   key={String(c.key)}
-                  className={`flex flex-col items-center justify-center p-3 rounded-lg border ${
+                  className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${
                     esToque
-                      ? "bg-pink-50 border-pink-200"
-                      : "bg-slate-50 border-slate-200"
+                      ? "bg-pink-950/20 border-pink-500/30"
+                      : "card border-white/10"
                   }`}
                 >
                   <div
-                    className="flex items-center justify-center rounded-full transition-all"
+                    className="flex items-center justify-center rounded-full transition-all shadow-md"
                     style={{
                       width: `${tamaño}px`,
                       height: `${tamaño}px`,
                       backgroundColor: rgb,
-                      border: "2px solid rgba(0,0,0,0.08)",
+                      border: "2px solid rgba(255,255,255,0.18)",
                     }}
                   >
                     <span
-                      className={`font-bold ${
-                        pct > 40 ? "text-white" : "text-slate-700"
-                      }`}
-                      style={{ fontSize: `${Math.max(10, tamaño / 5)}px` }}
+                      className="font-bold text-white"
+                      style={{ fontSize: `${Math.max(10, tamaño / 4.8)}px` }}
                     >
                       {c.label}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-600 mt-2 font-medium">
+                  <p className="text-xs text-slate-300 mt-2 font-medium">
                     {valor} · {pct.toFixed(0)}%
                   </p>
                 </div>
