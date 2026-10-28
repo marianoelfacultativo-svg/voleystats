@@ -6,17 +6,14 @@
 // A diferencia de `filtrosTacticos` (que FILTRA acciones),
 // este módulo AGREGA y RESUME qué ocurre después de un trigger.
 //
-// Ej: "si el ataque fue error → quién ataca después, ¿es el
-// mismo jugador que erró?, ¿el armador le armó a la misma zona
-// que antes?, ¿con la misma velocidad?, ¿al mismo receptor?"
-//
-// La comparación puede ser contra:
-//   - el trigger (ej. mismo jugador que erró)
-//   - la acción ANTERIOR al trigger (ej. misma zona del armado previo)
-//   - o ambos, en paralelo.
-//
-// Solo conoce AccionVisual (3D). Para AccionDB hay un adapter
-// al final del archivo, igual que en filtrosTacticos.
+// Permite observar:
+//   - La 1ra acción siguiente inmediata
+//   - O la siguiente acción de un tipo específico (ej. "siguiente ataque"),
+//     incluso si ocurre puntos o acciones después.
+//   - Evalúa resultado dominante (punto, error, neutro).
+//   - Subtipo más frecuente.
+//   - Promedio de toques y puntos de distancia entre ambas acciones.
+//   - Jugador y zona predominantes.
 // ============================================================
 
 import type { AccionVisual } from "../app/equipo/adaptadorUnificadoV2";
@@ -42,6 +39,8 @@ export interface DisparadorFiltro {
 }
 
 export type Ventana = 1 | 2 | 3 | "todas";
+
+export type CategoriaResultado = "punto" | "error" | "neutro";
 
 export interface CoincidenciaFiltro {
   /** La próxima acción es del MISMO jugador que ejecutó el trigger. */
@@ -77,17 +76,32 @@ export interface FiltrosAnalisis {
   disparador: DisparadorFiltro | null;
   ventana: Ventana;
   coincidencias: CoincidenciaFiltro;
+  /** Tipo específico de acción a observar (ej. "ataque", "saque", "recepcion" o "cualquiera"). */
+  tipoObservado?: TipoDisparador | "cualquiera";
+  /** Alcance: "partido" (busca la siguiente en el partido) o "mismo_punto". */
+  alcance?: "partido" | "mismo_punto";
 }
 
 export const FILTROS_ANALISIS_VACIO: FiltrosAnalisis = {
   disparador: null,
   ventana: 1,
   coincidencias: { ...COINCIDENCIA_VACIA },
+  tipoObservado: "cualquiera",
+  alcance: "partido",
 };
 
 // ------------------------------------------------------------
 // RESULTADOS
 // ------------------------------------------------------------
+
+export interface DetalleAccionObservada {
+  accion: AccionVisual;
+  distanciaAcciones: number;
+  distanciaPuntos: number;
+  esMismoPunto: boolean;
+  categoriaResultado: CategoriaResultado;
+  subtipo: string;
+}
 
 export interface OcurrenciaTrigger {
   set_numero: number;
@@ -98,12 +112,13 @@ export interface OcurrenciaTrigger {
   anteriorId: string | null;
   anteriorJugadorId: string | null;
   anteriorSubtipo: string | null;
-  /** Las próximas acciones hasta la ventana. */
+  /** Las próximas acciones hasta la ventana dentro del punto. */
   siguientes: AccionVisual[];
+  /** La acción objetivo observada específica (si se encontró). */
+  accionObservada?: DetalleAccionObservada | null;
 }
 
 export interface CoincidenciasResumen {
-  /** Cantidad de ocurrencias donde la 1ra siguiente cumple cada comparación. */
   mismoJugadorTrigger: number;
   mismaZonaTriggerDestino: number;
   mismaZonaTriggerOrigen: number;
@@ -120,25 +135,117 @@ export interface ResumenPorTipo {
   coincidencias: CoincidenciasResumen;
 }
 
+export interface EvaluacionResultado {
+  masFrecuente: CategoriaResultado;
+  puntos: number;
+  errores: number;
+  neutros: number;
+  total: number;
+  pctPuntos: number;
+  pctErrores: number;
+  pctNeutros: number;
+  /** Saldo neto porcentual: ((puntos - errores) / total) * 100 */
+  efectividadNeta: number;
+}
+
+export interface EstadisticasObservadas {
+  tipoObservado: TipoDisparador | "cualquiera";
+  totalEncontradas: number;
+  promedioAccionesDistancia: number;
+  promedioPuntosDistancia: number;
+  pctMismoPunto: number;
+  pctPuntosPosteriores: number;
+  evaluacionResultado: EvaluacionResultado;
+  subtiposRanking: { subtipo: string; count: number; pct: number }[];
+  subtipoMasFrecuente: string | null;
+  jugadoresRanking: { jugadorId: string; count: number; pct: number }[];
+  jugadorMasFrecuenteId: string | null;
+  zonasRanking: { zona: number; count: number; pct: number }[];
+  zonaMasFrecuente: number | null;
+}
+
 export interface ResultadoAnalisis {
-  /** Total de ocurrencias del disparador en el universo de acciones. */
   totalOcurrencias: number;
   ocurrencias: OcurrenciaTrigger[];
-  /** Distribución del primer tipo de acción siguiente. */
   distribucionSiguiente: Record<string, number>;
-  /** Distribución del primer subtipo siguiente por tipo: "armado|5" → count. */
   distribucionSubtipo: Record<string, number>;
-  /** Por cada tipo de acción siguiente, cuántas coincidencias cumplen. */
   resumenPorTipo: ResumenPorTipo[];
-  /** Agregado de todas las ocurrencias (coincide con la 1ra siguiente). */
   coincidenciasGlobales: CoincidenciasResumen;
+  /** Métricas detalladas de la acción observada */
+  estadisticasObservadas?: EstadisticasObservadas;
 }
 
 // ------------------------------------------------------------
-// HELPERS
+// CLASIFICACIÓN DE RESULTADOS (Punto / Error / Neutro)
 // ------------------------------------------------------------
 
-function baseSubtipo(a: AccionVisual): string {
+export function clasificarResultado(a: AccionVisual): CategoriaResultado {
+  const sub = baseSubtipo(a).toLowerCase();
+  const tipo = a.tipo;
+
+  // Errores directos marcados
+  if (a.es_error) return "error";
+
+  if (tipo === "ataque") {
+    if (sub === "punto") return "punto";
+    if (
+      sub.includes("error") ||
+      sub.includes("gorro") ||
+      sub === "use_rival_ataque" ||
+      sub === "error_red_ataque" ||
+      sub === "error_afuera_ataque"
+    ) {
+      return "error";
+    }
+    return "neutro";
+  }
+
+  if (tipo === "saque") {
+    if (sub === "ace") return "punto";
+    if (sub === "negativo" || sub.includes("error")) return "error";
+    return "neutro";
+  }
+
+  if (tipo === "bloqueo") {
+    if (sub === "punto") return "punto";
+    if (sub === "red" || sub === "use_rival") return "error";
+    return "neutro";
+  }
+
+  if (tipo === "recepcion") {
+    if (sub === "ace_contra" || sub === "error_directo") return "error";
+    if (sub === "perfecta" || sub === "2x_positiva" || sub === "positiva") {
+      return "punto"; // valoración positiva de recepción
+    }
+    return "neutro";
+  }
+
+  if (tipo === "defensa") {
+    if (
+      sub === "error_def" ||
+      sub === "errores_graves" ||
+      sub === "mala_libre"
+    ) {
+      return "error";
+    }
+    if (sub === "gran_def" || sub === "toque_positiva" || sub === "cobertura_positiva") {
+      return "punto"; // salvada brillante / positiva
+    }
+    return "neutro";
+  }
+
+  // Genérico
+  if (sub.includes("punto") || sub === "ace") return "punto";
+  if (sub.includes("error") || sub === "horrible" || sub === "malo") return "error";
+
+  return "neutro";
+}
+
+// ------------------------------------------------------------
+// HELPERS INTERNOS
+// ------------------------------------------------------------
+
+export function baseSubtipo(a: AccionVisual): string {
   const s =
     a.subtipo !== null && a.subtipo !== undefined
       ? String(a.subtipo)
@@ -234,7 +341,7 @@ function sumarCoincidencias(
   };
 }
 
-function coincidenciasVacias(): CoincidenciasResumen {
+export function coincidenciasVacias(): CoincidenciasResumen {
   return {
     mismoJugadorTrigger: 0,
     mismaZonaTriggerDestino: 0,
@@ -247,28 +354,18 @@ function coincidenciasVacias(): CoincidenciasResumen {
   };
 }
 
-/** Devuelve true si algún comparador está activo. */
-export function hayComparadoresActivos(c: CoincidenciaFiltro): boolean {
-  return Object.values(c).some(Boolean);
+export function hayComparadoresActivos(f: CoincidenciaFiltro): boolean {
+  return Object.values(f).some(Boolean);
 }
 
-/** Devuelve true si el filtro tiene un disparador configurado. */
 export function hayFiltroAnalisisActivo(f: FiltrosAnalisis): boolean {
   return f.disparador !== null;
 }
 
 // ------------------------------------------------------------
-// MOTOR
+// MOTOR PRINCIPAL
 // ------------------------------------------------------------
 
-/**
- * Analiza las consecuencias de un trigger en el universo de acciones.
- *
- * @param acciones Universo completo del partido (o del jugador).
- * @param filtros  Configuración del análisis.
- * @returns Resultado agregado con ocurrencias, distribuciones y
- *          porcentajes de coincidencia.
- */
 export function analizarConsecuencias(
   acciones: AccionVisual[],
   filtros: FiltrosAnalisis
@@ -284,12 +381,26 @@ export function analizarConsecuencias(
 
   if (!filtros.disparador) return vacio;
 
-  const { disparador, ventana, coincidencias } = filtros;
+  const {
+    disparador,
+    ventana,
+    coincidencias,
+    tipoObservado = "cualquiera",
+    alcance = "partido",
+  } = filtros;
 
-  // Agrupar por punto, ordenado por `orden`.
+  // Filtrar ocultas y ordenar cronológicamente
+  const accionesCronologicas = acciones
+    .filter((a) => !a.oculta)
+    .sort((x, y) => {
+      if (x.set_numero !== y.set_numero) return x.set_numero - y.set_numero;
+      if (x.punto_numero !== y.punto_numero)
+        return x.punto_numero - y.punto_numero;
+      return x.orden - y.orden;
+    });
+
   const porPunto = new Map<string, AccionVisual[]>();
-  for (const a of acciones) {
-    if (a.oculta) continue;
+  for (const a of accionesCronologicas) {
     const k = `${a.set_numero}-${a.punto_numero}`;
     let lista = porPunto.get(k);
     if (!lista) {
@@ -297,9 +408,6 @@ export function analizarConsecuencias(
       porPunto.set(k, lista);
     }
     lista.push(a);
-  }
-  for (const lista of porPunto.values()) {
-    lista.sort((x, y) => x.orden - y.orden);
   }
 
   const ocurrencias: OcurrenciaTrigger[] = [];
@@ -311,65 +419,146 @@ export function analizarConsecuencias(
   const maxSiguientes =
     ventana === "todas" ? Number.POSITIVE_INFINITY : ventana;
 
-  for (const [key, lista] of porPunto) {
-    const [setStr, puntoStr] = key.split("-");
-    const set_numero = parseInt(setStr, 10);
-    const punto_numero = parseInt(puntoStr, 10);
+  // Acumuladores para estadísticas de la acción observada
+  let sumDistanciaAcciones = 0;
+  let sumDistanciaPuntos = 0;
+  let countObservadas = 0;
+  let countMismoPunto = 0;
+  let countPuntos = 0;
+  let countErrores = 0;
+  let countNeutros = 0;
+  const subtiposCount: Record<string, number> = {};
+  const jugadoresCount: Record<string, number> = {};
+  const zonasCount: Record<number, number> = {};
 
-    for (let i = 0; i < lista.length; i++) {
-      const a = lista[i];
+  for (let i = 0; i < accionesCronologicas.length; i++) {
+    const a = accionesCronologicas[i];
 
-      // ¿Es trigger?
-      if (disparador.tipo !== a.tipo) continue;
-      if (disparador.resultado !== "cualquiera") {
-        if (baseSubtipo(a) !== disparador.resultado) continue;
+    // ¿Es trigger?
+    if (disparador.tipo !== a.tipo) continue;
+    if (disparador.resultado !== "cualquiera") {
+      if (baseSubtipo(a) !== disparador.resultado) continue;
+    }
+
+    // Acciones dentro del mismo punto
+    const listaPunto = porPunto.get(`${a.set_numero}-${a.punto_numero}`) ?? [];
+    const idxEnPunto = listaPunto.findIndex((x) => x.id === a.id);
+    const anterior = idxEnPunto > 0 ? listaPunto[idxEnPunto - 1] : null;
+    const siguientes =
+      idxEnPunto >= 0
+        ? listaPunto.slice(idxEnPunto + 1, idxEnPunto + 1 + maxSiguientes)
+        : [];
+
+    // Búsqueda de la acción observada específica (hacia adelante en la cronología)
+    let accionObservada: DetalleAccionObservada | null = null;
+    for (let j = i + 1; j < accionesCronologicas.length; j++) {
+      const cand = accionesCronologicas[j];
+
+      // Si el alcance es solo dentro del mismo punto y cambió de punto, cortar
+      if (
+        alcance === "mismo_punto" &&
+        (cand.set_numero !== a.set_numero || cand.punto_numero !== a.punto_numero)
+      ) {
+        break;
       }
 
-      const anterior = i > 0 ? lista[i - 1] : null;
-      const siguientes = lista.slice(i + 1, i + 1 + maxSiguientes);
+      const coincideTipo =
+        tipoObservado === "cualquiera" || cand.tipo === tipoObservado;
 
-      const ocurrencia: OcurrenciaTrigger = {
-        set_numero,
-        punto_numero,
-        triggerId: a.id,
-        triggerJugadorId: a.jugador_id,
-        triggerSubtipo: baseSubtipo(a) || null,
-        anteriorId: anterior?.id ?? null,
-        anteriorJugadorId: anterior?.jugador_id ?? null,
-        anteriorSubtipo: anterior ? baseSubtipo(anterior) || null : null,
-        siguientes,
-      };
-      ocurrencias.push(ocurrencia);
+      if (coincideTipo) {
+        const distanciaAcciones = j - i;
+        let distanciaPuntos = 0;
+        if (cand.set_numero === a.set_numero) {
+          distanciaPuntos = Math.max(0, cand.punto_numero - a.punto_numero);
+        } else {
+          distanciaPuntos = Math.max(
+            0,
+            (cand.set_numero - a.set_numero) * 25 + cand.punto_numero - a.punto_numero
+          );
+        }
 
-      // Distribución de la PRIMERA siguiente (si hay).
-      if (siguientes.length > 0) {
-        const s0 = siguientes[0];
-        const tipoKey = s0.tipo;
-        distribucionSiguiente[tipoKey] =
-          (distribucionSiguiente[tipoKey] ?? 0) + 1;
+        const esMismoPunto =
+          cand.set_numero === a.set_numero &&
+          cand.punto_numero === a.punto_numero;
+        const categoriaResultado = clasificarResultado(cand);
+        const sub = baseSubtipo(cand) || "—";
 
-        const subKey = `${s0.tipo}|${baseSubtipo(s0) || "—"}`;
-        distribucionSubtipo[subKey] =
-          (distribucionSubtipo[subKey] ?? 0) + 1;
+        accionObservada = {
+          accion: cand,
+          distanciaAcciones,
+          distanciaPuntos,
+          esMismoPunto,
+          categoriaResultado,
+          subtipo: sub,
+        };
 
-        // Coincidencias: solo evaluamos sobre la 1ra siguiente.
-        const coincideS0 = coincide(s0, coincidencias, {
-          trigger: a,
-          anterior,
-        });
-        coincidenciasGlobales = sumarCoincidencias(
-          coincidenciasGlobales,
-          coincideS0
-        );
+        // Acumular métricas
+        countObservadas++;
+        sumDistanciaAcciones += distanciaAcciones;
+        sumDistanciaPuntos += distanciaPuntos;
+        if (esMismoPunto) countMismoPunto++;
 
-        const prevTipoCoinc = porTipoCoincidencias.get(tipoKey);
-        porTipoCoincidencias.set(
-          tipoKey,
-          prevTipoCoinc
-            ? sumarCoincidencias(prevTipoCoinc, coincideS0)
-            : coincideS0
-        );
+        if (categoriaResultado === "punto") countPuntos++;
+        else if (categoriaResultado === "error") countErrores++;
+        else countNeutros++;
+
+        subtiposCount[sub] = (subtiposCount[sub] ?? 0) + 1;
+
+        if (cand.jugador_id) {
+          jugadoresCount[cand.jugador_id] =
+            (jugadoresCount[cand.jugador_id] ?? 0) + 1;
+        }
+
+        if (cand.zona_destino !== null && cand.zona_destino !== undefined) {
+          zonasCount[cand.zona_destino] =
+            (zonasCount[cand.zona_destino] ?? 0) + 1;
+        }
+
+        break; // primera acción que cumple la condición
       }
+    }
+
+    const ocurrencia: OcurrenciaTrigger = {
+      set_numero: a.set_numero,
+      punto_numero: a.punto_numero,
+      triggerId: a.id,
+      triggerJugadorId: a.jugador_id,
+      triggerSubtipo: baseSubtipo(a) || null,
+      anteriorId: anterior?.id ?? null,
+      anteriorJugadorId: anterior?.jugador_id ?? null,
+      anteriorSubtipo: anterior ? baseSubtipo(anterior) || null : null,
+      siguientes,
+      accionObservada,
+    };
+    ocurrencias.push(ocurrencia);
+
+    // Distribución clásica de la primera siguiente en el punto
+    if (siguientes.length > 0) {
+      const s0 = siguientes[0];
+      const tipoKey = s0.tipo;
+      distribucionSiguiente[tipoKey] =
+        (distribucionSiguiente[tipoKey] ?? 0) + 1;
+
+      const subKey = `${s0.tipo}|${baseSubtipo(s0) || "—"}`;
+      distribucionSubtipo[subKey] =
+        (distribucionSubtipo[subKey] ?? 0) + 1;
+
+      const coincideS0 = coincide(s0, coincidencias, {
+        trigger: a,
+        anterior,
+      });
+      coincidenciasGlobales = sumarCoincidencias(
+        coincidenciasGlobales,
+        coincideS0
+      );
+
+      const prevTipoCoinc = porTipoCoincidencias.get(tipoKey);
+      porTipoCoincidencias.set(
+        tipoKey,
+        prevTipoCoinc
+          ? sumarCoincidencias(prevTipoCoinc, coincideS0)
+          : coincideS0
+      );
     }
   }
 
@@ -383,6 +572,78 @@ export function analizarConsecuencias(
     }))
     .sort((a, b) => b.count - a.count);
 
+  // Construir estadísticas avanzadas si hubo ocurrencias
+  let estadisticasObservadas: EstadisticasObservadas | undefined;
+  if (countObservadas > 0) {
+    const total = countObservadas;
+    const pctPuntos = Math.round((countPuntos / total) * 100);
+    const pctErrores = Math.round((countErrores / total) * 100);
+    const pctNeutros = Math.round((countNeutros / total) * 100);
+
+    let masFrecuente: CategoriaResultado = "neutro";
+    if (countPuntos >= countErrores && countPuntos >= countNeutros) {
+      masFrecuente = "punto";
+    } else if (countErrores >= countPuntos && countErrores >= countNeutros) {
+      masFrecuente = "error";
+    }
+
+    const evaluacionResultado: EvaluacionResultado = {
+      masFrecuente,
+      puntos: countPuntos,
+      errores: countErrores,
+      neutros: countNeutros,
+      total,
+      pctPuntos,
+      pctErrores,
+      pctNeutros,
+      efectividadNeta: Math.round(((countPuntos - countErrores) / total) * 100),
+    };
+
+    const subtiposRanking = Object.entries(subtiposCount)
+      .map(([subtipo, count]) => ({
+        subtipo,
+        count,
+        pct: Math.round((count / total) * 100),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const jugadoresRanking = Object.entries(jugadoresCount)
+      .map(([jugadorId, count]) => ({
+        jugadorId,
+        count,
+        pct: Math.round((count / total) * 100),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const zonasRanking = Object.entries(zonasCount)
+      .map(([zStr, count]) => ({
+        zona: Number(zStr),
+        count,
+        pct: Math.round((count / total) * 100),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    estadisticasObservadas = {
+      tipoObservado,
+      totalEncontradas: total,
+      promedioAccionesDistancia:
+        Math.round((sumDistanciaAcciones / total) * 10) / 10,
+      promedioPuntosDistancia:
+        Math.round((sumDistanciaPuntos / total) * 10) / 10,
+      pctMismoPunto: Math.round((countMismoPunto / total) * 100),
+      pctPuntosPosteriores: Math.round(
+        ((total - countMismoPunto) / total) * 100
+      ),
+      evaluacionResultado,
+      subtiposRanking,
+      subtipoMasFrecuente: subtiposRanking[0]?.subtipo ?? null,
+      jugadoresRanking,
+      jugadorMasFrecuenteId: jugadoresRanking[0]?.jugadorId ?? null,
+      zonasRanking,
+      zonaMasFrecuente: zonasRanking[0]?.zona ?? null,
+    };
+  }
+
   return {
     totalOcurrencias: ocurrencias.length,
     ocurrencias,
@@ -390,11 +651,12 @@ export function analizarConsecuencias(
     distribucionSubtipo,
     resumenPorTipo,
     coincidenciasGlobales,
+    estadisticasObservadas,
   };
 }
 
 // ------------------------------------------------------------
-// RESULTADOS DISPONIBLES POR TIPO (reusado del filtrosTacticos)
+// RESULTADOS DISPONIBLES POR TIPO
 // ------------------------------------------------------------
 
 export function resultadosPorTipoAnalisis(tipo: TipoDisparador): string[] {
@@ -491,7 +753,7 @@ export function etiquetaTipoDisparador(t: TipoDisparador): string {
     libre: "Libre",
     "roce-red": "Roce red",
   };
-  return map[t];
+  return map[t] ?? t;
 }
 
 export function etiquetaResultado(r: string): string {

@@ -1,10 +1,15 @@
 "use client";
 
 // ============================================================
-// ANÁLISIS DE CONSECUENCIAS — UI SIMPLIFICADA ("SI PASA X → ¿QUÉ PASA?")
+// ANÁLISIS DE CONSECUENCIAS — UI INTUITIVA CON ACCIÓN OBSERVADA
 // ============================================================
 // Constructor tipo frase en lenguaje natural + preguntas prearmadas de 1 clic.
-// Diseñado para entrenadores y analistas sin jerga técnica.
+// Incluye:
+//   - Tipo de acción a observar (inmediata o siguiente específica, ej. ataque)
+//   - Evaluación de resultado más frecuente (Punto, Error o Neutro)
+//   - Subtipo más frecuente y ranking
+//   - Promedio de acciones y puntos de distancia entre ambas acciones
+//   - Jugador y zona predominante
 // ============================================================
 
 import { useMemo, useState } from "react";
@@ -36,63 +41,85 @@ interface PreguntaRapida {
   descripcion: string;
   tipo: TipoDisparador;
   resultado: string;
+  tipoObservado: TipoDisparador | "cualquiera";
+  alcance: "partido" | "mismo_punto";
   ventana: Ventana;
   coincidencias?: Partial<CoincidenciaFiltro>;
 }
 
 const PREGUNTAS_RAPIDAS: PreguntaRapida[] = [
   {
-    id: "error-ataque",
+    id: "error-ataque-a-ataque",
     icono: "💥",
-    titulo: "Tras error de ataque",
-    descripcion: "¿Quién ataca luego y si insiste el mismo jugador?",
+    titulo: "Tras error de ataque → Siguiente Ataque",
+    descripcion: "¿Cómo rinde el siguiente ataque? ¿Es punto, error o se insiste con el mismo jugador?",
     tipo: "ataque",
     resultado: "error",
+    tipoObservado: "ataque",
+    alcance: "partido",
     ventana: 1,
     coincidencias: { mismoJugadorTrigger: true },
   },
   {
-    id: "mala-recep",
+    id: "mala-recep-a-ataque",
     icono: "🛡️",
-    titulo: "Tras mala recepción",
-    descripcion: "¿Cómo resuelve el armador la pelota negativa/overpass?",
+    titulo: "Tras mala recepción → Siguiente Ataque",
+    descripcion: "¿Qué efectividad y subtipo tiene el ataque resultante de una pelota incómoda?",
     tipo: "recepcion",
     resultado: "negativa",
+    tipoObservado: "ataque",
+    alcance: "partido",
     ventana: 1,
   },
   {
-    id: "ace-saque",
+    id: "ace-saque-a-saque",
     icono: "🎯",
-    titulo: "Tras ace / saque positivo",
-    descripcion: "¿El saque siguiente mantiene la presión o repite zona?",
+    titulo: "Tras ace de saque → Siguiente Saque",
+    descripcion: "¿El siguiente saque mantiene el punto/presión o se comete error?",
     tipo: "saque",
     resultado: "ace",
+    tipoObservado: "saque",
+    alcance: "partido",
     ventana: 1,
     coincidencias: { mismaZonaTriggerDestino: true },
   },
   {
-    id: "bloqueo-punto",
+    id: "bloqueo-a-ataque",
     icono: "🧱",
-    titulo: "Tras bloqueo punto",
-    descripcion: "¿Cómo responde la siguiente jugada del equipo?",
+    titulo: "Tras bloqueo punto → Siguiente Ataque",
+    descripcion: "¿Cómo se resuelve el siguiente ataque del equipo?",
     tipo: "bloqueo",
     resultado: "punto",
+    tipoObservado: "ataque",
+    alcance: "partido",
     ventana: 1,
   },
   {
-    id: "repite-zona",
+    id: "defensa-a-ataque",
+    icono: "⚡",
+    titulo: "Tras gran defensa → Siguiente Ataque",
+    descripcion: "¿En qué termina el contraataque generado tras salvar la pelota?",
+    tipo: "defensa",
+    resultado: "toque_positiva",
+    tipoObservado: "ataque",
+    alcance: "partido",
+    ventana: 1,
+  },
+  {
+    id: "inmediata-siguiente",
     icono: "🔄",
-    titulo: "¿Insiste en la misma zona?",
-    descripcion: "Mide si los ataques consecutivos van al mismo sector",
+    titulo: "Acción inmediata siguiente",
+    descripcion: "¿Cuál es el primer toque que ocurre exactamente después?",
     tipo: "ataque",
     resultado: "cualquiera",
+    tipoObservado: "cualquiera",
+    alcance: "mismo_punto",
     ventana: 1,
-    coincidencias: { mismaZonaTriggerDestino: true },
   },
 ];
 
 // ------------------------------------------------------------
-// OPCIONES DEL CONSTRUCTOR
+// OPCIONES
 // ------------------------------------------------------------
 
 const TIPOS_DISPARADOR: { v: TipoDisparador; label: string }[] = [
@@ -106,11 +133,19 @@ const TIPOS_DISPARADOR: { v: TipoDisparador; label: string }[] = [
   { v: "roce-red", label: "Roce red" },
 ];
 
-const VENTANAS: { v: Ventana; label: string }[] = [
-  { v: 1, label: "la 1ª acción siguiente" },
-  { v: 2, label: "las 2 acciones siguientes" },
-  { v: 3, label: "las 3 acciones siguientes" },
-  { v: "todas", label: "todas las acciones del punto" },
+const TIPOS_OBSERVADOS: { v: TipoDisparador | "cualquiera"; label: string }[] = [
+  { v: "cualquiera", label: "la 1ª acción siguiente inmediata" },
+  { v: "ataque", label: "la siguiente acción de Ataque" },
+  { v: "saque", label: "la siguiente acción de Saque" },
+  { v: "recepcion", label: "la siguiente acción de Recepción" },
+  { v: "bloqueo", label: "la siguiente acción de Bloqueo" },
+  { v: "armado", label: "la siguiente acción de Armado" },
+  { v: "defensa", label: "la siguiente acción de Defensa" },
+];
+
+const ALCANCES: { v: "partido" | "mismo_punto"; label: string }[] = [
+  { v: "partido", label: "en el partido (mismo punto o posteriores)" },
+  { v: "mismo_punto", label: "solo dentro del mismo punto" },
 ];
 
 interface ComparadorSimple {
@@ -123,17 +158,17 @@ const COMPARADORES_AMIGABLES: ComparadorSimple[] = [
   {
     key: "mismoJugadorTrigger",
     etiqueta: "👤 ¿Mismo jugador?",
-    detalle: "Si quien hace la acción siguiente es el mismo que disparó la condición",
+    detalle: "Si quien realiza la acción observada es el mismo que disparó la condición",
   },
   {
     key: "mismaZonaTriggerDestino",
     etiqueta: "📍 ¿Misma zona destino?",
-    detalle: "Si la siguiente acción cae en la misma zona de la cancha",
+    detalle: "Si la acción cae en el mismo sector de la cancha",
   },
   {
     key: "mismaZonaTriggerOrigen",
     etiqueta: "🛫 ¿Misma zona origen?",
-    detalle: "Si la siguiente acción sale desde la misma zona",
+    detalle: "Si la acción sale desde la misma zona",
   },
   {
     key: "mismaVelocidadAnterior",
@@ -181,20 +216,36 @@ export default function AnalisisConsecuencias({
     tipo: "ataque",
     resultado: "error",
   });
-  const [ventana, setVentana] = useState<Ventana>(1);
+
+  // Tipo específico de acción a observar
+  const [tipoObservado, setTipoObservado] = useState<
+    TipoDisparador | "cualquiera"
+  >("ataque");
+
+  // Alcance
+  const [alcance, setAlcance] = useState<"partido" | "mismo_punto">("partido");
+
+  const [ventana] = useState<Ventana>(1);
   const [coincidencias, setCoincidencias] = useState<CoincidenciaFiltro>({
     ...COINCIDENCIA_VACIA,
+    mismoJugadorTrigger: true,
   });
 
   const [preguntaActivaId, setPreguntaActivaId] = useState<string | null>(
-    "error-ataque"
+    "error-ataque-a-ataque"
   );
   const [abierto, setAbierto] = useState(true);
 
   // Filtros empaquetados
   const filtros: FiltrosAnalisis = useMemo(
-    () => ({ disparador, ventana, coincidencias }),
-    [disparador, ventana, coincidencias]
+    () => ({
+      disparador,
+      ventana,
+      coincidencias,
+      tipoObservado,
+      alcance,
+    }),
+    [disparador, ventana, coincidencias, tipoObservado, alcance]
   );
 
   // Motor de cálculo
@@ -203,7 +254,6 @@ export default function AnalisisConsecuencias({
     return analizarConsecuencias(acciones, filtros);
   }, [acciones, filtros, disparador]);
 
-  const hayComparadores = hayComparadoresActivos(coincidencias);
   const activo = hayFiltroAnalisisActivo(filtros);
 
   const nombre = (id: string | null) => {
@@ -216,7 +266,8 @@ export default function AnalisisConsecuencias({
   const aplicarPreguntaRapida = (p: PreguntaRapida) => {
     setPreguntaActivaId(p.id);
     setDisparador({ tipo: p.tipo, resultado: p.resultado });
-    setVentana(p.ventana);
+    setTipoObservado(p.tipoObservado);
+    setAlcance(p.alcance);
     setCoincidencias({
       ...COINCIDENCIA_VACIA,
       ...(p.coincidencias ?? {}),
@@ -242,36 +293,14 @@ export default function AnalisisConsecuencias({
   const limpiar = () => {
     setPreguntaActivaId(null);
     setDisparador(null);
-    setVentana(1);
+    setTipoObservado("cualquiera");
+    setAlcance("partido");
     setCoincidencias({ ...COINCIDENCIA_VACIA });
   };
 
-  // Conclusión amigable generada automáticamente
-  const conclusionRapida = useMemo(() => {
-    if (!resultado || resultado.totalOcurrencias === 0) return null;
-    const topSiguiente = resultado.resumenPorTipo[0];
-    if (!topSiguiente) return null;
-
-    const pctTop = Math.round(
-      (topSiguiente.count / resultado.totalOcurrencias) * 100
-    );
-
-    let texto = `En el ${pctTop}% de los casos (${topSiguiente.count} de ${resultado.totalOcurrencias}), la jugada continuó con un ${topSiguiente.tipo}.`;
-
-    if (coincidencias.mismoJugadorTrigger && resultado.coincidenciasGlobales.mismoJugadorTrigger > 0) {
-      const pctMismo = Math.round(
-        (resultado.coincidenciasGlobales.mismoJugadorTrigger / resultado.totalOcurrencias) * 100
-      );
-      texto += ` El ${pctMismo}% de las veces volvió a intervenir el mismo jugador.`;
-    } else if (coincidencias.mismaZonaTriggerDestino && resultado.coincidenciasGlobales.mismaZonaTriggerDestino > 0) {
-      const pctZona = Math.round(
-        (resultado.coincidenciasGlobales.mismaZonaTriggerDestino / resultado.totalOcurrencias) * 100
-      );
-      texto += ` El ${pctZona}% repitió la misma zona.`;
-    }
-
-    return texto;
-  }, [resultado, coincidencias]);
+  // Evaluación destacada
+  const estadisticas = resultado?.estadisticasObservadas;
+  const evaluacion = estadisticas?.evaluacionResultado;
 
   return (
     <div className="rounded-2xl p-4 sm:p-5 space-y-4" style={cardBase}>
@@ -323,7 +352,7 @@ export default function AnalisisConsecuencias({
           {/* ---------- PREGUNTAS TÁCTICAS RÁPIDAS (1 clic) ---------- */}
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-              Preguntas tácticas frecuentes:
+              Preguntas tácticas sugeridas:
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {PREGUNTAS_RAPIDAS.map((p) => {
@@ -362,8 +391,8 @@ export default function AnalisisConsecuencias({
             className="rounded-xl p-3.5 sm:p-4 space-y-3"
             style={{
               background:
-                "linear-gradient(135deg, rgba(20,30,55,0.7) 0%, rgba(15,23,42,0.85) 100%)",
-              border: "1px solid rgba(167,139,250,0.25)",
+                "linear-gradient(135deg, rgba(20,30,55,0.75) 0%, rgba(15,23,42,0.9) 100%)",
+              border: "1px solid rgba(167,139,250,0.3)",
             }}
           >
             <div className="flex items-center justify-between">
@@ -384,17 +413,17 @@ export default function AnalisisConsecuencias({
 
             {disparador ? (
               <div className="space-y-3">
-                {/* Frase interactiva */}
-                <div className="flex flex-wrap items-center gap-2 text-sm sm:text-base text-slate-200 font-medium leading-relaxed bg-black/20 p-3 rounded-xl border border-white/5">
+                {/* Frase interactiva con selectores */}
+                <div className="flex flex-wrap items-center gap-2 text-sm sm:text-base text-slate-200 font-medium leading-relaxed bg-black/25 p-3 sm:p-3.5 rounded-xl border border-white/5">
                   <span className="text-violet-400 font-bold">Si ocurre un</span>
 
-                  {/* Selector: Tipo de acción */}
+                  {/* 1. Selector: Tipo de disparador */}
                   <select
                     value={disparador.tipo}
                     onChange={(e) =>
                       cambiarTipoDisparador(e.target.value as TipoDisparador)
                     }
-                    className="bg-violet-950/80 text-white text-xs sm:text-sm font-semibold rounded-lg px-2.5 py-1.5 border border-violet-500/40 focus:outline-none focus:border-violet-400 cursor-pointer shadow-sm"
+                    className="bg-violet-950/90 text-white text-xs sm:text-sm font-semibold rounded-lg px-2.5 py-1.5 border border-violet-500/40 focus:outline-none focus:border-violet-400 cursor-pointer shadow-sm"
                   >
                     {TIPOS_DISPARADOR.map((t) => (
                       <option key={t.v} value={t.v}>
@@ -403,13 +432,13 @@ export default function AnalisisConsecuencias({
                     ))}
                   </select>
 
-                  <span className="text-violet-400 font-bold">y el resultado es</span>
+                  <span className="text-violet-400 font-bold">con resultado</span>
 
-                  {/* Selector: Resultado */}
+                  {/* 2. Selector: Resultado del disparador */}
                   <select
                     value={disparador.resultado}
                     onChange={(e) => cambiarResultadoDisparador(e.target.value)}
-                    className="bg-violet-950/80 text-white text-xs sm:text-sm font-semibold rounded-lg px-2.5 py-1.5 border border-violet-500/40 focus:outline-none focus:border-violet-400 cursor-pointer shadow-sm"
+                    className="bg-violet-950/90 text-white text-xs sm:text-sm font-semibold rounded-lg px-2.5 py-1.5 border border-violet-500/40 focus:outline-none focus:border-violet-400 cursor-pointer shadow-sm"
                   >
                     {resultadosPorTipoAnalisis(disparador.tipo).map((r) => (
                       <option key={r} value={r}>
@@ -418,21 +447,42 @@ export default function AnalisisConsecuencias({
                     ))}
                   </select>
 
-                  <span className="text-violet-400 font-bold">, observar</span>
+                  <span className="text-violet-400 font-bold">→ observar</span>
 
-                  {/* Selector: Ventana de acciones */}
+                  {/* 3. Selector: Acción objetivo a observar */}
                   <select
-                    value={String(ventana)}
+                    value={tipoObservado}
                     onChange={(e) => {
                       setPreguntaActivaId(null);
-                      const val = e.target.value;
-                      setVentana(val === "todas" ? "todas" : (Number(val) as Ventana));
+                      setTipoObservado(
+                        e.target.value as TipoDisparador | "cualquiera"
+                      );
                     }}
-                    className="bg-violet-950/80 text-white text-xs sm:text-sm font-semibold rounded-lg px-2.5 py-1.5 border border-violet-500/40 focus:outline-none focus:border-violet-400 cursor-pointer shadow-sm"
+                    className="bg-emerald-950/90 text-emerald-200 text-xs sm:text-sm font-bold rounded-lg px-2.5 py-1.5 border border-emerald-500/50 focus:outline-none focus:border-emerald-400 cursor-pointer shadow-sm"
                   >
-                    {VENTANAS.map((v) => (
-                      <option key={String(v.v)} value={String(v.v)}>
-                        {v.label}
+                    {TIPOS_OBSERVADOS.map((t) => (
+                      <option key={t.v} value={t.v}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <span className="text-slate-400 text-xs sm:text-sm font-normal">
+                    en
+                  </span>
+
+                  {/* 4. Selector: Alcance */}
+                  <select
+                    value={alcance}
+                    onChange={(e) => {
+                      setPreguntaActivaId(null);
+                      setAlcance(e.target.value as "partido" | "mismo_punto");
+                    }}
+                    className="bg-slate-800 text-slate-300 text-xs sm:text-sm font-medium rounded-lg px-2.5 py-1.5 border border-slate-600 focus:outline-none cursor-pointer"
+                  >
+                    {ALCANCES.map((a) => (
+                      <option key={a.v} value={a.v}>
+                        {a.label}
                       </option>
                     ))}
                   </select>
@@ -441,7 +491,7 @@ export default function AnalisisConsecuencias({
                 {/* Preguntas adicionales / Comparadores como Chips */}
                 <div>
                   <p className="text-[11px] font-bold text-slate-400 mb-1.5">
-                    ¿Querés verificar si se repite algún patrón en la siguiente jugada?
+                    Patrones y comparaciones sobre la acción observada:
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {COMPARADORES_AMIGABLES.map((c) => {
@@ -472,10 +522,10 @@ export default function AnalisisConsecuencias({
             )}
           </div>
 
-          {/* ---------- RESULTADOS DEL ANÁLISIS ---------- */}
+          {/* ---------- RESULTADOS DETALLADOS ---------- */}
           {disparador && resultado && (
             <div className="space-y-4 pt-1">
-              {resultado.totalOcurrencias === 0 ? (
+              {resultado.totalOcurrencias === 0 || !estadisticas ? (
                 <div
                   className="rounded-xl p-6 text-center text-xs sm:text-sm"
                   style={{
@@ -486,39 +536,240 @@ export default function AnalisisConsecuencias({
                 >
                   <p className="text-2xl mb-1">🔍</p>
                   <p className="font-semibold text-slate-300">
-                    No se encontraron acciones con esta condición en los datos actuales.
+                    No se encontraron acciones con esta condición en los datos seleccionados.
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
-                    Probá cambiando el resultado o eligiendo otra acción disparadora.
+                    Probá cambiando el resultado del disparador o seleccionando otro tipo de acción a observar.
                   </p>
                 </div>
               ) : (
                 <>
-                  {/* Tarjeta de conclusión táctica */}
-                  {conclusionRapida && (
-                    <div
-                      className="rounded-xl p-3.5 sm:p-4 flex items-start gap-3"
-                      style={{
-                        background:
-                          "linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(56,189,248,0.08) 100%)",
-                        border: "1px solid rgba(16,185,129,0.3)",
-                      }}
-                    >
-                      <span className="text-2xl shrink-0">💡</span>
+                  {/* ---------- 1. TARJETA DE CONCLUSIÓN Y EVALUACIÓN DE RESULTADO ---------- */}
+                  <div
+                    className="rounded-xl p-4 sm:p-5 space-y-4"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, rgba(16,185,129,0.14) 0%, rgba(56,189,248,0.1) 100%)",
+                      border: "1px solid rgba(16,185,129,0.35)",
+                    }}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
-                        <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">
-                          Conclusión táctica
-                        </p>
-                        <p className="text-sm font-medium text-slate-100 mt-0.5 leading-relaxed">
-                          {conclusionRapida}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">📊</span>
+                          <div>
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-300">
+                              Evaluación de la acción observada
+                            </span>
+                            <h3 className="text-base sm:text-lg font-black text-white capitalize">
+                              {tipoObservado === "cualquiera"
+                                ? "Primera acción siguiente"
+                                : `Siguiente ${tipoObservado}`}
+                            </h3>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Badge resultado dominante */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-300">Resultado dominante:</span>
+                        <span
+                          className={`px-3 py-1 text-xs font-black rounded-lg uppercase tracking-wider ${
+                            evaluacion?.masFrecuente === "punto"
+                              ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
+                              : evaluacion?.masFrecuente === "error"
+                              ? "bg-rose-500 text-white shadow-lg shadow-rose-500/20"
+                              : "bg-amber-500 text-slate-950 font-bold"
+                          }`}
+                        >
+                          {evaluacion?.masFrecuente === "punto"
+                            ? "🟢 Mayormente Punto"
+                            : evaluacion?.masFrecuente === "error"
+                            ? "🔴 Mayormente Error"
+                            : "🟡 Mayormente Neutro / En juego"}
+                        </span>
                       </div>
                     </div>
-                  )}
 
-                  {/* Gráficos de distribución de lo que vino después */}
+                    {/* Desglose de Punto / Neutro / Error con barras */}
+                    {evaluacion && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                        {/* PUNTOS */}
+                        <div className="p-3 rounded-xl bg-black/30 border border-emerald-500/30">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                              Punto
+                            </span>
+                            <span className="text-sm font-black text-white font-mono">
+                              {evaluacion.pctPuntos}%
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400">
+                            {evaluacion.puntos} de {evaluacion.total} ocurrencias
+                          </p>
+                          <div className="h-1.5 rounded-full bg-white/10 mt-2 overflow-hidden">
+                            <div
+                              className="h-full bg-emerald-400 rounded-full"
+                              style={{ width: `${evaluacion.pctPuntos}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* NEUTROS / CONTINUIDAD */}
+                        <div className="p-3 rounded-xl bg-black/30 border border-amber-500/30">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-amber-400" />
+                              Neutro / Continuó
+                            </span>
+                            <span className="text-sm font-black text-white font-mono">
+                              {evaluacion.pctNeutros}%
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400">
+                            {evaluacion.neutros} de {evaluacion.total} ocurrencias
+                          </p>
+                          <div className="h-1.5 rounded-full bg-white/10 mt-2 overflow-hidden">
+                            <div
+                              className="h-full bg-amber-400 rounded-full"
+                              style={{ width: `${evaluacion.pctNeutros}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* ERRORES */}
+                        <div className="p-3 rounded-xl bg-black/30 border border-rose-500/30">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-rose-400" />
+                              Error
+                            </span>
+                            <span className="text-sm font-black text-white font-mono">
+                              {evaluacion.pctErrores}%
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400">
+                            {evaluacion.errores} de {evaluacion.total} ocurrencias
+                          </p>
+                          <div className="h-1.5 rounded-full bg-white/10 mt-2 overflow-hidden">
+                            <div
+                              className="h-full bg-rose-400 rounded-full"
+                              style={{ width: `${evaluacion.pctErrores}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Efectividad neta de la acción */}
+                    {evaluacion && (
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-1 border-t border-white/10">
+                        <span className="text-slate-300">
+                          Saldo de efectividad neta (Puntos − Errores):
+                        </span>
+                        <span
+                          className={`font-mono font-bold text-sm px-2 py-0.5 rounded ${
+                            evaluacion.efectividadNeta > 0
+                              ? "bg-emerald-500/20 text-emerald-300"
+                              : evaluacion.efectividadNeta < 0
+                              ? "bg-rose-500/20 text-rose-300"
+                              : "bg-slate-700 text-slate-300"
+                          }`}
+                        >
+                          {evaluacion.efectividadNeta > 0 ? "+" : ""}
+                          {evaluacion.efectividadNeta}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ---------- 2. MÉTRICAS CLAVE: DISTANCIA Y SUBTIPO MÁS FRECUENTE ---------- */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* SUBTIPO MÁS FRECUENTE */}
+                    <div
+                      className="rounded-xl p-3.5 space-y-1"
+                      style={{
+                        background: "var(--sx-surface-2)",
+                        border: "1px solid var(--sx-border)",
+                      }}
+                    >
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        Subtipo dominante
+                      </span>
+                      <p className="text-base font-black text-white capitalize truncate">
+                        {estadisticas.subtipoMasFrecuente || "—"}
+                      </p>
+                      <p className="text-xs text-sky-400 font-medium">
+                        {estadisticas.subtiposRanking[0]?.pct ?? 0}% de los casos
+                        ({estadisticas.subtiposRanking[0]?.count ?? 0} veces)
+                      </p>
+                    </div>
+
+                    {/* DISTANCIA EN ACCIONES */}
+                    <div
+                      className="rounded-xl p-3.5 space-y-1"
+                      style={{
+                        background: "var(--sx-surface-2)",
+                        border: "1px solid var(--sx-border)",
+                      }}
+                    >
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        Toques de distancia
+                      </span>
+                      <p className="text-base font-black text-white font-mono">
+                        ~{estadisticas.promedioAccionesDistancia} toques
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        en promedio entre disparador y observación
+                      </p>
+                    </div>
+
+                    {/* DISTANCIA EN PUNTOS */}
+                    <div
+                      className="rounded-xl p-3.5 space-y-1"
+                      style={{
+                        background: "var(--sx-surface-2)",
+                        border: "1px solid var(--sx-border)",
+                      }}
+                    >
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        Puntos de distancia
+                      </span>
+                      <p className="text-base font-black text-white font-mono">
+                        {estadisticas.promedioPuntosDistancia === 0
+                          ? "Mismo punto (0 pts)"
+                          : `+${estadisticas.promedioPuntosDistancia} puntos`}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {estadisticas.pctMismoPunto}% mismo rally · {estadisticas.pctPuntosPosteriores}% después
+                      </p>
+                    </div>
+
+                    {/* JUGADOR MÁS FRECUENTE */}
+                    <div
+                      className="rounded-xl p-3.5 space-y-1"
+                      style={{
+                        background: "var(--sx-surface-2)",
+                        border: "1px solid var(--sx-border)",
+                      }}
+                    >
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        Jugador predominante
+                      </span>
+                      <p className="text-base font-black text-white truncate">
+                        {nombre(estadisticas.jugadorMasFrecuenteId)}
+                      </p>
+                      <p className="text-xs text-emerald-400 font-medium">
+                        {estadisticas.jugadoresRanking[0]?.pct ?? 0}% de participación
+                        ({estadisticas.jugadoresRanking[0]?.count ?? 0} veces)
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* ---------- 3. DETALLE DE SUBTIPOS Y PATRONES DETECTADOS ---------- */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {/* ¿Qué acción vino después? */}
+                    {/* Ranking de Subtipos */}
                     <div
                       className="rounded-xl p-3.5 space-y-2.5"
                       style={{
@@ -526,47 +777,39 @@ export default function AnalisisConsecuencias({
                         border: "1px solid var(--sx-border)",
                       }}
                     >
-                      <p className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center justify-between">
-                        <span>¿Qué acción vino después?</span>
-                        <span className="text-[10px] text-slate-400 font-normal">
-                          {resultado.totalOcurrencias} casos
-                        </span>
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                        Distribución de subtipos de la acción observada
                       </p>
-                      <div className="space-y-2">
-                        {resultado.resumenPorTipo.map((r) => {
-                          const pct = Math.round(
-                            (r.count / resultado.totalOcurrencias) * 100
-                          );
-                          return (
-                            <div key={r.tipo}>
-                              <div className="flex items-center justify-between text-xs mb-1">
-                                <span className="font-semibold text-white capitalize">
-                                  {r.tipo}
-                                </span>
-                                <span className="text-slate-300 font-mono text-[11px]">
-                                  {r.count} ({pct}%)
-                                </span>
-                              </div>
-                              <div
-                                className="h-2 rounded-full overflow-hidden"
-                                style={{ background: "rgba(255,255,255,0.08)" }}
-                              >
-                                <div
-                                  className="h-full rounded-full transition-all duration-300"
-                                  style={{
-                                    width: `${pct}%`,
-                                    background:
-                                      "linear-gradient(90deg, #10B981 0%, #38BDF8 100%)",
-                                  }}
-                                />
-                              </div>
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {estadisticas.subtiposRanking.map((s) => (
+                          <div key={s.subtipo}>
+                            <div className="flex items-center justify-between text-xs mb-1">
+                              <span className="font-semibold text-white capitalize truncate">
+                                {s.subtipo}
+                              </span>
+                              <span className="text-slate-300 font-mono text-[11px] tabular-nums">
+                                {s.count} ({s.pct}%)
+                              </span>
                             </div>
-                          );
-                        })}
+                            <div
+                              className="h-1.5 rounded-full overflow-hidden"
+                              style={{ background: "rgba(255,255,255,0.08)" }}
+                            >
+                              <div
+                                className="h-full rounded-full transition-all duration-300"
+                                style={{
+                                  width: `${s.pct}%`,
+                                  background:
+                                    "linear-gradient(90deg, #38BDF8 0%, #818CF8 100%)",
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
 
-                    {/* Subtipos específicos & Patrones repetidos */}
+                    {/* Zonas y Jugadores */}
                     <div
                       className="rounded-xl p-3.5 space-y-3"
                       style={{
@@ -574,40 +817,42 @@ export default function AnalisisConsecuencias({
                         border: "1px solid var(--sx-border)",
                       }}
                     >
+                      {/* Zonas destino preferidas */}
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wider text-slate-200 mb-2">
-                          Subtipos registrados
+                          Zonas destino más buscadas
                         </p>
-                        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-                          {Object.entries(resultado.distribucionSubtipo)
-                            .sort((a, b) => b[1] - a[1])
-                            .map(([k, v]) => {
-                              const [tipo, sub] = k.split("|");
-                              return (
-                                <span
-                                  key={k}
-                                  className="px-2 py-1 text-[11px] rounded-lg border font-medium flex items-center gap-1"
-                                  style={{
-                                    background: "rgba(56,189,248,0.1)",
-                                    borderColor: "rgba(56,189,248,0.25)",
-                                    color: "#7DD3FC",
-                                  }}
-                                >
-                                  <strong className="capitalize">{tipo}</strong>
-                                  {sub !== "—" && ` · ${sub}`}
-                                  <span className="font-bold text-white ml-0.5">
-                                    ×{v}
-                                  </span>
+                        {estadisticas.zonasRanking.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {estadisticas.zonasRanking.slice(0, 5).map((z) => (
+                              <span
+                                key={z.zona}
+                                className="px-2.5 py-1 text-xs rounded-lg border font-semibold flex items-center gap-1.5"
+                                style={{
+                                  background: "rgba(167,139,250,0.12)",
+                                  borderColor: "rgba(167,139,250,0.3)",
+                                  color: "#C4B5FD",
+                                }}
+                              >
+                                <span>Zona {z.zona}</span>
+                                <span className="font-mono text-white text-[11px]">
+                                  {z.pct}% ({z.count})
                                 </span>
-                              );
-                            })}
-                        </div>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500 italic">
+                            Sin registro de zonas para esta acción.
+                          </p>
+                        )}
                       </div>
 
-                      {hayComparadores && (
+                      {/* Patrones de coincidencia si hay comparadores activos */}
+                      {hayComparadoresActivos(coincidencias) && (
                         <div className="pt-2 border-t border-white/10">
                           <p className="text-xs font-bold uppercase tracking-wider text-slate-200 mb-1.5">
-                            Patrones de repetición detectados
+                            Comparaciones con la acción disparadora
                           </p>
                           <div className="space-y-1">
                             {COMPARADORES_AMIGABLES.map((c) => {
@@ -637,22 +882,22 @@ export default function AnalisisConsecuencias({
                     </div>
                   </div>
 
-                  {/* Tabla de ocurrencias individuales */}
+                  {/* ---------- 4. TABLA DETALLADA DE OCURRENCIAS ---------- */}
                   <div
                     className="rounded-xl overflow-hidden border border-white/10"
                     style={{ background: "var(--sx-surface-2)" }}
                   >
                     <div className="px-3.5 py-2.5 flex items-center justify-between border-b border-white/10 bg-white/5">
                       <p className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                        Puntos donde ocurrió ({resultado.ocurrencias.length})
+                        Ocurrencias analizadas ({resultado.ocurrencias.length})
                       </p>
                       <span className="text-[11px] text-slate-400">
-                        Orden cronológico
+                        Orden cronológico del partido
                       </span>
                     </div>
 
                     <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
-                      <table className="w-full text-xs min-w-[500px]">
+                      <table className="w-full text-xs min-w-[620px]">
                         <thead
                           style={{
                             position: "sticky",
@@ -662,12 +907,15 @@ export default function AnalisisConsecuencias({
                           }}
                         >
                           <tr className="text-left text-slate-400">
-                            <th className="py-2 px-3 font-semibold">Set y Punto</th>
+                            <th className="py-2 px-3 font-semibold">Disparador</th>
                             <th className="py-2 px-3 font-semibold">
-                              Acción disparadora
+                              Acción Observada
                             </th>
                             <th className="py-2 px-3 font-semibold">
-                              ¿Qué pasó después?
+                              Distancia
+                            </th>
+                            <th className="py-2 px-3 font-semibold">
+                              Resultado
                             </th>
                             {onIrAPunto && (
                               <th className="py-2 px-3 text-right font-semibold">
@@ -678,16 +926,17 @@ export default function AnalisisConsecuencias({
                         </thead>
                         <tbody>
                           {resultado.ocurrencias.map((o) => {
-                            const s0 = o.siguientes[0] ?? null;
+                            const obs = o.accionObservada;
                             return (
                               <tr
                                 key={`${o.set_numero}-${o.punto_numero}-${o.triggerId}`}
                                 className="border-b border-white/5 hover:bg-white/5 transition"
                               >
-                                <td className="py-2 px-3 font-mono font-semibold text-slate-300">
-                                  Set {o.set_numero} · Punto {o.punto_numero}
-                                </td>
+                                {/* Disparador */}
                                 <td className="py-2 px-3">
+                                  <span className="font-mono text-slate-400 font-semibold block text-[11px]">
+                                    Set {o.set_numero} · Punto {o.punto_numero}
+                                  </span>
                                   <span className="font-bold text-white capitalize">
                                     {o.triggerSubtipo ?? disparador.tipo}
                                   </span>
@@ -695,33 +944,80 @@ export default function AnalisisConsecuencias({
                                     {nombre(o.triggerJugadorId)}
                                   </span>
                                 </td>
+
+                                {/* Acción Observada */}
                                 <td className="py-2 px-3">
-                                  {s0 ? (
+                                  {obs ? (
                                     <div>
-                                      <span className="font-bold text-emerald-300 capitalize">
-                                        {s0.tipo}
-                                        {s0.subtipo ? ` · ${String(s0.subtipo)}` : ""}
+                                      <span className="font-bold text-white capitalize">
+                                        {obs.accion.tipo} · {obs.subtipo}
                                       </span>
                                       <span className="block text-[11px] text-slate-400">
-                                        {nombre(s0.jugador_id)}
-                                        {s0.zona_destino ? ` · Zona ${s0.zona_destino}` : ""}
+                                        {nombre(obs.accion.jugador_id)}
+                                        {obs.accion.zona_destino ? ` (Zona ${obs.accion.zona_destino})` : ""}
                                       </span>
                                     </div>
                                   ) : (
                                     <span className="text-slate-500 italic">
-                                      Fin del punto
+                                      No hubo acción objetivo posterior
                                     </span>
                                   )}
                                 </td>
+
+                                {/* Distancia */}
+                                <td className="py-2 px-3">
+                                  {obs ? (
+                                    <div className="text-[11px]">
+                                      <span className="font-mono text-slate-300 font-medium block">
+                                        {obs.distanciaPuntos === 0
+                                          ? "Mismo punto"
+                                          : `+${obs.distanciaPuntos} pts después`}
+                                      </span>
+                                      <span className="text-slate-400">
+                                        +{obs.distanciaAcciones} toques después
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-600">—</span>
+                                  )}
+                                </td>
+
+                                {/* Resultado */}
+                                <td className="py-2 px-3">
+                                  {obs ? (
+                                    <span
+                                      className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase inline-block ${
+                                        obs.categoriaResultado === "punto"
+                                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                                          : obs.categoriaResultado === "error"
+                                          ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                                          : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                                      }`}
+                                    >
+                                      {obs.categoriaResultado === "punto"
+                                        ? "Punto"
+                                        : obs.categoriaResultado === "error"
+                                        ? "Error"
+                                        : "Neutro"}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-600">—</span>
+                                  )}
+                                </td>
+
+                                {/* Botón Ir */}
                                 {onIrAPunto && (
                                   <td className="py-2 px-3 text-right">
                                     <button
                                       onClick={() =>
-                                        onIrAPunto(o.set_numero, o.punto_numero)
+                                        onIrAPunto(
+                                          obs ? obs.accion.set_numero : o.set_numero,
+                                          obs ? obs.accion.punto_numero : o.punto_numero
+                                        )
                                       }
                                       className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-300 hover:bg-sky-500/25 transition"
                                     >
-                                      Ir al punto →
+                                      Ir →
                                     </button>
                                   </td>
                                 )}
