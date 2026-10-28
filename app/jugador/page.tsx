@@ -620,9 +620,6 @@ export default function JugadorPage() {
                         <span>{verCrudas ? "Ver Gráficos" : "Ver Estadísticas Crudas"}</span>
                       </button>
                     </div>
-                        📋 Estadísticas crudas
-                      </button>
-                    </div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
                       Elegí un partido:
                     </label>
