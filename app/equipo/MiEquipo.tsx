@@ -293,6 +293,11 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     });
   }, [equipoId]);
 
+  // ✅ FIX #310: este useMemo va ANTES del early return "if (cargando)".
+  // Universo: TODAS las acciones del equipo en todos sus partidos.
+  const accionesParaAnalisis: AccionVisual[] = useMemo(() => {
+    return accionesDBaVisualParaAnalisis(acciones);
+  }, [acciones]);
 
   if (cargando) {
     return <p className="text-slate-500 text-center py-12">Cargando...</p>;
@@ -332,12 +337,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     if (!j) return id.slice(0, 8);
     return j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
   };
-
-  // Acciones para el análisis de consecuencias.
-  // Universo: TODAS las acciones del equipo en todos sus partidos.
-  const accionesParaAnalisis: AccionVisual[] = useMemo(() => {
-    return accionesDBaVisualParaAnalisis(acciones);
-  }, [acciones]);
 
   const handleToggleModo = (nuevo: "individual" | "comparar") => {
     setModo(nuevo);
