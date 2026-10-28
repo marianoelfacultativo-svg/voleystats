@@ -477,6 +477,31 @@ export function clasificarLinea(
 
   if (n === 1 && ultima!.tipo === "saque") {
     const esRival = !ultima!.esRival;
+
+    // Overpass automático: la recepción propia cruzó la red.
+    // Se marca como overpass SIN popup de valoración.
+    if (!esRival) {
+      const ladoOrigen = ladoDeCelda(linea.origen.celda);
+      const ladoDestino = ladoDeCelda(linea.destino.celda);
+      const esOverpass =
+        ladoOrigen === "propio" && ladoDestino === "rival";
+
+      if (esOverpass) {
+        return {
+          tipo: "recepcion",
+          esRival: false,
+          jugadorId: jugadorQueRecibe(
+            linea.origen,
+            estado.rotacion,
+            estado.situacion,
+            estado.recepcionOverrides
+          ),
+          popup: null,
+          subtipoFijo: "overpass",
+        };
+      }
+    }
+
     return {
       tipo: "recepcion",
       esRival,
