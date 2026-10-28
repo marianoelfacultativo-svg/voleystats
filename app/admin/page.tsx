@@ -2,6 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Shield,
+  Users,
+  Calendar,
+  Key,
+  Database,
+  Terminal,
+  BarChart2,
+  LogOut,
+} from "lucide-react";
 import { obtenerSesion, cerrarSesion, type Sesion } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import ImagenAmpliable from "../equipo/ImagenAmpliable";
@@ -610,16 +620,16 @@ export default function AdminPage() {
 
   if (!sesion) return null;
 
-  const secciones: { id: Seccion; nombre: string; icono: string }[] = [
-    { id: "equipos", nombre: "Equipos", icono: "🏐" },
-    { id: "jugadores", nombre: "Jugadores", icono: "👤" },
-    { id: "partidos", nombre: "Partidos", icono: "📅" },
-    { id: "codigos", nombre: "Códigos", icono: "🔑" },
-    { id: "datos", nombre: "Datos", icono: "💾" },
+  const secciones: { id: Seccion; nombre: string; Icono: any }[] = [
+    { id: "equipos", nombre: "Equipos", Icono: Shield },
+    { id: "jugadores", nombre: "Jugadores", Icono: Users },
+    { id: "partidos", nombre: "Partidos", Icono: Calendar },
+    { id: "codigos", nombre: "Códigos de Acceso", Icono: Key },
+    { id: "datos", nombre: "Gestión de Datos", Icono: Database },
   ];
 
   const inputBase =
-    "px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500";
+    "px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#163A85]/20 focus:border-[#163A85]";
 
   const SelectorSetGanado = ({
     valor,
@@ -669,54 +679,74 @@ export default function AdminPage() {
   );
 
   return (
-    <main className="min-h-screen p-8">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
+    <main className="min-h-screen bg-slate-50/70 p-4 sm:p-8">
+      <div className="max-w-5xl mx-auto space-y-6">
+        <header className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">
-              🏐 Panel de Admin
-            </h1>
-            <p className="text-slate-500 text-sm mt-1">Bienvenido admin</p>
+            <div className="flex items-center gap-2">
+              <span className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 leading-none">
+                SALIDA<span className="text-rose-600 font-black">x</span>5
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200/60">
+                Administración
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-medium mt-1">
+              Panel de control y gestión global
+            </p>
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => router.push("/admin/data-entry")}
-              className="px-4 py-2 text-sm bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-medium rounded-lg transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl shadow-sm transition"
             >
-              🧪 Consola por equipo
+              <Terminal size={13} className="text-slate-500" />
+              <span>Consola por equipo</span>
             </button>
             <button
               onClick={() => router.push("/admin/estadisticas")}
-              className="px-4 py-2 text-sm bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl shadow-sm transition"
             >
-              📊 Estadísticas
+              <BarChart2 size={13} className="text-slate-500" />
+              <span>Estadísticas</span>
             </button>
             <button
               onClick={handleCerrar}
-              className="px-4 py-2 text-sm bg-slate-200 hover:bg-slate-300 rounded-lg transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 rounded-xl transition"
             >
-              Cerrar sesión
+              <LogOut size={13} />
+              <span>Cerrar sesión</span>
             </button>
+          </div>
+        </header>
+
+        <div className="bg-slate-200/60 p-1 rounded-xl max-w-fit">
+          <div className="flex items-center gap-1 overflow-x-auto">
+            {secciones.map((s) => {
+              const activo = seccion === s.id;
+              const Icono = s.Icono;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setSeccion(s.id)}
+                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                    activo
+                      ? "bg-white text-slate-900 shadow-sm border border-slate-200/80"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                  }`}
+                >
+                  <Icono
+                    size={14}
+                    className={activo ? "text-[#163A85]" : "text-slate-400"}
+                  />
+                  <span>{s.nombre}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="flex gap-2 mb-6 border-b border-slate-200">
-          {secciones.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setSeccion(s.id)}
-              className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
-                seccion === s.id
-                  ? "border-emerald-500 text-emerald-600"
-                  : "border-transparent text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              {s.icono} {s.nombre}
-            </button>
-          ))}
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-6 sm:p-8">
           {/* ============ EQUIPOS ============ */}
           {seccion === "equipos" && (
             <div>

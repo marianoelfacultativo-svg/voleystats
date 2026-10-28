@@ -2,25 +2,41 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mail, Phone, Instagram } from "lucide-react";
+import {
+  Mail,
+  Phone,
+  Instagram,
+  KeyRound,
+  ArrowRight,
+  CheckCircle2,
+  AlertCircle,
+  Activity,
+  BarChart3,
+  Flame,
+  FileText,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { guardarSesion, type Rol } from "@/lib/auth";
+import IconoPelota from "./equipo/IconoPelota";
 
 export default function Home() {
   const router = useRouter();
   const [codigo, setCodigo] = useState("");
   const [mensaje, setMensaje] = useState("");
+  const [tipoMensaje, setTipoMensaje] = useState<"info" | "error" | "ok">("info");
   const [cargando, setCargando] = useState(false);
 
   const handleIngresar = async () => {
     const limpio = codigo.trim();
     if (!limpio) {
-      setMensaje("Ingresá un código");
+      setMensaje("Ingresá un código para continuar");
+      setTipoMensaje("error");
       return;
     }
 
     setCargando(true);
-    setMensaje("Verificando...");
+    setMensaje("Verificando credenciales...");
+    setTipoMensaje("info");
 
     const { data, error } = await supabase
       .from("accesos")
@@ -32,12 +48,14 @@ export default function Home() {
     setCargando(false);
 
     if (error) {
-      setMensaje("Error de conexión. Probá de nuevo.");
+      setMensaje("Error de conexión. Intentá de nuevo.");
+      setTipoMensaje("error");
       return;
     }
 
     if (!data) {
-      setMensaje("Código inválido. Verificá y probá de nuevo.");
+      setMensaje("Código no encontrado o inactivo. Verificá e intentá nuevamente.");
+      setTipoMensaje("error");
       return;
     }
 
@@ -48,15 +66,18 @@ export default function Home() {
       jugador_id: data.jugador_id ?? undefined,
     });
 
-    if (data.tipo === "admin") {
-      router.push("/admin");
-    } else if (data.tipo === "club") {
-      router.push("/equipo");
-    } else if (data.tipo === "jugador") {
-      router.push("/jugador");
-    } else {
-      setMensaje(`✅ Bienvenido (${data.tipo}). Sesión guardada.`);
-    }
+    setTipoMensaje("ok");
+    setMensaje(`Acceso concedido. Redirigiendo a panel ${data.tipo}...`);
+
+    setTimeout(() => {
+      if (data.tipo === "admin") {
+        router.push("/admin");
+      } else if (data.tipo === "club") {
+        router.push("/equipo");
+      } else if (data.tipo === "jugador") {
+        router.push("/jugador");
+      }
+    }, 450);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -66,288 +87,261 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-[100dvh] bg-[#CBD5E1] p-3 sm:p-5 flex flex-col">
-      {/* PANTALLA DE LA TV */}
-      <div className="relative flex-1 flex flex-col bg-[#F8F5EC] shadow-[inset_0_0_30px_rgba(0,0,0,0.5)] border-t-[2px] border-l-[2px] border-r-[2px] border-[#94a3b8]">
+    <main className="relative min-h-screen bg-slate-50 text-slate-900 flex flex-col justify-between selection:bg-blue-100 selection:text-blue-900 overflow-x-hidden">
+      {/* ─── FONDO DE CANCHA TÉCNICA (Geometría editorial sutil) ─── */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+      >
+        {/* Iluminación cenital deportiva */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gradient-to-b from-blue-100/60 via-slate-100/30 to-transparent blur-3xl" />
 
-        {/* ================= FONDO: ESQUINA DE CANCHA (CON TEXTURA) ================= */}
-        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-          <svg
-            className="w-full h-full"
-            preserveAspectRatio="none"
-            viewBox="0 0 100 100"
-          >
-            <defs>
-              <linearGradient
-                id="terraGrad"
-                gradientUnits="userSpaceOnUse"
-                x1="0"
-                y1="0"
-                x2="100"
-                y2="100"
-              >
-                <stop offset="0%" stopColor="#E89089" />
-                <stop offset="45%" stopColor="#E0827B" />
-                <stop offset="100%" stopColor="#C96B64" />
-              </linearGradient>
+        {/* Líneas de cancha vectoriales sutiles */}
+        <svg
+          className="absolute inset-0 w-full h-full opacity-[0.35]"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <defs>
+            <pattern
+              id="court-grid"
+              width="80"
+              height="80"
+              patternUnits="userSpaceOnUse"
+            >
+              <path
+                d="M 80 0 L 0 0 0 80"
+                fill="none"
+                stroke="#CBD5E1"
+                strokeWidth="0.75"
+                strokeDasharray="4 4"
+              />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#court-grid)" />
+          {/* Línea lateral y de ataque estilizada */}
+          <line
+            x1="0"
+            y1="35%"
+            x2="100%"
+            y2="35%"
+            stroke="#94A3B8"
+            strokeWidth="1.5"
+            strokeDasharray="8 6"
+          />
+          <line
+            x1="0"
+            y1="65%"
+            x2="100%"
+            y2="65%"
+            stroke="#94A3B8"
+            strokeWidth="1.5"
+          />
+        </svg>
+      </div>
 
-              <linearGradient
-                id="cyanGrad"
-                gradientUnits="userSpaceOnUse"
-                x1="0"
-                y1="0"
-                x2="100"
-                y2="100"
-              >
-                <stop offset="0%" stopColor="#17C9CA" />
-                <stop offset="45%" stopColor="#11B7B8" />
-                <stop offset="100%" stopColor="#0B9899" />
-              </linearGradient>
-
-              <radialGradient
-                id="shine"
-                gradientUnits="userSpaceOnUse"
-                cx="32"
-                cy="14"
-                r="55"
-              >
-                <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.18" />
-                <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
-              </radialGradient>
-
-              <filter
-                id="paperGrain"
-                x="0"
-                y="0"
-                width="100"
-                height="100"
-                filterUnits="userSpaceOnUse"
-              >
-                <feTurbulence
-                  type="fractalNoise"
-                  baseFrequency="0.9"
-                  numOctaves="3"
-                  seed="7"
-                  stitchTiles="stitch"
-                  result="noise"
-                />
-                <feColorMatrix
-                  in="noise"
-                  type="matrix"
-                  values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.55 0"
-                />
-              </filter>
-            </defs>
-
-            {/* Base terracota con gradiente */}
-            <rect width="100" height="100" fill="url(#terraGrad)" />
-
-            {/* Brillo especular suave */}
-            <rect
-              width="100"
-              height="100"
-              fill="url(#shine)"
-              pointerEvents="none"
-            />
-
-            {/* Triángulo celeste superior */}
-            <polygon points="-10,22 40,-8 -10,-10" fill="url(#cyanGrad)" />
-
-            {/* Área celeste inferior */}
-            <polygon
-              points="-10,31 120,101.2 120,120 -10,120"
-              fill="url(#cyanGrad)"
-            />
-
-            {/* Grano de papel encima de los fondos, debajo de las líneas */}
-            <rect
-              width="100"
-              height="100"
-              filter="url(#paperGrain)"
-              opacity="0.4"
-              style={{ mixBlendMode: "overlay" }}
-              pointerEvents="none"
-            />
-
-            {/* Línea Superior Blanca */}
-            <line
-              x1="-10"
-              y1="22"
-              x2="40"
-              y2="-8"
-              stroke="#ffffff"
-              strokeWidth="2"
-            />
-
-            {/* Línea Central Blanca */}
-            <line
-              x1="-10"
-              y1="31"
-              x2="120"
-              y2="101.2"
-              stroke="#ffffff"
-              strokeWidth="2"
-            />
-          </svg>
+      {/* ─── HEADER SUPERIOR ─── */}
+      <header className="relative z-10 w-full max-w-6xl mx-auto px-4 sm:px-6 pt-5 pb-3 flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-white border border-slate-200 shadow-sm">
+            <IconoPelota size={24} />
+          </div>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 leading-none">
+              SALIDA<span className="text-rose-600 font-black">x</span>5
+            </h1>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mt-1">
+              Data & Análisis de Vóley
+            </p>
+          </div>
         </div>
 
-        {/* ================= CONTACTO ARRIBA A LA DERECHA ================= */}
-        <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-30 flex flex-row sm:flex-col items-end gap-1.5">
-          <a
-            href="mailto:salidax5.data@gmail.com"
-            className="flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-black/45 hover:bg-black/65 backdrop-blur-md text-white text-[10px] sm:text-xs font-semibold shadow-lg border border-white/15 transition"
-            title="salidax5.data@gmail.com"
-          >
-            <Mail size={13} className="shrink-0" />
-            <span className="hidden sm:inline">salidax5.data@gmail.com</span>
-          </a>
-          <a
-            href="tel:+5492235753821"
-            className="flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-black/45 hover:bg-black/65 backdrop-blur-md text-white text-[10px] sm:text-xs font-semibold shadow-lg border border-white/15 transition"
-            title="223-575 3821"
-          >
-            <Phone size={13} className="shrink-0" />
-            <span className="hidden sm:inline">223-575 3821</span>
-          </a>
+        {/* Contacto directo en pills modernas */}
+        <nav className="flex items-center gap-2 flex-wrap">
           <a
             href="https://instagram.com/SALIDAx5.data"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-black/45 hover:bg-black/65 backdrop-blur-md text-white text-[10px] sm:text-xs font-semibold shadow-lg border border-white/15 transition"
-            title="SALIDAx5.data"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 hover:bg-white text-slate-600 hover:text-slate-900 text-xs font-semibold border border-slate-200/80 shadow-sm transition-all hover:border-slate-300"
+            title="Instagram: @SALIDAx5.data"
           >
-            <Instagram size={13} className="shrink-0" />
+            <Instagram size={13} className="text-pink-600 shrink-0" />
             <span className="hidden sm:inline">SALIDAx5.data</span>
           </a>
+          <a
+            href="mailto:salidax5.data@gmail.com"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 hover:bg-white text-slate-600 hover:text-slate-900 text-xs font-semibold border border-slate-200/80 shadow-sm transition-all hover:border-slate-300"
+            title="salidax5.data@gmail.com"
+          >
+            <Mail size={13} className="text-blue-600 shrink-0" />
+            <span className="hidden md:inline">salidax5.data@gmail.com</span>
+          </a>
+          <a
+            href="tel:+5492235753821"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 hover:bg-white text-slate-600 hover:text-slate-900 text-xs font-semibold border border-slate-200/80 shadow-sm transition-all hover:border-slate-300"
+            title="223-575 3821"
+          >
+            <Phone size={13} className="text-emerald-600 shrink-0" />
+            <span className="hidden lg:inline">223-575 3821</span>
+          </a>
+        </nav>
+      </header>
+
+      {/* ─── CONTENEDOR HERO & FORMULARIO ─── */}
+      <section className="relative z-10 w-full max-w-md mx-auto px-4 py-8 sm:py-12 flex flex-col items-center">
+        {/* Badge superior */}
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200/80 text-blue-900 text-[11px] font-bold uppercase tracking-wider mb-5 shadow-sm">
+          <Activity size={13} className="text-blue-600" />
+          <span>Gestión Táctica y Rendimiento</span>
         </div>
 
-        {/* ================= FORMULARIO LOGIN ================= */}
-        <div className="relative z-20 w-full max-w-sm mx-auto px-6 pt-[12vh] sm:pt-[15vh] flex flex-col items-center">
-          <div className="w-full space-y-4">
-            <div className="relative">
-              <input
-                type="text"
-                value={codigo}
-                onChange={(e) => setCodigo(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={cargando}
-                autoFocus
-                className="w-full px-5 py-4 text-center text-lg font-mono bg-white/95 backdrop-blur-sm border-0 rounded-2xl focus:outline-none focus:ring-4 focus:ring-white/50 transition-all placeholder:text-slate-300 shadow-xl"
-              />
+        {/* Título de bienvenida */}
+        <div className="text-center mb-6">
+          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+            Acceso a la Plataforma
+          </h2>
+          <p className="text-slate-500 text-sm mt-1.5 max-w-xs mx-auto">
+            Ingresá el código asignado a tu club, jugador o equipo técnico
+          </p>
+        </div>
+
+        {/* Tarjeta de Acceso */}
+        <div className="w-full bg-white border border-slate-200/90 rounded-2xl shadow-xl shadow-slate-200/50 p-6 sm:p-8">
+          <div className="space-y-4">
+            <div>
+              <label
+                htmlFor="codigo-acceso"
+                className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-700 mb-2"
+              >
+                <span className="flex items-center gap-1.5">
+                  <KeyRound size={13} className="text-slate-400" />
+                  Código de Acceso
+                </span>
+                <span className="text-[10px] text-slate-400 font-normal">
+                  Sensible a mayúsculas
+                </span>
+              </label>
+
+              <div className="relative">
+                <input
+                  id="codigo-acceso"
+                  type="text"
+                  value={codigo}
+                  onChange={(e) => {
+                    setCodigo(e.target.value);
+                    if (mensaje) setMensaje("");
+                  }}
+                  onKeyDown={handleKeyDown}
+                  disabled={cargando}
+                  autoFocus
+                  placeholder="EJ: CLUB-2026"
+                  className="w-full px-4 py-3.5 text-center text-lg sm:text-xl font-mono font-bold tracking-[0.2em] bg-slate-50 hover:bg-slate-50/80 focus:bg-white text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#163A85]/20 focus:border-[#163A85] transition-all placeholder:text-slate-300 placeholder:font-normal placeholder:tracking-normal placeholder:text-sm shadow-inner"
+                />
+              </div>
             </div>
 
             <button
               onClick={handleIngresar}
               disabled={cargando}
-              className="w-full bg-[#163A85] hover:bg-[#0f285e] disabled:bg-slate-400 text-white font-bold py-4 rounded-2xl transition-all shadow-xl active:scale-[0.98]"
+              className="w-full bg-[#163A85] hover:bg-[#0F285E] active:scale-[0.99] disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold py-3.5 px-5 rounded-xl transition-all shadow-md shadow-blue-950/15 flex items-center justify-center gap-2 text-sm sm:text-base group"
             >
-              {cargando ? "Verificando..." : "Ingresar"}
+              {cargando ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Verificando...</span>
+                </div>
+              ) : (
+                <>
+                  <span>Ingresar al Sistema</span>
+                  <ArrowRight
+                    size={16}
+                    className="transition-transform group-hover:translate-x-1"
+                  />
+                </>
+              )}
             </button>
           </div>
 
+          {/* Estado / Alerta */}
           {mensaje && (
             <div
-              className={`mt-4 w-full text-center text-xs font-semibold p-3 rounded-xl backdrop-blur-md shadow-sm ${
-                mensaje.includes("✅")
-                  ? "bg-green-100/90 text-green-800"
-                  : mensaje.includes("inválido") || mensaje.includes("Error")
-                  ? "bg-red-100/90 text-red-800"
-                  : "bg-white/60 text-slate-700"
+              className={`mt-4 p-3 rounded-xl text-xs font-semibold flex items-start gap-2.5 transition-all ${
+                tipoMensaje === "ok"
+                  ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+                  : tipoMensaje === "error"
+                  ? "bg-rose-50 border border-rose-200 text-rose-800"
+                  : "bg-slate-100 border border-slate-200 text-slate-700"
               }`}
             >
-              {mensaje}
+              {tipoMensaje === "ok" ? (
+                <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+              ) : tipoMensaje === "error" ? (
+                <AlertCircle size={16} className="text-rose-600 shrink-0 mt-0.5" />
+              ) : (
+                <Activity size={16} className="text-slate-500 shrink-0 mt-0.5" />
+              )}
+              <span className="leading-snug">{mensaje}</span>
             </div>
           )}
         </div>
 
-        {/* ================= PELOTA Y SOMBRA ================= */}
-        <div className="absolute z-30 top-[50%] left-[35%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-          <div className="relative flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32">
-            {/* SOMBRA DEL PISO */}
-            <div
-              className="absolute z-0 w-[120%] h-[45%] bg-[#0F2E69] rounded-[100%] blur-sm"
-              style={{
-                bottom: "-20%",
-                left: "10%",
-                transform: "rotate(28.3deg)",
-              }}
-            ></div>
-
-            {/* PELOTA CON VOLUMEN */}
-            <svg
-              viewBox="0 0 100 100"
-              className="w-full h-full relative z-10"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <defs>
-                <radialGradient id="ball-light" cx="30%" cy="30%" r="70%">
-                  <stop offset="0%" stopColor="#FFFFFF" />
-                  <stop offset="60%" stopColor="#F1F5F9" />
-                  <stop offset="100%" stopColor="#94A3B8" />
-                </radialGradient>
-              </defs>
-
-              <circle cx="50" cy="50" r="46" fill="url(#ball-light)" />
-
-              <path d="M 5 60 Q 25 55 45 80 Q 25 95 5 60 Z" fill="#163A85" />
-              <path d="M 95 60 Q 75 55 55 80 Q 75 95 95 60 Z" fill="#163A85" />
-
-              <path d="M 15 25 Q 35 35 25 65 Q 5 55 15 25 Z" fill="#F7C32C" />
-              <path d="M 85 25 Q 65 35 75 65 Q 95 55 85 25 Z" fill="#F7C32C" />
-
-              <circle cx="50" cy="50" r="46" stroke="#163A85" strokeWidth="4" />
-              <path d="M 50 4 Q 50 25 40 45" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
-              <path d="M 50 4 Q 50 25 60 45" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
-              <path d="M 4 50 Q 30 50 40 45" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
-              <path d="M 96 50 Q 70 50 60 45" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
-              <path d="M 4 50 Q 30 70 50 96" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
-              <path d="M 96 50 Q 70 70 50 96" stroke="#163A85" strokeWidth="4" strokeLinecap="round" />
-            </svg>
-          </div>
-        </div>
-
-        {/* ================= FRANJA INFERIOR (Controles de TV vieja) ================= */}
-        <div className="absolute -bottom-3 -left-3 -right-3 sm:-bottom-5 sm:-left-5 sm:-right-5 h-[calc(15%+12px)] sm:h-[calc(15%+20px)] bg-[#CBD5E1] border-t-[3px] border-[#94A3B8] z-40 flex items-center justify-center px-6 sm:px-12">
-          {/* Parlante (Izquierda) */}
-          <div className="hidden sm:flex absolute left-6 top-1/2 -translate-y-1/2 gap-1.5 opacity-40">
-            <div className="w-1.5 h-10 bg-[#64748B] rounded-full shadow-inner"></div>
-            <div className="w-1.5 h-10 bg-[#64748B] rounded-full shadow-inner"></div>
-            <div className="w-1.5 h-10 bg-[#64748B] rounded-full shadow-inner"></div>
-            <div className="w-1.5 h-10 bg-[#64748B] rounded-full shadow-inner"></div>
-            <div className="w-1.5 h-10 bg-[#64748B] rounded-full shadow-inner"></div>
-          </div>
-
-          {/* Logo Central */}
-          <div className="flex flex-col items-center justify-center pb-2 sm:pb-4 z-10">
-            <h1 className="text-4xl sm:text-5xl font-black text-black tracking-tight flex items-center drop-shadow-md">
-              SALIDA
-              <span className="text-red-600 text-2xl sm:text-3xl font-black mx-[1px] sm:mx-[2px] mt-1">
-                x
-              </span>
-              5
-            </h1>
-            <p className="text-[#163A85] text-[10px] sm:text-xs mt-1 font-bold tracking-[0.3em] uppercase opacity-90">
-              Estadísticas de vóley
-            </p>
-          </div>
-
-          {/* Perillas y Botón (Derecha) */}
-          <div className="absolute right-4 sm:right-8 top-1/2 -translate-y-1/2 flex items-center gap-3 sm:gap-4">
-            <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#F1F5F9] to-[#94A3B8] border-[2px] border-[#64748B] shadow-[2px_2px_5px_rgba(0,0,0,0.3),inset_-2px_-2px_5px_rgba(0,0,0,0.1)] flex items-center justify-center">
-              <div className="w-1 h-3 sm:h-4 bg-[#334155] rounded-full absolute top-1 sm:top-1.5"></div>
+        {/* ─── PILARES / CAPACIDADES DE LA PLATAFORMA ─── */}
+        <div className="mt-8 grid grid-cols-2 gap-2 sm:gap-3 w-full">
+          <div className="p-3 bg-white/80 border border-slate-200/70 rounded-xl flex items-center gap-2.5 shadow-sm">
+            <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
+              <BarChart3 size={15} />
             </div>
-
-            <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#F1F5F9] to-[#94A3B8] border-[2px] border-[#64748B] shadow-[2px_2px_5px_rgba(0,0,0,0.3),inset_-2px_-2px_5px_rgba(0,0,0,0.1)] flex items-center justify-center">
-              <div className="w-1 h-3 sm:h-4 bg-[#334155] rounded-full absolute bottom-1 sm:bottom-1.5"></div>
+            <div>
+              <p className="text-[11px] font-bold text-slate-800 leading-tight">
+                Métricas por Set
+              </p>
+              <p className="text-[10px] text-slate-400">Eficiencia y saldo</p>
             </div>
+          </div>
 
-            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded bg-gradient-to-br from-[#EF4444] to-[#B91C1C] border-[2px] border-[#7F1D1D] shadow-[2px_2px_4px_rgba(0,0,0,0.4),inset_1px_1px_2px_rgba(255,255,255,0.4)] flex items-center justify-center">
-              <div className="w-2 h-2 rounded-full bg-[#FCA5A5] shadow-inner"></div>
+          <div className="p-3 bg-white/80 border border-slate-200/70 rounded-xl flex items-center gap-2.5 shadow-sm">
+            <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
+              <Flame size={15} />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-slate-800 leading-tight">
+                Mapas de Calor
+              </p>
+              <p className="text-[10px] text-slate-400">Dirección y zonas</p>
+            </div>
+          </div>
+
+          <div className="p-3 bg-white/80 border border-slate-200/70 rounded-xl flex items-center gap-2.5 shadow-sm">
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+              <Activity size={15} />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-slate-800 leading-tight">
+                Armados & Toque
+              </p>
+              <p className="text-[10px] text-slate-400">Distribución táctica</p>
+            </div>
+          </div>
+
+          <div className="p-3 bg-white/80 border border-slate-200/70 rounded-xl flex items-center gap-2.5 shadow-sm">
+            <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-700 flex items-center justify-center shrink-0">
+              <FileText size={15} />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-slate-800 leading-tight">
+                Informes PDF
+              </p>
+              <p className="text-[10px] text-slate-400">Exportación directa</p>
             </div>
           </div>
         </div>
-      </div>
+      </section>
+
+      {/* ─── FOOTER EDITORIAL ─── */}
+      <footer className="relative z-10 w-full border-t border-slate-200/80 bg-white/60 backdrop-blur-sm py-4 px-4 text-center">
+        <p className="text-[11px] text-slate-500 font-medium">
+          SALIDA<span className="text-rose-600 font-bold">x</span>5 · Sistema de Inteligencia y Estadística de Vóley
+        </p>
+      </footer>
     </main>
   );
 }

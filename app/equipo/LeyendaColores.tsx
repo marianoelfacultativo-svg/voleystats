@@ -1,5 +1,7 @@
 "use client";
 
+import { Activity } from "lucide-react";
+
 interface NivelInfo {
   id: "destaca" | "bien" | "cumple" | "bajo";
   label: string;
@@ -80,8 +82,9 @@ const FUNDAMENTOS: { key: keyof NivelInfo; label: string; short: string }[] = [
 export default function LeyendaColores() {
   return (
     <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-      <p className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-4 text-center">
-        🏐 Niveles de rendimiento
+      <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4 text-center flex items-center justify-center gap-1.5">
+        <Activity size={14} className="text-[#163A85]" />
+        <span>Niveles de Rendimiento</span>
       </p>
 
       <div className="overflow-x-auto">

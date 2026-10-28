@@ -1,6 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  FileDown,
+  Calendar,
+  ChevronDown,
+  Trophy,
+  Activity,
+  FileSpreadsheet,
+  BarChart2,
+  TrendingUp,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { cargarAccionesCompatibles, type AccionDB } from "@/lib/db";
 import {
@@ -153,7 +163,14 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
   };
 
   if (cargando) {
-    return <p className="text-slate-500 text-center py-12">Cargando...</p>;
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="flex items-center gap-2.5 text-slate-500 font-medium text-sm">
+          <div className="w-4 h-4 border-2 border-slate-300 border-t-[#163A85] rounded-full animate-spin" />
+          <span>Cargando estadísticas de {nombreEquipo}...</span>
+        </div>
+      </div>
+    );
   }
 
   const ultimoPartido = partidos[0];
@@ -222,158 +239,194 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
 
   if (partidos.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 sm:p-12 text-center">
-        <p className="text-5xl mb-4">📊</p>
-        <p className="text-slate-600 font-medium">
-          Todavía no hay partidos cargados para {nombreEquipo}
-        </p>
-        <p className="text-slate-500 text-sm mt-1">
-          Pedile al analista que cargue el primer partido
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-8 sm:p-12 text-center max-w-lg mx-auto">
+        <div className="w-12 h-12 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+          <BarChart2 size={24} />
+        </div>
+        <h3 className="text-slate-800 font-bold text-base">
+          Sin partidos registrados
+        </h3>
+        <p className="text-slate-500 text-xs mt-1">
+          Todavía no hay partidos cargados para {nombreEquipo}. Cuando el analista cargue el primer encuentro, aparecerán aquí las métricas.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Botón de exportación */}
       <div className="flex justify-end" data-pdf-ignorar>
         <button
           onClick={handleDescargarPDF}
           disabled={descargando}
-          className="px-4 py-2 text-sm bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-medium rounded-lg transition disabled:opacity-50 w-full sm:w-auto"
+          className="inline-flex items-center justify-center gap-2 px-3.5 py-2 text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/90 hover:border-slate-300 rounded-xl shadow-sm transition-all disabled:opacity-50 w-full sm:w-auto"
         >
-          {descargando ? "Generando PDF..." : "📄 Descargar PDF"}
+          <FileDown size={14} className="text-slate-500" />
+          <span>{descargando ? "Generando PDF..." : "Exportar Informe PDF"}</span>
         </button>
       </div>
 
       <div ref={refPDF} className="space-y-6">
+        {/* ─── CARD ÚLTIMO PARTIDO ─── */}
         {ultimoPartido && statsUltimo && (
-          <div>
-            <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-3">
-              Último partido
-            </h2>
-            <div className="card-terracota rounded-2xl border p-4 sm:p-6">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <p className="text-base sm:text-lg font-semibold text-slate-800 break-words">
-                    🏐 {nombreEquipo} vs {nombreRivalDe(ultimoPartido)}
-                  </p>
-                  <p className="text-sm text-slate-600 mt-1">
-                    📅 {ultimoPartido.fecha}
-                  </p>
-                  <p className="text-sm text-slate-700 mt-1">
-                    {scoreDe(ultimoPartido)}
-                  </p>
+          <section className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200/60">
+                    Último Partido
+                  </span>
+                  <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
+                    <Calendar size={13} className="text-slate-400" />
+                    {ultimoPartido.fecha}
+                  </span>
                 </div>
+                <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
+                  <span>{nombreEquipo}</span>
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1.5 py-0.5 bg-slate-100 rounded">
+                    vs
+                  </span>
+                  <span className="text-slate-700">{nombreRivalDe(ultimoPartido)}</span>
+                </h3>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
-                  <p className="text-xs text-slate-500 uppercase">Acciones</p>
-                  <p className="text-2xl font-bold text-slate-800">
-                    {statsUltimo.totales.totalAcciones}
-                  </p>
-                </div>
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
-                  <p className="text-xs text-green-700 uppercase">Puntos</p>
-                  <p className="text-2xl font-bold text-green-800">
-                    {statsUltimo.totales.totalPuntos}
-                  </p>
-                </div>
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
-                  <p className="text-xs text-red-700 uppercase">Errores</p>
-                  <p className="text-2xl font-bold text-red-800">
-                    {statsUltimo.totales.totalErrores}
-                  </p>
-                </div>
+              <div className="self-start sm:self-center">
+                <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono font-bold text-slate-700">
+                  {scoreDe(ultimoPartido)}
+                </span>
               </div>
             </div>
-          </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+              <div className="p-3.5 bg-slate-50/80 border border-slate-200/80 rounded-xl text-center">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  Total Acciones
+                </p>
+                <p className="text-2xl sm:text-3xl font-black tabular-nums text-slate-800 mt-0.5">
+                  {statsUltimo.totales.totalAcciones}
+                </p>
+              </div>
+
+              <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-center">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">
+                  Puntos
+                </p>
+                <p className="text-2xl sm:text-3xl font-black tabular-nums text-emerald-700 mt-0.5">
+                  {statsUltimo.totales.totalPuntos}
+                </p>
+              </div>
+
+              <div className="p-3.5 bg-rose-50/70 border border-rose-200/80 rounded-xl text-center">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-rose-800">
+                  Errores
+                </p>
+                <p className="text-2xl sm:text-3xl font-black tabular-nums text-rose-700 mt-0.5">
+                  {statsUltimo.totales.totalErrores}
+                </p>
+              </div>
+            </div>
+          </section>
         )}
 
+        {/* ─── TOTALES ACUMULADOS ─── */}
         {totales && (
-          <div>
-            <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-3">
-              Totales acumulados
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4">
-              <div className="p-3 sm:p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                <p className="text-xs text-slate-500 uppercase">Partidos</p>
-                <p className="text-xl sm:text-2xl font-bold text-slate-800">
+          <section className="space-y-3">
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <TrendingUp size={17} className="text-[#163A85]" />
+              <span>Totales Acumulados</span>
+            </h3>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+              <div className="p-3.5 bg-white border border-slate-200/90 rounded-xl shadow-sm">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Partidos
+                </p>
+                <p className="text-xl sm:text-2xl font-black tabular-nums text-slate-900 mt-0.5">
                   {partidos.length}
                 </p>
               </div>
-              <div className="p-3 sm:p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                <p className="text-xs text-slate-500 uppercase">Acciones</p>
-                <p className="text-xl sm:text-2xl font-bold text-slate-800">
+
+              <div className="p-3.5 bg-white border border-slate-200/90 rounded-xl shadow-sm">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Acciones
+                </p>
+                <p className="text-xl sm:text-2xl font-black tabular-nums text-slate-900 mt-0.5">
                   {totales.totalAcciones}
                 </p>
               </div>
-              <div className="p-3 sm:p-4 bg-green-50 border border-green-200 rounded-lg">
-                <p className="text-xs text-green-700 uppercase">Puntos</p>
-                <p className="text-xl sm:text-2xl font-bold text-green-800">
+
+              <div className="p-3.5 bg-emerald-50/50 border border-emerald-200/70 rounded-xl shadow-sm">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">
+                  Puntos
+                </p>
+                <p className="text-xl sm:text-2xl font-black tabular-nums text-emerald-700 mt-0.5">
                   {totales.totalPuntos}
                 </p>
               </div>
-              <div className="p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-xs text-red-700 uppercase">Errores</p>
-                <p className="text-xl sm:text-2xl font-bold text-red-800">
+
+              <div className="p-3.5 bg-rose-50/50 border border-rose-200/70 rounded-xl shadow-sm">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-rose-800">
+                  Errores
+                </p>
+                <p className="text-xl sm:text-2xl font-black tabular-nums text-rose-700 mt-0.5">
                   {totales.totalErrores}
                 </p>
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 sm:p-6 overflow-x-auto">
-              <table className="w-full text-sm min-w-[600px]">
+            {/* Tabla de Fundamentos */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-3 sm:p-5 overflow-x-auto">
+              <table className="w-full text-sm min-w-[600px] border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 text-left text-slate-500">
-                    <th className="py-2 px-3">Fundamento</th>
-                    <th className="py-2 px-3 text-right">Total</th>
-                    <th className="py-2 px-3 text-right">Pos</th>
-                    <th className="py-2 px-3 text-right">Neg</th>
-                    <th className="py-2 px-3 text-right">Puntos</th>
-                    <th className="py-2 px-3 text-right">Errores</th>
-                    <th className="py-2 px-3 text-right">Saldo</th>
-                    <th className="py-2 px-3 text-right">Efect.</th>
+                  <tr className="border-b border-slate-200 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    <th className="py-2.5 px-3">Fundamento</th>
+                    <th className="py-2.5 px-3 text-right">Total</th>
+                    <th className="py-2.5 px-3 text-right text-emerald-700">Pos</th>
+                    <th className="py-2.5 px-3 text-right text-rose-700">Neg</th>
+                    <th className="py-2.5 px-3 text-right">Puntos</th>
+                    <th className="py-2.5 px-3 text-right">Errores</th>
+                    <th className="py-2.5 px-3 text-right">Saldo</th>
+                    <th className="py-2.5 px-3 text-right">Efectividad</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-slate-100">
                   {FUNDAMENTOS.map((f) => {
                     const e = totales.porFundamento[f];
                     if (!e || e.total === 0) return null;
                     return (
-                      <tr key={f} className="border-b border-slate-100">
-                        <td className="py-2 px-3 font-medium text-slate-700">
+                      <tr key={f} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-2.5 px-3 font-semibold text-slate-800">
                           {NOMBRES[f]}
                         </td>
-                        <td className="py-2 px-3 text-right text-slate-600">
+                        <td className="py-2.5 px-3 text-right tabular-nums text-slate-600 font-medium">
                           {e.total}
                         </td>
-                        <td className="py-2 px-3 text-right text-green-700">
+                        <td className="py-2.5 px-3 text-right tabular-nums text-emerald-700 font-semibold">
                           {e.positivos}
                         </td>
-                        <td className="py-2 px-3 text-right text-red-700">
+                        <td className="py-2.5 px-3 text-right tabular-nums text-rose-700 font-semibold">
                           {e.negativos}
                         </td>
-                        <td className="py-2 px-3 text-right text-slate-600">
+                        <td className="py-2.5 px-3 text-right tabular-nums text-slate-700 font-medium">
                           {e.puntos}
                         </td>
-                        <td className="py-2 px-3 text-right text-slate-600">
+                        <td className="py-2.5 px-3 text-right tabular-nums text-slate-700 font-medium">
                           {e.errores}
                         </td>
                         <td
-                          className={`py-2 px-3 text-right font-semibold ${
+                          className={`py-2.5 px-3 text-right tabular-nums font-bold ${
                             e.saldo > 0
-                              ? "text-green-700"
+                              ? "text-emerald-700"
                               : e.saldo < 0
-                              ? "text-red-700"
+                              ? "text-rose-700"
                               : "text-slate-600"
                           }`}
                         >
                           {e.saldo > 0 ? "+" : ""}
                           {e.saldo}
                         </td>
-                        <td className="py-2 px-3 text-right text-slate-600">
+                        <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-slate-800">
                           {e.efectividad.toFixed(0)}%
                         </td>
                       </tr>
@@ -382,17 +435,24 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
                 </tbody>
               </table>
             </div>
-          </div>
+          </section>
         )}
 
-        <div>
-          <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-3">
-            🏆 Rankings del plantel
-          </h2>
-          <p className="text-xs text-slate-500 mb-4">
-            Clic en cualquier ranking para ver la tabla completa
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3">
+        {/* ─── RANKINGS DEL PLANTEL ─── */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                <Trophy size={18} className="text-amber-500" />
+                <span>Rankings de Rendimiento</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Líderes por fundamento estadístico. Clic para ver desglose completo.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 sm:gap-3">
             {RANKINGS.map((r) => {
               const items = rankings[r.id];
               const abierto = rankingsAbiertos.has(r.id);
@@ -401,103 +461,95 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
               return (
                 <div
                   key={r.id}
-                  className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"
+                  className="bg-white rounded-xl shadow-sm border border-slate-200/90 overflow-hidden transition-all hover:border-slate-300"
                 >
                   <button
                     onClick={() => toggleRanking(r.id)}
-                    className="w-full text-left p-3 sm:p-4 hover:bg-slate-50 transition"
+                    className="w-full text-left p-3.5 sm:p-4 hover:bg-slate-50/70 transition flex flex-col justify-between"
                     data-pdf-acordeon
                     data-pdf-cerrado={abierto ? undefined : "true"}
                   >
-                    <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center justify-between gap-2 w-full mb-2">
                       <div className="flex items-center gap-2">
                         <IconoVoley
                           tipo={r.id}
-                          size={22}
-                          className="text-slate-800"
+                          size={20}
+                          className="text-[#163A85]"
                         />
-                        <p className="font-semibold text-slate-800">
+                        <span className="font-bold text-slate-800 text-sm">
                           {r.titulo}
-                        </p>
+                        </span>
                       </div>
-                      <span
+                      <ChevronDown
+                        size={15}
                         className={`text-slate-400 transition-transform ${
-                          abierto ? "rotate-180" : ""
+                          abierto ? "rotate-180 text-slate-800" : ""
                         }`}
-                      >
-                        ▼
-                      </span>
+                      />
                     </div>
+
                     {top1 ? (
-                      <div>
-                        <p className="text-sm font-medium text-slate-800">
+                      <div className="flex items-baseline justify-between gap-2 w-full pt-1">
+                        <p className="text-sm font-semibold text-slate-900 truncate">
                           {nombreDe(top1.jugador_id)}
                           {esArmadorId(top1.jugador_id) && (
-                            <span className="ml-1 text-[10px] text-violet-600 font-medium">
-                              (Armador)
+                            <span className="ml-1.5 text-[10px] font-bold text-violet-700 bg-violet-50 border border-violet-200/60 px-1.5 py-0.5 rounded">
+                              Armador
                             </span>
                           )}
                         </p>
-                        <p className="text-xs text-slate-500 mt-0.5">
+                        <p className="text-xs font-mono font-medium text-slate-500 shrink-0">
                           {top1.texto}
                         </p>
                       </div>
                     ) : (
-                      <p className="text-xs text-slate-400">Sin datos</p>
+                      <p className="text-xs text-slate-400">Sin datos registrados</p>
                     )}
                   </button>
 
                   {abierto && items.length > 0 && (
-                    <div className="border-t border-slate-200 bg-slate-50 p-2 sm:p-3 overflow-x-auto">
-                      <table className="w-full text-sm min-w-[400px]">
+                    <div className="border-t border-slate-100 bg-slate-50/60 p-2 sm:p-3 overflow-x-auto">
+                      <table className="w-full text-xs min-w-[380px]">
                         <thead>
-                          <tr className="text-left text-slate-500 text-xs">
+                          <tr className="text-left text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                             <th className="py-1.5 px-2 w-8">#</th>
                             <th className="py-1.5 px-2">Jugador</th>
                             {r.id === "defensa" ? (
                               <>
-                                <th className="py-1.5 px-2 text-right">
-                                  Positivas
-                                </th>
-                                <th className="py-1.5 px-2 text-right">
-                                  Negativas
-                                </th>
-                                <th className="py-1.5 px-2 text-right">
-                                  Balance
-                                </th>
-                                <th className="py-1.5 px-2 text-right">
-                                  Valor
-                                </th>
+                                <th className="py-1.5 px-2 text-right">Pos</th>
+                                <th className="py-1.5 px-2 text-right">Neg</th>
+                                <th className="py-1.5 px-2 text-right">Bal</th>
+                                <th className="py-1.5 px-2 text-right">Valor</th>
                               </>
                             ) : (
                               <th className="py-1.5 px-2 text-right">
-                                Detalle
+                                Rendimiento
                               </th>
                             )}
                           </tr>
                         </thead>
-                        <tbody>
+                        <tbody className="divide-y divide-slate-100">
                           {items.map((it, i) => (
                             <tr
                               key={it.jugador_id}
-                              className="border-t border-slate-200"
+                              className="hover:bg-white/80 transition-colors"
                             >
                               <td className="py-1.5 px-2">
                                 <span
                                   className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
                                     i === 0
-                                      ? "bg-yellow-400 text-yellow-900"
+                                      ? "bg-amber-100 text-amber-800 border border-amber-300"
                                       : i === 1
-                                      ? "bg-slate-300 text-slate-800"
+                                      ? "bg-slate-200 text-slate-700"
                                       : i === 2
-                                      ? "bg-amber-700 text-amber-100"
-                                      : "bg-slate-100 text-slate-500"
+                                      ? "bg-amber-900/15 text-amber-900"
+                                      : "text-slate-400"
                                   }`}
                                 >
                                   {i + 1}
                                 </span>
                               </td>
-                              <td className="py-1.5 px-2 font-medium text-slate-700">
+                              <td className="py-1.5 px-2 font-medium text-slate-800">
                                 {nombreDe(it.jugador_id)}
                                 {esArmadorId(it.jugador_id) && (
                                   <span className="ml-1 text-[10px] text-violet-600 font-medium">
@@ -507,30 +559,30 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
                               </td>
                               {r.id === "defensa" ? (
                                 <>
-                                  <td className="py-1.5 px-2 text-right text-green-700 font-medium">
+                                  <td className="py-1.5 px-2 text-right tabular-nums text-emerald-700 font-medium">
                                     {it.positivas ?? 0}
                                   </td>
-                                  <td className="py-1.5 px-2 text-right text-red-700 font-medium">
+                                  <td className="py-1.5 px-2 text-right tabular-nums text-rose-700 font-medium">
                                     {it.negativas ?? 0}
                                   </td>
                                   <td
-                                    className={`py-1.5 px-2 text-right font-semibold ${
+                                    className={`py-1.5 px-2 text-right tabular-nums font-bold ${
                                       (it.balance ?? 0) > 0
-                                        ? "text-green-700"
+                                        ? "text-emerald-700"
                                         : (it.balance ?? 0) < 0
-                                        ? "text-red-700"
-                                        : "text-slate-600"
+                                        ? "text-rose-700"
+                                        : "text-slate-500"
                                     }`}
                                   >
                                     {(it.balance ?? 0) > 0 ? "+" : ""}
                                     {it.balance ?? 0}
                                   </td>
-                                  <td className="py-1.5 px-2 text-right font-semibold text-slate-800">
+                                  <td className="py-1.5 px-2 text-right tabular-nums font-bold text-slate-900">
                                     {it.valor.toFixed(2)}
                                   </td>
                                 </>
                               ) : (
-                                <td className="py-1.5 px-2 text-right text-xs text-slate-600">
+                                <td className="py-1.5 px-2 text-right tabular-nums font-medium text-slate-700">
                                   {it.texto}
                                 </td>
                               )}
@@ -544,17 +596,22 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
               );
             })}
           </div>
-        </div>
+        </section>
 
+        {/* ─── ESTADÍSTICAS CRUDAS ─── */}
         {jugadoresDelEquipo.length > 0 && acciones.length > 0 && (
-          <div>
-            <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-1">
-              📋 Estadísticas crudas (acumuladas)
-            </h2>
-            <p className="text-xs text-slate-500 mb-3">
-              Todos los partidos de {nombreEquipo} sumados.
-            </p>
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 sm:p-6">
+          <section className="space-y-3">
+            <div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                <FileSpreadsheet size={18} className="text-slate-600" />
+                <span>Registro Detallado de Acciones</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Suma acumulada de todos los partidos registrados de {nombreEquipo}.
+              </p>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-3 sm:p-5">
               <TablaEstadisticasCrudas
                 acciones={acciones}
                 jugadoresIds={jugadoresDelEquipo.map((j) => j.id)}
@@ -565,7 +622,7 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
                 }`}
               />
             </div>
-          </div>
+          </section>
         )}
       </div>
     </div>

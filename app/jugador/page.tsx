@@ -2,6 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  FileDown,
+  LogOut,
+  BarChart2,
+  Calendar,
+  UserX,
+  Layers,
+  GitCompare,
+  Activity,
+  Table,
+} from "lucide-react";
 import { obtenerSesion, cerrarSesion, type Sesion } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { cargarAccionesCompatibles, type AccionDB } from "@/lib/db";
@@ -455,63 +466,81 @@ export default function JugadorPage() {
       : [];
 
   return (
-    <main className="min-h-screen p-4 sm:p-6 md:p-8">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-black flex items-center gap-2 drop-shadow-sm">
-              <IconoPelota size={34} />
-              <span>
-                SALIDA
-                <span className="text-red-600">x</span>5
-              </span>
-              <span className="text-slate-700 font-semibold truncate">
-                {nombreEquipo ? `"${nombreEquipo}"` : "..."}
-              </span>
-            </h1>
-            <p className="text-slate-600 text-sm mt-1">
-              {jugador
-                ? `Bienvenido ${jugador.nombre}`
-                : "Cargando perfil..."}
-            </p>
+    <main className="min-h-screen bg-slate-50/70 p-3 sm:p-6 md:p-8">
+      <div className="max-w-5xl mx-auto space-y-6">
+        {/* ─── HEADER PRO ATHLETIC ─── */}
+        <header className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-slate-50 border border-slate-200/80 shadow-sm shrink-0">
+              <IconoPelota size={26} />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 leading-none">
+                  SALIDA<span className="text-rose-600 font-black">x</span>5
+                </span>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200/60">
+                  Jugador
+                </span>
+              </div>
+              <p className="text-sm font-semibold text-slate-700 truncate mt-1">
+                {jugador ? jugador.nombre : "Cargando perfil..."}
+                {nombreEquipo && (
+                  <span className="text-slate-400 font-normal ml-1.5">
+                    · {nombreEquipo}
+                  </span>
+                )}
+              </p>
+            </div>
           </div>
+
           <div
-            className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto"
+            className="flex items-center gap-2.5 w-full sm:w-auto justify-end"
             data-pdf-ignorar
           >
             <button
               onClick={handleDescargarPDF}
               disabled={descargando}
-              className="px-4 py-2 text-sm bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-medium rounded-lg transition disabled:opacity-50 w-full sm:w-auto"
+              className="inline-flex items-center justify-center gap-2 px-3.5 py-2 text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200 hover:border-slate-300 rounded-xl shadow-sm transition-all disabled:opacity-50"
             >
-              {descargando ? "Generando PDF..." : "📄 Descargar PDF"}
+              <FileDown size={14} className="text-slate-500" />
+              <span>{descargando ? "Generando PDF..." : "Exportar PDF"}</span>
             </button>
             <button
               onClick={handleCerrar}
-              className="px-4 py-2 text-sm bg-slate-200 hover:bg-slate-300 rounded-lg transition w-full sm:w-auto"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-xl transition-all"
             >
-              Cerrar sesión
+              <LogOut size={13} />
+              <span className="hidden sm:inline">Cerrar sesión</span>
             </button>
           </div>
-        </div>
+        </header>
 
         {cargando && (
-          <p className="text-slate-500 text-center py-12">Cargando...</p>
+          <div className="flex items-center justify-center py-16">
+            <div className="flex items-center gap-2.5 text-slate-500 font-medium text-sm">
+              <div className="w-4 h-4 border-2 border-slate-300 border-t-[#163A85] rounded-full animate-spin" />
+              <span>Cargando perfil y estadísticas...</span>
+            </div>
+          </div>
         )}
 
         {!cargando && !jugador && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 sm:p-12 text-center">
-            <p className="text-4xl mb-3">👤</p>
-            <p className="text-slate-600 font-medium">
-              No encontramos tu perfil
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-8 sm:p-12 text-center max-w-md mx-auto">
+            <UserX size={36} className="text-slate-300 mx-auto mb-3" />
+            <h3 className="text-slate-800 font-bold text-base">
+              Perfil no encontrado
+            </h3>
+            <p className="text-slate-500 text-xs mt-1">
+              No se encontraron datos vinculados al código de acceso.
             </p>
           </div>
         )}
 
         {!cargando && jugador && stats && (
-          <div ref={refPDF}>
+          <div ref={refPDF} className="space-y-4">
             <div
-              className="flex gap-1 sm:gap-2 mb-4 border-b-2 border-slate-300 overflow-x-auto"
+              className="bg-slate-200/60 p-1 rounded-xl inline-flex gap-1"
               data-pdf-ignorar
             >
               <button
@@ -519,51 +548,60 @@ export default function JugadorPage() {
                   setVista("general");
                   setVerCrudas(false);
                 }}
-                className={`px-3 sm:px-4 py-2 text-sm font-bold whitespace-nowrap transition border-b-[3px] -mb-[2px] rounded-t-lg ${
+                className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   vista === "general"
-                    ? "bg-blue-500 text-white border-blue-700 shadow-md"
-                    : "bg-transparent text-slate-500 border-transparent hover:bg-white/60 hover:text-slate-800"
+                    ? "bg-white text-slate-900 shadow-sm border border-slate-200/80"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
                 }`}
               >
-                📊 General
+                <BarChart2
+                  size={14}
+                  className={vista === "general" ? "text-[#163A85]" : "text-slate-400"}
+                />
+                <span>Rendimiento General</span>
               </button>
               <button
                 onClick={() => {
                   setVista("por-partido");
                   setVerCrudas(false);
                 }}
-                className={`px-3 sm:px-4 py-2 text-sm font-bold whitespace-nowrap transition border-b-[3px] -mb-[2px] rounded-t-lg ${
+                className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   vista === "por-partido"
-                    ? "bg-blue-500 text-white border-blue-700 shadow-md"
-                    : "bg-transparent text-slate-500 border-transparent hover:bg-white/60 hover:text-slate-800"
+                    ? "bg-white text-slate-900 shadow-sm border border-slate-200/80"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
                 }`}
               >
-                📅 Por partido
+                <Calendar
+                  size={14}
+                  className={vista === "por-partido" ? "text-[#163A85]" : "text-slate-400"}
+                />
+                <span>Por Partido</span>
               </button>
             </div>
 
             {vista === "por-partido" && partidos.length > 0 && (
-              <div className="mb-4 space-y-3" data-pdf-ignorar>
+              <div className="space-y-3" data-pdf-ignorar>
                 <div className="flex flex-wrap justify-end gap-2">
                   <button
                     onClick={() => handleCambiarModoPartido("individual")}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition border ${
                       modoPartido === "individual"
-                        ? "bg-emerald-500 text-white border-emerald-500"
-                        : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                        ? "bg-[#163A85] text-white border-[#163A85] shadow-sm"
+                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                     }`}
                   >
-                    👁️ Ver un partido
+                    <span>Ver un partido</span>
                   </button>
                   <button
                     onClick={() => handleCambiarModoPartido("comparar")}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition border ${
                       modoPartido === "comparar"
-                        ? "bg-emerald-500 text-white border-emerald-500"
-                        : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                        ? "bg-[#163A85] text-white border-[#163A85] shadow-sm"
+                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                     }`}
                   >
-                    ⚖️ Comparar partidos ({partidosComparados.length}/3)
+                    <GitCompare size={13} />
+                    <span>Comparar partidos ({partidosComparados.length}/3)</span>
                   </button>
                 </div>
 
@@ -572,12 +610,16 @@ export default function JugadorPage() {
                     <div className="flex justify-end mb-2">
                       <button
                         onClick={() => setVerCrudas(!verCrudas)}
-                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition border ${
                           verCrudas
-                            ? "bg-emerald-500 text-white border-emerald-500"
-                            : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                            ? "bg-[#163A85] text-white border-[#163A85] shadow-sm"
+                            : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                         }`}
                       >
+                        <Table size={13} />
+                        <span>{verCrudas ? "Ver Gráficos" : "Ver Estadísticas Crudas"}</span>
+                      </button>
+                    </div>
                         📋 Estadísticas crudas
                       </button>
                     </div>
@@ -676,8 +718,9 @@ export default function JugadorPage() {
                     </span>
                   )}
                   {vista === "por-partido" && partidoActual && (
-                    <p className="text-xs text-emerald-700 mt-2 font-medium">
-                      📅 {partidoActual.rival} · {partidoActual.fecha}
+                    <p className="text-xs text-emerald-700 mt-2 font-semibold flex items-center gap-1.5">
+                      <Calendar size={13} className="text-emerald-600 shrink-0" />
+                      <span>vs {partidoActual.rival} · {partidoActual.fecha}</span>
                     </p>
                   )}
                 </div>
@@ -686,10 +729,13 @@ export default function JugadorPage() {
               {vista === "por-partido" && modoPartido === "comparar" ? (
                 <>
                   {partidosComparadosData.length === 0 ? (
-                    <div className="p-8 sm:p-12 text-center">
-                      <p className="text-4xl mb-3">⚖️</p>
-                      <p className="text-slate-600 font-medium">
+                    <div className="p-8 sm:p-12 text-center max-w-sm mx-auto">
+                      <GitCompare size={36} className="text-slate-300 mx-auto mb-3" />
+                      <p className="text-slate-700 font-semibold text-sm">
                         Elegí partidos arriba para ver tu evolución
+                      </p>
+                      <p className="text-slate-400 text-xs mt-1">
+                        Podés seleccionar hasta 3 partidos para comparar fundamentos.
                       </p>
                     </div>
                   ) : (

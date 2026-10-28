@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { User, GitCompare, FileDown } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { cargarAccionesCompatibles, type AccionDB } from "@/lib/db";
 import {
@@ -383,36 +384,39 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-        <div className="flex flex-wrap gap-2 sm:ml-auto">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+        <div className="bg-slate-200/60 p-1 rounded-xl inline-flex gap-1">
           <button
             onClick={() => handleToggleModo("individual")}
-            className={`flex-1 sm:flex-none px-4 py-2 text-sm font-medium rounded-lg transition border ${
+            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
               modo === "individual"
-                ? "bg-emerald-500 text-white border-emerald-500"
-                : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                ? "bg-white text-slate-900 shadow-sm border border-slate-200/80"
+                : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
             }`}
           >
-            👤 Ver jugador
+            <User size={13} className={modo === "individual" ? "text-[#163A85]" : "text-slate-400"} />
+            <span>Ficha Individual</span>
           </button>
           <button
             onClick={() => handleToggleModo("comparar")}
-            className={`flex-1 sm:flex-none px-4 py-2 text-sm font-medium rounded-lg transition border ${
+            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
               modo === "comparar"
-                ? "bg-emerald-500 text-white border-emerald-500"
-                : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                ? "bg-white text-slate-900 shadow-sm border border-slate-200/80"
+                : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
             }`}
           >
-            ⚖️ Comparar ({comparados.length}/3)
+            <GitCompare size={13} className={modo === "comparar" ? "text-[#163A85]" : "text-slate-400"} />
+            <span>Comparar ({comparados.length}/3)</span>
           </button>
         </div>
         <button
           onClick={handleDescargarPDF}
           disabled={descargando}
-          className="px-4 py-2 text-sm bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-medium rounded-lg transition disabled:opacity-50 w-full sm:w-auto"
+          className="inline-flex items-center justify-center gap-2 px-3.5 py-2 text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200 hover:border-slate-300 rounded-xl shadow-sm transition-all disabled:opacity-50 w-full sm:w-auto"
           data-pdf-ignorar
         >
-          {descargando ? "Generando PDF..." : "📄 Descargar PDF"}
+          <FileDown size={14} className="text-slate-500" />
+          <span>{descargando ? "Generando PDF..." : "Exportar Informe PDF"}</span>
         </button>
       </div>
 
@@ -869,8 +873,8 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               {comparadosData.length === 0 ? (
                 <div className="p-8 sm:p-12 text-center h-full flex items-center justify-center">
                   <div>
-                    <p className="text-4xl mb-3">⚖️</p>
-                    <p className="text-slate-600 font-medium">
+                    <GitCompare size={36} className="text-slate-300 mx-auto mb-3" />
+                    <p className="text-slate-700 font-semibold text-sm">
                       Elegí hasta 3 jugadores del plantel para comparar
                     </p>
                   </div>

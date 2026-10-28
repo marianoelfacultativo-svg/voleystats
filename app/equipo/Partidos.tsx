@@ -1,6 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  FileDown,
+  Calendar,
+  CalendarDays,
+  GitCompare,
+  BarChart2,
+  Table,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import {
   cargarAccionesCompatibles,
@@ -318,10 +326,13 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
 
   if (partidos.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 sm:p-12 text-center">
-        <p className="text-4xl mb-3">📅</p>
-        <p className="text-slate-600 font-medium">
-          {nombreEquipo} todavía no tiene partidos cargados
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-8 sm:p-12 text-center max-w-md mx-auto">
+        <CalendarDays size={36} className="text-slate-300 mx-auto mb-3" />
+        <h3 className="text-slate-800 font-bold text-base">
+          Sin partidos cargados
+        </h3>
+        <p className="text-slate-500 text-xs mt-1">
+          {nombreEquipo} todavía no tiene partidos registrados en el sistema.
         </p>
       </div>
     );
@@ -665,15 +676,16 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         <button
           onClick={handleDescargarPDF}
           disabled={descargando}
-          className="px-4 py-2 text-sm bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-medium rounded-lg transition disabled:opacity-50 w-full sm:w-auto"
+          className="inline-flex items-center justify-center gap-2 px-3.5 py-2 text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200 hover:border-slate-300 rounded-xl shadow-sm transition-all disabled:opacity-50 w-full sm:w-auto"
         >
-          {descargando ? "Generando PDF..." : "📄 Descargar PDF"}
+          <FileDown size={14} className="text-slate-500" />
+          <span>{descargando ? "Generando PDF..." : "Exportar Informe PDF"}</span>
         </button>
       </div>
 
       <div ref={refPDF} className="space-y-4">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 sm:p-4">
-          <h2 className="text-lg sm:text-xl font-bold text-slate-900 break-words">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-4 sm:p-5">
+          <h2 className="text-lg sm:text-xl font-black text-slate-900 break-words tracking-tight">
             {modoPrincipal === "partido" && partidoDetalle
               ? `${nombreEquipo} vs ${nombreRivalDe(partidoDetalle)}`
               : modoPrincipal === "comparar-partidos"
@@ -683,9 +695,19 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               : `Partidos · ${nombreEquipo}`}
           </h2>
           {modoPrincipal === "partido" && partidoDetalle && (
-            <p className="text-sm text-slate-500 mt-1">
-              📅 {partidoDetalle.fecha} · {scoreDe(partidoDetalle)}
-              {filtroSet !== "todos" && ` · Solo Set ${filtroSet}`}
+            <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1 font-medium">
+                <Calendar size={13} className="text-slate-400" />
+                {partidoDetalle.fecha}
+              </span>
+              <span className="font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[11px]">
+                {scoreDe(partidoDetalle)}
+              </span>
+              {filtroSet !== "todos" && (
+                <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 text-[11px] font-semibold border border-blue-200/60">
+                  Solo Set {filtroSet}
+                </span>
+              )}
             </p>
           )}
         </div>
@@ -1041,10 +1063,13 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     </div>
 
                     {partidosJxPData.length === 0 ? (
-                      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 sm:p-12 text-center">
-                        <p className="text-4xl mb-3">⚖️</p>
-                        <p className="text-slate-600 font-medium">
-                          Elegí partidos arriba para ver la evolución
+                      <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-8 sm:p-12 text-center max-w-sm mx-auto">
+                        <GitCompare size={36} className="text-slate-300 mx-auto mb-3" />
+                        <h4 className="text-slate-800 font-bold text-sm">
+                          Sin partidos seleccionados
+                        </h4>
+                        <p className="text-slate-500 text-xs mt-1">
+                          Elegí partidos arriba para analizar la evolución del jugador.
                         </p>
                       </div>
                     ) : (
@@ -1256,10 +1281,13 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
             ) : modoPrincipal === "comparar-partidos" ? (
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
                 {partidosComparadosData.length === 0 ? (
-                  <div className="p-8 sm:p-12 text-center">
-                    <p className="text-4xl mb-3">⚖️</p>
-                    <p className="text-slate-600 font-medium">
-                      Elegí hasta 3 partidos para comparar
+                  <div className="p-8 sm:p-12 text-center max-w-sm mx-auto">
+                    <GitCompare size={36} className="text-slate-300 mx-auto mb-3" />
+                    <h4 className="text-slate-800 font-bold text-sm">
+                      Comparativa de partidos
+                    </h4>
+                    <p className="text-slate-500 text-xs mt-1">
+                      Elegí hasta 3 partidos arriba para contrastar rendimiento del equipo.
                     </p>
                   </div>
                 ) : (
