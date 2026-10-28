@@ -6,8 +6,6 @@ import {
   Calendar,
   CalendarDays,
   GitCompare,
-  BarChart2,
-  Table,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import {
@@ -123,11 +121,6 @@ const labelStyle: React.CSSProperties = {
 // ============================================================
 // ADAPTER: AccionDB[] → AccionVisual[] (solo para filtros tácticos)
 // ============================================================
-//
-// AccionDB no tiene `orden` ni `es_rival`. Como `cargarAccionesCompatibles`
-// filtra por equipo, todas las acciones son propias (es_rival = false).
-// El orden se infiere por índice de aparición dentro de cada punto.
-// ============================================================
 
 function accionesDBaVisualParaTactico(
   acciones: AccionDB[]
@@ -205,7 +198,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   >("todos");
 
   const [filtrosTacticos, setFiltrosTacticos] =
-    useState<FiltrosTacticosTipo>({ ...FILTROS_TACTICOS_VACIO });
+    useState<FiltrosTacticosTipo>(() => ({ ...FILTROS_TACTICOS_VACIO }));
 
   const [modoPrincipal, setModoPrincipal] =
     useState<ModoPrincipal>("partido");
@@ -461,11 +454,12 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   const rivalesUnicos = Array.from(
     new Set(partidos.map((p) => nombreRivalDe(p)))
   ).sort();
+
   const hayFiltrosActivos =
     filtroRival !== "" ||
     filtroFechaDesde !== "" ||
     filtroFechaHasta !== "" ||
-    hayFiltrosTacticos(filtrosTacticos);
+    (filtrosTacticos ? hayFiltrosTacticos(filtrosTacticos) : false);
 
   const scoreDe = (p: Partido) => {
     const sets = [p.set1, p.set2, p.set3, p.set4, p.set5].filter(Boolean);
@@ -473,47 +467,60 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   };
 
   const partidoDetalle = partidoSeleccionado
-    ? partidos.find((p) => p.id === partidoSeleccionado)
+    ? partidos.find((p) => p.id === partidoSeleccionado) ?? null
     : null;
 
-  // Acciones del partido con filtro de set (base, antes de tácticos)
-  const accionesDelPartidoBase = partidoDetalle
-    ? acciones.filter((a) => {
-        if (a.partido_id !== partidoDetalle.id) return false;
-        if (filtroSet !== "todos" && String(a.set_numero) !== filtroSet)
-          return false;
-        return true;
-      })
-    : [];
+  const idsJugadores = useMemo(
+    () => jugadores.map((j) => j.id),
+    [jugadores]
+  );
+  const armadores = useMemo(
+    () =>
+      new Set(
+        jugadores.filter((j) => j.rol === "armador").map((j) => j.id)
+      ),
+    [jugadores]
+  );
 
-  // Acciones del partido DESPUÉS de filtros tácticos
-  const accionesDelPartido = useMemo(() => {
-    if (!hayFiltrosTacticos(filtrosTacticos)) return accionesDelPartidoBase;
-
-    const visuales = accionesDBaVisualParaTactico(accionesDelPartidoBase);
-    const filtradas = aplicarFiltrosTacticos(
-      visuales,
-      visuales,
-      filtrosTacticos,
-      null
-    );
-    const idsOk = new Set(filtradas.map((v) => v.id));
-
-    const contadorPorPunto = new Map<string, number>();
-    return accionesDelPartidoBase.filter((a) => {
-      const k = `${a.set_numero}-${a.punto_numero ?? 0}`;
-      const orden = (contadorPorPunto.get(k) ?? 0) + 1;
-      contadorPorPunto.set(k, orden);
-      return idsOk.has(
-        `${a.jugador_id}|${a.set_numero}|${a.punto_numero ?? 0}|${orden}`
-      );
+  const accionesDelPartidoBase = useMemo(() => {
+    if (!partidoDetalle) return [];
+    return acciones.filter((a) => {
+      if (a.partido_id !== partidoDetalle.id) return false;
+      if (filtroSet !== "todos" && String(a.set_numero) !== filtroSet)
+        return false;
+      return true;
     });
+  }, [acciones, partidoDetalle, filtroSet]);
+
+  const accionesDelPartido = useMemo(() => {
+    if (!filtrosTacticos || !hayFiltrosTacticos(filtrosTacticos)) {
+      return accionesDelPartidoBase;
+    }
+    try {
+      const visuales = accionesDBaVisualParaTactico(accionesDelPartidoBase);
+      const filtradas = aplicarFiltrosTacticos(
+        visuales,
+        visuales,
+        filtrosTacticos,
+        null
+      );
+      const idsOk = new Set(filtradas.map((v) => v.id));
+      const contadorPorPunto = new Map<string, number>();
+      return accionesDelPartidoBase.filter((a) => {
+        const k = `${a.set_numero}-${a.punto_numero ?? 0}`;
+        const orden = (contadorPorPunto.get(k) ?? 0) + 1;
+        contadorPorPunto.set(k, orden);
+        return idsOk.has(
+          `${a.jugador_id}|${a.set_numero}|${a.punto_numero ?? 0}|${orden}`
+        );
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Error aplicando filtros tácticos:", err);
+      return accionesDelPartidoBase;
+    }
   }, [accionesDelPartidoBase, filtrosTacticos]);
 
-  const idsJugadores = jugadores.map((j) => j.id);
-  const armadores = new Set(
-    jugadores.filter((j) => j.rol === "armador").map((j) => j.id)
-  );
   const statsPartido = partidoDetalle
     ? calcularEstadisticasEquipo(idsJugadores, accionesDelPartido, armadores)
     : null;
@@ -603,7 +610,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   });
 
   const jugadorJxP = jugadorSeleccionadoJxP
-    ? jugadores.find((j) => j.id === jugadorSeleccionadoJxP)
+    ? jugadores.find((j) => j.id === jugadorSeleccionadoJxP) ?? null
     : null;
   const esArmadorJxP = jugadorJxP?.rol === "armador";
 
@@ -874,7 +881,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                   Solo Set {filtroSet}
                 </span>
               )}
-              {hayFiltrosTacticos(filtrosTacticos) && (
+              {filtrosTacticos && hayFiltrosTacticos(filtrosTacticos) && (
                 <span
                   className="px-2 py-0.5 rounded text-[11px] font-semibold"
                   style={{
@@ -956,7 +963,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
           >
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
               <div>
-                <label className="block text-xs font-medium mb-1" style={labelStyle}>
+                <label
+                  className="block text-xs font-medium mb-1"
+                  style={labelStyle}
+                >
                   Rival
                 </label>
                 <select
@@ -973,7 +983,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1" style={labelStyle}>
+                <label
+                  className="block text-xs font-medium mb-1"
+                  style={labelStyle}
+                >
                   Desde
                 </label>
                 <input
@@ -984,7 +997,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1" style={labelStyle}>
+                <label
+                  className="block text-xs font-medium mb-1"
+                  style={labelStyle}
+                >
                   Hasta
                 </label>
                 <input
@@ -995,7 +1011,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1" style={labelStyle}>
+                <label
+                  className="block text-xs font-medium mb-1"
+                  style={labelStyle}
+                >
                   Set (en detalle)
                 </label>
                 <select
@@ -1017,8 +1036,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               </div>
             </div>
 
-            {/* Filtros tácticos (solo cuando hay un partido abierto) */}
-            {partidoDetalle && (
+            {partidoDetalle && filtrosTacticos && (
               <FiltrosTacticos
                 filtros={filtrosTacticos}
                 onChange={setFiltrosTacticos}
@@ -1099,7 +1117,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 </h3>
 
                 {partidosFiltrados.length === 0 ? (
-                  <div className="rounded-2xl p-6 text-center" style={cardBase}>
+                  <div
+                    className="rounded-2xl p-6 text-center"
+                    style={cardBase}
+                  >
                     <p
                       className="text-sm"
                       style={{ color: "var(--sx-text-secondary)" }}
@@ -1281,7 +1302,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                         </p>
                       </div>
                     ) : (
-                      <div className="rounded-2xl p-4 sm:p-6" style={cardBase}>
+                      <div
+                        className="rounded-2xl p-4 sm:p-6"
+                        style={cardBase}
+                      >
                         <div
                           className="mb-6 pb-4"
                           style={{ borderBottom: "1px solid var(--sx-border)" }}
@@ -1432,7 +1456,9 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                               className="rounded-2xl p-3 sm:p-4"
                               style={cardBase}
                             >
-                              <GraficoArmadosPorSet series={seriesArmadosJxP} />
+                              <GraficoArmadosPorSet
+                                series={seriesArmadosJxP}
+                              />
                             </div>
                           )}
 
@@ -1442,7 +1468,9 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                             }`}
                             style={cardBase}
                           >
-                            <GraficoBloqueoPorSet series={seriesBloqueoJxP} />
+                            <GraficoBloqueoPorSet
+                              series={seriesBloqueoJxP}
+                            />
                           </div>
                         </div>
 
@@ -1462,9 +1490,13 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                                 style={{ color: "var(--sx-text-secondary)" }}
                               >
                                 <th className="py-2 px-3">Partido</th>
-                                <th className="py-2 px-3 text-right">Acciones</th>
+                                <th className="py-2 px-3 text-right">
+                                  Acciones
+                                </th>
                                 <th className="py-2 px-3 text-right">Puntos</th>
-                                <th className="py-2 px-3 text-right">Errores</th>
+                                <th className="py-2 px-3 text-right">
+                                  Errores
+                                </th>
                                 <th className="py-2 px-3 text-right">Saldo</th>
                                 <th className="py-2 px-3 text-right">
                                   Val. Media
@@ -1699,7 +1731,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="flex flex-wrap justify-end gap-2" data-pdf-ignorar>
+                <div
+                  className="flex flex-wrap justify-end gap-2"
+                  data-pdf-ignorar
+                >
                   <button
                     onClick={() => {
                       setModoDetalle("analisis");
@@ -1829,7 +1864,9 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {jugadores
                           .filter((j) =>
-                            accionesDelPartido.some((a) => a.jugador_id === j.id)
+                            accionesDelPartido.some(
+                              (a) => a.jugador_id === j.id
+                            )
                           )
                           .map((j) => {
                             const idx = jugadoresComparados.indexOf(j.id);
@@ -1853,7 +1890,9 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                             return (
                               <button
                                 key={j.id}
-                                onClick={() => handleToggleJugadorComparado(j.id)}
+                                onClick={() =>
+                                  handleToggleJugadorComparado(j.id)
+                                }
                                 disabled={bloqueado || puedeAgregarMas}
                                 className={`text-left px-3 py-2 rounded-lg border transition text-sm ${
                                   colorComp
@@ -1905,7 +1944,9 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                             className="rounded-2xl p-3 sm:p-4"
                             style={cardBase}
                           >
-                            <GraficoSaquePorSet series={seriesSaqueJugadores} />
+                            <GraficoSaquePorSet
+                              series={seriesSaqueJugadores}
+                            />
                           </div>
 
                           {!esComparacionArmador && (
@@ -1953,9 +1994,13 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                                 }}
                               >
                                 <th className="py-2 px-3">Jugador</th>
-                                <th className="py-2 px-3 text-right">Acciones</th>
+                                <th className="py-2 px-3 text-right">
+                                  Acciones
+                                </th>
                                 <th className="py-2 px-3 text-right">Puntos</th>
-                                <th className="py-2 px-3 text-right">Errores</th>
+                                <th className="py-2 px-3 text-right">
+                                  Errores
+                                </th>
                                 <th className="py-2 px-3 text-right">Saldo</th>
                               </tr>
                             </thead>
@@ -2037,6 +2082,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                           ? ` · Set ${filtroSet}`
                           : ""
                       }${
+                        filtrosTacticos &&
                         hayFiltrosTacticos(filtrosTacticos)
                           ? " · con filtros tácticos"
                           : ""
@@ -2115,12 +2161,18 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                      <div className="rounded-2xl p-3 sm:p-5" style={cardBase}>
+                      <div
+                        className="rounded-2xl p-3 sm:p-5"
+                        style={cardBase}
+                      >
                         <GraficoRecepcionEquipoPorSet
                           promedios={promediosRecepcionEquipo}
                         />
                       </div>
-                      <div className="rounded-2xl p-3 sm:p-5" style={cardBase}>
+                      <div
+                        className="rounded-2xl p-3 sm:p-5"
+                        style={cardBase}
+                      >
                         <GraficoTortaRival
                           erroresRivales={datosRivalPartido.errores}
                           buenasRivales={datosRivalPartido.buenas}
@@ -2151,7 +2203,8 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                             className="text-left text-[11px] font-bold uppercase tracking-wider"
                             style={{
                               color: "var(--sx-text-secondary)",
-                              borderBottom: "1px solid rgba(255,255,255,0.08)",
+                              borderBottom:
+                                "1px solid rgba(255,255,255,0.08)",
                             }}
                           >
                             <th className="py-2.5 px-3">Fundamento</th>
@@ -2169,7 +2222,9 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                               Neg
                             </th>
                             <th className="py-2.5 px-3 text-right">Puntos</th>
-                            <th className="py-2.5 px-3 text-right">Errores</th>
+                            <th className="py-2.5 px-3 text-right">
+                              Errores
+                            </th>
                             <th className="py-2.5 px-3 text-right">Saldo</th>
                           </tr>
                         </thead>
