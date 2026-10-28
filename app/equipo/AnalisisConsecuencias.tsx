@@ -1,18 +1,17 @@
 "use client";
 
 // ============================================================
-// ANÁLISIS DE CONSECUENCIAS — UI INTUITIVA CON ACCIÓN OBSERVADA
+// ANÁLISIS DE CONSECUENCIAS — FORMATO FORMAL Y UNIFORME
 // ============================================================
-// Constructor tipo frase en lenguaje natural + preguntas prearmadas de 1 clic.
-// Incluye:
-//   - Tipo de acción a observar (inmediata o siguiente específica, ej. ataque)
-//   - Evaluación de resultado más frecuente (Punto, Error o Neutro)
-//   - Subtipo más frecuente y ranking
-//   - Promedio de acciones y puntos de distancia entre ambas acciones
-//   - Jugador y zona predominante
+// Visualización formal en formato lista/tabla uniforme.
+// Soporta evaluación específica de jugador:
+// - Si se evalúa un jugador, por defecto el disparador y la acción
+//   observada corresponden a dicho jugador (salvo indicación contraria).
+// - Muestra balance de desenlace, métricas de distancia, subtipos
+//   y registro cronológico detallado.
 // ============================================================
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   analizarConsecuencias,
   etiquetaResultado,
@@ -31,12 +30,11 @@ import {
 import type { AccionVisual } from "./adaptadorUnificadoV2";
 
 // ------------------------------------------------------------
-// PREGUNTAS RÁPIDAS PRECONFIGURADAS (1 clic)
+// PREGUNTAS TÁCTICAS PRECONFIGURADAS
 // ------------------------------------------------------------
 
 interface PreguntaRapida {
   id: string;
-  icono: string;
   titulo: string;
   descripcion: string;
   tipo: TipoDisparador;
@@ -44,82 +42,80 @@ interface PreguntaRapida {
   tipoObservado: TipoDisparador | "cualquiera";
   alcance: "partido" | "mismo_punto";
   ventana: Ventana;
-  coincidencias?: Partial<CoincidenciaFiltro>;
+  mismoJugador: boolean;
 }
 
 const PREGUNTAS_RAPIDAS: PreguntaRapida[] = [
   {
     id: "error-ataque-a-ataque",
-    icono: "💥",
-    titulo: "Tras error de ataque → Siguiente Ataque",
-    descripcion: "¿Cómo rinde el siguiente ataque? ¿Es punto, error o se insiste con el mismo jugador?",
+    titulo: "Tras error de ataque → Siguiente ataque",
+    descripcion: "¿Qué desenlace y subtipo tiene el siguiente ataque?",
     tipo: "ataque",
     resultado: "error",
     tipoObservado: "ataque",
     alcance: "partido",
     ventana: 1,
-    coincidencias: { mismoJugadorTrigger: true },
+    mismoJugador: true,
   },
   {
     id: "mala-recep-a-ataque",
-    icono: "🛡️",
-    titulo: "Tras mala recepción → Siguiente Ataque",
-    descripcion: "¿Qué efectividad y subtipo tiene el ataque resultante de una pelota incómoda?",
+    titulo: "Tras mala recepción → Siguiente ataque",
+    descripcion: "¿Cómo se resuelve el ataque proveniente de recepción negativa?",
     tipo: "recepcion",
     resultado: "negativa",
     tipoObservado: "ataque",
     alcance: "partido",
     ventana: 1,
+    mismoJugador: false,
   },
   {
     id: "ace-saque-a-saque",
-    icono: "🎯",
-    titulo: "Tras ace de saque → Siguiente Saque",
-    descripcion: "¿El siguiente saque mantiene el punto/presión o se comete error?",
+    titulo: "Tras ace de saque → Siguiente saque",
+    descripcion: "¿Se mantiene la presión de saque o se genera error?",
     tipo: "saque",
     resultado: "ace",
     tipoObservado: "saque",
     alcance: "partido",
     ventana: 1,
-    coincidencias: { mismaZonaTriggerDestino: true },
+    mismoJugador: true,
   },
   {
     id: "bloqueo-a-ataque",
-    icono: "🧱",
-    titulo: "Tras bloqueo punto → Siguiente Ataque",
-    descripcion: "¿Cómo se resuelve el siguiente ataque del equipo?",
+    titulo: "Tras bloqueo punto → Siguiente ataque",
+    descripcion: "¿En qué concluye el siguiente ataque tras punto de bloqueo?",
     tipo: "bloqueo",
     resultado: "punto",
     tipoObservado: "ataque",
     alcance: "partido",
     ventana: 1,
+    mismoJugador: false,
   },
   {
     id: "defensa-a-ataque",
-    icono: "⚡",
-    titulo: "Tras gran defensa → Siguiente Ataque",
-    descripcion: "¿En qué termina el contraataque generado tras salvar la pelota?",
+    titulo: "Tras defensa positiva → Siguiente ataque",
+    descripcion: "¿Efectividad del contraataque tras salvar el balón?",
     tipo: "defensa",
     resultado: "toque_positiva",
     tipoObservado: "ataque",
     alcance: "partido",
     ventana: 1,
+    mismoJugador: false,
   },
   {
     id: "inmediata-siguiente",
-    icono: "🔄",
     titulo: "Acción inmediata siguiente",
-    descripcion: "¿Cuál es el primer toque que ocurre exactamente después?",
+    descripcion: "¿Cuál es el primer toque cronológico siguiente?",
     tipo: "ataque",
     resultado: "cualquiera",
     tipoObservado: "cualquiera",
     alcance: "mismo_punto",
     ventana: 1,
+    mismoJugador: false,
   },
 ];
 
 // ------------------------------------------------------------
-// OPCIONES
+// OPCIONES DE CONFIGURACIÓN
 // ------------------------------------------------------------
 
 const TIPOS_DISPARADOR: { v: TipoDisparador; label: string }[] = [
@@ -134,18 +130,18 @@ const TIPOS_DISPARADOR: { v: TipoDisparador; label: string }[] = [
 ];
 
 const TIPOS_OBSERVADOS: { v: TipoDisparador | "cualquiera"; label: string }[] = [
-  { v: "cualquiera", label: "la 1ª acción siguiente inmediata" },
-  { v: "ataque", label: "la siguiente acción de Ataque" },
-  { v: "saque", label: "la siguiente acción de Saque" },
-  { v: "recepcion", label: "la siguiente acción de Recepción" },
-  { v: "bloqueo", label: "la siguiente acción de Bloqueo" },
-  { v: "armado", label: "la siguiente acción de Armado" },
-  { v: "defensa", label: "la siguiente acción de Defensa" },
+  { v: "cualquiera", label: "1ª acción siguiente inmediata" },
+  { v: "ataque", label: "Siguiente acción de Ataque" },
+  { v: "saque", label: "Siguiente acción de Saque" },
+  { v: "recepcion", label: "Siguiente acción de Recepción" },
+  { v: "bloqueo", label: "Siguiente acción de Bloqueo" },
+  { v: "armado", label: "Siguiente acción de Armado" },
+  { v: "defensa", label: "Siguiente acción de Defensa" },
 ];
 
 const ALCANCES: { v: "partido" | "mismo_punto"; label: string }[] = [
-  { v: "partido", label: "en el partido (mismo punto o posteriores)" },
-  { v: "mismo_punto", label: "solo dentro del mismo punto" },
+  { v: "partido", label: "En el partido (mismo punto o posteriores)" },
+  { v: "mismo_punto", label: "Solo dentro del mismo punto (rally)" },
 ];
 
 interface ComparadorSimple {
@@ -154,39 +150,23 @@ interface ComparadorSimple {
   detalle: string;
 }
 
-const COMPARADORES_AMIGABLES: ComparadorSimple[] = [
-  {
-    key: "mismoJugadorTrigger",
-    etiqueta: "👤 ¿Mismo jugador?",
-    detalle: "Si quien realiza la acción observada es el mismo que disparó la condición",
-  },
+const COMPARADORES_ADICIONALES: ComparadorSimple[] = [
   {
     key: "mismaZonaTriggerDestino",
-    etiqueta: "📍 ¿Misma zona destino?",
-    detalle: "Si la acción cae en el mismo sector de la cancha",
+    etiqueta: "Misma zona destino",
+    detalle: "Filtra si la acción cae en el mismo sector de la cancha",
   },
   {
     key: "mismaZonaTriggerOrigen",
-    etiqueta: "🛫 ¿Misma zona origen?",
-    detalle: "Si la acción sale desde la misma zona",
+    etiqueta: "Misma zona origen",
+    detalle: "Filtra si la acción sale desde la misma zona",
   },
   {
     key: "mismaVelocidadAnterior",
-    etiqueta: "⚡ ¿Misma velocidad de armado?",
-    detalle: "Si el armador repite la velocidad previa",
-  },
-  {
-    key: "mismoReceptorAnterior",
-    etiqueta: "🎯 ¿Mismo receptor previo?",
-    detalle: "Si se vuelve a involucrar al mismo receptor",
+    etiqueta: "Misma velocidad",
+    detalle: "Filtra si se repite la velocidad de armado",
   },
 ];
-
-const cardBase: React.CSSProperties = {
-  background: "var(--sx-surface-1)",
-  border: "1px solid var(--sx-border)",
-  boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-};
 
 // ------------------------------------------------------------
 // PROPS
@@ -199,6 +179,8 @@ interface Props {
   nombreDeJugador?: (id: string | null) => string;
   /** Título (default: "Análisis de consecuencias"). */
   titulo?: string;
+  /** ID del jugador seleccionado si la vista evalúa a un jugador específico. */
+  jugadorId?: string;
 }
 
 // ------------------------------------------------------------
@@ -209,34 +191,69 @@ export default function AnalisisConsecuencias({
   acciones,
   onIrAPunto,
   nombreDeJugador,
-  titulo = "Análisis de consecuencias",
+  titulo = "Análisis de consecuencias tácticas",
+  jugadorId,
 }: Props) {
-  // Estado del disparador ("Si pasa X...")
+  // Estado del disparador
   const [disparador, setDisparador] = useState<DisparadorFiltro | null>({
     tipo: "ataque",
     resultado: "error",
   });
 
-  // Tipo específico de acción a observar
+  // Filtro por jugador disparador (si hay jugadorId, por defecto se evalúa a él)
+  const [jugadorFiltroId, setJugadorFiltroId] = useState<string | null>(
+    jugadorId ?? null
+  );
+
+  // Acción objetivo a observar
   const [tipoObservado, setTipoObservado] = useState<
     TipoDisparador | "cualquiera"
   >("ataque");
 
-  // Alcance
+  // Ámbito temporal
   const [alcance, setAlcance] = useState<"partido" | "mismo_punto">("partido");
+
+  // Mismo jugador observado (si hay jugadorId, por defecto es true)
+  const [mismoJugadorObservado, setMismoJugadorObservado] = useState<boolean>(
+    Boolean(jugadorId)
+  );
 
   const [ventana] = useState<Ventana>(1);
   const [coincidencias, setCoincidencias] = useState<CoincidenciaFiltro>({
     ...COINCIDENCIA_VACIA,
-    mismoJugadorTrigger: true,
+    mismoJugadorTrigger: Boolean(jugadorId),
   });
 
   const [preguntaActivaId, setPreguntaActivaId] = useState<string | null>(
     "error-ataque-a-ataque"
   );
-  const [abierto, setAbierto] = useState(true);
 
-  // Filtros empaquetados
+  // Sincronizar si cambia el prop jugadorId
+  useEffect(() => {
+    if (jugadorId) {
+      setJugadorFiltroId(jugadorId);
+      setMismoJugadorObservado(true);
+      setCoincidencias((prev) => ({ ...prev, mismoJugadorTrigger: true }));
+    }
+  }, [jugadorId]);
+
+  // Actualizar coincidencias al cambiar selector de mismo jugador
+  const cambiarMismoJugador = (valor: boolean) => {
+    setPreguntaActivaId(null);
+    setMismoJugadorObservado(valor);
+    setCoincidencias((prev) => ({ ...prev, mismoJugadorTrigger: valor }));
+  };
+
+  // Lista de jugadores únicos encontrados en las acciones
+  const listaJugadores = useMemo(() => {
+    const ids = new Set<string>();
+    for (const a of acciones) {
+      if (a.jugador_id) ids.add(a.jugador_id);
+    }
+    return Array.from(ids);
+  }, [acciones]);
+
+  // Filtros empaquetados para el motor
   const filtros: FiltrosAnalisis = useMemo(
     () => ({
       disparador,
@@ -244,8 +261,9 @@ export default function AnalisisConsecuencias({
       coincidencias,
       tipoObservado,
       alcance,
+      jugadorId: jugadorFiltroId,
     }),
-    [disparador, ventana, coincidencias, tipoObservado, alcance]
+    [disparador, ventana, coincidencias, tipoObservado, alcance, jugadorFiltroId]
   );
 
   // Motor de cálculo
@@ -268,21 +286,14 @@ export default function AnalisisConsecuencias({
     setDisparador({ tipo: p.tipo, resultado: p.resultado });
     setTipoObservado(p.tipoObservado);
     setAlcance(p.alcance);
+
+    // Si estamos evaluando a un jugador particular, el error y la respuesta corresponden a él
+    const reqMismoJugador = jugadorId ? true : p.mismoJugador;
+    setMismoJugadorObservado(reqMismoJugador);
     setCoincidencias({
       ...COINCIDENCIA_VACIA,
-      ...(p.coincidencias ?? {}),
+      mismoJugadorTrigger: reqMismoJugador,
     });
-  };
-
-  const cambiarTipoDisparador = (tipo: TipoDisparador) => {
-    setPreguntaActivaId(null);
-    setDisparador({ tipo, resultado: "cualquiera" });
-  };
-
-  const cambiarResultadoDisparador = (resultado: string) => {
-    setPreguntaActivaId(null);
-    if (!disparador) return;
-    setDisparador({ ...disparador, resultado });
   };
 
   const toggleComparador = (key: keyof CoincidenciaFiltro) => {
@@ -290,747 +301,694 @@ export default function AnalisisConsecuencias({
     setCoincidencias((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const limpiar = () => {
-    setPreguntaActivaId(null);
-    setDisparador(null);
-    setTipoObservado("cualquiera");
+  const restablecerFiltros = () => {
+    setPreguntaActivaId("error-ataque-a-ataque");
+    setDisparador({ tipo: "ataque", resultado: "error" });
+    setTipoObservado("ataque");
     setAlcance("partido");
-    setCoincidencias({ ...COINCIDENCIA_VACIA });
+    setJugadorFiltroId(jugadorId ?? null);
+    setMismoJugadorObservado(Boolean(jugadorId));
+    setCoincidencias({
+      ...COINCIDENCIA_VACIA,
+      mismoJugadorTrigger: Boolean(jugadorId),
+    });
   };
 
-  // Evaluación destacada
   const estadisticas = resultado?.estadisticasObservadas;
   const evaluacion = estadisticas?.evaluacionResultado;
 
   return (
-    <div className="rounded-2xl p-4 sm:p-5 space-y-4" style={cardBase}>
-      {/* ---------- HEADER DEL PANEL ---------- */}
-      <div className="flex items-center justify-between gap-2 border-b pb-3 border-white/10">
-        <button
-          onClick={() => setAbierto((v) => !v)}
-          className="flex items-center gap-2 text-left"
-        >
-          <span className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-            <span>🎯</span> {titulo}
-          </span>
-          {activo && resultado && resultado.totalOcurrencias > 0 && (
-            <span
-              className="text-xs px-2.5 py-0.5 rounded-full font-bold"
-              style={{
-                background: "rgba(167,139,250,0.2)",
-                color: "#C4B5FD",
-                border: "1px solid rgba(167,139,250,0.4)",
-              }}
-            >
-              {resultado.totalOcurrencias} caso
-              {resultado.totalOcurrencias !== 1 ? "s" : ""}
+    <div
+      className="rounded-xl border border-white/10 p-4 sm:p-5 space-y-4"
+      style={{ background: "var(--sx-surface-1)" }}
+    >
+      {/* ============================================================ */}
+      {/* 1. ENCABEZADO FORMAL Y UNIFORME */}
+      {/* ============================================================ */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold uppercase tracking-wider text-slate-100">
+              {titulo}
             </span>
-          )}
-        </button>
+            {activo && resultado && (
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded border border-white/10 text-slate-300 bg-white/5">
+                {resultado.totalOcurrencias} caso
+                {resultado.totalOcurrencias !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Evaluación sistemática de secuencias causa-efecto en el juego
+          </p>
+        </div>
 
         <div className="flex items-center gap-2">
-          {activo && (
-            <button
-              onClick={limpiar}
-              className="text-xs font-semibold px-2.5 py-1 rounded-lg transition hover:bg-rose-500/10"
-              style={{ color: "#F87171" }}
-            >
-              Limpiar
-            </button>
-          )}
           <button
-            onClick={() => setAbierto((v) => !v)}
-            className="text-slate-400 hover:text-white transition text-xs p-1"
+            onClick={restablecerFiltros}
+            className="text-xs px-2.5 py-1 rounded border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition"
           >
-            {abierto ? "▲" : "▼"}
+            Restablecer parámetros
           </button>
         </div>
       </div>
 
-      {abierto && (
+      {/* ============================================================ */}
+      {/* 2. PREGUNTAS TÁCTICAS FRECUENTES (LISTA UNIFORME DE ACCESO RÁPIDO) */}
+      {/* ============================================================ */}
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+          Consultas tácticas predeterminadas:
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+          {PREGUNTAS_RAPIDAS.map((p) => {
+            const activa = preguntaActivaId === p.id;
+            return (
+              <button
+                key={p.id}
+                onClick={() => aplicarPreguntaRapida(p)}
+                className={`text-left px-3 py-2 rounded-lg border text-xs transition flex flex-col justify-center ${
+                  activa
+                    ? "bg-white/10 border-slate-300 text-white font-medium"
+                    : "bg-white/[0.02] border-white/10 text-slate-300 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                <span className="font-semibold">{p.titulo}</span>
+                <span className="text-[10px] text-slate-400 truncate mt-0.5">
+                  {p.descripcion}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* 3. PARÁMETROS DEL ANÁLISIS (FORMULARIO ESTRUCTURADO Y UNIFORME) */}
+      {/* ============================================================ */}
+      <div
+        className="rounded-lg border border-white/10 p-3 sm:p-4 space-y-3"
+        style={{ background: "var(--sx-surface-2)" }}
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+            Parámetros de la condición
+          </span>
+          {jugadorFiltroId && (
+            <span className="text-[11px] text-slate-400">
+              Evaluando a:{" "}
+              <strong className="text-slate-200">
+                {nombre(jugadorFiltroId)}
+              </strong>
+            </span>
+          )}
+        </div>
+
+        {disparador && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {/* 1. Tipo de acción disparadora */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-slate-400 font-medium">
+                Acción inicial (disparador)
+              </label>
+              <select
+                value={disparador.tipo}
+                onChange={(e) => {
+                  setPreguntaActivaId(null);
+                  setDisparador({
+                    tipo: e.target.value as TipoDisparador,
+                    resultado: "cualquiera",
+                  });
+                }}
+                className="w-full bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-slate-400 cursor-pointer"
+              >
+                {TIPOS_DISPARADOR.map((t) => (
+                  <option key={t.v} value={t.v}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 2. Resultado de la acción disparadora */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-slate-400 font-medium">
+                Resultado inicial requerido
+              </label>
+              <select
+                value={disparador.resultado}
+                onChange={(e) => {
+                  setPreguntaActivaId(null);
+                  setDisparador({ ...disparador, resultado: e.target.value });
+                }}
+                className="w-full bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-slate-400 cursor-pointer"
+              >
+                {resultadosPorTipoAnalisis(disparador.tipo).map((r) => (
+                  <option key={r} value={r}>
+                    {etiquetaResultado(r)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 3. Jugador que ejecuta el disparador */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-slate-400 font-medium">
+                Jugador que ejecuta
+              </label>
+              <select
+                value={jugadorFiltroId ?? "todos"}
+                onChange={(e) => {
+                  setPreguntaActivaId(null);
+                  const val = e.target.value === "todos" ? null : e.target.value;
+                  setJugadorFiltroId(val);
+                  if (val) {
+                    setMismoJugadorObservado(true);
+                    setCoincidencias((prev) => ({
+                      ...prev,
+                      mismoJugadorTrigger: true,
+                    }));
+                  }
+                }}
+                className="w-full bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-slate-400 cursor-pointer"
+              >
+                <option value="todos">Todo el equipo</option>
+                {jugadorId && (
+                  <option value={jugadorId}>
+                    {nombre(jugadorId)} (jugador seleccionado)
+                  </option>
+                )}
+                {listaJugadores
+                  .filter((id) => id !== jugadorId)
+                  .map((id) => (
+                    <option key={id} value={id}>
+                      {nombre(id)}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            {/* 4. Acción a observar */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-slate-400 font-medium">
+                Acción posterior a observar
+              </label>
+              <select
+                value={tipoObservado}
+                onChange={(e) => {
+                  setPreguntaActivaId(null);
+                  setTipoObservado(
+                    e.target.value as TipoDisparador | "cualquiera"
+                  );
+                }}
+                className="w-full bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-slate-400 cursor-pointer"
+              >
+                {TIPOS_OBSERVADOS.map((t) => (
+                  <option key={t.v} value={t.v}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 5. Quién ejecuta la acción observada */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-slate-400 font-medium">
+                Ejecutante de la acción observada
+              </label>
+              <select
+                value={mismoJugadorObservado ? "mismo" : "cualquiera"}
+                onChange={(e) => cambiarMismoJugador(e.target.value === "mismo")}
+                className="w-full bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-slate-400 cursor-pointer"
+              >
+                <option value="mismo">
+                  {jugadorFiltroId
+                    ? `Mismo jugador (${nombre(jugadorFiltroId)})`
+                    : "Mismo jugador que disparó"}
+                </option>
+                <option value="cualquiera">
+                  Cualquier jugador del equipo
+                </option>
+              </select>
+            </div>
+
+            {/* 6. Alcance del análisis */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-slate-400 font-medium">
+                Ámbito de búsqueda
+              </label>
+              <select
+                value={alcance}
+                onChange={(e) => {
+                  setPreguntaActivaId(null);
+                  setAlcance(e.target.value as "partido" | "mismo_punto");
+                }}
+                className="w-full bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-slate-400 cursor-pointer"
+              >
+                {ALCANCES.map((a) => (
+                  <option key={a.v} value={a.v}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Comparadores secundarios */}
+        <div className="pt-2 border-t border-white/5 flex flex-wrap items-center gap-2">
+          <span className="text-[11px] text-slate-400 mr-1">
+            Filtros espaciales complementarios:
+          </span>
+          {COMPARADORES_ADICIONALES.map((c) => {
+            const activo = coincidencias[c.key];
+            return (
+              <button
+                key={c.key}
+                onClick={() => toggleComparador(c.key)}
+                title={c.detalle}
+                className={`px-2.5 py-1 text-xs rounded border transition flex items-center gap-1.5 ${
+                  activo
+                    ? "bg-slate-700 border-slate-400 text-white font-medium"
+                    : "bg-white/[0.02] border-white/10 text-slate-400 hover:text-white"
+                }`}
+              >
+                <span>{activo ? "✓" : "+"}</span>
+                <span>{c.etiqueta}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* 4. RESULTADOS EN FORMATO FORMAL DE LISTA */}
+      {/* ============================================================ */}
+      {disparador && resultado && (
         <div className="space-y-4">
-          {/* ---------- PREGUNTAS TÁCTICAS RÁPIDAS (1 clic) ---------- */}
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-              Preguntas tácticas sugeridas:
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {PREGUNTAS_RAPIDAS.map((p) => {
-                const seleccionada = preguntaActivaId === p.id;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => aplicarPreguntaRapida(p)}
-                    className={`text-left p-2.5 rounded-xl border transition flex items-start gap-2.5 ${
-                      seleccionada
-                        ? "bg-violet-600/25 border-violet-400 text-white shadow-md shadow-violet-900/20"
-                        : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:text-white"
-                    }`}
-                  >
-                    <span className="text-xl shrink-0 mt-0.5">{p.icono}</span>
-                    <div className="min-w-0">
-                      <p
-                        className={`text-xs font-bold leading-tight ${
-                          seleccionada ? "text-violet-200" : "text-white"
+          {resultado.totalOcurrencias === 0 || !estadisticas ? (
+            <div className="rounded-lg border border-white/10 p-6 text-center text-xs text-slate-400">
+              No se hallaron secuencias registradas que cumplan con los criterios especificados.
+            </div>
+          ) : (
+            <>
+              {/* SECCIÓN A: BALANCE FORMAL DE RESULTADOS */}
+              <div className="rounded-lg border border-white/10 overflow-hidden bg-slate-900/40">
+                <div className="px-4 py-2.5 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white/[0.02]">
+                  <div>
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                      Balance de desenlace:{" "}
+                      <span className="capitalize text-white">
+                        {tipoObservado === "cualquiera"
+                          ? "1ª acción siguiente"
+                          : `Siguiente ${tipoObservado}`}
+                      </span>
+                    </span>
+                    {mismoJugadorObservado && (
+                      <span className="ml-2 text-[11px] text-slate-400">
+                        (evaluado en el mismo jugador)
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400">Predominante:</span>
+                    <span
+                      className={`text-xs font-semibold px-2 py-0.5 rounded border ${
+                        evaluacion?.masFrecuente === "punto"
+                          ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                          : evaluacion?.masFrecuente === "error"
+                          ? "bg-rose-500/10 text-rose-300 border-rose-500/30"
+                          : "bg-amber-500/10 text-amber-300 border-amber-500/30"
+                      }`}
+                    >
+                      {evaluacion?.masFrecuente === "punto"
+                        ? "Punto directo"
+                        : evaluacion?.masFrecuente === "error"
+                        ? "Error"
+                        : "Neutro / Continuó"}
+                    </span>
+                  </div>
+                </div>
+
+                {evaluacion && (
+                  <div className="divide-y divide-white/5 text-xs">
+                    {/* Fila: Punto */}
+                    <div className="px-4 py-2.5 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2 w-44 shrink-0">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                        <span className="font-medium text-slate-200">
+                          Punto directo
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 flex-1 max-w-sm">
+                        <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
+                          <div
+                            className="h-full bg-emerald-500 rounded-full"
+                            style={{ width: `${evaluacion.pctPuntos}%` }}
+                          />
+                        </div>
+                        <span className="font-mono text-emerald-300 font-semibold w-12 text-right">
+                          {evaluacion.pctPuntos}%
+                        </span>
+                      </div>
+                      <span className="font-mono text-slate-400 text-right w-28 shrink-0">
+                        {evaluacion.puntos} de {evaluacion.total}
+                      </span>
+                    </div>
+
+                    {/* Fila: Neutro */}
+                    <div className="px-4 py-2.5 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2 w-44 shrink-0">
+                        <span className="w-2 h-2 rounded-full bg-amber-400" />
+                        <span className="font-medium text-slate-200">
+                          Neutro / En juego
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 flex-1 max-w-sm">
+                        <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
+                          <div
+                            className="h-full bg-amber-500 rounded-full"
+                            style={{ width: `${evaluacion.pctNeutros}%` }}
+                          />
+                        </div>
+                        <span className="font-mono text-amber-300 font-semibold w-12 text-right">
+                          {evaluacion.pctNeutros}%
+                        </span>
+                      </div>
+                      <span className="font-mono text-slate-400 text-right w-28 shrink-0">
+                        {evaluacion.neutros} de {evaluacion.total}
+                      </span>
+                    </div>
+
+                    {/* Fila: Error */}
+                    <div className="px-4 py-2.5 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2 w-44 shrink-0">
+                        <span className="w-2 h-2 rounded-full bg-rose-400" />
+                        <span className="font-medium text-slate-200">
+                          Error cometido
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 flex-1 max-w-sm">
+                        <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
+                          <div
+                            className="h-full bg-rose-500 rounded-full"
+                            style={{ width: `${evaluacion.pctErrores}%` }}
+                          />
+                        </div>
+                        <span className="font-mono text-rose-300 font-semibold w-12 text-right">
+                          {evaluacion.pctErrores}%
+                        </span>
+                      </div>
+                      <span className="font-mono text-slate-400 text-right w-28 shrink-0">
+                        {evaluacion.errores} de {evaluacion.total}
+                      </span>
+                    </div>
+
+                    {/* Fila: Saldo Neto */}
+                    <div className="px-4 py-2.5 flex items-center justify-between bg-white/[0.01]">
+                      <span className="text-slate-300 font-medium">
+                        Efectividad neta acumulada (Puntos − Errores)
+                      </span>
+                      <span
+                        className={`font-mono font-bold px-2.5 py-0.5 rounded text-xs ${
+                          evaluacion.efectividadNeta > 0
+                            ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+                            : evaluacion.efectividadNeta < 0
+                            ? "bg-rose-500/15 text-rose-300 border border-rose-500/30"
+                            : "bg-slate-700 text-slate-300"
                         }`}
                       >
-                        {p.titulo}
-                      </p>
-                      <p className="text-[10px] text-slate-400 leading-snug mt-0.5 line-clamp-2">
-                        {p.descripcion}
-                      </p>
+                        {evaluacion.efectividadNeta > 0 ? "+" : ""}
+                        {evaluacion.efectividadNeta}%
+                      </span>
                     </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+                  </div>
+                )}
+              </div>
 
-          {/* ---------- CONSTRUCTOR TIPO FRASE EN LENGUAJE NATURAL ---------- */}
-          <div
-            className="rounded-xl p-3.5 sm:p-4 space-y-3"
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(20,30,55,0.75) 0%, rgba(15,23,42,0.9) 100%)",
-              border: "1px solid rgba(167,139,250,0.3)",
-            }}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-violet-300 flex items-center gap-1.5">
-                <span>💬</span> Constructor de condición
-              </span>
-              {!disparador && (
-                <button
-                  onClick={() =>
-                    setDisparador({ tipo: "ataque", resultado: "error" })
-                  }
-                  className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-500 transition"
-                >
-                  Activar constructor
-                </button>
-              )}
-            </div>
-
-            {disparador ? (
-              <div className="space-y-3">
-                {/* Frase interactiva con selectores */}
-                <div className="flex flex-wrap items-center gap-2 text-sm sm:text-base text-slate-200 font-medium leading-relaxed bg-black/25 p-3 sm:p-3.5 rounded-xl border border-white/5">
-                  <span className="text-violet-400 font-bold">Si ocurre un</span>
-
-                  {/* 1. Selector: Tipo de disparador */}
-                  <select
-                    value={disparador.tipo}
-                    onChange={(e) =>
-                      cambiarTipoDisparador(e.target.value as TipoDisparador)
-                    }
-                    className="bg-violet-950/90 text-white text-xs sm:text-sm font-semibold rounded-lg px-2.5 py-1.5 border border-violet-500/40 focus:outline-none focus:border-violet-400 cursor-pointer shadow-sm"
-                  >
-                    {TIPOS_DISPARADOR.map((t) => (
-                      <option key={t.v} value={t.v}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
-
-                  <span className="text-violet-400 font-bold">con resultado</span>
-
-                  {/* 2. Selector: Resultado del disparador */}
-                  <select
-                    value={disparador.resultado}
-                    onChange={(e) => cambiarResultadoDisparador(e.target.value)}
-                    className="bg-violet-950/90 text-white text-xs sm:text-sm font-semibold rounded-lg px-2.5 py-1.5 border border-violet-500/40 focus:outline-none focus:border-violet-400 cursor-pointer shadow-sm"
-                  >
-                    {resultadosPorTipoAnalisis(disparador.tipo).map((r) => (
-                      <option key={r} value={r}>
-                        {etiquetaResultado(r)}
-                      </option>
-                    ))}
-                  </select>
-
-                  <span className="text-violet-400 font-bold">→ observar</span>
-
-                  {/* 3. Selector: Acción objetivo a observar */}
-                  <select
-                    value={tipoObservado}
-                    onChange={(e) => {
-                      setPreguntaActivaId(null);
-                      setTipoObservado(
-                        e.target.value as TipoDisparador | "cualquiera"
-                      );
-                    }}
-                    className="bg-emerald-950/90 text-emerald-200 text-xs sm:text-sm font-bold rounded-lg px-2.5 py-1.5 border border-emerald-500/50 focus:outline-none focus:border-emerald-400 cursor-pointer shadow-sm"
-                  >
-                    {TIPOS_OBSERVADOS.map((t) => (
-                      <option key={t.v} value={t.v}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
-
-                  <span className="text-slate-400 text-xs sm:text-sm font-normal">
-                    en
-                  </span>
-
-                  {/* 4. Selector: Alcance */}
-                  <select
-                    value={alcance}
-                    onChange={(e) => {
-                      setPreguntaActivaId(null);
-                      setAlcance(e.target.value as "partido" | "mismo_punto");
-                    }}
-                    className="bg-slate-800 text-slate-300 text-xs sm:text-sm font-medium rounded-lg px-2.5 py-1.5 border border-slate-600 focus:outline-none cursor-pointer"
-                  >
-                    {ALCANCES.map((a) => (
-                      <option key={a.v} value={a.v}>
-                        {a.label}
-                      </option>
-                    ))}
-                  </select>
+              {/* SECCIÓN B: LISTA DE MÉTRICAS E INDICADORES TÁCTICOS */}
+              <div className="rounded-lg border border-white/10 overflow-hidden bg-slate-900/40">
+                <div className="px-4 py-2.5 border-b border-white/10 bg-white/[0.02]">
+                  <h5 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                    Indicadores de ejecución y distancia
+                  </h5>
                 </div>
 
-                {/* Preguntas adicionales / Comparadores como Chips */}
-                <div>
-                  <p className="text-[11px] font-bold text-slate-400 mb-1.5">
-                    Patrones y comparaciones sobre la acción observada:
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {COMPARADORES_AMIGABLES.map((c) => {
-                      const activo = coincidencias[c.key];
-                      return (
-                        <button
-                          key={c.key}
-                          onClick={() => toggleComparador(c.key)}
-                          title={c.detalle}
-                          className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition flex items-center gap-1.5 ${
-                            activo
-                              ? "bg-emerald-500/20 text-emerald-200 border-emerald-500/60 shadow-sm"
-                              : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10"
-                          }`}
-                        >
-                          <span>{activo ? "✓" : "+"}</span>
-                          <span>{c.etiqueta}</span>
-                        </button>
-                      );
-                    })}
+                <div className="divide-y divide-white/5 text-xs">
+                  <div className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="text-slate-400">Subtipo más frecuente:</span>
+                    <span className="font-semibold text-white capitalize">
+                      {estadisticas.subtipoMasFrecuente || "—"}
+                      <span className="text-slate-400 font-normal ml-2">
+                        ({estadisticas.subtiposRanking[0]?.pct ?? 0}% ·{" "}
+                        {estadisticas.subtiposRanking[0]?.count ?? 0} casos)
+                      </span>
+                    </span>
                   </div>
+
+                  <div className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="text-slate-400">
+                      Intervalo de toques entre acciones:
+                    </span>
+                    <span className="font-mono font-semibold text-white">
+                      ~{estadisticas.promedioAccionesDistancia} toques de juego en promedio
+                    </span>
+                  </div>
+
+                  <div className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="text-slate-400">
+                      Intervalo en puntos de diferencia:
+                    </span>
+                    <span className="font-mono font-semibold text-white">
+                      {estadisticas.promedioPuntosDistancia === 0
+                        ? "Mismo punto (0 pts)"
+                        : `+${estadisticas.promedioPuntosDistancia} puntos transcurridos`}
+                      <span className="text-slate-400 font-normal ml-2">
+                        ({estadisticas.pctMismoPunto}% mismo rally ·{" "}
+                        {estadisticas.pctPuntosPosteriores}% puntos posteriores)
+                      </span>
+                    </span>
+                  </div>
+
+                  <div className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="text-slate-400">
+                      Jugador predominante en la observación:
+                    </span>
+                    <span className="font-semibold text-white">
+                      {nombre(estadisticas.jugadorMasFrecuenteId)}
+                      <span className="text-slate-400 font-normal ml-2">
+                        ({estadisticas.jugadoresRanking[0]?.pct ?? 0}% de los casos)
+                      </span>
+                    </span>
+                  </div>
+
+                  {estadisticas.zonasRanking.length > 0 && (
+                    <div className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                      <span className="text-slate-400">
+                        Zonas de destino más elegidas:
+                      </span>
+                      <span className="font-medium text-white">
+                        {estadisticas.zonasRanking
+                          .slice(0, 4)
+                          .map((z) => `Zona ${z.zona} (${z.pct}%)`)
+                          .join(" · ")}
+                      </span>
+                    </div>
+                  )}
+
+                  {hayComparadoresActivos(coincidencias) && (
+                    <div className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1 bg-white/[0.01]">
+                      <span className="text-slate-400">
+                        Coincidencias espaciales con disparador:
+                      </span>
+                      <span className="text-slate-300 font-medium">
+                        {COMPARADORES_ADICIONALES.filter((c) => coincidencias[c.key])
+                          .map((c) => {
+                            const val = resultado.coincidenciasGlobales[c.key] ?? 0;
+                            const pct = Math.round(
+                              (val / resultado.totalOcurrencias) * 100
+                            );
+                            return `${c.etiqueta}: ${pct}% (${val}/${resultado.totalOcurrencias})`;
+                          })
+                          .join(" · ")}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
-            ) : (
-              <p className="text-xs text-slate-400 italic">
-                Elegí una pregunta rápida arriba o activá el constructor para formular una condición personalizada.
-              </p>
-            )}
-          </div>
 
-          {/* ---------- RESULTADOS DETALLADOS ---------- */}
-          {disparador && resultado && (
-            <div className="space-y-4 pt-1">
-              {resultado.totalOcurrencias === 0 || !estadisticas ? (
-                <div
-                  className="rounded-xl p-6 text-center text-xs sm:text-sm"
-                  style={{
-                    background: "rgba(255,255,255,0.02)",
-                    border: "1px solid var(--sx-border)",
-                    color: "var(--sx-text-muted)",
-                  }}
-                >
-                  <p className="text-2xl mb-1">🔍</p>
-                  <p className="font-semibold text-slate-300">
-                    No se encontraron acciones con esta condición en los datos seleccionados.
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Probá cambiando el resultado del disparador o seleccionando otro tipo de acción a observar.
-                  </p>
+              {/* SECCIÓN C: DISTRIBUCIÓN DETALLADA DE SUBTIPOS (SI HAY MÁS DE 1) */}
+              {estadisticas.subtiposRanking.length > 1 && (
+                <div className="rounded-lg border border-white/10 overflow-hidden bg-slate-900/40">
+                  <div className="px-4 py-2.5 border-b border-white/10 bg-white/[0.02]">
+                    <h5 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                      Desglose por subtipo de la acción observada (
+                      {estadisticas.subtiposRanking.length} variantes)
+                    </h5>
+                  </div>
+
+                  <div className="divide-y divide-white/5 max-h-48 overflow-y-auto text-xs">
+                    {estadisticas.subtiposRanking.map((s) => (
+                      <div
+                        key={s.subtipo}
+                        className="px-4 py-2 flex items-center justify-between gap-4"
+                      >
+                        <span className="font-medium text-slate-200 capitalize w-44 shrink-0 truncate">
+                          {s.subtipo}
+                        </span>
+                        <div className="flex items-center gap-3 flex-1 max-w-sm">
+                          <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                            <div
+                              className="h-full bg-sky-400 rounded-full"
+                              style={{ width: `${s.pct}%` }}
+                            />
+                          </div>
+                          <span className="font-mono text-slate-300 font-semibold w-12 text-right">
+                            {s.pct}%
+                          </span>
+                        </div>
+                        <span className="font-mono text-slate-400 text-right w-24 shrink-0">
+                          {s.count} veces
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ) : (
-                <>
-                  {/* ---------- 1. TARJETA DE CONCLUSIÓN Y EVALUACIÓN DE RESULTADO ---------- */}
-                  <div
-                    className="rounded-xl p-4 sm:p-5 space-y-4"
-                    style={{
-                      background:
-                        "linear-gradient(135deg, rgba(16,185,129,0.14) 0%, rgba(56,189,248,0.1) 100%)",
-                      border: "1px solid rgba(16,185,129,0.35)",
-                    }}
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-2xl">📊</span>
-                          <div>
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-                              Evaluación de la acción observada
-                            </span>
-                            <h3 className="text-base sm:text-lg font-black text-white capitalize">
-                              {tipoObservado === "cualquiera"
-                                ? "Primera acción siguiente"
-                                : `Siguiente ${tipoObservado}`}
-                            </h3>
-                          </div>
-                        </div>
-                      </div>
+              )}
 
-                      {/* Badge resultado dominante */}
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-300">Resultado dominante:</span>
-                        <span
-                          className={`px-3 py-1 text-xs font-black rounded-lg uppercase tracking-wider ${
-                            evaluacion?.masFrecuente === "punto"
-                              ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
-                              : evaluacion?.masFrecuente === "error"
-                              ? "bg-rose-500 text-white shadow-lg shadow-rose-500/20"
-                              : "bg-amber-500 text-slate-950 font-bold"
-                          }`}
-                        >
-                          {evaluacion?.masFrecuente === "punto"
-                            ? "🟢 Mayormente Punto"
-                            : evaluacion?.masFrecuente === "error"
-                            ? "🔴 Mayormente Error"
-                            : "🟡 Mayormente Neutro / En juego"}
-                        </span>
-                      </div>
-                    </div>
+              {/* SECCIÓN D: REGISTRO CRONOLÓGICO DE OCURRENCIAS (TABLA FORMAL) */}
+              <div className="rounded-lg border border-white/10 overflow-hidden bg-slate-900/40">
+                <div className="px-4 py-2.5 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
+                  <h5 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                    Registro de casos cronológicos ({resultado.ocurrencias.length})
+                  </h5>
+                  <span className="text-[11px] text-slate-400">
+                    Orden secuencial de juego
+                  </span>
+                </div>
 
-                    {/* Desglose de Punto / Neutro / Error con barras */}
-                    {evaluacion && (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-                        {/* PUNTOS */}
-                        <div className="p-3 rounded-xl bg-black/30 border border-emerald-500/30">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                              Punto
-                            </span>
-                            <span className="text-sm font-black text-white font-mono">
-                              {evaluacion.pctPuntos}%
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-400">
-                            {evaluacion.puntos} de {evaluacion.total} ocurrencias
-                          </p>
-                          <div className="h-1.5 rounded-full bg-white/10 mt-2 overflow-hidden">
-                            <div
-                              className="h-full bg-emerald-400 rounded-full"
-                              style={{ width: `${evaluacion.pctPuntos}%` }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* NEUTROS / CONTINUIDAD */}
-                        <div className="p-3 rounded-xl bg-black/30 border border-amber-500/30">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full bg-amber-400" />
-                              Neutro / Continuó
-                            </span>
-                            <span className="text-sm font-black text-white font-mono">
-                              {evaluacion.pctNeutros}%
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-400">
-                            {evaluacion.neutros} de {evaluacion.total} ocurrencias
-                          </p>
-                          <div className="h-1.5 rounded-full bg-white/10 mt-2 overflow-hidden">
-                            <div
-                              className="h-full bg-amber-400 rounded-full"
-                              style={{ width: `${evaluacion.pctNeutros}%` }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* ERRORES */}
-                        <div className="p-3 rounded-xl bg-black/30 border border-rose-500/30">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full bg-rose-400" />
-                              Error
-                            </span>
-                            <span className="text-sm font-black text-white font-mono">
-                              {evaluacion.pctErrores}%
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-400">
-                            {evaluacion.errores} de {evaluacion.total} ocurrencias
-                          </p>
-                          <div className="h-1.5 rounded-full bg-white/10 mt-2 overflow-hidden">
-                            <div
-                              className="h-full bg-rose-400 rounded-full"
-                              style={{ width: `${evaluacion.pctErrores}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Efectividad neta de la acción */}
-                    {evaluacion && (
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-1 border-t border-white/10">
-                        <span className="text-slate-300">
-                          Saldo de efectividad neta (Puntos − Errores):
-                        </span>
-                        <span
-                          className={`font-mono font-bold text-sm px-2 py-0.5 rounded ${
-                            evaluacion.efectividadNeta > 0
-                              ? "bg-emerald-500/20 text-emerald-300"
-                              : evaluacion.efectividadNeta < 0
-                              ? "bg-rose-500/20 text-rose-300"
-                              : "bg-slate-700 text-slate-300"
-                          }`}
-                        >
-                          {evaluacion.efectividadNeta > 0 ? "+" : ""}
-                          {evaluacion.efectividadNeta}%
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ---------- 2. MÉTRICAS CLAVE: DISTANCIA Y SUBTIPO MÁS FRECUENTE ---------- */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    {/* SUBTIPO MÁS FRECUENTE */}
-                    <div
-                      className="rounded-xl p-3.5 space-y-1"
-                      style={{
-                        background: "var(--sx-surface-2)",
-                        border: "1px solid var(--sx-border)",
-                      }}
-                    >
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        Subtipo dominante
-                      </span>
-                      <p className="text-base font-black text-white capitalize truncate">
-                        {estadisticas.subtipoMasFrecuente || "—"}
-                      </p>
-                      <p className="text-xs text-sky-400 font-medium">
-                        {estadisticas.subtiposRanking[0]?.pct ?? 0}% de los casos
-                        ({estadisticas.subtiposRanking[0]?.count ?? 0} veces)
-                      </p>
-                    </div>
-
-                    {/* DISTANCIA EN ACCIONES */}
-                    <div
-                      className="rounded-xl p-3.5 space-y-1"
-                      style={{
-                        background: "var(--sx-surface-2)",
-                        border: "1px solid var(--sx-border)",
-                      }}
-                    >
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        Toques de distancia
-                      </span>
-                      <p className="text-base font-black text-white font-mono">
-                        ~{estadisticas.promedioAccionesDistancia} toques
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        en promedio entre disparador y observación
-                      </p>
-                    </div>
-
-                    {/* DISTANCIA EN PUNTOS */}
-                    <div
-                      className="rounded-xl p-3.5 space-y-1"
-                      style={{
-                        background: "var(--sx-surface-2)",
-                        border: "1px solid var(--sx-border)",
-                      }}
-                    >
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        Puntos de distancia
-                      </span>
-                      <p className="text-base font-black text-white font-mono">
-                        {estadisticas.promedioPuntosDistancia === 0
-                          ? "Mismo punto (0 pts)"
-                          : `+${estadisticas.promedioPuntosDistancia} puntos`}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        {estadisticas.pctMismoPunto}% mismo rally · {estadisticas.pctPuntosPosteriores}% después
-                      </p>
-                    </div>
-
-                    {/* JUGADOR MÁS FRECUENTE */}
-                    <div
-                      className="rounded-xl p-3.5 space-y-1"
-                      style={{
-                        background: "var(--sx-surface-2)",
-                        border: "1px solid var(--sx-border)",
-                      }}
-                    >
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        Jugador predominante
-                      </span>
-                      <p className="text-base font-black text-white truncate">
-                        {nombre(estadisticas.jugadorMasFrecuenteId)}
-                      </p>
-                      <p className="text-xs text-emerald-400 font-medium">
-                        {estadisticas.jugadoresRanking[0]?.pct ?? 0}% de participación
-                        ({estadisticas.jugadoresRanking[0]?.count ?? 0} veces)
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* ---------- 3. DETALLE DE SUBTIPOS Y PATRONES DETECTADOS ---------- */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {/* Ranking de Subtipos */}
-                    <div
-                      className="rounded-xl p-3.5 space-y-2.5"
-                      style={{
-                        background: "var(--sx-surface-2)",
-                        border: "1px solid var(--sx-border)",
-                      }}
-                    >
-                      <p className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                        Distribución de subtipos de la acción observada
-                      </p>
-                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                        {estadisticas.subtiposRanking.map((s) => (
-                          <div key={s.subtipo}>
-                            <div className="flex items-center justify-between text-xs mb-1">
-                              <span className="font-semibold text-white capitalize truncate">
-                                {s.subtipo}
-                              </span>
-                              <span className="text-slate-300 font-mono text-[11px] tabular-nums">
-                                {s.count} ({s.pct}%)
-                              </span>
-                            </div>
-                            <div
-                              className="h-1.5 rounded-full overflow-hidden"
-                              style={{ background: "rgba(255,255,255,0.08)" }}
-                            >
-                              <div
-                                className="h-full rounded-full transition-all duration-300"
-                                style={{
-                                  width: `${s.pct}%`,
-                                  background:
-                                    "linear-gradient(90deg, #38BDF8 0%, #818CF8 100%)",
-                                }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Zonas y Jugadores */}
-                    <div
-                      className="rounded-xl p-3.5 space-y-3"
-                      style={{
-                        background: "var(--sx-surface-2)",
-                        border: "1px solid var(--sx-border)",
-                      }}
-                    >
-                      {/* Zonas destino preferidas */}
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-wider text-slate-200 mb-2">
-                          Zonas destino más buscadas
-                        </p>
-                        {estadisticas.zonasRanking.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {estadisticas.zonasRanking.slice(0, 5).map((z) => (
-                              <span
-                                key={z.zona}
-                                className="px-2.5 py-1 text-xs rounded-lg border font-semibold flex items-center gap-1.5"
-                                style={{
-                                  background: "rgba(167,139,250,0.12)",
-                                  borderColor: "rgba(167,139,250,0.3)",
-                                  color: "#C4B5FD",
-                                }}
-                              >
-                                <span>Zona {z.zona}</span>
-                                <span className="font-mono text-white text-[11px]">
-                                  {z.pct}% ({z.count})
-                                </span>
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-slate-500 italic">
-                            Sin registro de zonas para esta acción.
-                          </p>
+                <div className="overflow-x-auto max-h-[340px] overflow-y-auto">
+                  <table className="w-full text-xs min-w-[620px]">
+                    <thead className="sticky top-0 bg-slate-950 border-b border-white/10 text-slate-400 text-left font-medium">
+                      <tr>
+                        <th className="py-2.5 px-3">Momento</th>
+                        <th className="py-2.5 px-3">Acción Disparadora</th>
+                        <th className="py-2.5 px-3">Acción Observada</th>
+                        <th className="py-2.5 px-3">Intervalo</th>
+                        <th className="py-2.5 px-3">Desenlace</th>
+                        {onIrAPunto && (
+                          <th className="py-2.5 px-3 text-right">Punto</th>
                         )}
-                      </div>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {resultado.ocurrencias.map((o) => {
+                        const obs = o.accionObservada;
+                        return (
+                          <tr
+                            key={`${o.set_numero}-${o.punto_numero}-${o.triggerId}`}
+                            className="hover:bg-white/[0.03] transition"
+                          >
+                            {/* Momento */}
+                            <td className="py-2 px-3 font-mono text-slate-400 whitespace-nowrap">
+                              Set {o.set_numero} · P.{o.punto_numero}
+                            </td>
 
-                      {/* Patrones de coincidencia si hay comparadores activos */}
-                      {hayComparadoresActivos(coincidencias) && (
-                        <div className="pt-2 border-t border-white/10">
-                          <p className="text-xs font-bold uppercase tracking-wider text-slate-200 mb-1.5">
-                            Comparaciones con la acción disparadora
-                          </p>
-                          <div className="space-y-1">
-                            {COMPARADORES_AMIGABLES.map((c) => {
-                              const val =
-                                resultado.coincidenciasGlobales[c.key] ?? 0;
-                              if (val === 0 && !coincidencias[c.key]) return null;
-                              const pct = Math.round(
-                                (val / resultado.totalOcurrencias) * 100
-                              );
-                              return (
-                                <div
-                                  key={c.key}
-                                  className="flex items-center justify-between text-xs py-0.5"
-                                >
-                                  <span className="text-slate-300">
-                                    {c.etiqueta}
+                            {/* Disparador */}
+                            <td className="py-2 px-3">
+                              <span className="font-semibold text-slate-100 capitalize">
+                                {o.triggerSubtipo ?? disparador.tipo}
+                              </span>
+                              <span className="text-[11px] text-slate-400 ml-1.5">
+                                ({nombre(o.triggerJugadorId)})
+                              </span>
+                            </td>
+
+                            {/* Acción observada */}
+                            <td className="py-2 px-3">
+                              {obs ? (
+                                <div>
+                                  <span className="font-semibold text-slate-100 capitalize">
+                                    {obs.subtipo}
                                   </span>
-                                  <span className="font-bold text-emerald-400">
-                                    {val} de {resultado.totalOcurrencias} ({pct}%)
+                                  <span className="text-[11px] text-slate-400 ml-1.5">
+                                    ({nombre(obs.accion.jugador_id)})
                                   </span>
+                                  {obs.accion.zona_destino !== null && (
+                                    <span className="text-[11px] text-slate-400 ml-1">
+                                      → Z{obs.accion.zona_destino}
+                                    </span>
+                                  )}
                                 </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                              ) : (
+                                <span className="text-slate-500 italic">
+                                  Sin acción posterior
+                                </span>
+                              )}
+                            </td>
 
-                  {/* ---------- 4. TABLA DETALLADA DE OCURRENCIAS ---------- */}
-                  <div
-                    className="rounded-xl overflow-hidden border border-white/10"
-                    style={{ background: "var(--sx-surface-2)" }}
-                  >
-                    <div className="px-3.5 py-2.5 flex items-center justify-between border-b border-white/10 bg-white/5">
-                      <p className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                        Ocurrencias analizadas ({resultado.ocurrencias.length})
-                      </p>
-                      <span className="text-[11px] text-slate-400">
-                        Orden cronológico del partido
-                      </span>
-                    </div>
+                            {/* Intervalo */}
+                            <td className="py-2 px-3 font-mono text-slate-300 whitespace-nowrap">
+                              {obs ? (
+                                <span>
+                                  {obs.distanciaAcciones} toque
+                                  {obs.distanciaAcciones !== 1 ? "s" : ""}{" "}
+                                  <span className="text-slate-500 text-[11px]">
+                                    ({obs.distanciaPuntos === 0
+                                      ? "mismo rally"
+                                      : `+${obs.distanciaPuntos} pts`})
+                                  </span>
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
 
-                    <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
-                      <table className="w-full text-xs min-w-[620px]">
-                        <thead
-                          style={{
-                            position: "sticky",
-                            top: 0,
-                            background: "rgba(15,29,53,0.98)",
-                            borderBottom: "1px solid var(--sx-border)",
-                          }}
-                        >
-                          <tr className="text-left text-slate-400">
-                            <th className="py-2 px-3 font-semibold">Disparador</th>
-                            <th className="py-2 px-3 font-semibold">
-                              Acción Observada
-                            </th>
-                            <th className="py-2 px-3 font-semibold">
-                              Distancia
-                            </th>
-                            <th className="py-2 px-3 font-semibold">
-                              Resultado
-                            </th>
+                            {/* Desenlace */}
+                            <td className="py-2 px-3">
+                              {obs ? (
+                                <span
+                                  className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${
+                                    obs.categoriaResultado === "punto"
+                                      ? "bg-emerald-500/15 text-emerald-300"
+                                      : obs.categoriaResultado === "error"
+                                      ? "bg-rose-500/15 text-rose-300"
+                                      : "bg-amber-500/15 text-amber-300"
+                                  }`}
+                                >
+                                  {obs.categoriaResultado === "punto"
+                                    ? "Punto"
+                                    : obs.categoriaResultado === "error"
+                                    ? "Error"
+                                    : "Neutro"}
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+
+                            {/* Ir al punto */}
                             {onIrAPunto && (
-                              <th className="py-2 px-3 text-right font-semibold">
-                                Ver
-                              </th>
+                              <td className="py-2 px-3 text-right">
+                                <button
+                                  onClick={() =>
+                                    onIrAPunto(o.set_numero, o.punto_numero)
+                                  }
+                                  className="text-xs text-sky-400 hover:text-sky-300 underline font-medium"
+                                >
+                                  Ver
+                                </button>
+                              </td>
                             )}
                           </tr>
-                        </thead>
-                        <tbody>
-                          {resultado.ocurrencias.map((o) => {
-                            const obs = o.accionObservada;
-                            return (
-                              <tr
-                                key={`${o.set_numero}-${o.punto_numero}-${o.triggerId}`}
-                                className="border-b border-white/5 hover:bg-white/5 transition"
-                              >
-                                {/* Disparador */}
-                                <td className="py-2 px-3">
-                                  <span className="font-mono text-slate-400 font-semibold block text-[11px]">
-                                    Set {o.set_numero} · Punto {o.punto_numero}
-                                  </span>
-                                  <span className="font-bold text-white capitalize">
-                                    {o.triggerSubtipo ?? disparador.tipo}
-                                  </span>
-                                  <span className="block text-[11px] text-slate-400">
-                                    {nombre(o.triggerJugadorId)}
-                                  </span>
-                                </td>
-
-                                {/* Acción Observada */}
-                                <td className="py-2 px-3">
-                                  {obs ? (
-                                    <div>
-                                      <span className="font-bold text-white capitalize">
-                                        {obs.accion.tipo} · {obs.subtipo}
-                                      </span>
-                                      <span className="block text-[11px] text-slate-400">
-                                        {nombre(obs.accion.jugador_id)}
-                                        {obs.accion.zona_destino ? ` (Zona ${obs.accion.zona_destino})` : ""}
-                                      </span>
-                                    </div>
-                                  ) : (
-                                    <span className="text-slate-500 italic">
-                                      No hubo acción objetivo posterior
-                                    </span>
-                                  )}
-                                </td>
-
-                                {/* Distancia */}
-                                <td className="py-2 px-3">
-                                  {obs ? (
-                                    <div className="text-[11px]">
-                                      <span className="font-mono text-slate-300 font-medium block">
-                                        {obs.distanciaPuntos === 0
-                                          ? "Mismo punto"
-                                          : `+${obs.distanciaPuntos} pts después`}
-                                      </span>
-                                      <span className="text-slate-400">
-                                        +{obs.distanciaAcciones} toques después
-                                      </span>
-                                    </div>
-                                  ) : (
-                                    <span className="text-slate-600">—</span>
-                                  )}
-                                </td>
-
-                                {/* Resultado */}
-                                <td className="py-2 px-3">
-                                  {obs ? (
-                                    <span
-                                      className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase inline-block ${
-                                        obs.categoriaResultado === "punto"
-                                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                                          : obs.categoriaResultado === "error"
-                                          ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
-                                          : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                                      }`}
-                                    >
-                                      {obs.categoriaResultado === "punto"
-                                        ? "Punto"
-                                        : obs.categoriaResultado === "error"
-                                        ? "Error"
-                                        : "Neutro"}
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-600">—</span>
-                                  )}
-                                </td>
-
-                                {/* Botón Ir */}
-                                {onIrAPunto && (
-                                  <td className="py-2 px-3 text-right">
-                                    <button
-                                      onClick={() =>
-                                        onIrAPunto(
-                                          obs ? obs.accion.set_numero : o.set_numero,
-                                          obs ? obs.accion.punto_numero : o.punto_numero
-                                        )
-                                      }
-                                      className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-300 hover:bg-sky-500/25 transition"
-                                    >
-                                      Ir →
-                                    </button>
-                                  </td>
-                                )}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}

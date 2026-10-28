@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { User, GitCompare, FileDown, Users } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { cargarAccionesCompatibles, type AccionDB } from "@/lib/db";
@@ -240,7 +240,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
   const [comparados, setComparados] = useState<string[]>([]);
   const [cargando, setCargando] = useState(true);
   const [descargando, setDescargando] = useState(false);
-  const [verConsecuencias, setVerConsecuencias] = useState(false);
 
   const refPDF = useRef<HTMLDivElement>(null);
 
@@ -294,10 +293,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     });
   }, [equipoId]);
 
-  // Reset al cambiar de modo o de jugador
-  useEffect(() => {
-    setVerConsecuencias(false);
-  }, [jugadorSeleccionado, modo]);
 
   if (cargando) {
     return <p className="text-slate-500 text-center py-12">Cargando...</p>;
@@ -338,12 +333,11 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     return j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
   };
 
-  // Acciones para el análisis de consecuencias (solo cuando se pide).
+  // Acciones para el análisis de consecuencias.
   // Universo: TODAS las acciones del equipo en todos sus partidos.
-  // El usuario luego filtra por comparador para acotar.
-  const accionesParaAnalisis: AccionVisual[] = verConsecuencias
-    ? accionesDBaVisualParaAnalisis(acciones)
-    : [];
+  const accionesParaAnalisis: AccionVisual[] = useMemo(() => {
+    return accionesDBaVisualParaAnalisis(acciones);
+  }, [acciones]);
 
   const handleToggleModo = (nuevo: "individual" | "comparar") => {
     setModo(nuevo);
@@ -1089,63 +1083,18 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   </div>
                 </div>
 
-                {/* ANÁLISIS DE CONSECUENCIAS (a pedido) */}
+                {/* ANÁLISIS DE CONSECUENCIAS */}
                 <div
-                  className="pt-5"
+                  className="pt-6"
                   style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
                   data-pdf-ignorar
                 >
-                  <button
-                    onClick={() => setVerConsecuencias((v) => !v)}
-                    className="w-full flex items-center justify-between text-left"
-                  >
-                    <div>
-                      <h4 className="font-bold text-white text-sm flex items-center gap-2">
-                        🔍 Análisis de consecuencias
-                        <span
-                          className="text-[10px] px-2 py-0.5 rounded-full font-bold"
-                          style={{
-                            background: "rgba(167,139,250,0.15)",
-                            color: "#C4B5FD",
-                            border: "1px solid rgba(167,139,250,0.35)",
-                          }}
-                        >
-                          {verConsecuencias ? "Ocultar" : "Abrir"}
-                        </span>
-                      </h4>
-                      <p
-                        className="text-[11px] mt-1"
-                        style={{ color: "var(--sx-text-secondary)" }}
-                      >
-                        &quot;Si pasa X, ¿qué pasa después?&quot; — usá el
-                        disparador y los comparadores para responder
-                        preguntas como: &quot;cuando alguien erró un ataque,
-                        ¿volvió el mismo jugador a atacar?, ¿le armaron a la
-                        misma zona?, ¿con la misma velocidad?&quot;
-                      </p>
-                    </div>
-                    <span
-                      className="text-xl transition-transform shrink-0 ml-3"
-                      style={{
-                        color: "var(--sx-text-muted)",
-                        transform: verConsecuencias
-                          ? "rotate(180deg)"
-                          : "none",
-                      }}
-                    >
-                      ▼
-                    </span>
-                  </button>
-
-                  {verConsecuencias && (
-                    <div className="mt-3">
-                      <AnalisisConsecuencias
-                        acciones={accionesParaAnalisis}
-                        nombreDeJugador={nombreDeJugador}
-                        titulo={`Consecuencias · ${datosJugador.nombre}`}
-                      />
-                    </div>
-                  )}
+                  <AnalisisConsecuencias
+                    acciones={accionesParaAnalisis}
+                    jugadorId={jugadorSeleccionado ?? undefined}
+                    nombreDeJugador={nombreDeJugador}
+                    titulo={`Consecuencias tácticas · ${datosJugador.nombre}`}
+                  />
                 </div>
               </div>
             )

@@ -80,6 +80,8 @@ export interface FiltrosAnalisis {
   tipoObservado?: TipoDisparador | "cualquiera";
   /** Alcance: "partido" (busca la siguiente en el partido) o "mismo_punto". */
   alcance?: "partido" | "mismo_punto";
+  /** ID del jugador que ejecuta el disparador. */
+  jugadorId?: string | null;
 }
 
 export const FILTROS_ANALISIS_VACIO: FiltrosAnalisis = {
@@ -88,6 +90,7 @@ export const FILTROS_ANALISIS_VACIO: FiltrosAnalisis = {
   coincidencias: { ...COINCIDENCIA_VACIA },
   tipoObservado: "cualquiera",
   alcance: "partido",
+  jugadorId: null,
 };
 
 // ------------------------------------------------------------
@@ -439,6 +442,10 @@ export function analizarConsecuencias(
     if (disparador.resultado !== "cualquiera") {
       if (baseSubtipo(a) !== disparador.resultado) continue;
     }
+    // Si se especificó un jugador disparador, validar coincidencia
+    if (filtros.jugadorId && a.jugador_id !== filtros.jugadorId) {
+      continue;
+    }
 
     // Acciones dentro del mismo punto
     const listaPunto = porPunto.get(`${a.set_numero}-${a.punto_numero}`) ?? [];
@@ -464,8 +471,31 @@ export function analizarConsecuencias(
 
       const coincideTipo =
         tipoObservado === "cualquiera" || cand.tipo === tipoObservado;
+      if (!coincideTipo) continue;
 
-      if (coincideTipo) {
+      // Si se requiere que la acción observada sea del mismo jugador
+      if (coincidencias.mismoJugadorTrigger) {
+        if (!a.jugador_id || cand.jugador_id !== a.jugador_id) continue;
+      }
+      if (
+        coincidencias.mismaZonaTriggerDestino &&
+        a.zona_destino !== null &&
+        a.zona_destino !== undefined
+      ) {
+        if (cand.zona_destino !== a.zona_destino) continue;
+      }
+      if (
+        coincidencias.mismaZonaTriggerOrigen &&
+        a.zona_origen !== null &&
+        a.zona_origen !== undefined
+      ) {
+        if (cand.zona_origen !== a.zona_origen) continue;
+      }
+      if (coincidencias.mismaVelocidadAnterior && a.velocidad) {
+        if (cand.velocidad !== a.velocidad) continue;
+      }
+
+      if (true) {
         const distanciaAcciones = j - i;
         let distanciaPuntos = 0;
         if (cand.set_numero === a.set_numero) {
