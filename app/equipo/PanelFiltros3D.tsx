@@ -16,15 +16,10 @@ export interface Filtros3D {
   set: number | "todos";
   punto: number | "todos";
   jugador: string | "todos";
-  /** Multi-select de fundamentos (vacío = todos). */
   tipos: string[];
-  /** Multi-select de subtipos reales (potencia/flotado, remate/toque). */
   subtipos: string[];
-  /** Multi-select de valoraciones. */
   valoraciones: string[];
-  /** Multi-select de zonas de origen. */
   zonasOrigen: string[];
-  /** Multi-select de zonas de destino. */
   zonasDestino: string[];
   rotacion: number | "todas";
   rol: string | "todos";
@@ -194,7 +189,7 @@ function nivelValoracion(
     ) {
       return "neg";
     }
-    return "neu"; // intermedia
+    return "neu";
   }
   if (tipo === "armado") {
     if (sub === "R") return "neu";
@@ -252,10 +247,11 @@ function nivelValoracion(
   return "neu";
 }
 
-const COLOR_NIVEL = {
-  pos: "bg-green-100 text-green-800 border-green-400",
-  neu: "bg-slate-100 text-slate-700 border-slate-400",
-  neg: "bg-red-100 text-red-800 border-red-400",
+// Colores "chips inactivos" por nivel (dark-friendly)
+const CHIP_INACTIVO: Record<"pos" | "neu" | "neg", string> = {
+  pos: "bg-emerald-500/10 text-emerald-300 border-emerald-500/40",
+  neu: "bg-slate-500/10 text-slate-300 border-slate-500/40",
+  neg: "bg-rose-500/10 text-rose-300 border-rose-500/40",
 };
 
 function toggleArrayValue<T>(arr: T[], v: T): T[] {
@@ -369,16 +365,23 @@ interface Props {
   setsDisponibles: number[];
   puntosDisponibles: number[];
   jugadores: { id: string; nombre: string }[];
-  /** @deprecated */
   valoracionesDisponibles?: string[];
   totalAcciones: number;
   accionesFiltradas: number;
 }
 
-const selectCls =
-  "w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:border-emerald-500";
+const selectCls = "input-dark text-xs";
 const labelCls =
-  "block text-[10px] font-semibold text-slate-500 uppercase mb-1 tracking-wide";
+  "block text-[10px] font-bold uppercase tracking-wide mb-1";
+const labelStyle: React.CSSProperties = {
+  color: "var(--sx-text-secondary)",
+};
+
+const cardBase: React.CSSProperties = {
+  background: "var(--sx-surface-1)",
+  border: "1px solid var(--sx-border)",
+  boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+};
 
 // ------------------------------------------------------------
 // COMPONENTE
@@ -448,20 +451,30 @@ export default function PanelFiltros3D({
     filtros.zonaJugador !== "todas";
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 space-y-2">
+    <div
+      className="rounded-2xl p-3 space-y-2"
+      style={cardBase}
+    >
       {/* ---------- HEADER ---------- */}
       <div className="flex items-center justify-between">
-        <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+        <p
+          className="text-[11px] font-bold uppercase tracking-wider"
+          style={{ color: "var(--sx-text-primary)" }}
+        >
           🎛️ Filtros {cantFiltros > 0 && `(${cantFiltros})`}
         </p>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-slate-400">
+          <span
+            className="text-[10px]"
+            style={{ color: "var(--sx-text-muted)" }}
+          >
             {accionesFiltradas} de {totalAcciones}
           </span>
           {hayFiltrosActivos && (
             <button
               onClick={limpiar}
-              className="text-[10px] text-red-600 hover:text-red-800 font-semibold"
+              className="text-[10px] font-semibold"
+              style={{ color: "#F87171" }}
             >
               ✕ Limpiar
             </button>
@@ -472,7 +485,9 @@ export default function PanelFiltros3D({
       {/* ---------- FILA BÁSICA ---------- */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <div>
-          <label className={labelCls}>Set</label>
+          <label className={labelCls} style={labelStyle}>
+            Set
+          </label>
           <select
             value={filtros.set === "todos" ? "todos" : String(filtros.set)}
             onChange={(e) =>
@@ -495,7 +510,9 @@ export default function PanelFiltros3D({
         </div>
 
         <div>
-          <label className={labelCls}>Punto</label>
+          <label className={labelCls} style={labelStyle}>
+            Punto
+          </label>
           <select
             value={
               filtros.punto === "todos" ? "todos" : String(filtros.punto)
@@ -520,7 +537,9 @@ export default function PanelFiltros3D({
         </div>
 
         <div>
-          <label className={labelCls}>Jugador</label>
+          <label className={labelCls} style={labelStyle}>
+            Jugador
+          </label>
           <select
             value={filtros.jugador}
             onChange={(e) => set("jugador", e.target.value)}
@@ -536,7 +555,9 @@ export default function PanelFiltros3D({
         </div>
 
         <div>
-          <label className={labelCls}>Acciones</label>
+          <label className={labelCls} style={labelStyle}>
+            Acciones
+          </label>
           <select
             value={filtros.acciones}
             onChange={(e) =>
@@ -557,16 +578,16 @@ export default function PanelFiltros3D({
       {/* ---------- FUNDAMENTOS + SOLO ERRORES ---------- */}
       <div>
         <div className="flex items-center justify-between mb-1">
-          <label className={`${labelCls} mb-0`}>
+          <label className={`${labelCls} mb-0`} style={labelStyle}>
             Fundamento{" "}
             {filtros.tipos.length > 0 && `· ${filtros.tipos.length}`}
           </label>
           <button
             onClick={() => set("soloErrores", !filtros.soloErrores)}
-            className={`px-2 py-0.5 text-[10px] font-semibold rounded border-2 transition ${
+            className={`px-2 py-0.5 text-[10px] font-bold rounded border-2 transition ${
               filtros.soloErrores
-                ? "bg-red-500 text-white border-red-500"
-                : "bg-white text-red-600 border-red-300 hover:bg-red-50"
+                ? "bg-rose-500 text-white border-rose-500"
+                : "bg-rose-500/10 text-rose-300 border-rose-500/40 hover:bg-rose-500/20"
             }`}
           >
             {filtros.soloErrores ? "✓ Solo errores" : "⚠️ Solo errores"}
@@ -604,7 +625,7 @@ export default function PanelFiltros3D({
                 className={`px-2 py-1 text-[11px] font-semibold rounded border-2 transition ${
                   activo
                     ? "bg-emerald-500 text-white border-emerald-600"
-                    : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                    : "bg-white/5 text-slate-300 border-white/15 hover:bg-white/10 hover:text-white"
                 }`}
               >
                 {t.label}
@@ -614,7 +635,10 @@ export default function PanelFiltros3D({
         </div>
         {(filtros.tipos.includes("bloqueo") ||
           filtros.tipos.includes("defensa")) && (
-          <p className="text-[9px] text-amber-700 mt-1 italic">
+          <p
+            className="text-[9px] mt-1 italic"
+            style={{ color: "#FBBF24" }}
+          >
             🔗 Se agrega automáticamente la acción anterior de cada
             bloqueo/defensa para ver la trayectoria entrante.
           </p>
@@ -624,7 +648,7 @@ export default function PanelFiltros3D({
       {/* ---------- SUBTIPOS REALES ---------- */}
       {subtiposDisponibles.length > 0 && (
         <div>
-          <label className={labelCls}>
+          <label className={labelCls} style={labelStyle}>
             Subtipo{" "}
             {filtros.subtipos.length > 0 && `· ${filtros.subtipos.length}`}
           </label>
@@ -640,7 +664,7 @@ export default function PanelFiltros3D({
                   className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border-2 transition ${
                     activo
                       ? "bg-emerald-500 text-white border-emerald-600"
-                      : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                      : "bg-white/5 text-slate-300 border-white/15 hover:bg-white/10"
                   }`}
                   title={`${s.tipo} · ${s.label}`}
                 >
@@ -654,10 +678,14 @@ export default function PanelFiltros3D({
 
       {/* ---------- VALORACIÓN ---------- */}
       {filtros.tipos.length > 0 && valoracionesDisponibles.length > 0 && (
-        <div className="border-t border-slate-200 pt-2">
+        <div
+          className="pt-2"
+          style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
+        >
           <button
             onClick={() => setValoracionAbierta((v) => !v)}
-            className="w-full flex items-center justify-between text-[11px] font-semibold text-slate-600 uppercase tracking-wider"
+            className="w-full flex items-center justify-between text-[11px] font-bold uppercase tracking-wider"
+            style={{ color: "var(--sx-text-primary)" }}
           >
             <span>
               Valoración{" "}
@@ -665,9 +693,11 @@ export default function PanelFiltros3D({
                 `· ${filtros.valoraciones.length}`}
             </span>
             <span
-              className={`text-slate-400 transition-transform ${
-                valoracionAbierta ? "rotate-180" : ""
-              }`}
+              className="transition-transform"
+              style={{
+                color: "var(--sx-text-muted)",
+                transform: valoracionAbierta ? "rotate(180deg)" : "none",
+              }}
             >
               ▼
             </span>
@@ -677,7 +707,7 @@ export default function PanelFiltros3D({
               {valoracionesDisponibles.map((s) => {
                 const activo = filtros.valoraciones.includes(s.v);
                 const nivel = nivelValoracion(s.tipo, s.v);
-                const colCls = COLOR_NIVEL[nivel];
+                const chipCls = CHIP_INACTIVO[nivel];
                 return (
                   <button
                     key={`val-${s.tipo}-${s.v}`}
@@ -690,7 +720,7 @@ export default function PanelFiltros3D({
                     className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border-2 transition ${
                       activo
                         ? "bg-emerald-500 text-white border-emerald-600"
-                        : `${colCls} hover:brightness-95`
+                        : `${chipCls} hover:brightness-125`
                     }`}
                     title={`${s.tipo} · ${s.label}`}
                   >
@@ -708,21 +738,27 @@ export default function PanelFiltros3D({
       )}
 
       {/* ---------- AVANZADO ---------- */}
-      <div className="border-t border-slate-200 pt-2">
+      <div
+        className="pt-2"
+        style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
+      >
         <button
           onClick={() => setAvanzadoAbierto((v) => !v)}
-          className="w-full flex items-center justify-between text-[11px] font-semibold text-slate-600 uppercase tracking-wider"
+          className="w-full flex items-center justify-between text-[11px] font-bold uppercase tracking-wider"
+          style={{ color: "var(--sx-text-primary)" }}
         >
           <span>
             Avanzado{" "}
             {hayAvanzadosActivos && (
-              <span className="text-amber-700">•</span>
+              <span style={{ color: "#FBBF24" }}>•</span>
             )}
           </span>
           <span
-            className={`text-slate-400 transition-transform ${
-              avanzadoAbierto ? "rotate-180" : ""
-            }`}
+            className="transition-transform"
+            style={{
+              color: "var(--sx-text-muted)",
+              transform: avanzadoAbierto ? "rotate(180deg)" : "none",
+            }}
           >
             ▼
           </span>
@@ -732,7 +768,9 @@ export default function PanelFiltros3D({
           <div className="mt-2 space-y-2">
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className={labelCls}>Rotación</label>
+                <label className={labelCls} style={labelStyle}>
+                  Rotación
+                </label>
                 <select
                   value={
                     filtros.rotacion === "todas"
@@ -759,7 +797,9 @@ export default function PanelFiltros3D({
               </div>
 
               <div>
-                <label className={labelCls}>Rol jugador</label>
+                <label className={labelCls} style={labelStyle}>
+                  Rol jugador
+                </label>
                 <select
                   value={filtros.rol}
                   onChange={(e) => set("rol", e.target.value)}
@@ -775,7 +815,9 @@ export default function PanelFiltros3D({
               </div>
 
               <div>
-                <label className={labelCls}>Zona jugador</label>
+                <label className={labelCls} style={labelStyle}>
+                  Zona jugador
+                </label>
                 <select
                   value={
                     filtros.zonaJugador === "todas"
@@ -838,12 +880,15 @@ function ZonasMultiSelector({
 }) {
   return (
     <div>
-      <label className={labelCls}>
+      <label className={labelCls} style={labelStyle}>
         {label}
         {seleccionadas.length > 0 && ` · ${seleccionadas.length}`}
       </label>
       <div className="flex flex-wrap gap-1 items-center">
-        <span className="text-[9px] font-bold text-blue-700 mr-1 uppercase tracking-wider">
+        <span
+          className="text-[9px] font-bold mr-1 uppercase tracking-wider"
+          style={{ color: "#93C5FD" }}
+        >
           Propia
         </span>
         {ZONAS_PROPIAS.map((z) => {
@@ -854,15 +899,18 @@ function ZonasMultiSelector({
               onClick={() => onChange(toggleArrayValue(seleccionadas, z))}
               className={`px-2 py-0.5 text-[10px] font-bold rounded border transition ${
                 activo
-                  ? "bg-blue-500 text-white border-blue-600"
-                  : "bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
+                  ? "bg-blue-500 text-white border-blue-400"
+                  : "bg-blue-500/10 text-blue-300 border-blue-500/40 hover:bg-blue-500/20"
               }`}
             >
               {z.slice(1)}
             </button>
           );
         })}
-        <span className="text-[9px] font-bold text-orange-700 mx-2 uppercase tracking-wider">
+        <span
+          className="text-[9px] font-bold mx-2 uppercase tracking-wider"
+          style={{ color: "#FCA5A5" }}
+        >
           Rival
         </span>
         {ZONAS_RIVALES.map((z) => {
@@ -873,8 +921,8 @@ function ZonasMultiSelector({
               onClick={() => onChange(toggleArrayValue(seleccionadas, z))}
               className={`px-2 py-0.5 text-[10px] font-bold rounded border transition ${
                 activo
-                  ? "bg-orange-500 text-white border-orange-600"
-                  : "bg-orange-50 text-orange-700 border-orange-300 hover:bg-orange-100"
+                  ? "bg-orange-500 text-white border-orange-400"
+                  : "bg-orange-500/10 text-orange-300 border-orange-500/40 hover:bg-orange-500/20"
               }`}
             >
               {z.slice(1)}

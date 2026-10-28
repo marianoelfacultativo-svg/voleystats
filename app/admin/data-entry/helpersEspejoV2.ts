@@ -99,13 +99,20 @@ function infoJugadorEnRotacion(
 /**
  * Genera recepciones sintéticas de ace cuando un saque termina en ace.
  *
- * Cambio: el subtipo de la recepción ahora es "error_directo" (string),
- * en lugar del viejo 1 numérico. Eso es lo que espera el motor de
- * estadísticas nuevo.
+ * Comportamiento:
  *
- * Modo A (siempre): la recepción sintética se genera tanto en modo
- * espejo como en modo normal, para que las estadísticas del receptor
- * reflejen el error directo.
+ *   - Modo normal (sin espejo):
+ *       Solo cubre "saca el rival → el receptor es nuestro".
+ *       Ahí tenemos nuestra rotación y nuestras posiciones, así que
+ *       podemos saber quién debería haber recibido el ace.
+ *
+ *   - Modo espejo:
+ *       Cubre además "saca el propio equipo → el receptor es del
+ *       rival", usando el estado del rival guardado en el punto
+ *       (`pc.estadoRival`).
+ *
+ *   - Sin popup en ningún caso: la recepción "error_directo" se
+ *     genera automática y no se le pregunta nada al usuario.
  */
 export function generarRecepcionesAceContra(params: {
   pc: PuntoCerrado;
@@ -128,20 +135,17 @@ export function generarRecepcionesAceContra(params: {
     modoEspejo,
   } = params;
 
-  // Sin equipo rival no podemos saber quién recibe del otro lado
-  // en un punto donde saca el rival, así que sin equipoRivalId no
-  // se puede generar la recepción sintética cuando saca el rival.
-  // Cuando saca el propio equipo, el receptor es siempre del rival,
-  // así que tampoco hay equipo identificado. En ambos casos solo
-  // tiene sentido si tenemos las dos rotaciones (modo espejo).
-  if (!modoEspejo || !pc.estadoRival || !equipoRivalId) return;
-
   for (const linea of lineas) {
     if (linea.tipo !== "saque" || linea.oculta) continue;
 
     const esPropio = !linea.esRival;
-    const equipoSacador = esPropio ? equipoId : equipoRivalId;
-    if (!equipoSacador) continue;
+
+    // Saque propio → el receptor sería del rival.
+    // Sin estado del rival (o sin equipo rival) no podemos saber a
+    // quién asignarle la recepción sintética → skip.
+    if (esPropio && (!modoEspejo || !pc.estadoRival || !equipoRivalId)) {
+      continue;
+    }
 
     let esAce = false;
     if (esPropio) {
@@ -161,6 +165,7 @@ export function generarRecepcionesAceContra(params: {
     if (!esAce) continue;
 
     const equipoReceptor = esPropio ? equipoRivalId : equipoId;
+    if (!equipoReceptor) continue;
 
     const yaHay = acciones.some(
       (a) => a.tipo === "recepcion" && a.equipo_id === equipoReceptor
@@ -173,17 +178,20 @@ export function generarRecepcionesAceContra(params: {
     let celdaReceptora: string;
 
     if (esPropio) {
-      rotReceptora = pc.estadoRival.rotacion;
+      // Espejo: saca el propio equipo → el receptor es del rival.
+      rotReceptora = pc.estadoRival!.rotacion;
       situacionReceptora =
         pc.saqueInicial === "propio" ? "recepcion" : "saque";
       const clave = `${numeroRotacionDesdePosiciones(rotReceptora)}-${situacionReceptora}`;
       const fijas = posicionesFijasRival[clave] ?? POSICIONES_VACIAS;
       overrides = calcularRecepcionOverrides(
         fijas,
-        pc.estadoRival.posicionesPunto
+        pc.estadoRival!.posicionesPunto
       );
       celdaReceptora = invertirCelda(linea.destino.celda);
     } else {
+      // Saca el rival → el receptor es nuestro.
+      // Este caso funciona con o sin modo espejo.
       rotReceptora = pc.rotacion;
       situacionReceptora = pc.situacion;
       const clave = `${numeroRotacionDesdePosiciones(rotReceptora)}-${situacionReceptora}`;
@@ -226,7 +234,6 @@ export function generarRecepcionesAceContra(params: {
     acciones.push({
       orden: acciones.length + 1,
       tipo: "recepcion",
-      // Cambio clave: "error_directo" en lugar del viejo 1.
       subtipo: "error_directo",
       es_rival: esPropio,
       jugador_id: jugador,
