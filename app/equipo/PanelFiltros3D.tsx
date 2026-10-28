@@ -2,7 +2,7 @@
 
 // ============================================================
 // PANEL DE FILTROS 3D — controles compartidos para CanchaUnificada3D
-// Layout compacto: fila básica + fundamento + tácticos + avanzado.
+// Ahora incluye presets (guardar / cargar combinaciones).
 // ============================================================
 
 import { useMemo, useState } from "react";
@@ -14,6 +14,7 @@ import {
   type FiltrosTacticos as FiltrosTacticosTipo,
 } from "@/lib/filtrosTacticos";
 import FiltrosTacticos from "./FiltrosTacticos";
+import PanelPresetsFiltros from "./PanelPresetsFiltros";
 
 // ------------------------------------------------------------
 // TIPO DE FILTROS
@@ -269,12 +270,6 @@ function toggleArrayValue<T>(arr: T[], v: T): T[] {
 // ------------------------------------------------------------
 // APLICAR FILTROS
 // ------------------------------------------------------------
-//
-// `todasLasAcciones` es OPCIONAL. Si no se pasa, se usa `acciones`
-// como universo. Es importante pasarlo cuando `acciones` ya viene
-// prefiltrado (ej. perfil de jugador), porque el contexto táctico
-// necesita ver las acciones vecinas (prev/next) para funcionar.
-// ------------------------------------------------------------
 
 export function aplicarFiltros(
   acciones: AccionVisual[],
@@ -328,7 +323,6 @@ export function aplicarFiltros(
     return true;
   });
 
-  // --- Contexto: agregar acción anterior para bloqueos/defensas ---
   const necesitaContexto =
     filtros.tipos.includes("bloqueo") || filtros.tipos.includes("defensa");
   let conContexto: AccionVisual[] = filtradas;
@@ -377,7 +371,6 @@ export function aplicarFiltros(
     }
   }
 
-  // --- Filtros tácticos (prev/next/repite) ---
   if (!hayFiltrosTacticos(filtros.tacticos)) return conContexto;
 
   const universo = todasLasAcciones ?? acciones;
@@ -436,8 +429,30 @@ export default function PanelFiltros3D({
   const [avanzadoAbierto, setAvanzadoAbierto] = useState(false);
   const [valoracionAbierta, setValoracionAbierta] = useState(false);
 
-  const set = <K extends keyof Filtros3D>(k: K, v: Filtros3D[K]) =>
-    onChange({ ...filtros, [k]: v });
+  // Set manual: cualquier cambio manual limpia el presetActivoId.
+  const set = <K extends keyof Filtros3D>(k: K, v: Filtros3D[K]) => {
+    onChange({
+      ...filtros,
+      [k]: v,
+      tacticos: { ...filtros.tacticos, presetActivoId: null },
+    });
+  };
+
+  // Set tácticos: viene del sub-panel FiltrosTacticos.
+  // TAMBIÉN limpia presetActivoId, excepto si el preset ya viene seteado
+  // (el usuario aplicó un preset desde el panel de presets → no pasa por acá).
+  const setTacticos = (t: FiltrosTacticosTipo) => {
+    onChange({
+      ...filtros,
+      tacticos: { ...t, presetActivoId: null },
+    });
+  };
+
+  // Aplicación de preset: NO pasa por set(), pasa el objeto entero
+  // que ya viene con presetActivoId seteado por aplicarPreset().
+  const handleAplicarPreset = (nuevosFiltros: Filtros3D) => {
+    onChange(nuevosFiltros);
+  };
 
   const limpiar = () => onChange({ ...FILTROS3D_VACIO });
 
@@ -466,7 +481,12 @@ export default function PanelFiltros3D({
   const cantFiltrosTacticos =
     (filtros.tacticos.contextoPrevio ? 1 : 0) +
     (filtros.tacticos.contextoPosterior ? 1 : 0) +
-    (filtros.tacticos.repeticion ? 1 : 0);
+    (filtros.tacticos.repeticion ? 1 : 0) +
+    (filtros.tacticos.rally ? 1 : 0) +
+    (filtros.tacticos.ubicacion !== "cualquiera" ? 1 : 0) +
+    (filtros.tacticos.marcador ? 1 : 0) +
+    (filtros.tacticos.vsPromedio ? 1 : 0) +
+    (filtros.tacticos.rachaMinima !== null ? 1 : 0);
 
   const cantFiltros =
     (filtros.set !== "todos" ? 1 : 0) +
@@ -500,416 +520,430 @@ export default function PanelFiltros3D({
   }, [filtros.jugador, jugadores]);
 
   return (
-    <div className="rounded-2xl p-3 space-y-2" style={cardBase}>
-      {/* ---------- HEADER ---------- */}
-      <div className="flex items-center justify-between">
-        <p
-          className="text-[11px] font-bold uppercase tracking-wider"
-          style={{ color: "var(--sx-text-primary)" }}
-        >
-          🎛️ Filtros {cantFiltros > 0 && `(${cantFiltros})`}
-        </p>
-        <div className="flex items-center gap-2">
-          <span
-            className="text-[10px]"
-            style={{ color: "var(--sx-text-muted)" }}
-          >
-            {accionesFiltradas} de {totalAcciones}
-          </span>
-          {hayFiltrosActivos && (
-            <button
-              onClick={limpiar}
-              className="text-[10px] font-semibold"
-              style={{ color: "#F87171" }}
-            >
-              ✕ Limpiar
-            </button>
-          )}
-        </div>
-      </div>
+    <div className="space-y-2">
+      {/* ---------- PRESETS (arriba de todo) ---------- */}
+      <PanelPresetsFiltros<Filtros3D>
+        filtrosActuales={filtros}
+        onAplicar={handleAplicarPreset}
+        titulo="Presets de filtros"
+      />
 
-      {/* ---------- FILA BÁSICA ---------- */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <div>
-          <label className={labelCls} style={labelStyle}>
-            Set
-          </label>
-          <select
-            value={filtros.set === "todos" ? "todos" : String(filtros.set)}
-            onChange={(e) =>
-              set(
-                "set",
-                e.target.value === "todos"
-                  ? "todos"
-                  : parseInt(e.target.value)
-              )
-            }
-            className={selectCls}
-          >
-            <option value="todos">Todos</option>
-            {setsDisponibles.map((s) => (
-              <option key={s} value={String(s)}>
-                Set {s}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className={labelCls} style={labelStyle}>
-            Punto
-          </label>
-          <select
-            value={
-              filtros.punto === "todos" ? "todos" : String(filtros.punto)
-            }
-            onChange={(e) =>
-              set(
-                "punto",
-                e.target.value === "todos"
-                  ? "todos"
-                  : parseInt(e.target.value)
-              )
-            }
-            className={selectCls}
-          >
-            <option value="todos">Todos</option>
-            {puntosDisponibles.map((p) => (
-              <option key={p} value={String(p)}>
-                P{p}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className={labelCls} style={labelStyle}>
-            Jugador
-          </label>
-          <select
-            value={filtros.jugador}
-            onChange={(e) => set("jugador", e.target.value)}
-            className={selectCls}
-          >
-            <option value="todos">Todos</option>
-            {jugadores.map((j) => (
-              <option key={j.id} value={j.id}>
-                {j.nombre}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className={labelCls} style={labelStyle}>
-            Acciones
-          </label>
-          <select
-            value={filtros.acciones}
-            onChange={(e) =>
-              set(
-                "acciones",
-                e.target.value as "propias" | "rivales" | "ambas"
-              )
-            }
-            className={`${selectCls} font-semibold`}
-          >
-            <option value="propias">👤 Solo propias</option>
-            <option value="rivales">👥 Solo rivales</option>
-            <option value="ambas">👥 Ambas</option>
-          </select>
-        </div>
-      </div>
-
-      {/* ---------- FUNDAMENTOS + SOLO ERRORES ---------- */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className={`${labelCls} mb-0`} style={labelStyle}>
-            Fundamento{" "}
-            {filtros.tipos.length > 0 && `· ${filtros.tipos.length}`}
-          </label>
-          <button
-            onClick={() => set("soloErrores", !filtros.soloErrores)}
-            className={`px-2 py-0.5 text-[10px] font-bold rounded border-2 transition ${
-              filtros.soloErrores
-                ? "bg-rose-500 text-white border-rose-500"
-                : "bg-rose-500/10 text-rose-300 border-rose-500/40 hover:bg-rose-500/20"
-            }`}
-          >
-            {filtros.soloErrores ? "✓ Solo errores" : "⚠️ Solo errores"}
-          </button>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {TIPOS.map((t) => {
-            const activo = filtros.tipos.includes(t.v);
-            return (
-              <button
-                key={t.v}
-                onClick={() => {
-                  const nuevos = toggleArrayValue(filtros.tipos, t.v);
-                  const subsValidos = new Set(
-                    nuevos.flatMap((ti) =>
-                      (SUBTIPOS_REALES_POR_TIPO[ti] ?? []).map((s) => s.v)
-                    )
-                  );
-                  const valsValidas = new Set(
-                    nuevos.flatMap((ti) =>
-                      (VALORACIONES_POR_TIPO[ti] ?? []).map((s) => s.v)
-                    )
-                  );
-                  onChange({
-                    ...filtros,
-                    tipos: nuevos,
-                    subtipos: filtros.subtipos.filter((s) =>
-                      subsValidos.has(s)
-                    ),
-                    valoraciones: filtros.valoraciones.filter((s) =>
-                      valsValidas.has(s)
-                    ),
-                  });
-                }}
-                className={`px-2 py-1 text-[11px] font-semibold rounded border-2 transition ${
-                  activo
-                    ? "bg-emerald-500 text-white border-emerald-600"
-                    : "bg-white/5 text-slate-300 border-white/15 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
-        {(filtros.tipos.includes("bloqueo") ||
-          filtros.tipos.includes("defensa")) && (
+      {/* ---------- PANEL PRINCIPAL ---------- */}
+      <div className="rounded-2xl p-3 space-y-2" style={cardBase}>
+        {/* ---------- HEADER ---------- */}
+        <div className="flex items-center justify-between">
           <p
-            className="text-[9px] mt-1 italic"
-            style={{ color: "#FBBF24" }}
+            className="text-[11px] font-bold uppercase tracking-wider"
+            style={{ color: "var(--sx-text-primary)" }}
           >
-            🔗 Se agrega automáticamente la acción anterior de cada
-            bloqueo/defensa para ver la trayectoria entrante.
+            🎛️ Filtros {cantFiltros > 0 && `(${cantFiltros})`}
           </p>
-        )}
-      </div>
+          <div className="flex items-center gap-2">
+            <span
+              className="text-[10px]"
+              style={{ color: "var(--sx-text-muted)" }}
+            >
+              {accionesFiltradas} de {totalAcciones}
+            </span>
+            {hayFiltrosActivos && (
+              <button
+                onClick={limpiar}
+                className="text-[10px] font-semibold"
+                style={{ color: "#F87171" }}
+              >
+                ✕ Limpiar
+              </button>
+            )}
+          </div>
+        </div>
 
-      {/* ---------- SUBTIPOS REALES ---------- */}
-      {subtiposDisponibles.length > 0 && (
+        {/* ---------- FILA BÁSICA ---------- */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div>
+            <label className={labelCls} style={labelStyle}>
+              Set
+            </label>
+            <select
+              value={filtros.set === "todos" ? "todos" : String(filtros.set)}
+              onChange={(e) =>
+                set(
+                  "set",
+                  e.target.value === "todos"
+                    ? "todos"
+                    : parseInt(e.target.value)
+                )
+              }
+              className={selectCls}
+            >
+              <option value="todos">Todos</option>
+              {setsDisponibles.map((s) => (
+                <option key={s} value={String(s)}>
+                  Set {s}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className={labelCls} style={labelStyle}>
+              Punto
+            </label>
+            <select
+              value={
+                filtros.punto === "todos" ? "todos" : String(filtros.punto)
+              }
+              onChange={(e) =>
+                set(
+                  "punto",
+                  e.target.value === "todos"
+                    ? "todos"
+                    : parseInt(e.target.value)
+                )
+              }
+              className={selectCls}
+            >
+              <option value="todos">Todos</option>
+              {puntosDisponibles.map((p) => (
+                <option key={p} value={String(p)}>
+                  P{p}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className={labelCls} style={labelStyle}>
+              Jugador
+            </label>
+            <select
+              value={filtros.jugador}
+              onChange={(e) => set("jugador", e.target.value)}
+              className={selectCls}
+            >
+              <option value="todos">Todos</option>
+              {jugadores.map((j) => (
+                <option key={j.id} value={j.id}>
+                  {j.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className={labelCls} style={labelStyle}>
+              Acciones
+            </label>
+            <select
+              value={filtros.acciones}
+              onChange={(e) =>
+                set(
+                  "acciones",
+                  e.target.value as "propias" | "rivales" | "ambas"
+                )
+              }
+              className={`${selectCls} font-semibold`}
+            >
+              <option value="propias">👤 Solo propias</option>
+              <option value="rivales">👥 Solo rivales</option>
+              <option value="ambas">👥 Ambas</option>
+            </select>
+          </div>
+        </div>
+
+        {/* ---------- FUNDAMENTOS + SOLO ERRORES ---------- */}
         <div>
-          <label className={labelCls} style={labelStyle}>
-            Subtipo{" "}
-            {filtros.subtipos.length > 0 && `· ${filtros.subtipos.length}`}
-          </label>
+          <div className="flex items-center justify-between mb-1">
+            <label className={`${labelCls} mb-0`} style={labelStyle}>
+              Fundamento{" "}
+              {filtros.tipos.length > 0 && `· ${filtros.tipos.length}`}
+            </label>
+            <button
+              onClick={() => set("soloErrores", !filtros.soloErrores)}
+              className={`px-2 py-0.5 text-[10px] font-bold rounded border-2 transition ${
+                filtros.soloErrores
+                  ? "bg-rose-500 text-white border-rose-500"
+                  : "bg-rose-500/10 text-rose-300 border-rose-500/40 hover:bg-rose-500/20"
+              }`}
+            >
+              {filtros.soloErrores ? "✓ Solo errores" : "⚠️ Solo errores"}
+            </button>
+          </div>
           <div className="flex flex-wrap gap-1">
-            {subtiposDisponibles.map((s) => {
-              const activo = filtros.subtipos.includes(s.v);
+            {TIPOS.map((t) => {
+              const activo = filtros.tipos.includes(t.v);
               return (
                 <button
-                  key={`sub-${s.tipo}-${s.v}`}
-                  onClick={() =>
-                    set("subtipos", toggleArrayValue(filtros.subtipos, s.v))
-                  }
-                  className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border-2 transition ${
+                  key={t.v}
+                  onClick={() => {
+                    const nuevos = toggleArrayValue(filtros.tipos, t.v);
+                    const subsValidos = new Set(
+                      nuevos.flatMap((ti) =>
+                        (SUBTIPOS_REALES_POR_TIPO[ti] ?? []).map((s) => s.v)
+                      )
+                    );
+                    const valsValidas = new Set(
+                      nuevos.flatMap((ti) =>
+                        (VALORACIONES_POR_TIPO[ti] ?? []).map((s) => s.v)
+                      )
+                    );
+                    onChange({
+                      ...filtros,
+                      tipos: nuevos,
+                      subtipos: filtros.subtipos.filter((s) =>
+                        subsValidos.has(s)
+                      ),
+                      valoraciones: filtros.valoraciones.filter((s) =>
+                        valsValidas.has(s)
+                      ),
+                      tacticos: {
+                        ...filtros.tacticos,
+                        presetActivoId: null,
+                      },
+                    });
+                  }}
+                  className={`px-2 py-1 text-[11px] font-semibold rounded border-2 transition ${
                     activo
                       ? "bg-emerald-500 text-white border-emerald-600"
-                      : "bg-white/5 text-slate-300 border-white/15 hover:bg-white/10"
+                      : "bg-white/5 text-slate-300 border-white/15 hover:bg-white/10 hover:text-white"
                   }`}
-                  title={`${s.tipo} · ${s.label}`}
                 >
-                  {`${s.tipo.slice(0, 3)}·${s.label}`}
+                  {t.label}
                 </button>
               );
             })}
           </div>
+          {(filtros.tipos.includes("bloqueo") ||
+            filtros.tipos.includes("defensa")) && (
+            <p
+              className="text-[9px] mt-1 italic"
+              style={{ color: "#FBBF24" }}
+            >
+              🔗 Se agrega automáticamente la acción anterior de cada
+              bloqueo/defensa para ver la trayectoria entrante.
+            </p>
+          )}
         </div>
-      )}
 
-      {/* ---------- VALORACIÓN ---------- */}
-      {filtros.tipos.length > 0 && valoracionesDisponibles.length > 0 && (
+        {/* ---------- SUBTIPOS REALES ---------- */}
+        {subtiposDisponibles.length > 0 && (
+          <div>
+            <label className={labelCls} style={labelStyle}>
+              Subtipo{" "}
+              {filtros.subtipos.length > 0 && `· ${filtros.subtipos.length}`}
+            </label>
+            <div className="flex flex-wrap gap-1">
+              {subtiposDisponibles.map((s) => {
+                const activo = filtros.subtipos.includes(s.v);
+                return (
+                  <button
+                    key={`sub-${s.tipo}-${s.v}`}
+                    onClick={() =>
+                      set("subtipos", toggleArrayValue(filtros.subtipos, s.v))
+                    }
+                    className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border-2 transition ${
+                      activo
+                        ? "bg-emerald-500 text-white border-emerald-600"
+                        : "bg-white/5 text-slate-300 border-white/15 hover:bg-white/10"
+                    }`}
+                    title={`${s.tipo} · ${s.label}`}
+                  >
+                    {`${s.tipo.slice(0, 3)}·${s.label}`}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ---------- VALORACIÓN ---------- */}
+        {filtros.tipos.length > 0 && valoracionesDisponibles.length > 0 && (
+          <div
+            className="pt-2"
+            style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
+          >
+            <button
+              onClick={() => setValoracionAbierta((v) => !v)}
+              className="w-full flex items-center justify-between text-[11px] font-bold uppercase tracking-wider"
+              style={{ color: "var(--sx-text-primary)" }}
+            >
+              <span>
+                Valoración{" "}
+                {filtros.valoraciones.length > 0 &&
+                  `· ${filtros.valoraciones.length}`}
+              </span>
+              <span
+                className="transition-transform"
+                style={{
+                  color: "var(--sx-text-muted)",
+                  transform: valoracionAbierta ? "rotate(180deg)" : "none",
+                }}
+              >
+                ▼
+              </span>
+            </button>
+            {valoracionAbierta && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {valoracionesDisponibles.map((s) => {
+                  const activo = filtros.valoraciones.includes(s.v);
+                  const nivel = nivelValoracion(s.tipo, s.v);
+                  const chipCls = CHIP_INACTIVO[nivel];
+                  return (
+                    <button
+                      key={`val-${s.tipo}-${s.v}`}
+                      onClick={() =>
+                        set(
+                          "valoraciones",
+                          toggleArrayValue(filtros.valoraciones, s.v)
+                        )
+                      }
+                      className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border-2 transition ${
+                        activo
+                          ? "bg-emerald-500 text-white border-emerald-600"
+                          : `${chipCls} hover:brightness-125`
+                      }`}
+                      title={`${s.tipo} · ${s.label}`}
+                    >
+                      {s.tipo === "armado" ||
+                      s.tipo === "recepcion" ||
+                      s.tipo === "roce-red"
+                        ? s.label
+                        : `${s.tipo.slice(0, 3)}·${s.label}`}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ---------- FILTROS TÁCTICOS (8 secciones) ---------- */}
+        <FiltrosTacticos
+          filtros={filtros.tacticos}
+          onChange={setTacticos}
+          jugadorFiltradoNombre={nombreJugadorFiltrado}
+        />
+
+        {/* ---------- AVANZADO ---------- */}
         <div
           className="pt-2"
           style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
         >
           <button
-            onClick={() => setValoracionAbierta((v) => !v)}
+            onClick={() => setAvanzadoAbierto((v) => !v)}
             className="w-full flex items-center justify-between text-[11px] font-bold uppercase tracking-wider"
             style={{ color: "var(--sx-text-primary)" }}
           >
             <span>
-              Valoración{" "}
-              {filtros.valoraciones.length > 0 &&
-                `· ${filtros.valoraciones.length}`}
+              Avanzado{" "}
+              {hayAvanzadosActivos && (
+                <span style={{ color: "#FBBF24" }}>•</span>
+              )}
             </span>
             <span
               className="transition-transform"
               style={{
                 color: "var(--sx-text-muted)",
-                transform: valoracionAbierta ? "rotate(180deg)" : "none",
+                transform: avanzadoAbierto ? "rotate(180deg)" : "none",
               }}
             >
               ▼
             </span>
           </button>
-          {valoracionAbierta && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              {valoracionesDisponibles.map((s) => {
-                const activo = filtros.valoraciones.includes(s.v);
-                const nivel = nivelValoracion(s.tipo, s.v);
-                const chipCls = CHIP_INACTIVO[nivel];
-                return (
-                  <button
-                    key={`val-${s.tipo}-${s.v}`}
-                    onClick={() =>
+
+          {avanzadoAbierto && (
+            <div className="mt-2 space-y-2">
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className={labelCls} style={labelStyle}>
+                    Rotación
+                  </label>
+                  <select
+                    value={
+                      filtros.rotacion === "todas"
+                        ? "todas"
+                        : String(filtros.rotacion)
+                    }
+                    onChange={(e) =>
                       set(
-                        "valoraciones",
-                        toggleArrayValue(filtros.valoraciones, s.v)
+                        "rotacion",
+                        e.target.value === "todas"
+                          ? "todas"
+                          : parseInt(e.target.value)
                       )
                     }
-                    className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border-2 transition ${
-                      activo
-                        ? "bg-emerald-500 text-white border-emerald-600"
-                        : `${chipCls} hover:brightness-125`
-                    }`}
-                    title={`${s.tipo} · ${s.label}`}
+                    className={selectCls}
                   >
-                    {s.tipo === "armado" ||
-                    s.tipo === "recepcion" ||
-                    s.tipo === "roce-red"
-                      ? s.label
-                      : `${s.tipo.slice(0, 3)}·${s.label}`}
-                  </button>
-                );
-              })}
+                    <option value="todas">Todas</option>
+                    {[1, 2, 3, 4, 5, 6].map((r) => (
+                      <option key={r} value={String(r)}>
+                        R{r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className={labelCls} style={labelStyle}>
+                    Rol jugador
+                  </label>
+                  <select
+                    value={filtros.rol}
+                    onChange={(e) => set("rol", e.target.value)}
+                    className={selectCls}
+                  >
+                    <option value="todos">Todos</option>
+                    {ROLES.map((r) => (
+                      <option key={r.v} value={r.v}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className={labelCls} style={labelStyle}>
+                    Zona jugador
+                  </label>
+                  <select
+                    value={
+                      filtros.zonaJugador === "todas"
+                        ? "todas"
+                        : String(filtros.zonaJugador)
+                    }
+                    onChange={(e) =>
+                      set(
+                        "zonaJugador",
+                        e.target.value === "todas"
+                          ? "todas"
+                          : parseInt(e.target.value)
+                      )
+                    }
+                    className={selectCls}
+                  >
+                    <option value="todas">Todas</option>
+                    {[1, 2, 3, 4, 5, 6].map((z) => (
+                      <option key={z} value={String(z)}>
+                        Z{z}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <ZonasMultiSelector
+                label="Zona origen"
+                seleccionadas={filtros.zonasOrigen}
+                onChange={(z) => set("zonasOrigen", z)}
+              />
+
+              <ZonasMultiSelector
+                label="Zona destino"
+                seleccionadas={filtros.zonasDestino}
+                onChange={(z) => set("zonasDestino", z)}
+              />
             </div>
           )}
         </div>
-      )}
-
-      {/* ---------- FILTROS TÁCTICOS ---------- */}
-      <FiltrosTacticos
-        filtros={filtros.tacticos}
-        onChange={(t) => set("tacticos", t)}
-        jugadorFiltradoNombre={nombreJugadorFiltrado}
-      />
-
-      {/* ---------- AVANZADO ---------- */}
-      <div
-        className="pt-2"
-        style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
-      >
-        <button
-          onClick={() => setAvanzadoAbierto((v) => !v)}
-          className="w-full flex items-center justify-between text-[11px] font-bold uppercase tracking-wider"
-          style={{ color: "var(--sx-text-primary)" }}
-        >
-          <span>
-            Avanzado{" "}
-            {hayAvanzadosActivos && (
-              <span style={{ color: "#FBBF24" }}>•</span>
-            )}
-          </span>
-          <span
-            className="transition-transform"
-            style={{
-              color: "var(--sx-text-muted)",
-              transform: avanzadoAbierto ? "rotate(180deg)" : "none",
-            }}
-          >
-            ▼
-          </span>
-        </button>
-
-        {avanzadoAbierto && (
-          <div className="mt-2 space-y-2">
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className={labelCls} style={labelStyle}>
-                  Rotación
-                </label>
-                <select
-                  value={
-                    filtros.rotacion === "todas"
-                      ? "todas"
-                      : String(filtros.rotacion)
-                  }
-                  onChange={(e) =>
-                    set(
-                      "rotacion",
-                      e.target.value === "todas"
-                        ? "todas"
-                        : parseInt(e.target.value)
-                    )
-                  }
-                  className={selectCls}
-                >
-                  <option value="todas">Todas</option>
-                  {[1, 2, 3, 4, 5, 6].map((r) => (
-                    <option key={r} value={String(r)}>
-                      R{r}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className={labelCls} style={labelStyle}>
-                  Rol jugador
-                </label>
-                <select
-                  value={filtros.rol}
-                  onChange={(e) => set("rol", e.target.value)}
-                  className={selectCls}
-                >
-                  <option value="todos">Todos</option>
-                  {ROLES.map((r) => (
-                    <option key={r.v} value={r.v}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className={labelCls} style={labelStyle}>
-                  Zona jugador
-                </label>
-                <select
-                  value={
-                    filtros.zonaJugador === "todas"
-                      ? "todas"
-                      : String(filtros.zonaJugador)
-                  }
-                  onChange={(e) =>
-                    set(
-                      "zonaJugador",
-                      e.target.value === "todas"
-                        ? "todas"
-                        : parseInt(e.target.value)
-                    )
-                  }
-                  className={selectCls}
-                >
-                  <option value="todas">Todas</option>
-                  {[1, 2, 3, 4, 5, 6].map((z) => (
-                    <option key={z} value={String(z)}>
-                      Z{z}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <ZonasMultiSelector
-              label="Zona origen"
-              seleccionadas={filtros.zonasOrigen}
-              onChange={(z) => set("zonasOrigen", z)}
-            />
-
-            <ZonasMultiSelector
-              label="Zona destino"
-              seleccionadas={filtros.zonasDestino}
-              onChange={(z) => set("zonasDestino", z)}
-            />
-          </div>
-        )}
       </div>
     </div>
   );

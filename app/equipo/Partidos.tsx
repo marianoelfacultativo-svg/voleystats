@@ -1,201 +1,88 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import {
-  FileDown,
-  Calendar,
-  CalendarDays,
-  GitCompare,
-} from "lucide-react";
-import { supabase } from "@/lib/supabase";
-import {
-  cargarAccionesCompatibles,
-  contarPuntosRival,
-  type AccionDB,
-} from "@/lib/db";
+// ============================================================
+// PARTIDOS — GESTIÓN Y ANÁLISIS DE PARTIDOS
+// ============================================================
+// Versión modular:
+//   - Carga delegada a usePartidosData
+//   - Cálculos agregados delegados a helpers.ts
+//   - Render delegado a HeaderPartido / ListaPartidos / Vistas
+//   - Hooks memoizados antes de early returns
+// ============================================================
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FileDown } from "lucide-react";
 import {
   calcularEstadisticasEquipo,
-  calcularEstadisticasJugador,
-  calcularMaxAccionesPorFundamento,
   calcularPromedioPonderadoPorSet,
   calcularPromedioArmadosPonderadoPorSet,
   VALORES_SAQUE,
   VALORES_RECEPCION,
   VALORES_BLOQUEO,
-  type PromedioRecepcionSet,
 } from "@/lib/estadisticas";
-import type { AccionVisual } from "./adaptadorUnificadoV2";
 import {
   aplicarFiltrosTacticos,
   hayFiltrosTacticos,
   FILTROS_TACTICOS_VACIO,
   type FiltrosTacticos as FiltrosTacticosTipo,
 } from "@/lib/filtrosTacticos";
-import FiltrosTacticos from "./FiltrosTacticos";
-import AnalisisConsecuencias from "./AnalisisConsecuencias";
-import GraficoRecepcionEquipoPorSet from "./GraficoRecepcionEquipoPorSet";
-import GraficoTortaRival from "./GraficoTortaRival";
-import RadarEquipo from "./RadarEquipo";
-import RadarJugador from "./RadarJugador";
-import GraficoSaquePorSet from "./GraficoSaquePorSet";
-import GraficoRecepcionPorSet from "./GraficoRecepcionPorSet";
-import GraficoBloqueoPorSet from "./GraficoBloqueoPorSet";
-import GraficoArmadosPorSet from "./GraficoArmadosPorSet";
-import TablaJugadoresPorSet from "./TablaJugadoresPorSet";
-import TablaEstadisticasCrudas from "./TablaEstadisticasCrudas";
-import GraficoBarrasFundamentoPartidos from "./GraficoBarrasFundamentoPartidos";
 import IconoVoley from "./IconoVoley";
 import { descargarComoPDF } from "@/lib/exportarPDF";
+import HeaderPartido from "./partidos/HeaderPartido";
+import ListaPartidos from "./partidos/ListaPartidos";
+import VistaDetallePartido from "./partidos/VistaDetallePartido";
+import VistaCompararPartidos from "./partidos/VistaCompararPartidos";
+import VistaJugadorPorPartidos from "./partidos/VistaJugadorPorPartidos";
+import { usePartidosData } from "./partidos/usePartidosData";
+import {
+  accionesDBaVisualParaTactico,
+  aplanarAccionesDePartidos,
+  aplanarAccionesDeJxP,
+  calcularPartidosComparadosData,
+  calcularPartidosJxPData,
+  datosRivalDePartido,
+  seriesRecepcionDePartidos,
+} from "./partidos/helpers";
+import {
+  type ModoPrincipal,
+  type Partido,
+} from "./partidos/types";
 
-interface Partido {
-  id: string;
-  rival: string;
-  fecha: string;
-  set1: string | null;
-  set2: string | null;
-  set3: string | null;
-  set4: string | null;
-  set5: string | null;
-  errores_rivales: number | null;
-  buenas_rivales: number | null;
-  notas: string | null;
-  equipo_id: string;
-  equipo_rival_id: string | null;
-}
-
-interface Jugador {
-  id: string;
-  nombre: string;
-  numero: number | null;
-  rol: string;
-}
-
-interface Equipo {
-  id: string;
-  nombre: string;
-}
+// ------------------------------------------------------------
+// PROPS
+// ------------------------------------------------------------
 
 interface Props {
   equipoId: string;
   nombreEquipo: string;
 }
 
-interface DatosRival {
-  buenas: number;
-  errores: number;
+// ------------------------------------------------------------
+// HELPERS
+// ------------------------------------------------------------
+
+function scoreDe(p: Partido): string {
+  const sets = [p.set1, p.set2, p.set3, p.set4, p.set5].filter(Boolean);
+  return sets.length > 0 ? sets.join(" · ") : "Sin score";
 }
 
-const FUNDAMENTOS = ["saque", "recepcion", "ataque", "bloqueo", "defensa"];
-const FUNDAMENTOS_BARRAS = [
-  "saque",
-  "recepcion",
-  "ataque",
-  "bloqueo",
-  "defensa",
-] as const;
-const NOMBRES: Record<string, string> = {
-  saque: "Saque",
-  recepcion: "Recepción",
-  ataque: "Ataque",
-  bloqueo: "Bloqueo",
-  defensa: "Defensa",
-};
-
-const COLORES_COMPARACION = ["#EF4444", "#8B5CF6", "#3B82F6"];
-
-type ModoPrincipal =
-  | "partido"
-  | "comparar-partidos"
-  | "jugador-por-partidos";
-type ModoDetalle =
-  | "analisis"
-  | "comparar-jugadores"
-  | "crudas"
-  | "consecuencias";
-
-const cardBase: React.CSSProperties = {
-  background: "var(--sx-surface-1)",
-  border: "1px solid var(--sx-border)",
-  boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-};
-
-const labelStyle: React.CSSProperties = {
-  color: "var(--sx-text-secondary)",
-};
-
-// ============================================================
-// ADAPTER: AccionDB[] → AccionVisual[] (para filtros tácticos
-// y para análisis de consecuencias)
-// ============================================================
-
-function accionesDBaVisualParaTactico(
-  acciones: AccionDB[]
-): AccionVisual[] {
-  const contadorPorPunto = new Map<string, number>();
-  return acciones.map((a) => {
-    const k = `${a.set_numero}-${a.punto_numero ?? 0}`;
-    const orden = (contadorPorPunto.get(k) ?? 0) + 1;
-    contadorPorPunto.set(k, orden);
-
-    const tipo = a.fundamento === "armados" ? "armado" : a.fundamento;
-
-    return {
-      id: `${a.jugador_id}|${a.set_numero}|${a.punto_numero ?? 0}|${orden}`,
-      partido_id: a.partido_id ?? "",
-      set_numero: a.set_numero,
-      punto_numero: a.punto_numero ?? 0,
-      orden,
-      tipo,
-      subtipo: a.subtipo_original ?? a.valoracion,
-      es_rival: false,
-      jugador_id: a.jugador_id,
-      lado: "propio",
-      equipo_id: null,
-      origen_celda: a.origen_celda ?? null,
-      origen_mini: a.origen_mini ?? null,
-      destino_celda: a.destino_celda ?? null,
-      destino_mini: a.destino_mini ?? null,
-      desvios: [],
-      variante: a.variante ?? null,
-      tipo_saque: a.tipo_saque ?? null,
-      velocidad: a.velocidad ?? null,
-      x2: false,
-      oculta: false,
-      posicion_inicial_celda: a.posicion_inicial_celda ?? null,
-      posicion_inicial_mini: a.posicion_inicial_mini ?? null,
-      es_error: false,
-      zona_origen: null,
-      zona_destino: null,
-      rotacion_numero: null,
-      rol_jugador: null,
-      zona_jugador: null,
-      origen_x: null,
-      origen_y: null,
-      destino_x: null,
-      destino_y: null,
-      posicion_inicial_x: null,
-      posicion_inicial_y: null,
-      zona_origen_codigo: null,
-      zona_destino_codigo: null,
-      subtipo_real: null,
-      es_ultima_del_punto: false,
-      calidad_armado_previo: null,
-    };
-  });
-}
-
-// ============================================================
-// COMPONENTE
-// ============================================================
+// ------------------------------------------------------------
+// COMPONENTE PRINCIPAL
+// ------------------------------------------------------------
 
 export default function Partidos({ equipoId, nombreEquipo }: Props) {
-  const [partidos, setPartidos] = useState<Partido[]>([]);
-  const [jugadores, setJugadores] = useState<Jugador[]>([]);
-  const [equipos, setEquipos] = useState<Equipo[]>([]);
-  const [acciones, setAcciones] = useState<AccionDB[]>([]);
-  const [datosRival, setDatosRival] = useState<Record<string, DatosRival>>({});
-  const [cargando, setCargando] = useState(true);
+  // ============ HOOK: CARGA DE DATOS ============
+  const {
+    partidos,
+    jugadores,
+    acciones,
+    datosRival,
+    cargando,
+    nombreDe,
+    nombreRivalDe,
+  } = usePartidosData(equipoId);
 
+  // ============ ESTADOS DE UI ============
   const [filtroRival, setFiltroRival] = useState("");
   const [filtroFechaDesde, setFiltroFechaDesde] = useState("");
   const [filtroFechaHasta, setFiltroFechaHasta] = useState("");
@@ -218,68 +105,318 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   >(null);
   const [partidosJxP, setPartidosJxP] = useState<string[]>([]);
 
-  const [modoDetalle, setModoDetalle] = useState<ModoDetalle>("analisis");
-  const [jugadoresComparados, setJugadoresComparados] = useState<string[]>([]);
-
   const [crudasEnPDF, setCrudasEnPDF] = useState(false);
-
   const [descargando, setDescargando] = useState(false);
+
   const refPDF = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!equipoId) return;
-    setCargando(true);
-
-    Promise.all([
-      supabase
-        .from("partidos")
-        .select("*")
-        .or(`equipo_id.eq.${equipoId},equipo_rival_id.eq.${equipoId}`)
-        .order("fecha", { ascending: false }),
-      supabase
-        .from("jugadores")
-        .select("id, nombre, numero, rol")
-        .order("nombre"),
-      supabase.from("equipos").select("id, nombre"),
-    ]).then(async ([partRes, jugRes, eqRes]) => {
-      if (!partRes.data || !jugRes.data) {
-        setCargando(false);
-        return;
-      }
-      setPartidos(partRes.data);
-      setJugadores(jugRes.data);
-      if (eqRes.data) setEquipos(eqRes.data);
-
-      const ids = partRes.data.map((p) => p.id);
-      if (ids.length === 0) {
-        setAcciones([]);
-        setDatosRival({});
-        setCargando(false);
-        return;
-      }
-
-      const [resultadosAcciones, resultadosRival] = await Promise.all([
-        Promise.all(
-          ids.map((pid) => cargarAccionesCompatibles(pid, equipoId))
-        ),
-        Promise.all(ids.map((pid) => contarPuntosRival(pid, equipoId))),
-      ]);
-
-      const mapaRival: Record<string, DatosRival> = {};
-      ids.forEach((pid, idx) => {
-        mapaRival[pid] = resultadosRival[idx];
-      });
-
-      setAcciones(resultadosAcciones.flat());
-      setDatosRival(mapaRival);
-      setCargando(false);
-    });
-  }, [equipoId]);
-
-  // Reset filtros tácticos al cambiar de partido activo
+  // ============ EFFECTS ============
+  // Reset filtros tácticos al cambiar de partido activo.
   useEffect(() => {
     setFiltrosTacticos({ ...FILTROS_TACTICOS_VACIO });
   }, [partidoSeleccionado]);
+
+  // ============ CÁLCULOS DERIVADOS (no hooks) ============
+  const partidoDetalle = partidoSeleccionado
+    ? partidos.find((p) => p.id === partidoSeleccionado) ?? null
+    : null;
+
+  const idsJugadores = jugadores.map((j) => j.id);
+  const armadores = new Set(
+    jugadores.filter((j) => j.rol === "armador").map((j) => j.id)
+  );
+
+  const jugadorJxP = jugadorSeleccionadoJxP
+    ? jugadores.find((j) => j.id === jugadorSeleccionadoJxP) ?? null
+    : null;
+  const esArmadorJxP = jugadorJxP?.rol === "armador";
+
+  const nombresJugadoresMap: Record<string, string> = {};
+  for (const j of jugadores) {
+    nombresJugadoresMap[j.id] =
+      j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
+  }
+
+  // ============ HOOKS MEMOIZADOS ============
+  const partidosFiltrados = useMemo(
+    () =>
+      partidos.filter((p) => {
+        if (filtroRival && nombreRivalDe(p) !== filtroRival) return false;
+        if (filtroFechaDesde && p.fecha < filtroFechaDesde) return false;
+        if (filtroFechaHasta && p.fecha > filtroFechaHasta) return false;
+        return true;
+      }),
+    [partidos, filtroRival, filtroFechaDesde, filtroFechaHasta, nombreRivalDe]
+  );
+
+  const rivalesUnicos = useMemo(
+    () => Array.from(new Set(partidos.map((p) => nombreRivalDe(p)))).sort(),
+    [partidos, nombreRivalDe]
+  );
+
+  const hayFiltrosActivos =
+    filtroRival !== "" ||
+    filtroFechaDesde !== "" ||
+    filtroFechaHasta !== "" ||
+    (filtrosTacticos ? hayFiltrosTacticos(filtrosTacticos) : false);
+
+  // Acciones del partido base (filtro de set aplicado)
+  const accionesDelPartidoBase = useMemo(() => {
+    if (!partidoDetalle) return [];
+    return acciones.filter((a) => {
+      if (a.partido_id !== partidoDetalle.id) return false;
+      if (filtroSet !== "todos" && String(a.set_numero) !== filtroSet)
+        return false;
+      return true;
+    });
+  }, [acciones, partidoDetalle, filtroSet]);
+
+  // Acciones del partido con tácticos aplicados
+  const accionesDelPartido = useMemo(() => {
+    if (!filtrosTacticos || !hayFiltrosTacticos(filtrosTacticos)) {
+      return accionesDelPartidoBase;
+    }
+    try {
+      const visuales = accionesDBaVisualParaTactico(accionesDelPartidoBase);
+      const filtradas = aplicarFiltrosTacticos(
+        visuales,
+        visuales,
+        filtrosTacticos,
+        null
+      );
+      const idsOk = new Set(filtradas.map((v) => v.id));
+      const contadorPorPunto = new Map<string, number>();
+      return accionesDelPartidoBase.filter((a) => {
+        const k = `${a.set_numero}-${a.punto_numero ?? 0}`;
+        const orden = (contadorPorPunto.get(k) ?? 0) + 1;
+        contadorPorPunto.set(k, orden);
+        return idsOk.has(
+          `${a.jugador_id}|${a.set_numero}|${a.punto_numero ?? 0}|${orden}`
+        );
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Error aplicando filtros tácticos:", err);
+      return accionesDelPartidoBase;
+    }
+  }, [accionesDelPartidoBase, filtrosTacticos]);
+
+  // Acciones visuales para el tab Consecuencias
+  const accionesVisualesParaAnalisis = useMemo(
+    () => accionesDBaVisualParaTactico(accionesDelPartido),
+    [accionesDelPartido]
+  );
+
+  // Stats del partido
+  const statsPartido = useMemo(() => {
+    if (!partidoDetalle) return null;
+    return calcularEstadisticasEquipo(idsJugadores, accionesDelPartido, armadores);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partidoDetalle, accionesDelPartido, jugadores]);
+
+  // Partidos comparados
+  const partidosComparadosData = useMemo(
+    () =>
+      calcularPartidosComparadosData(
+        partidosComparados,
+        partidos,
+        acciones,
+        idsJugadores,
+        armadores,
+        nombreRivalDe
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [partidosComparados, partidos, acciones, jugadores, nombreRivalDe]
+  );
+
+  const accionesPartidosComparados = useMemo(
+    () => aplanarAccionesDePartidos(partidosComparadosData),
+    [partidosComparadosData]
+  );
+
+  const seriesRadarPartidos = useMemo(
+    () =>
+      partidosComparadosData.map((s) => ({
+        id: s.id,
+        nombre: s.nombre,
+        color: s.color,
+        equipo: s.stats,
+      })),
+    [partidosComparadosData]
+  );
+
+  const seriesRecepcionPartidos = useMemo(
+    () =>
+      seriesRecepcionDePartidos(
+        partidosComparadosData,
+        armadores
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [partidosComparadosData, jugadores]
+  );
+
+  // JxP
+  const partidosJxPData = useMemo(
+    () =>
+      calcularPartidosJxPData(
+        jugadorSeleccionadoJxP,
+        esArmadorJxP ?? false,
+        partidosJxP,
+        partidos,
+        acciones,
+        idsJugadores,
+        nombreRivalDe
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      jugadorSeleccionadoJxP,
+      esArmadorJxP,
+      partidosJxP,
+      partidos,
+      acciones,
+      jugadores,
+      nombreRivalDe,
+    ]
+  );
+
+  const accionesJxPCombinadas = useMemo(
+    () => aplanarAccionesDeJxP(partidosJxPData),
+    [partidosJxPData]
+  );
+
+  const seriesRadarJxP = useMemo(
+    () =>
+      partidosJxPData.map((s) => ({
+        id: s.id,
+        nombre: s.nombre,
+        color: s.color,
+        jugador: s.est,
+      })),
+    [partidosJxPData]
+  );
+
+  const seriesSaqueJxP = useMemo(
+    () =>
+      jugadorSeleccionadoJxP
+        ? partidosJxPData.map((s) => ({
+            id: s.id,
+            nombre: s.nombre,
+            color: s.color,
+            promedios: calcularPromedioPonderadoPorSet(
+              jugadorSeleccionadoJxP,
+              s.accPartido,
+              idsJugadores,
+              "saque",
+              VALORES_SAQUE
+            ),
+          }))
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [partidosJxPData, jugadorSeleccionadoJxP, jugadores]
+  );
+
+  const seriesRecepcionJxP = useMemo(
+    () =>
+      jugadorSeleccionadoJxP
+        ? partidosJxPData.map((s) => ({
+            id: s.id,
+            nombre: s.nombre,
+            color: s.color,
+            promedios: calcularPromedioPonderadoPorSet(
+              jugadorSeleccionadoJxP,
+              s.accPartido,
+              idsJugadores,
+              "recepcion",
+              VALORES_RECEPCION
+            ),
+          }))
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [partidosJxPData, jugadorSeleccionadoJxP, jugadores]
+  );
+
+  const seriesBloqueoJxP = useMemo(
+    () =>
+      jugadorSeleccionadoJxP
+        ? partidosJxPData.map((s) => ({
+            id: s.id,
+            nombre: s.nombre,
+            color: s.color,
+            promedios: calcularPromedioPonderadoPorSet(
+              jugadorSeleccionadoJxP,
+              s.accPartido,
+              idsJugadores,
+              "bloqueo",
+              VALORES_BLOQUEO
+            ),
+          }))
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [partidosJxPData, jugadorSeleccionadoJxP, jugadores]
+  );
+
+  const seriesArmadosJxP = useMemo(
+    () =>
+      jugadorSeleccionadoJxP
+        ? partidosJxPData.map((s) => ({
+            id: s.id,
+            nombre: s.nombre,
+            color: s.color,
+            promedios: calcularPromedioArmadosPonderadoPorSet(
+              jugadorSeleccionadoJxP,
+              s.accPartido,
+              idsJugadores
+            ),
+          }))
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [partidosJxPData, jugadorSeleccionadoJxP, jugadores]
+  );
+
+  // Datos de rival del partido
+  const datosRivalPartido = datosRivalDePartido(
+    partidoDetalle?.id,
+    datosRival
+  );
+
+  // ============ EARLY RETURNS (después de todos los hooks) ============
+
+  if (cargando) {
+    return (
+      <p
+        className="text-center py-12"
+        style={{ color: "var(--sx-text-secondary)" }}
+      >
+        Cargando...
+      </p>
+    );
+  }
+
+  if (partidos.length === 0) {
+    return (
+      <div
+        className="rounded-2xl p-8 sm:p-12 text-center max-w-md mx-auto"
+        style={{
+          background: "var(--sx-surface-1)",
+          border: "1px solid var(--sx-border)",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+        }}
+      >
+        <p className="text-3xl mb-3">📅</p>
+        <h3 className="text-white font-bold text-base">
+          Sin partidos cargados
+        </h3>
+        <p
+          className="text-xs mt-1"
+          style={{ color: "var(--sx-text-secondary)" }}
+        >
+          {nombreEquipo} todavía no tiene partidos registrados en el sistema.
+        </p>
+      </div>
+    );
+  }
+
+  // ============ HANDLERS ============
 
   const limpiarFiltros = () => {
     setFiltroRival("");
@@ -287,19 +424,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     setFiltroFechaHasta("");
     setFiltroSet("todos");
     setFiltrosTacticos({ ...FILTROS_TACTICOS_VACIO });
-  };
-
-  const nombreDe = (id: string) => {
-    const j = jugadores.find((x) => x.id === id);
-    return j ? j.nombre + (j.numero !== null ? ` #${j.numero}` : "") : "?";
-  };
-
-  const nombreRivalDe = (p: Partido) => {
-    if (p.equipo_rival_id === equipoId) {
-      const local = equipos.find((e) => e.id === p.equipo_id);
-      if (local) return local.nombre;
-    }
-    return p.rival;
   };
 
   const handleToggleModoPrincipal = (nuevo: ModoPrincipal) => {
@@ -316,7 +440,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       setJugadorSeleccionadoJxP(null);
       setPartidosJxP([]);
     }
-    setModoDetalle("analisis");
   };
 
   const handleTogglePartidoComparado = (id: string) => {
@@ -335,25 +458,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     }
     if (partidosJxP.length >= 3) return;
     setPartidosJxP([...partidosJxP, id]);
-  };
-
-  const handleToggleJugadorComparado = (id: string) => {
-    if (jugadoresComparados.includes(id)) {
-      setJugadoresComparados(jugadoresComparados.filter((x) => x !== id));
-      return;
-    }
-    if (jugadoresComparados.length >= 3) return;
-
-    if (jugadoresComparados.length > 0) {
-      const armadoresSet = new Set(
-        jugadores.filter((j) => j.rol === "armador").map((j) => j.id)
-      );
-      const primerEsArm = armadoresSet.has(jugadoresComparados[0]);
-      const esteEsArm = armadoresSet.has(id);
-      if (primerEsArm !== esteEsArm) return;
-    }
-
-    setJugadoresComparados([...jugadoresComparados, id]);
   };
 
   const handleDescargarPDF = async () => {
@@ -380,8 +484,8 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
 
     setDescargando(true);
 
-    const agregarCrudas =
-      modoPrincipal === "partido" && modoDetalle === "analisis";
+    // Activamos crudasEnPDF siempre que estemos en modo "partido".
+    const agregarCrudas = modoPrincipal === "partido";
     if (agregarCrudas) {
       setCrudasEnPDF(true);
       await new Promise((r) => setTimeout(r, 200));
@@ -415,415 +519,11 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     }
   };
 
-  if (cargando) {
-    return (
-      <p
-        className="text-center py-12"
-        style={{ color: "var(--sx-text-secondary)" }}
-      >
-        Cargando...
-      </p>
-    );
-  }
-
-  if (partidos.length === 0) {
-    return (
-      <div
-        className="rounded-2xl p-8 sm:p-12 text-center max-w-md mx-auto"
-        style={cardBase}
-      >
-        <CalendarDays
-          size={36}
-          className="mx-auto mb-3"
-          style={{ color: "var(--sx-text-muted)" }}
-        />
-        <h3 className="text-white font-bold text-base">
-          Sin partidos cargados
-        </h3>
-        <p
-          className="text-xs mt-1"
-          style={{ color: "var(--sx-text-secondary)" }}
-        >
-          {nombreEquipo} todavía no tiene partidos registrados en el sistema.
-        </p>
-      </div>
-    );
-  }
-
-  const partidosFiltrados = partidos.filter((p) => {
-    if (filtroRival && nombreRivalDe(p) !== filtroRival) return false;
-    if (filtroFechaDesde && p.fecha < filtroFechaDesde) return false;
-    if (filtroFechaHasta && p.fecha > filtroFechaHasta) return false;
-    return true;
-  });
-
-  const rivalesUnicos = Array.from(
-    new Set(partidos.map((p) => nombreRivalDe(p)))
-  ).sort();
-
-  const hayFiltrosActivos =
-    filtroRival !== "" ||
-    filtroFechaDesde !== "" ||
-    filtroFechaHasta !== "" ||
-    (filtrosTacticos ? hayFiltrosTacticos(filtrosTacticos) : false);
-
-  const scoreDe = (p: Partido) => {
-    const sets = [p.set1, p.set2, p.set3, p.set4, p.set5].filter(Boolean);
-    return sets.length > 0 ? sets.join(" · ") : "Sin score";
-  };
-
-  const partidoDetalle = partidoSeleccionado
-    ? partidos.find((p) => p.id === partidoSeleccionado) ?? null
-    : null;
-
-  // ⚠️ Cálculos planos (no useMemo, van después de returns condicionales).
-  const idsJugadores = jugadores.map((j) => j.id);
-  const armadores = new Set(
-    jugadores.filter((j) => j.rol === "armador").map((j) => j.id)
-  );
-
-  const accionesDelPartidoBase = !partidoDetalle
-    ? []
-    : acciones.filter((a) => {
-        if (a.partido_id !== partidoDetalle.id) return false;
-        if (filtroSet !== "todos" && String(a.set_numero) !== filtroSet)
-          return false;
-        return true;
-      });
-
-  let accionesDelPartido = accionesDelPartidoBase;
-  if (filtrosTacticos && hayFiltrosTacticos(filtrosTacticos)) {
-    try {
-      const visuales = accionesDBaVisualParaTactico(accionesDelPartidoBase);
-      const filtradas = aplicarFiltrosTacticos(
-        visuales,
-        visuales,
-        filtrosTacticos,
-        null
-      );
-      const idsOk = new Set(filtradas.map((v) => v.id));
-      const contadorPorPunto = new Map<string, number>();
-      accionesDelPartido = accionesDelPartidoBase.filter((a) => {
-        const k = `${a.set_numero}-${a.punto_numero ?? 0}`;
-        const orden = (contadorPorPunto.get(k) ?? 0) + 1;
-        contadorPorPunto.set(k, orden);
-        return idsOk.has(
-          `${a.jugador_id}|${a.set_numero}|${a.punto_numero ?? 0}|${orden}`
-        );
-      });
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("Error aplicando filtros tácticos:", err);
-      accionesDelPartido = accionesDelPartidoBase;
-    }
-  }
-
-  // Conversión a AccionVisual para el análisis de consecuencias.
-  // Se recalcula solo (no useMemo por estar después de los returns).
-  const accionesVisualesParaAnalisis =
-    modoDetalle === "consecuencias"
-      ? accionesDBaVisualParaTactico(accionesDelPartido)
-      : [];
-
-  const statsPartido = partidoDetalle
-    ? calcularEstadisticasEquipo(idsJugadores, accionesDelPartido, armadores)
-    : null;
-
-  const promediosRecepcionEquipo: PromedioRecepcionSet[] = [1, 2, 3, 4, 5].map(
-    (s) => {
-      const delSet = accionesDelPartido.filter(
-        (a) =>
-          a.fundamento === "recepcion" &&
-          a.set_numero === s &&
-          !armadores.has(a.jugador_id)
-      );
-      let suma = 0;
-      let total = 0;
-      for (const a of delSet) {
-        const v = VALORES_RECEPCION[a.valoracion] ?? 0;
-        suma += v * a.cantidad;
-        total += a.cantidad;
-      }
-      return {
-        set: s,
-        promedio: total > 0 ? suma / total : 0,
-        totalRecepciones: total,
-      };
-    }
-  );
-
-  const partidosComparadosData = partidosComparados
-    .map((id, idx) => {
-      const partido = partidos.find((p) => p.id === id);
-      if (!partido) return null;
-      const accPartido = acciones.filter((a) => a.partido_id === id);
-      const stats = calcularEstadisticasEquipo(
-        idsJugadores,
-        accPartido,
-        armadores
-      ).totales;
-      return {
-        id,
-        nombre: `vs ${nombreRivalDe(partido)} (${partido.fecha})`,
-        color: COLORES_COMPARACION[idx],
-        partido,
-        stats,
-        acciones: accPartido,
-      };
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null);
-
-  const accionesPartidosComparados: AccionDB[] = partidosComparadosData.flatMap(
-    (s) => s.acciones
-  );
-
-  const seriesRadarPartidos = partidosComparadosData.map((s) => ({
-    id: s.id,
-    nombre: s.nombre,
-    color: s.color,
-    equipo: s.stats,
-  }));
-
-  const seriesRecepcionPartidos = partidosComparadosData.map((s) => {
-    const proms: PromedioRecepcionSet[] = [1, 2, 3, 4, 5].map((set) => {
-      const delSet = s.acciones.filter(
-        (a) =>
-          a.fundamento === "recepcion" &&
-          a.set_numero === set &&
-          !armadores.has(a.jugador_id)
-      );
-      let suma = 0;
-      let total = 0;
-      for (const a of delSet) {
-        const v = VALORES_RECEPCION[a.valoracion] ?? 0;
-        suma += v * a.cantidad;
-        total += a.cantidad;
-      }
-      return {
-        set,
-        promedio: total > 0 ? suma / total : 0,
-        totalRecepciones: total,
-      };
-    });
-    return {
-      id: s.id,
-      nombre: s.nombre,
-      color: s.color,
-      promedios: proms,
-    };
-  });
-
-  const jugadorJxP = jugadorSeleccionadoJxP
-    ? jugadores.find((j) => j.id === jugadorSeleccionadoJxP) ?? null
-    : null;
-  const esArmadorJxP = jugadorJxP?.rol === "armador";
-
-  const partidosJxPData = jugadorSeleccionadoJxP
-    ? partidosJxP
-        .map((pid, idx) => {
-          const partido = partidos.find((p) => p.id === pid);
-          if (!partido) return null;
-          const accPartido = acciones.filter((a) => a.partido_id === pid);
-
-          const maxPorFundP = calcularMaxAccionesPorFundamento(
-            accPartido,
-            idsJugadores
-          );
-          let maxAccP = 1;
-          for (const jid of idsJugadores) {
-            const total = accPartido
-              .filter((a) => a.jugador_id === jid)
-              .reduce((s, a) => s + a.cantidad, 0);
-            if (total > maxAccP) maxAccP = total;
-          }
-
-          const est = calcularEstadisticasJugador(
-            jugadorSeleccionadoJxP,
-            accPartido,
-            esArmadorJxP ?? false,
-            maxPorFundP,
-            maxAccP
-          );
-
-          return {
-            id: pid,
-            nombre: `vs ${nombreRivalDe(partido)} (${partido.fecha})`,
-            color: COLORES_COMPARACION[idx],
-            partido,
-            accPartido,
-            est,
-          };
-        })
-        .filter((x): x is NonNullable<typeof x> => x !== null)
-    : [];
-
-  const accionesJxPCombinadas: AccionDB[] = partidosJxPData.flatMap(
-    (s) => s.accPartido
-  );
-
-  const seriesRadarJxP = partidosJxPData.map((s) => ({
-    id: s.id,
-    nombre: s.nombre,
-    color: s.color,
-    jugador: s.est,
-  }));
-
-  const seriesSaqueJxP = jugadorSeleccionadoJxP
-    ? partidosJxPData.map((s) => ({
-        id: s.id,
-        nombre: s.nombre,
-        color: s.color,
-        promedios: calcularPromedioPonderadoPorSet(
-          jugadorSeleccionadoJxP,
-          s.accPartido,
-          idsJugadores,
-          "saque",
-          VALORES_SAQUE
-        ),
-      }))
-    : [];
-
-  const seriesRecepcionJxP = jugadorSeleccionadoJxP
-    ? partidosJxPData.map((s) => ({
-        id: s.id,
-        nombre: s.nombre,
-        color: s.color,
-        promedios: calcularPromedioPonderadoPorSet(
-          jugadorSeleccionadoJxP,
-          s.accPartido,
-          idsJugadores,
-          "recepcion",
-          VALORES_RECEPCION
-        ),
-      }))
-    : [];
-
-  const seriesBloqueoJxP = jugadorSeleccionadoJxP
-    ? partidosJxPData.map((s) => ({
-        id: s.id,
-        nombre: s.nombre,
-        color: s.color,
-        promedios: calcularPromedioPonderadoPorSet(
-          jugadorSeleccionadoJxP,
-          s.accPartido,
-          idsJugadores,
-          "bloqueo",
-          VALORES_BLOQUEO
-        ),
-      }))
-    : [];
-
-  const seriesArmadosJxP = jugadorSeleccionadoJxP
-    ? partidosJxPData.map((s) => ({
-        id: s.id,
-        nombre: s.nombre,
-        color: s.color,
-        promedios: calcularPromedioArmadosPonderadoPorSet(
-          jugadorSeleccionadoJxP,
-          s.accPartido,
-          idsJugadores
-        ),
-      }))
-    : [];
-
-  const jugadoresComparadosData = jugadoresComparados.map((id, idx) => ({
-    id,
-    nombre: nombreDe(id),
-    color: COLORES_COMPARACION[idx],
-  }));
-
-  const esComparacionArmador =
-    jugadoresComparadosData.length > 0 &&
-    armadores.has(jugadoresComparadosData[0].id);
-
-  const statsJugadoresComparados = jugadoresComparadosData.map((s) => {
-    const est = calcularEstadisticasEquipo(
-      idsJugadores,
-      accionesDelPartido,
-      armadores
-    ).porJugador[s.id];
-    return { ...s, est };
-  });
-
-  const seriesRadarJugadores = statsJugadoresComparados
-    .filter((s) => s.est)
-    .map((s) => ({
-      id: s.id,
-      nombre: s.nombre,
-      color: s.color,
-      jugador: s.est,
-    }));
-
-  const seriesSaqueJugadores = statsJugadoresComparados
-    .filter((s) => s.est)
-    .map((s) => ({
-      id: s.id,
-      nombre: s.nombre,
-      color: s.color,
-      promedios: calcularPromedioPonderadoPorSet(
-        s.id,
-        accionesDelPartido,
-        idsJugadores,
-        "saque",
-        VALORES_SAQUE
-      ),
-    }));
-
-  const seriesRecepcionJugadores = statsJugadoresComparados
-    .filter((s) => s.est)
-    .map((s) => ({
-      id: s.id,
-      nombre: s.nombre,
-      color: s.color,
-      promedios: calcularPromedioPonderadoPorSet(
-        s.id,
-        accionesDelPartido,
-        idsJugadores,
-        "recepcion",
-        VALORES_RECEPCION
-      ),
-    }));
-
-  const seriesBloqueoJugadores = statsJugadoresComparados
-    .filter((s) => s.est)
-    .map((s) => ({
-      id: s.id,
-      nombre: s.nombre,
-      color: s.color,
-      promedios: calcularPromedioPonderadoPorSet(
-        s.id,
-        accionesDelPartido,
-        idsJugadores,
-        "bloqueo",
-        VALORES_BLOQUEO
-      ),
-    }));
-
-  const seriesArmadosJugadores = statsJugadoresComparados
-    .filter((s) => s.est)
-    .map((s) => ({
-      id: s.id,
-      nombre: s.nombre,
-      color: s.color,
-      promedios: calcularPromedioArmadosPonderadoPorSet(
-        s.id,
-        accionesDelPartido,
-        idsJugadores
-      ),
-    }));
-
-  const datosRivalPartido = partidoDetalle
-    ? datosRival[partidoDetalle.id] ?? { buenas: 0, errores: 0 }
-    : { buenas: 0, errores: 0 };
-
-  const nombresJugadoresMap: Record<string, string> = {};
-  for (const j of jugadores) {
-    nombresJugadoresMap[j.id] =
-      j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
-  }
+  // ============ RENDER ============
 
   return (
     <div className="space-y-4">
+      {/* ---------- BOTÓN EXPORTAR PDF ---------- */}
       <div className="flex justify-end" data-pdf-ignorar>
         <button
           onClick={handleDescargarPDF}
@@ -840,67 +540,21 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         </button>
       </div>
 
+      {/* ---------- CONTENIDO EXPORTABLE ---------- */}
       <div ref={refPDF} className="space-y-4">
-        <div className="rounded-2xl p-4 sm:p-5" style={cardBase}>
-          <h2 className="text-lg sm:text-xl font-black text-white break-words tracking-tight">
-            {modoPrincipal === "partido" && partidoDetalle
-              ? `${nombreEquipo} vs ${nombreRivalDe(partidoDetalle)}`
-              : modoPrincipal === "comparar-partidos"
-              ? `Comparación de partidos · ${nombreEquipo}`
-              : modoPrincipal === "jugador-por-partidos"
-              ? `${nombreDe(jugadorSeleccionadoJxP ?? "")} · ${nombreEquipo}`
-              : `Partidos · ${nombreEquipo}`}
-          </h2>
-          {modoPrincipal === "partido" && partidoDetalle && (
-            <p
-              className="text-xs mt-1.5 flex items-center gap-2 flex-wrap"
-              style={{ color: "var(--sx-text-secondary)" }}
-            >
-              <span className="inline-flex items-center gap-1 font-medium">
-                <Calendar
-                  size={13}
-                  style={{ color: "var(--sx-text-muted)" }}
-                />
-                {partidoDetalle.fecha}
-              </span>
-              <span
-                className="font-mono font-bold px-2 py-0.5 rounded text-[11px]"
-                style={{
-                  background: "rgba(255,255,255,0.08)",
-                  color: "var(--sx-text-primary)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                }}
-              >
-                {scoreDe(partidoDetalle)}
-              </span>
-              {filtroSet !== "todos" && (
-                <span
-                  className="px-2 py-0.5 rounded text-[11px] font-semibold"
-                  style={{
-                    background: "rgba(37,99,235,0.15)",
-                    color: "#93C5FD",
-                    border: "1px solid rgba(37,99,235,0.35)",
-                  }}
-                >
-                  Solo Set {filtroSet}
-                </span>
-              )}
-              {filtrosTacticos && hayFiltrosTacticos(filtrosTacticos) && (
-                <span
-                  className="px-2 py-0.5 rounded text-[11px] font-semibold"
-                  style={{
-                    background: "rgba(167,139,250,0.15)",
-                    color: "#C4B5FD",
-                    border: "1px solid rgba(167,139,250,0.35)",
-                  }}
-                >
-                  Filtros tácticos activos
-                </span>
-              )}
-            </p>
-          )}
-        </div>
+        {/* Header con título dinámico */}
+        <HeaderPartido
+          modoPrincipal={modoPrincipal}
+          nombreEquipo={nombreEquipo}
+          partidoDetalle={partidoDetalle}
+          jugadorSeleccionadoJxP={jugadorSeleccionadoJxP}
+          nombreRivalDe={nombreRivalDe}
+          nombreDe={nombreDe}
+          filtroSet={filtroSet}
+          hayFiltrosTacticosActivos={hayFiltrosTacticos(filtrosTacticos)}
+        />
 
+        {/* Barra de modos principales */}
         <div className="flex flex-wrap justify-end gap-2" data-pdf-ignorar>
           <button
             onClick={() => handleToggleModoPrincipal("partido")}
@@ -913,9 +567,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
             <IconoVoley
               tipo="partido"
               size={18}
-              className={
-                modoPrincipal === "partido" ? "text-white" : "text-slate-400"
-              }
+              className={modoPrincipal === "partido" ? "text-white" : "text-slate-400"}
             />
             Ver partido
           </button>
@@ -959,1380 +611,121 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
           </button>
         </div>
 
-        {modoPrincipal !== "jugador-por-partidos" && (
-          <div
-            className="rounded-2xl p-3 sm:p-4 space-y-3"
-            style={cardBase}
-            data-pdf-ignorar
-          >
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
-              <div>
-                <label
-                  className="block text-xs font-medium mb-1"
-                  style={labelStyle}
-                >
-                  Rival
-                </label>
-                <select
-                  value={filtroRival}
-                  onChange={(e) => setFiltroRival(e.target.value)}
-                  className="input-dark text-sm"
-                >
-                  <option value="">Todos</option>
-                  {rivalesUnicos.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label
-                  className="block text-xs font-medium mb-1"
-                  style={labelStyle}
-                >
-                  Desde
-                </label>
-                <input
-                  type="date"
-                  value={filtroFechaDesde}
-                  onChange={(e) => setFiltroFechaDesde(e.target.value)}
-                  className="input-dark text-sm"
-                />
-              </div>
-              <div>
-                <label
-                  className="block text-xs font-medium mb-1"
-                  style={labelStyle}
-                >
-                  Hasta
-                </label>
-                <input
-                  type="date"
-                  value={filtroFechaHasta}
-                  onChange={(e) => setFiltroFechaHasta(e.target.value)}
-                  className="input-dark text-sm"
-                />
-              </div>
-              <div>
-                <label
-                  className="block text-xs font-medium mb-1"
-                  style={labelStyle}
-                >
-                  Set (en detalle)
-                </label>
-                <select
-                  value={filtroSet}
-                  onChange={(e) =>
-                    setFiltroSet(
-                      e.target.value as "todos" | "1" | "2" | "3" | "4" | "5"
-                    )
-                  }
-                  className="input-dark text-sm"
-                >
-                  <option value="todos">Todos</option>
-                  <option value="1">Set 1</option>
-                  <option value="2">Set 2</option>
-                  <option value="3">Set 3</option>
-                  <option value="4">Set 4</option>
-                  <option value="5">Set 5</option>
-                </select>
-              </div>
-            </div>
+        {/* Layout de 3 columnas */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+          {/* Columna izquierda: filtros + listas */}
+          <ListaPartidos
+            modoPrincipal={modoPrincipal}
+            nombreEquipo={nombreEquipo}
+            filtroRival={filtroRival}
+            onFiltroRival={setFiltroRival}
+            filtroFechaDesde={filtroFechaDesde}
+            onFiltroFechaDesde={setFiltroFechaDesde}
+            filtroFechaHasta={filtroFechaHasta}
+            onFiltroFechaHasta={setFiltroFechaHasta}
+            filtroSet={filtroSet}
+            onFiltroSet={setFiltroSet}
+            filtrosTacticos={filtrosTacticos}
+            onFiltrosTacticos={setFiltrosTacticos}
+            hayFiltrosActivos={hayFiltrosActivos}
+            onLimpiarFiltros={limpiarFiltros}
+            partidosFiltrados={partidosFiltrados}
+            rivalesUnicos={rivalesUnicos}
+            partidoSeleccionado={partidoSeleccionado}
+            onPartidoSeleccionado={setPartidoSeleccionado}
+            partidosComparados={partidosComparados}
+            onTogglePartidoComparado={handleTogglePartidoComparado}
+            jugadores={jugadores}
+            acciones={acciones}
+            jugadorSeleccionadoJxP={jugadorSeleccionadoJxP}
+            onJugadorSeleccionadoJxP={setJugadorSeleccionadoJxP}
+            nombreRivalDe={nombreRivalDe}
+            scoreDe={scoreDe}
+          />
 
-            {partidoDetalle && filtrosTacticos && (
-              <FiltrosTacticos
-                filtros={filtrosTacticos}
-                onChange={setFiltrosTacticos}
-                jugadorFiltradoNombre={null}
-                titulo="Conducta / Secuencia del partido"
+          {/* Columna derecha: vista según modo */}
+          <div className="col-span-1 lg:col-span-2">
+            {/* MODO PARTIDO */}
+            {modoPrincipal === "partido" && (
+              <>
+                {!partidoDetalle || !statsPartido ? (
+                  <div
+                    className="rounded-2xl p-8 sm:p-12 text-center h-full flex items-center justify-center"
+                    style={{
+                      background: "var(--sx-surface-1)",
+                      border: "1px solid var(--sx-border)",
+                      boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+                    }}
+                  >
+                    <div>
+                      <p className="text-4xl mb-3">👈</p>
+                      <p
+                        className="font-medium"
+                        style={{ color: "var(--sx-text-primary)" }}
+                      >
+                        Elegí un partido para ver el detalle
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <VistaDetallePartido
+                    partidoDetalle={partidoDetalle}
+                    statsPartido={statsPartido}
+                    accionesDelPartido={accionesDelPartido}
+                    accionesVisualesParaAnalisis={accionesVisualesParaAnalisis}
+                    idsJugadores={idsJugadores}
+                    armadores={armadores}
+                    jugadores={jugadores}
+                    nombresJugadoresMap={nombresJugadoresMap}
+                    datosRivalPartido={datosRivalPartido}
+                    filtroSet={filtroSet}
+                    nombreEquipo={nombreEquipo}
+                    nombreRivalDe={nombreRivalDe}
+                    nombreDe={nombreDe}
+                    hayFiltrosTacticosActivos={hayFiltrosTacticos(
+                      filtrosTacticos
+                    )}
+                    crudasEnPDF={crudasEnPDF}
+                  />
+                )}
+              </>
+            )}
+
+            {/* MODO COMPARAR PARTIDOS */}
+            {modoPrincipal === "comparar-partidos" && (
+              <VistaCompararPartidos
+                partidosComparadosData={partidosComparadosData.map((s) => ({
+                  id: s.id,
+                  nombre: s.nombre,
+                  color: s.color,
+                  stats: s.stats,
+                }))}
+                seriesRadarPartidos={seriesRadarPartidos}
+                seriesRecepcionPartidos={seriesRecepcionPartidos}
+                accionesPartidosComparados={accionesPartidosComparados}
               />
             )}
 
-            {hayFiltrosActivos && (
-              <div className="text-right">
-                <button
-                  onClick={limpiarFiltros}
-                  className="text-xs font-medium"
-                  style={{ color: "#34D399" }}
-                >
-                  Limpiar filtros
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-          <div className="col-span-1" data-pdf-ignorar>
-            {modoPrincipal === "jugador-por-partidos" ? (
-              <>
-                <h3 className="font-semibold text-white mb-3">
-                  Elegí un jugador
-                </h3>
-                <div className="space-y-2">
-                  {jugadores
-                    .filter((j) =>
-                      acciones.some((a) => a.jugador_id === j.id)
-                    )
-                    .map((j) => {
-                      const sel = jugadorSeleccionadoJxP === j.id;
-                      return (
-                        <button
-                          key={j.id}
-                          onClick={() => setJugadorSeleccionadoJxP(j.id)}
-                          className={`w-full text-left p-3 rounded-lg border transition ${
-                            sel
-                              ? "bg-emerald-500 border-emerald-500 text-white"
-                              : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
-                          }`}
-                        >
-                          <p
-                            className={`font-medium text-sm ${
-                              sel ? "text-white" : "text-slate-200"
-                            }`}
-                          >
-                            {j.nombre}
-                            {j.numero !== null && ` #${j.numero}`}
-                            {j.rol === "armador" && (
-                              <span
-                                className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full ${
-                                  sel
-                                    ? "bg-white/20 text-white"
-                                    : "bg-violet-500/20 text-violet-300"
-                                }`}
-                              >
-                                Arm
-                              </span>
-                            )}
-                          </p>
-                        </button>
-                      );
-                    })}
-                </div>
-              </>
-            ) : (
-              <>
-                <h3 className="font-semibold text-white mb-3">
-                  {partidosFiltrados.length} partido
-                  {partidosFiltrados.length !== 1 ? "s" : ""}
-                  {modoPrincipal === "comparar-partidos" &&
-                    " — elegí hasta 3"}
-                </h3>
-
-                {partidosFiltrados.length === 0 ? (
-                  <div
-                    className="rounded-2xl p-6 text-center"
-                    style={cardBase}
-                  >
-                    <p
-                      className="text-sm"
-                      style={{ color: "var(--sx-text-secondary)" }}
-                    >
-                      Ningún partido cumple los filtros
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {partidosFiltrados.map((p) => {
-                      const idxComparado = partidosComparados.indexOf(p.id);
-                      const seleccionadoIndividual =
-                        modoPrincipal === "partido" &&
-                        partidoSeleccionado === p.id;
-                      const colorComp =
-                        idxComparado !== -1
-                          ? COLORES_COMPARACION[idxComparado]
-                          : null;
-
-                      return (
-                        <button
-                          key={p.id}
-                          onClick={() =>
-                            modoPrincipal === "partido"
-                              ? setPartidoSeleccionado(p.id)
-                              : handleTogglePartidoComparado(p.id)
-                          }
-                          className={`w-full text-left p-3 rounded-lg border transition relative ${
-                            seleccionadoIndividual
-                              ? "bg-emerald-500 border-emerald-500 text-white"
-                              : colorComp
-                              ? "border-2 text-white"
-                              : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
-                          }`}
-                          style={
-                            colorComp
-                              ? {
-                                  backgroundColor: colorComp + "20",
-                                  borderColor: colorComp,
-                                }
-                              : undefined
-                          }
-                        >
-                          {idxComparado !== -1 && (
-                            <span
-                              className="absolute top-2 right-2 w-6 h-6 rounded-full text-white text-xs font-bold flex items-center justify-center border-2 border-white shadow"
-                              style={{ backgroundColor: colorComp! }}
-                            >
-                              {idxComparado + 1}
-                            </span>
-                          )}
-                          <p
-                            className={`font-medium text-sm ${
-                              seleccionadoIndividual
-                                ? "text-white"
-                                : "text-slate-200"
-                            }`}
-                          >
-                            vs {nombreRivalDe(p)}
-                          </p>
-                          <p
-                            className={`text-xs mt-1 ${
-                              seleccionadoIndividual
-                                ? "text-emerald-100"
-                                : "text-slate-400"
-                            }`}
-                          >
-                            📅 {p.fecha}
-                          </p>
-                          <p
-                            className={`text-xs mt-1 ${
-                              seleccionadoIndividual
-                                ? "text-emerald-100"
-                                : "text-slate-400"
-                            }`}
-                          >
-                            {scoreDe(p)}
-                          </p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          <div className="col-span-1 lg:col-span-2">
-            {modoPrincipal === "jugador-por-partidos" ? (
-              <div className="space-y-4">
-                {!jugadorSeleccionadoJxP ? (
-                  <div
-                    className="rounded-2xl p-8 sm:p-12 text-center"
-                    style={cardBase}
-                  >
-                    <p className="text-4xl mb-3">👈</p>
-                    <p
-                      className="font-medium"
-                      style={{ color: "var(--sx-text-primary)" }}
-                    >
-                      Elegí un jugador a la izquierda para empezar
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div
-                      className="rounded-2xl p-3 sm:p-5"
-                      style={cardBase}
-                      data-pdf-ignorar
-                    >
-                      <h4 className="font-semibold text-white mb-3">
-                        Elegí hasta 3 partidos para comparar a{" "}
-                        {nombreDe(jugadorSeleccionadoJxP)}
-                      </h4>
-                      <div className="flex gap-2 flex-wrap">
-                        {partidos.map((p) => {
-                          const idx = partidosJxP.indexOf(p.id);
-                          const color =
-                            idx !== -1 ? COLORES_COMPARACION[idx] : null;
-                          const tieneAcciones = acciones.some(
-                            (a) =>
-                              a.partido_id === p.id &&
-                              a.jugador_id === jugadorSeleccionadoJxP
-                          );
-                          return (
-                            <button
-                              key={p.id}
-                              onClick={() => handleTogglePartidoJxP(p.id)}
-                              disabled={!tieneAcciones && idx === -1}
-                              className={`px-3 py-2 text-xs font-medium rounded-lg transition border flex items-center gap-2 ${
-                                color
-                                  ? "border-2 text-white"
-                                  : !tieneAcciones
-                                  ? "bg-white/5 text-slate-600 cursor-not-allowed border-white/10 opacity-50"
-                                  : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
-                              }`}
-                              style={
-                                color
-                                  ? {
-                                      backgroundColor: color + "20",
-                                      borderColor: color,
-                                    }
-                                  : undefined
-                              }
-                            >
-                              {color && (
-                                <span
-                                  className="w-4 h-4 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
-                                  style={{ backgroundColor: color }}
-                                >
-                                  {idx + 1}
-                                </span>
-                              )}
-                              vs {nombreRivalDe(p)} · {p.fecha}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {partidosJxPData.length === 0 ? (
-                      <div
-                        className="rounded-2xl p-8 sm:p-12 text-center max-w-sm mx-auto"
-                        style={cardBase}
-                      >
-                        <GitCompare
-                          size={36}
-                          className="mx-auto mb-3"
-                          style={{ color: "var(--sx-text-muted)" }}
-                        />
-                        <h4 className="text-white font-bold text-sm">
-                          Sin partidos seleccionados
-                        </h4>
-                        <p
-                          className="text-xs mt-1"
-                          style={{ color: "var(--sx-text-secondary)" }}
-                        >
-                          Elegí partidos arriba para analizar la evolución del jugador.
-                        </p>
-                      </div>
-                    ) : (
-                      <div
-                        className="rounded-2xl p-4 sm:p-6"
-                        style={cardBase}
-                      >
-                        <div
-                          className="mb-6 pb-4"
-                          style={{ borderBottom: "1px solid var(--sx-border)" }}
-                        >
-                          <h3 className="text-lg sm:text-xl font-bold text-white mb-3">
-                            {nombreDe(jugadorSeleccionadoJxP)} en{" "}
-                            {partidosJxPData.length} partido
-                            {partidosJxPData.length !== 1 ? "s" : ""}
-                          </h3>
-                          <div className="flex flex-wrap gap-2 sm:gap-3">
-                            {partidosJxPData.map((s) => (
-                              <div
-                                key={s.id}
-                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-                                style={{
-                                  border: "1px solid var(--sx-border)",
-                                  background: "rgba(255,255,255,0.03)",
-                                }}
-                              >
-                                <span
-                                  className="w-3 h-3 rounded-full"
-                                  style={{ backgroundColor: s.color }}
-                                />
-                                <span className="text-sm font-medium text-slate-200">
-                                  {s.nombre}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="mb-6">
-                          <h4 className="font-semibold text-white mb-3">
-                            Radar comparado
-                          </h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
-                            <div
-                              className="rounded-2xl p-2 col-span-1"
-                              style={cardBase}
-                            >
-                              <RadarJugador
-                                series={seriesRadarJxP}
-                                esArmador={esArmadorJxP}
-                              />
-                            </div>
-                            {FUNDAMENTOS_BARRAS.map((f) => (
-                              <GraficoBarrasFundamentoPartidos
-                                key={f}
-                                fundamento={f}
-                                acciones={accionesJxPCombinadas}
-                                jugadorId={jugadorSeleccionadoJxP ?? undefined}
-                                tituloOverride={`${NOMBRES[f]} (total)`}
-                              />
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="mb-6">
-                          <h4 className="font-semibold text-white mb-3">
-                            Valoración ponderada por partido
-                          </h4>
-                          <div
-                            className="overflow-x-auto rounded-lg"
-                            style={{ border: "1px solid var(--sx-border)" }}
-                          >
-                            <table className="w-full text-sm min-w-[500px]">
-                              <thead
-                                style={{
-                                  background: "rgba(255,255,255,0.04)",
-                                  borderBottom: "1px solid var(--sx-border)",
-                                }}
-                              >
-                                <tr
-                                  className="text-left"
-                                  style={{ color: "var(--sx-text-secondary)" }}
-                                >
-                                  <th className="py-2 px-3">Fundamento</th>
-                                  {partidosJxPData.map((s) => (
-                                    <th
-                                      key={s.id}
-                                      className="py-2 px-3 text-right"
-                                      style={{ color: s.color }}
-                                    >
-                                      {s.nombre}
-                                    </th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {Object.keys(
-                                  partidosJxPData[0].est
-                                    .valoracionPonderadaPorFundamento
-                                ).map((f) => (
-                                  <tr
-                                    key={f}
-                                    style={{
-                                      borderBottom:
-                                        "1px solid rgba(255,255,255,0.04)",
-                                    }}
-                                  >
-                                    <td className="py-2 px-3 font-medium text-white">
-                                      {NOMBRES[f] ?? f}
-                                    </td>
-                                    {partidosJxPData.map((s) => {
-                                      const val =
-                                        s.est.valoracionPonderadaPorFundamento[
-                                          f
-                                        ] ?? 0;
-                                      return (
-                                        <td
-                                          key={s.id}
-                                          className="py-2 px-3 text-right font-semibold tabular-nums"
-                                          style={{ color: s.color }}
-                                        >
-                                          {val > 0 ? "+" : ""}
-                                          {val.toFixed(2)}
-                                        </td>
-                                      );
-                                    })}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                          <div
-                            className="rounded-2xl p-3 sm:p-4"
-                            style={cardBase}
-                          >
-                            <GraficoSaquePorSet series={seriesSaqueJxP} />
-                          </div>
-
-                          {!esArmadorJxP && (
-                            <div
-                              className="rounded-2xl p-3 sm:p-4"
-                              style={cardBase}
-                            >
-                              <GraficoRecepcionPorSet
-                                series={seriesRecepcionJxP}
-                              />
-                            </div>
-                          )}
-
-                          {esArmadorJxP && (
-                            <div
-                              className="rounded-2xl p-3 sm:p-4"
-                              style={cardBase}
-                            >
-                              <GraficoArmadosPorSet
-                                series={seriesArmadosJxP}
-                              />
-                            </div>
-                          )}
-
-                          <div
-                            className={`rounded-2xl p-3 sm:p-4 ${
-                              esArmadorJxP ? "" : "md:col-span-2"
-                            }`}
-                            style={cardBase}
-                          >
-                            <GraficoBloqueoPorSet
-                              series={seriesBloqueoJxP}
-                            />
-                          </div>
-                        </div>
-
-                        <div
-                          className="mt-6 overflow-x-auto rounded-lg"
-                          style={{ border: "1px solid var(--sx-border)" }}
-                        >
-                          <table className="w-full text-sm min-w-[500px]">
-                            <thead
-                              style={{
-                                background: "rgba(255,255,255,0.04)",
-                                borderBottom: "1px solid var(--sx-border)",
-                              }}
-                            >
-                              <tr
-                                className="text-left"
-                                style={{ color: "var(--sx-text-secondary)" }}
-                              >
-                                <th className="py-2 px-3">Partido</th>
-                                <th className="py-2 px-3 text-right">
-                                  Acciones
-                                </th>
-                                <th className="py-2 px-3 text-right">Puntos</th>
-                                <th className="py-2 px-3 text-right">
-                                  Errores
-                                </th>
-                                <th className="py-2 px-3 text-right">Saldo</th>
-                                <th className="py-2 px-3 text-right">
-                                  Val. Media
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {partidosJxPData.map((s) => (
-                                <tr
-                                  key={s.id}
-                                  style={{
-                                    borderBottom:
-                                      "1px solid rgba(255,255,255,0.04)",
-                                  }}
-                                >
-                                  <td className="py-2 px-3 font-medium">
-                                    <span
-                                      className="inline-block w-3 h-3 rounded-full mr-2 align-middle"
-                                      style={{ backgroundColor: s.color }}
-                                    />
-                                    <span className="text-white">
-                                      {s.nombre}
-                                    </span>
-                                  </td>
-                                  <td className="py-2 px-3 text-right text-slate-300 font-mono tabular-nums">
-                                    {s.est.totalAcciones}
-                                  </td>
-                                  <td className="py-2 px-3 text-right text-emerald-400 font-mono tabular-nums">
-                                    {s.est.totalPuntos}
-                                  </td>
-                                  <td className="py-2 px-3 text-right text-rose-400 font-mono tabular-nums">
-                                    {s.est.totalErrores}
-                                  </td>
-                                  <td
-                                    className={`py-2 px-3 text-right font-semibold tabular-nums ${
-                                      s.est.saldoTotal > 0
-                                        ? "text-emerald-400"
-                                        : s.est.saldoTotal < 0
-                                        ? "text-rose-400"
-                                        : "text-slate-400"
-                                    }`}
-                                  >
-                                    {s.est.saldoTotal > 0 ? "+" : ""}
-                                    {s.est.saldoTotal}
-                                  </td>
-                                  <td
-                                    className={`py-2 px-3 text-right font-semibold tabular-nums ${
-                                      s.est.valoracionMediaNormalizada > 0
-                                        ? "text-emerald-400"
-                                        : s.est.valoracionMediaNormalizada < 0
-                                        ? "text-rose-400"
-                                        : "text-slate-400"
-                                    }`}
-                                  >
-                                    {s.est.valoracionMediaNormalizada > 0
-                                      ? "+"
-                                      : ""}
-                                    {s.est.valoracionMediaNormalizada.toFixed(2)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            ) : modoPrincipal === "comparar-partidos" ? (
-              <div className="rounded-2xl p-4 sm:p-6" style={cardBase}>
-                {partidosComparadosData.length === 0 ? (
-                  <div className="p-8 sm:p-12 text-center max-w-sm mx-auto">
-                    <GitCompare
-                      size={36}
-                      className="mx-auto mb-3"
-                      style={{ color: "var(--sx-text-muted)" }}
-                    />
-                    <h4 className="text-white font-bold text-sm">
-                      Comparativa de partidos
-                    </h4>
-                    <p
-                      className="text-xs mt-1"
-                      style={{ color: "var(--sx-text-secondary)" }}
-                    >
-                      Elegí hasta 3 partidos arriba para contrastar rendimiento del equipo.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div
-                      className="mb-6 pb-4"
-                      style={{ borderBottom: "1px solid var(--sx-border)" }}
-                    >
-                      <h3 className="text-lg sm:text-xl font-bold text-white mb-3">
-                        Comparando {partidosComparadosData.length} partido
-                        {partidosComparadosData.length !== 1 ? "s" : ""}
-                      </h3>
-                      <div className="flex flex-wrap gap-2 sm:gap-3">
-                        {partidosComparadosData.map((s) => (
-                          <div
-                            key={s.id}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-                            style={{
-                              border: "1px solid var(--sx-border)",
-                              background: "rgba(255,255,255,0.03)",
-                            }}
-                          >
-                            <span
-                              className="w-3 h-3 rounded-full"
-                              style={{ backgroundColor: s.color }}
-                            />
-                            <span className="text-sm font-medium text-slate-200">
-                              {s.nombre}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="mb-6">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
-                        <div
-                          className="rounded-2xl p-2 col-span-1"
-                          style={cardBase}
-                        >
-                          <RadarEquipo
-                            series={seriesRadarPartidos}
-                            titulo="Radar comparativo del equipo"
-                          />
-                        </div>
-                        {FUNDAMENTOS_BARRAS.map((f) => (
-                          <GraficoBarrasFundamentoPartidos
-                            key={f}
-                            fundamento={f}
-                            acciones={accionesPartidosComparados}
-                            tituloOverride={`${NOMBRES[f]} (total)`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3 sm:gap-4">
-                      <div
-                        className="rounded-2xl p-3 sm:p-4"
-                        style={cardBase}
-                      >
-                        <GraficoRecepcionEquipoPorSet
-                          series={seriesRecepcionPartidos}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="mt-6 overflow-x-auto">
-                      <table className="w-full text-sm min-w-[500px]">
-                        <thead>
-                          <tr
-                            className="text-left"
-                            style={{
-                              color: "var(--sx-text-secondary)",
-                              borderBottom: "1px solid var(--sx-border)",
-                            }}
-                          >
-                            <th className="py-2 px-3">Partido</th>
-                            <th className="py-2 px-3 text-right">Acciones</th>
-                            <th className="py-2 px-3 text-right">Puntos</th>
-                            <th className="py-2 px-3 text-right">Errores</th>
-                            <th className="py-2 px-3 text-right">Saldo</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {partidosComparadosData.map((s) => (
-                            <tr
-                              key={s.id}
-                              style={{
-                                borderBottom:
-                                  "1px solid rgba(255,255,255,0.04)",
-                              }}
-                            >
-                              <td className="py-2 px-3 font-medium">
-                                <span
-                                  className="inline-block w-3 h-3 rounded-full mr-2 align-middle"
-                                  style={{ backgroundColor: s.color }}
-                                />
-                                <span className="text-white">
-                                  {s.nombre}
-                                </span>
-                              </td>
-                              <td className="py-2 px-3 text-right text-slate-300 font-mono tabular-nums">
-                                {s.stats.totalAcciones}
-                              </td>
-                              <td className="py-2 px-3 text-right text-emerald-400 font-mono tabular-nums">
-                                {s.stats.totalPuntos}
-                              </td>
-                              <td className="py-2 px-3 text-right text-rose-400 font-mono tabular-nums">
-                                {s.stats.totalErrores}
-                              </td>
-                              <td
-                                className={`py-2 px-3 text-right font-semibold tabular-nums ${
-                                  s.stats.saldoTotal > 0
-                                    ? "text-emerald-400"
-                                    : s.stats.saldoTotal < 0
-                                    ? "text-rose-400"
-                                    : "text-slate-400"
-                                }`}
-                              >
-                                {s.stats.saldoTotal > 0 ? "+" : ""}
-                                {s.stats.saldoTotal}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : !partidoDetalle || !statsPartido ? (
-              <div
-                className="rounded-2xl p-8 sm:p-12 text-center h-full flex items-center justify-center"
-                style={cardBase}
-              >
-                <div>
-                  <p className="text-4xl mb-3">👈</p>
-                  <p
-                    className="font-medium"
-                    style={{ color: "var(--sx-text-primary)" }}
-                  >
-                    Elegí un partido para ver el detalle
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div
-                  className="flex flex-wrap justify-end gap-2"
-                  data-pdf-ignorar
-                >
-                  <button
-                    onClick={() => {
-                      setModoDetalle("analisis");
-                      setJugadoresComparados([]);
-                    }}
-                    className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
-                      modoDetalle === "analisis"
-                        ? "bg-emerald-500 text-white border-emerald-500"
-                        : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
-                    }`}
-                  >
-                    <IconoVoley
-                      tipo="dashboard"
-                      size={14}
-                      className={
-                        modoDetalle === "analisis"
-                          ? "text-white"
-                          : "text-slate-400"
-                      }
-                    />
-                    Análisis
-                  </button>
-                  <button
-                    onClick={() => setModoDetalle("comparar-jugadores")}
-                    className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
-                      modoDetalle === "comparar-jugadores"
-                        ? "bg-emerald-500 text-white border-emerald-500"
-                        : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
-                    }`}
-                  >
-                    <IconoVoley
-                      tipo="comparar"
-                      size={14}
-                      className={
-                        modoDetalle === "comparar-jugadores"
-                          ? "text-white"
-                          : "text-slate-400"
-                      }
-                    />
-                    Comparar jugadores ({jugadoresComparados.length}/3)
-                  </button>
-                  <button
-                    onClick={() => setModoDetalle("crudas")}
-                    className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
-                      modoDetalle === "crudas"
-                        ? "bg-emerald-500 text-white border-emerald-500"
-                        : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
-                    }`}
-                  >
-                    <IconoVoley
-                      tipo="crudas"
-                      size={14}
-                      className={
-                        modoDetalle === "crudas"
-                          ? "text-white"
-                          : "text-slate-400"
-                      }
-                    />
-                    Estadísticas crudas
-                  </button>
-                  <button
-                    onClick={() => setModoDetalle("consecuencias")}
-                    className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
-                      modoDetalle === "consecuencias"
-                        ? "bg-emerald-500 text-white border-emerald-500"
-                        : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
-                    }`}
-                  >
-                    <span className="text-sm">🔍</span>
-                    Consecuencias
-                  </button>
-                </div>
-
-                <div
-                  className="rounded-2xl p-3 sm:p-5"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, rgba(22,14,24,0.95) 0%, rgba(15,29,53,0.92) 100%)",
-                    border: "1px solid rgba(229,62,77,0.3)",
-                    boxShadow:
-                      "0 8px 30px rgba(0,0,0,0.5), inset 0 1px 0 rgba(229,62,77,0.15)",
-                  }}
-                >
-                  <div className="flex justify-between items-start gap-2">
-                    <div className="min-w-0">
-                      <h3 className="text-lg sm:text-xl font-bold text-white break-words">
-                        {nombreEquipo} vs {nombreRivalDe(partidoDetalle)}
-                      </h3>
-                      <p
-                        className="text-sm mt-1"
-                        style={{ color: "var(--sx-text-secondary)" }}
-                      >
-                        📅 {partidoDetalle.fecha}
-                      </p>
-                      <p
-                        className="text-sm mt-1 font-semibold"
-                        style={{ color: "#FBBF24" }}
-                      >
-                        {scoreDe(partidoDetalle)}
-                      </p>
-                      {filtroSet !== "todos" && (
-                        <p
-                          className="text-xs mt-2 px-2 py-1 rounded inline-block"
-                          style={{
-                            background: "rgba(245,158,11,0.15)",
-                            color: "#FBBF24",
-                            border: "1px solid rgba(245,158,11,0.35)",
-                          }}
-                        >
-                          Filtrando solo Set {filtroSet}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  {partidoDetalle.notas && (
-                    <p
-                      className="text-xs mt-3 pt-3 italic"
-                      style={{
-                        color: "var(--sx-text-secondary)",
-                        borderTop: "1px solid rgba(255,255,255,0.08)",
-                      }}
-                    >
-                      &quot;{partidoDetalle.notas}&quot;
-                    </p>
-                  )}
-                </div>
-
-                {modoDetalle === "consecuencias" && (
-                  <div className="rounded-2xl p-3 sm:p-5" style={cardBase}>
-                    <AnalisisConsecuencias
-                      acciones={accionesVisualesParaAnalisis}
-                      nombreDeJugador={(id) =>
-                        id ? nombreDe(id) : "—"
-                      }
-                      titulo="Análisis de consecuencias del partido"
-                    />
-                  </div>
-                )}
-
-                {modoDetalle === "comparar-jugadores" && (
-                  <>
-                    <div
-                      className="rounded-2xl p-3 sm:p-5"
-                      style={cardBase}
-                      data-pdf-ignorar
-                    >
-                      <h4 className="font-semibold text-white mb-3">
-                        Elegí hasta 3 jugadores (mismo rol)
-                      </h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {jugadores
-                          .filter((j) =>
-                            accionesDelPartido.some(
-                              (a) => a.jugador_id === j.id
-                            )
-                          )
-                          .map((j) => {
-                            const idx = jugadoresComparados.indexOf(j.id);
-                            const colorComp =
-                              idx !== -1 ? COLORES_COMPARACION[idx] : null;
-
-                            let bloqueado = false;
-                            if (
-                              jugadoresComparados.length > 0 &&
-                              idx === -1
-                            ) {
-                              const primerEsArm = armadores.has(
-                                jugadoresComparados[0]
-                              );
-                              const esteEsArm = armadores.has(j.id);
-                              if (primerEsArm !== esteEsArm) bloqueado = true;
-                            }
-                            const puedeAgregarMas =
-                              jugadoresComparados.length >= 3 && idx === -1;
-
-                            return (
-                              <button
-                                key={j.id}
-                                onClick={() =>
-                                  handleToggleJugadorComparado(j.id)
-                                }
-                                disabled={bloqueado || puedeAgregarMas}
-                                className={`text-left px-3 py-2 rounded-lg border transition text-sm ${
-                                  colorComp
-                                    ? "border-2"
-                                    : bloqueado || puedeAgregarMas
-                                    ? "bg-white/5 text-slate-600 cursor-not-allowed opacity-50 border-white/10"
-                                    : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
-                                }`}
-                                style={
-                                  colorComp
-                                    ? {
-                                        backgroundColor: colorComp + "20",
-                                        borderColor: colorComp,
-                                      }
-                                    : undefined
-                                }
-                              >
-                                <div className="flex items-center gap-2">
-                                  {colorComp && (
-                                    <span
-                                      className="w-4 h-4 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
-                                      style={{ backgroundColor: colorComp }}
-                                    >
-                                      {idx + 1}
-                                    </span>
-                                  )}
-                                  <span className="font-medium truncate text-white">
-                                    {nombreDe(j.id)}
-                                    {j.rol === "armador" && " (Arm)"}
-                                  </span>
-                                </div>
-                              </button>
-                            );
-                          })}
-                      </div>
-                    </div>
-
-                    {statsJugadoresComparados.length > 0 ? (
-                      <div className="rounded-2xl p-4 sm:p-6" style={cardBase}>
-                        <div className="mb-6">
-                          <RadarJugador
-                            series={seriesRadarJugadores}
-                            esArmador={esComparacionArmador}
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                          <div
-                            className="rounded-2xl p-3 sm:p-4"
-                            style={cardBase}
-                          >
-                            <GraficoSaquePorSet
-                              series={seriesSaqueJugadores}
-                            />
-                          </div>
-
-                          {!esComparacionArmador && (
-                            <div
-                              className="rounded-2xl p-3 sm:p-4"
-                              style={cardBase}
-                            >
-                              <GraficoRecepcionPorSet
-                                series={seriesRecepcionJugadores}
-                              />
-                            </div>
-                          )}
-
-                          {esComparacionArmador && (
-                            <div
-                              className="rounded-2xl p-3 sm:p-4"
-                              style={cardBase}
-                            >
-                              <GraficoArmadosPorSet
-                                series={seriesArmadosJugadores}
-                              />
-                            </div>
-                          )}
-
-                          <div
-                            className={`rounded-2xl p-3 sm:p-4 ${
-                              esComparacionArmador ? "" : "md:col-span-2"
-                            }`}
-                            style={cardBase}
-                          >
-                            <GraficoBloqueoPorSet
-                              series={seriesBloqueoJugadores}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="mt-6 overflow-x-auto">
-                          <table className="w-full text-sm min-w-[500px]">
-                            <thead>
-                              <tr
-                                className="text-left"
-                                style={{
-                                  color: "var(--sx-text-secondary)",
-                                  borderBottom: "1px solid var(--sx-border)",
-                                }}
-                              >
-                                <th className="py-2 px-3">Jugador</th>
-                                <th className="py-2 px-3 text-right">
-                                  Acciones
-                                </th>
-                                <th className="py-2 px-3 text-right">Puntos</th>
-                                <th className="py-2 px-3 text-right">
-                                  Errores
-                                </th>
-                                <th className="py-2 px-3 text-right">Saldo</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {statsJugadoresComparados
-                                .filter((s) => s.est)
-                                .map((s) => (
-                                  <tr
-                                    key={s.id}
-                                    style={{
-                                      borderBottom:
-                                        "1px solid rgba(255,255,255,0.04)",
-                                    }}
-                                  >
-                                    <td className="py-2 px-3 font-medium">
-                                      <span
-                                        className="inline-block w-3 h-3 rounded-full mr-2 align-middle"
-                                        style={{ backgroundColor: s.color }}
-                                      />
-                                      <span className="text-white">
-                                        {s.nombre}
-                                      </span>
-                                    </td>
-                                    <td className="py-2 px-3 text-right text-slate-300 font-mono tabular-nums">
-                                      {s.est!.totalAcciones}
-                                    </td>
-                                    <td className="py-2 px-3 text-right text-emerald-400 font-mono tabular-nums">
-                                      {s.est!.totalPuntos}
-                                    </td>
-                                    <td className="py-2 px-3 text-right text-rose-400 font-mono tabular-nums">
-                                      {s.est!.totalErrores}
-                                    </td>
-                                    <td
-                                      className={`py-2 px-3 text-right font-semibold tabular-nums ${
-                                        s.est!.saldoTotal > 0
-                                          ? "text-emerald-400"
-                                          : s.est!.saldoTotal < 0
-                                          ? "text-rose-400"
-                                          : "text-slate-400"
-                                      }`}
-                                    >
-                                      {s.est!.saldoTotal > 0 ? "+" : ""}
-                                      {s.est!.saldoTotal}
-                                    </td>
-                                  </tr>
-                                ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        className="rounded-2xl p-8 sm:p-12 text-center"
-                        style={cardBase}
-                      >
-                        <p className="text-4xl mb-3">👆</p>
-                        <p
-                          className="font-medium"
-                          style={{ color: "var(--sx-text-primary)" }}
-                        >
-                          Elegí jugadores arriba para ver la comparación
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {modoDetalle === "crudas" && (
-                  <div className="rounded-2xl p-3 sm:p-6" style={cardBase}>
-                    <TablaEstadisticasCrudas
-                      acciones={accionesDelPartido}
-                      jugadoresIds={idsJugadores}
-                      nombresJugadores={nombresJugadoresMap}
-                      armadores={armadores}
-                      contexto={`Solo este partido · vs ${nombreRivalDe(
-                        partidoDetalle
-                      )} · ${partidoDetalle.fecha}${
-                        filtroSet !== "todos"
-                          ? ` · Set ${filtroSet}`
-                          : ""
-                      }${
-                        filtrosTacticos &&
-                        hayFiltrosTacticos(filtrosTacticos)
-                          ? " · con filtros tácticos"
-                          : ""
-                      }`}
-                    />
-                  </div>
-                )}
-
-                {modoDetalle === "analisis" && (
-                  <>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
-                      <div
-                        className="rounded-2xl p-3 sm:p-4 text-center"
-                        style={cardBase}
-                      >
-                        <p
-                          className="text-xs uppercase tracking-wider font-semibold"
-                          style={{ color: "var(--sx-text-secondary)" }}
-                        >
-                          Acciones
-                        </p>
-                        <p className="text-xl sm:text-2xl font-black text-white">
-                          {statsPartido.totales.totalAcciones}
-                        </p>
-                      </div>
-                      <div
-                        className="rounded-2xl p-3 sm:p-4 text-center"
-                        style={{
-                          background: "rgba(16,185,129,0.1)",
-                          border: "1px solid rgba(16,185,129,0.3)",
-                        }}
-                      >
-                        <p
-                          className="text-xs uppercase tracking-wider font-semibold"
-                          style={{ color: "#34D399" }}
-                        >
-                          Puntos
-                        </p>
-                        <p className="text-xl sm:text-2xl font-black text-emerald-400">
-                          {statsPartido.totales.totalPuntos}
-                        </p>
-                      </div>
-                      <div
-                        className="rounded-2xl p-3 sm:p-4 text-center"
-                        style={{
-                          background: "rgba(229,62,77,0.1)",
-                          border: "1px solid rgba(229,62,77,0.3)",
-                        }}
-                      >
-                        <p
-                          className="text-xs uppercase tracking-wider font-semibold"
-                          style={{ color: "#F87171" }}
-                        >
-                          Errores
-                        </p>
-                        <p className="text-xl sm:text-2xl font-black text-rose-400">
-                          {statsPartido.totales.totalErrores}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
-                      <div
-                        className="rounded-2xl p-2 col-span-1"
-                        style={cardBase}
-                      >
-                        <RadarEquipo equipo={statsPartido.totales} />
-                      </div>
-                      {FUNDAMENTOS_BARRAS.map((f) => (
-                        <GraficoBarrasFundamentoPartidos
-                          key={f}
-                          fundamento={f}
-                          acciones={accionesDelPartido}
-                        />
-                      ))}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                      <div
-                        className="rounded-2xl p-3 sm:p-5"
-                        style={cardBase}
-                      >
-                        <GraficoRecepcionEquipoPorSet
-                          promedios={promediosRecepcionEquipo}
-                        />
-                      </div>
-                      <div
-                        className="rounded-2xl p-3 sm:p-5"
-                        style={cardBase}
-                      >
-                        <GraficoTortaRival
-                          erroresRivales={datosRivalPartido.errores}
-                          buenasRivales={datosRivalPartido.buenas}
-                        />
-                      </div>
-                    </div>
-
-                    <TablaJugadoresPorSet
-                      jugadoresIds={jugadores.map((j) => j.id)}
-                      nombresJugadores={Object.fromEntries(
-                        jugadores.map((j) => [j.id, nombreDe(j.id)])
-                      )}
-                      acciones={accionesDelPartido}
-                      armadores={armadores}
-                      statsEquipoTotales={statsPartido.totales}
-                    />
-
-                    <div
-                      className="rounded-2xl p-3 sm:p-5 overflow-x-auto"
-                      style={cardBase}
-                    >
-                      <h4 className="font-semibold text-white mb-3">
-                        Por fundamento (equipo)
-                      </h4>
-                      <table className="w-full text-sm min-w-[600px] border-collapse">
-                        <thead>
-                          <tr
-                            className="text-left text-[11px] font-bold uppercase tracking-wider"
-                            style={{
-                              color: "var(--sx-text-secondary)",
-                              borderBottom:
-                                "1px solid rgba(255,255,255,0.08)",
-                            }}
-                          >
-                            <th className="py-2.5 px-3">Fundamento</th>
-                            <th className="py-2.5 px-3 text-right">Total</th>
-                            <th
-                              className="py-2.5 px-3 text-right"
-                              style={{ color: "#34D399" }}
-                            >
-                              Pos
-                            </th>
-                            <th
-                              className="py-2.5 px-3 text-right"
-                              style={{ color: "#F87171" }}
-                            >
-                              Neg
-                            </th>
-                            <th className="py-2.5 px-3 text-right">Puntos</th>
-                            <th className="py-2.5 px-3 text-right">
-                              Errores
-                            </th>
-                            <th className="py-2.5 px-3 text-right">Saldo</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {FUNDAMENTOS.map((f) => {
-                            const e = statsPartido.totales.porFundamento[f];
-                            if (!e || e.total === 0) return null;
-                            return (
-                              <tr
-                                key={f}
-                                style={{
-                                  borderBottom:
-                                    "1px solid rgba(255,255,255,0.04)",
-                                }}
-                              >
-                                <td className="py-2.5 px-3 font-bold text-white">
-                                  {NOMBRES[f]}
-                                </td>
-                                <td className="py-2.5 px-3 text-right text-slate-200 font-mono tabular-nums">
-                                  {e.total}
-                                </td>
-                                <td
-                                  className="py-2.5 px-3 text-right font-mono tabular-nums font-bold"
-                                  style={{ color: "#34D399" }}
-                                >
-                                  {e.positivos}
-                                </td>
-                                <td
-                                  className="py-2.5 px-3 text-right font-mono tabular-nums font-bold"
-                                  style={{ color: "#F87171" }}
-                                >
-                                  {e.negativos}
-                                </td>
-                                <td className="py-2.5 px-3 text-right text-slate-200 font-mono tabular-nums">
-                                  {e.puntos}
-                                </td>
-                                <td className="py-2.5 px-3 text-right text-slate-200 font-mono tabular-nums">
-                                  {e.errores}
-                                </td>
-                                <td
-                                  className={`py-2.5 px-3 text-right font-black tabular-nums ${
-                                    e.saldo > 0
-                                      ? "text-emerald-400"
-                                      : e.saldo < 0
-                                      ? "text-rose-400"
-                                      : "text-slate-400"
-                                  }`}
-                                >
-                                  {e.saldo > 0 ? "+" : ""}
-                                  {e.saldo}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {crudasEnPDF && (
-                      <div
-                        className="rounded-2xl p-3 sm:p-6"
-                        style={cardBase}
-                      >
-                        <TablaEstadisticasCrudas
-                          acciones={accionesDelPartido}
-                          jugadoresIds={idsJugadores}
-                          nombresJugadores={nombresJugadoresMap}
-                          armadores={armadores}
-                          contexto={`Solo este partido · vs ${nombreRivalDe(
-                            partidoDetalle
-                          )} · ${partidoDetalle.fecha}${
-                            filtroSet !== "todos"
-                              ? ` · Set ${filtroSet}`
-                              : ""
-                          }`}
-                        />
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
+            {/* MODO JUGADOR POR PARTIDOS */}
+            {modoPrincipal === "jugador-por-partidos" && (
+              <VistaJugadorPorPartidos
+                jugadorSeleccionadoJxP={jugadorSeleccionadoJxP}
+                jugadorNombre={nombreDe(jugadorSeleccionadoJxP ?? "")}
+                esArmadorJxP={esArmadorJxP ?? false}
+                partidos={partidos}
+                partidosJxP={partidosJxP}
+                onTogglePartidoJxP={handleTogglePartidoJxP}
+                partidosJxPData={partidosJxPData}
+                seriesRadarJxP={seriesRadarJxP}
+                seriesSaqueJxP={seriesSaqueJxP}
+                seriesRecepcionJxP={seriesRecepcionJxP}
+                seriesBloqueoJxP={seriesBloqueoJxP}
+                seriesArmadosJxP={seriesArmadosJxP}
+                accionesJxPCombinadas={accionesJxPCombinadas}
+                acciones={acciones}
+                nombreDe={nombreDe}
+                nombreRivalDe={nombreRivalDe}
+              />
             )}
           </div>
         </div>
