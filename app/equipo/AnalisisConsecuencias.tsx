@@ -1,21 +1,16 @@
 "use client";
 
 // ============================================================
-// ANÁLISIS DE CONSECUENCIAS — UI simplificada
+// ANÁLISIS DE CONSECUENCIAS — UI v3 con OR/AND/NOT + comparar
 // ============================================================
 // Estructura:
-//   1. Header con resumen tipo "receta" + casos + reset
-//   2. Chips de preguntas rápidas
-//   3. Bloque integrado CUANDO → MIRAR
-//      (trigger + observado en un solo flujo visual)
-//   4. Filtros avanzados (colapsados)
-//      - Alcance
-//      - Historia previa (rachas)
-//      - Contexto del partido
-//      - Comparadores
-//   5. Resultados:
-//      - Comportamiento del trigger
-//      - Consecuencia
+//   [Header] resumen + casos + reset + toggle "comparar"
+//   [Chips]  preguntas rápidas
+//   [Panel A] y [Panel B] (si comparación activa):
+//     - Bloques CUANDO (lista con AND/OR/NOT entre ellos)
+//     - MIRAR (acción observada + relación jugador)
+//     - Filtros avanzados (alcance + comparadores)
+//     - Resultados (comportamiento + consecuencia)
 // ============================================================
 
 import { useMemo, useState, useEffect } from "react";
@@ -23,29 +18,41 @@ import {
   analizarConsecuencias,
   etiquetaAmbito,
   etiquetaCierraPunto,
+  etiquetaOperador,
   etiquetaRelacion,
+  etiquetaRelacionObservado,
   etiquetaResultado,
   etiquetaTipoDisparador,
   etiquetaUbicacion,
   hayComparadoresActivos,
   hayContextoPartidoActivo,
+  hayFiltrosAvanzadosEnBloque,
   resultadosPorTipoAnalisis,
+  BLOQUE_TRIGGER_VACIO,
   COINCIDENCIA_VACIA,
   CONTEXTO_PARTIDO_VACIO,
   FILTRO_ACCION_HISTORICA_VACIO,
   type AmbitoRacha,
+  type BloqueTrigger,
+  type BloqueTriggerFiltro,
   type CierraPuntoFiltro,
   type CoincidenciaFiltro,
   type ComportamientoTrigger,
   type ContextoPartidoFiltro,
-  type DisparadorFiltro,
   type FiltroAccionHistorica,
   type FiltrosAnalisis,
+  type ItemPatron,
   type MarcadorFiltro,
+  type OperadorBloque,
+  type PatronPrevioFiltro,
+  type PosicionEnSet,
   type RachaHistorica,
+  type RachaJugadorFiltro,
   type RelacionJugador,
+  type RelacionJugadorObservado,
   type ResultadoAnalisis,
   type TipoDisparador,
+  type TipoRachaJugador,
   type UbicacionFiltro,
   type Ventana,
 } from "@/lib/analisisConsecuencias";
@@ -68,17 +75,30 @@ const TIPOS: { v: TipoDisparador; label: string }[] = [
 
 const TIPOS_OBSERVADOS: { v: TipoDisparador | "cualquiera"; label: string }[] = [
   { v: "cualquiera", label: "1ª acción siguiente" },
-  { v: "ataque", label: "Siguiente ataque" },
-  { v: "saque", label: "Siguiente saque" },
-  { v: "recepcion", label: "Siguiente recepción" },
-  { v: "bloqueo", label: "Siguiente bloqueo" },
-  { v: "armado", label: "Siguiente armado" },
-  { v: "defensa", label: "Siguiente defensa" },
+  { v: "ataque", label: "Sig. ataque" },
+  { v: "saque", label: "Sig. saque" },
+  { v: "recepcion", label: "Sig. recepción" },
+  { v: "bloqueo", label: "Sig. bloqueo" },
+  { v: "armado", label: "Sig. armado" },
+  { v: "defensa", label: "Sig. defensa" },
 ];
 
-const ALCANCES = [
+const RELACIONES_OBSERVADO: { v: RelacionJugadorObservado; label: string }[] = [
+  { v: "cualquiera", label: "Cualquier jugador" },
+  { v: "mismo", label: "Mismo que el trigger" },
+  { v: "companero", label: "Un compañero" },
+  { v: "rival", label: "Un rival" },
+];
+
+const ALANCES = [
   { v: "partido" as const, label: "En el partido" },
   { v: "mismo_punto" as const, label: "Solo en el mismo punto" },
+];
+
+const OPERADORES: { v: OperadorBloque; label: string }[] = [
+  { v: "AND", label: "Y" },
+  { v: "OR", label: "O" },
+  { v: "NOT", label: "Y NO" },
 ];
 
 const AMBITOS: { v: AmbitoRacha; label: string }[] = [
@@ -95,7 +115,7 @@ const UBICACIONES: { v: UbicacionFiltro; label: string }[] = [
   { v: "otro", label: "Otro" },
 ];
 
-const RELACIONES: { v: RelacionJugador; label: string }[] = [
+const RELACIONES_PREVIA: { v: RelacionJugador; label: string }[] = [
   { v: "cualquiera", label: "Cualquier jugador" },
   { v: "mismo", label: "Mismo jugador" },
   { v: "companero", label: "Compañero" },
@@ -123,8 +143,7 @@ const TIPOS_SAQUE: { v: "potencia" | "flotado" | null; label: string }[] = [
   { v: "flotado", label: "Flotado" },
 ];
 
-const ZONAS_JUGADOR: { v: number | "cualquiera"; label: string }[] = [
-  { v: "cualquiera", label: "Cualquiera" },
+const ZONAS_JUGADOR: { v: number; label: string }[] = [
   { v: 1, label: "Z1" },
   { v: 2, label: "Z2" },
   { v: 3, label: "Z3" },
@@ -132,6 +151,10 @@ const ZONAS_JUGADOR: { v: number | "cualquiera"; label: string }[] = [
   { v: 5, label: "Z5" },
   { v: 6, label: "Z6" },
 ];
+
+const ROLES = ["A", "O", "C1", "C2", "P1", "P2", "L"];
+
+const ROTACIONES = [1, 2, 3, 4, 5, 6];
 
 const ESTADOS_MARCADOR = [
   { v: "cualquiera" as const, label: "Cualquier estado" },
@@ -143,14 +166,14 @@ const ESTADOS_MARCADOR = [
 const DIFERENCIAS_MARCADOR = [
   { v: "cualquiera" as const, label: "Cualquiera" },
   { v: "0" as const, label: "Empate (0)" },
-  { v: "1-2" as const, label: "1-2 puntos" },
-  { v: "3-5" as const, label: "3-5 puntos" },
-  { v: "6+" as const, label: "6+ puntos" },
+  { v: "1-2" as const, label: "1-2 pts" },
+  { v: "3-5" as const, label: "3-5 pts" },
+  { v: "6+" as const, label: "6+ pts" },
 ];
 
 const PUNTOS_CERRAR = [
   { v: "cualquiera" as const, label: "Cualquiera" },
-  { v: "<=1" as const, label: "≤ 1 (match point)" },
+  { v: "<=1" as const, label: "≤ 1 (match)" },
   { v: "<=3" as const, label: "≤ 3" },
   { v: "<=5" as const, label: "≤ 5" },
 ];
@@ -167,118 +190,26 @@ const INICIOS_PUNTO = [
   { v: "cualquiera" as const, label: "Cualquiera" },
   { v: "ace_propio" as const, label: "Ace propio" },
   { v: "ace_rival" as const, label: "Ace rival" },
-  { v: "recepcion_positiva" as const, label: "Recepción positiva" },
-  { v: "recepcion_neutra" as const, label: "Recepción neutra" },
-  { v: "recepcion_negativa" as const, label: "Recepción negativa" },
+  { v: "recepcion_positiva" as const, label: "Recepción +" },
+  { v: "recepcion_neutra" as const, label: "Recepción !" },
+  { v: "recepcion_negativa" as const, label: "Recepción -" },
   { v: "overpass" as const, label: "Overpass" },
   { v: "error_directo" as const, label: "Error directo" },
   { v: "otro" as const, label: "Otro" },
 ];
 
-// ------------------------------------------------------------
-// PREGUNTAS RÁPIDAS
-// ------------------------------------------------------------
-
-interface PreguntaRapida {
-  id: string;
-  titulo: string;
-  tipo: TipoDisparador;
-  resultado: string;
-  tipoObservado: TipoDisparador | "cualquiera";
-  alcance: "partido" | "mismo_punto";
-  jugadorObservado: "mismo" | "cualquiera";
-  contextoPartido?: ContextoPartidoFiltro;
-}
-
-const PREGUNTAS_RAPIDAS: PreguntaRapida[] = [
-  {
-    id: "error-ataque",
-    titulo: "Error ataque → sig. ataque",
-    tipo: "ataque",
-    resultado: "error",
-    tipoObservado: "ataque",
-    alcance: "partido",
-    jugadorObservado: "mismo",
-  },
-  {
-    id: "mala-recep",
-    titulo: "Recep. negativa → sig. ataque",
-    tipo: "recepcion",
-    resultado: "negativa",
-    tipoObservado: "ataque",
-    alcance: "partido",
-    jugadorObservado: "cualquiera",
-  },
-  {
-    id: "ace-saque",
-    titulo: "Ace → sig. saque",
-    tipo: "saque",
-    resultado: "ace",
-    tipoObservado: "saque",
-    alcance: "partido",
-    jugadorObservado: "mismo",
-  },
-  {
-    id: "bloqueo-punto",
-    titulo: "Bloqueo punto → sig. ataque",
-    tipo: "bloqueo",
-    resultado: "punto",
-    tipoObservado: "ataque",
-    alcance: "partido",
-    jugadorObservado: "cualquiera",
-  },
-  {
-    id: "defensa-pos",
-    titulo: "Defensa positiva → sig. ataque",
-    tipo: "defensa",
-    resultado: "toque_positiva",
-    tipoObservado: "ataque",
-    alcance: "partido",
-    jugadorObservado: "cualquiera",
-  },
-  {
-    id: "cierre-set",
-    titulo: "Cierre de set",
-    tipo: "ataque",
-    resultado: "cualquiera",
-    tipoObservado: "ataque",
-    alcance: "partido",
-    jugadorObservado: "cualquiera",
-    contextoPartido: {
-      ...CONTEXTO_PARTIDO_VACIO,
-      marcador: {
-        ...CONTEXTO_PARTIDO_VACIO.marcador,
-        puntosParaCerrar: "<=3",
-      },
-    },
-  },
-  {
-    id: "racha-ganando",
-    titulo: "Racha 3+ ganando",
-    tipo: "ataque",
-    resultado: "cualquiera",
-    tipoObservado: "ataque",
-    alcance: "partido",
-    jugadorObservado: "cualquiera",
-    contextoPartido: {
-      ...CONTEXTO_PARTIDO_VACIO,
-      rachaPuntos: 3,
-    },
-  },
-  {
-    id: "inmediata",
-    titulo: "Acción inmediata siguiente",
-    tipo: "ataque",
-    resultado: "cualquiera",
-    tipoObservado: "cualquiera",
-    alcance: "mismo_punto",
-    jugadorObservado: "cualquiera",
-  },
+const POSICIONES_SET: { v: PosicionEnSet; label: string }[] = [
+  { v: "cualquiera", label: "Cualquiera" },
+  { v: "primero", label: "Primer punto del set" },
+  { v: "ultimo", label: "Último punto del set" },
 ];
 
-// ------------------------------------------------------------
-// COMPARADORES
-// ------------------------------------------------------------
+const TIPOS_RACHA_JUGADOR: { v: TipoRachaJugador; label: string }[] = [
+  { v: "puntos_ganados", label: "Puntos ganados seguidos" },
+  { v: "puntos_perdidos", label: "Puntos perdidos seguidos" },
+  { v: "errores_seguidos", label: "Errores seguidos" },
+  { v: "aciertos_seguidos", label: "Aciertos seguidos" },
+];
 
 const COMPARADORES: {
   key: keyof CoincidenciaFiltro;
@@ -288,6 +219,45 @@ const COMPARADORES: {
   { key: "mismaZonaTriggerOrigen", etiqueta: "Misma zona origen" },
   { key: "mismaVelocidadAnterior", etiqueta: "Misma velocidad" },
 ];
+
+// ------------------------------------------------------------
+// CONFIGURACIÓN DE UN PANEL
+// ------------------------------------------------------------
+
+interface ConfiguracionPanel {
+  bloques: BloqueTrigger[];
+  tipoObservado: TipoDisparador | "cualquiera";
+  jugadorObservadoFiltro: string;
+  alcance: "partido" | "mismo_punto";
+  coincidencias: CoincidenciaFiltro;
+}
+
+let _blockCounter = 0;
+function generarIdBloque(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `b-${crypto.randomUUID()}`;
+  }
+  _blockCounter += 1;
+  return `b-${Date.now()}-${_blockCounter}`;
+}
+
+function bloqueVacio(operador: OperadorBloque = "AND"): BloqueTrigger {
+  return {
+    id: generarIdBloque(),
+    operador,
+    filtro: { ...BLOQUE_TRIGGER_VACIO },
+  };
+}
+
+function panelInicial(): ConfiguracionPanel {
+  return {
+    bloques: [bloqueVacio("AND")],
+    tipoObservado: "ataque",
+    jugadorObservadoFiltro: "cualquiera",
+    alcance: "partido",
+    coincidencias: { ...COINCIDENCIA_VACIA },
+  };
+}
 
 // ------------------------------------------------------------
 // PROPS
@@ -300,30 +270,21 @@ interface Props {
   titulo?: string;
   jugadorId?: string;
   jugadoresDisponibles?: { id: string; nombre: string }[];
+  partidosDisponibles?: { id: string; nombre: string }[];
 }
 
 // ------------------------------------------------------------
 // HELPERS
 // ------------------------------------------------------------
 
-let _rachaCounter = 0;
-function generarIdRacha(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `racha-${crypto.randomUUID()}`;
-  }
-  _rachaCounter += 1;
-  return `racha-${Date.now()}-${_rachaCounter}`;
-}
+const selectCls =
+  "w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1.5 border border-white/10 focus:outline-none focus:border-slate-400 cursor-pointer";
+const inputCls = selectCls;
 
-function nuevaRacha(): RachaHistorica {
-  return {
-    id: generarIdRacha(),
-    ambito: "mismo_punto",
-    desdeAtras: 0,
-    minimo: 1,
-    filtro: { ...FILTRO_ACCION_HISTORICA_VACIO },
-  };
-}
+const cardBase: React.CSSProperties = {
+  background: "var(--sx-surface-1)",
+  border: "1px solid var(--sx-border)",
+};
 
 function resumenRacha(r: RachaHistorica): string {
   const partes: string[] = [];
@@ -335,23 +296,34 @@ function resumenRacha(r: RachaHistorica): string {
   } else {
     partes.push("cualquier acción");
   }
-  if (r.filtro.resultados.length > 0) {
-    partes.push(r.filtro.resultados[0]);
+  if (r.filtro.resultados.length > 0) partes.push(r.filtro.resultados[0]);
+  return partes.join(" · ");
+}
+
+function resumenPrevia(p: FiltroAccionHistorica): string {
+  const partes: string[] = [];
+  if (p.tipos.length > 0) {
+    partes.push(p.tipos.map((t) => etiquetaTipoDisparador(t)).join("|"));
+  } else {
+    partes.push("cualquier acción");
+  }
+  if (p.resultados.length > 0) partes.push(p.resultados[0]);
+  if (p.relacionJugador !== "cualquiera") {
+    partes.push(etiquetaRelacion(p.relacionJugador));
   }
   return partes.join(" · ");
 }
 
-const cardBase: React.CSSProperties = {
-  background: "var(--sx-surface-1)",
-  border: "1px solid var(--sx-border)",
-};
-
-// Estilos compartidos para selects compactos
-const selectCls =
-  "w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1.5 border border-white/10 focus:outline-none focus:border-slate-400 cursor-pointer";
+function resumenBloque(b: BloqueTriggerFiltro): string {
+  const partes: string[] = [];
+  partes.push(etiquetaTipoDisparador(b.tipo));
+  if (b.resultado !== "cualquiera") partes.push(b.resultado);
+  if (b.jugadorId) partes.push(`jugador:${b.jugadorId.slice(0, 6)}…`);
+  return partes.join(" · ");
+}
 
 // ------------------------------------------------------------
-// COMPONENTE
+// COMPONENTE PRINCIPAL
 // ------------------------------------------------------------
 
 export default function AnalisisConsecuencias({
@@ -361,36 +333,21 @@ export default function AnalisisConsecuencias({
   titulo = "Análisis de consecuencias",
   jugadorId,
   jugadoresDisponibles,
+  partidosDisponibles,
 }: Props) {
-  const [disparador, setDisparador] = useState<DisparadorFiltro>({
-    tipo: "ataque",
-    resultado: "error",
+  const [modoComparacion, setModoComparacion] = useState(false);
+  const [panelA, setPanelA] = useState<ConfiguracionPanel>(() => {
+    const p = panelInicial();
+    if (jugadorId) {
+      p.bloques[0].filtro.jugadorId = jugadorId;
+      p.jugadorObservadoFiltro = "mismo";
+    }
+    return p;
   });
-  const [jugadorFiltroId, setJugadorFiltroId] = useState<string | null>(
-    jugadorId ?? null
-  );
-  const [rachas, setRachas] = useState<RachaHistorica[]>([]);
-  const [contextoPartido, setContextoPartido] =
-    useState<ContextoPartidoFiltro>({ ...CONTEXTO_PARTIDO_VACIO });
-  const [tipoObservado, setTipoObservado] = useState<
-    TipoDisparador | "cualquiera"
-  >("ataque");
-  const [jugadorObservadoFiltro, setJugadorObservadoFiltro] = useState<string>(
-    jugadorId ? "mismo" : "cualquiera"
-  );
-  const [alcance, setAlcance] = useState<"partido" | "mismo_punto">("partido");
-  const [coincidencias, setCoincidencias] = useState<CoincidenciaFiltro>({
-    ...COINCIDENCIA_VACIA,
-  });
+  const [panelB, setPanelB] = useState<ConfiguracionPanel>(panelInicial);
   const [preguntaActivaId, setPreguntaActivaId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (jugadorId) {
-      setJugadorFiltroId(jugadorId);
-      setJugadorObservadoFiltro("mismo");
-    }
-  }, [jugadorId]);
-
+  // Lista de jugadores únicos (para dropdowns)
   const listaJugadores = useMemo(() => {
     const ids = new Set<string>();
     for (const a of acciones) if (a.jugador_id) ids.add(a.jugador_id);
@@ -417,170 +374,114 @@ export default function AnalisisConsecuencias({
     [listaJugadores, nombreDeJugador, jugadoresDisponibles]
   );
 
-  const filtros: FiltrosAnalisis = useMemo(() => {
-    const esMismo = jugadorObservadoFiltro === "mismo";
-    const esCualquiera = jugadorObservadoFiltro === "cualquiera";
-    const jugadorObservadoId =
-      esMismo || esCualquiera ? null : jugadorObservadoFiltro;
-
+  // Sets y puntos únicos (para filtros de scope)
+  const { setsUnicos, puntosUnicos } = useMemo(() => {
+    const sets = new Set<number>();
+    const puntos = new Set<number>();
+    for (const a of acciones) {
+      sets.add(a.set_numero);
+      puntos.add(a.punto_numero);
+    }
     return {
-      disparador,
-      jugadorId: jugadorFiltroId,
-      rachas,
-      contextoPartido: hayContextoPartidoActivo(contextoPartido)
-        ? contextoPartido
-        : null,
-      tipoObservado,
-      jugadorObservadoId,
-      alcance,
-      ventana: 1 as Ventana,
-      coincidencias: {
-        ...coincidencias,
-        mismoJugadorTrigger: esMismo,
-      },
+      setsUnicos: Array.from(sets).sort(),
+      puntosUnicos: Array.from(puntos).sort(),
     };
-  }, [
-    disparador,
-    jugadorFiltroId,
-    rachas,
-    contextoPartido,
-    tipoObservado,
-    jugadorObservadoFiltro,
-    alcance,
-    coincidencias,
-  ]);
+  }, [acciones]);
 
-  const resultado: ResultadoAnalisis | null = useMemo(
-    () => analizarConsecuencias(acciones, filtros),
-    [acciones, filtros]
-  );
-
-  // Cantidad de filtros avanzados activos
-  const cantAvanzados = useMemo(() => {
-    let n = 0;
-    if (alcance !== "partido") n++;
-    n += rachas.length;
-    if (hayContextoPartidoActivo(contextoPartido)) n++;
-    n += Object.values(coincidencias).filter(Boolean).length;
-    return n;
-  }, [alcance, rachas, contextoPartido, coincidencias]);
-
-  // Receta resumen
-  const receta = useMemo(() => {
-    const partes: string[] = [];
-    const tipoTrig = etiquetaTipoDisparador(disparador.tipo);
-    const resTrig =
-      disparador.resultado !== "cualquiera"
-        ? ` · ${etiquetaResultado(disparador.resultado)}`
-        : "";
-    const jugTrig = jugadorFiltroId ? ` · ${nombre(jugadorFiltroId)}` : "";
-    partes.push(`${tipoTrig}${resTrig}${jugTrig}`);
-
-    partes.push("→");
-
-    const tipoObs =
-      tipoObservado === "cualquiera"
-        ? "siguiente acción"
-        : `siguiente ${etiquetaTipoDisparador(tipoObservado)}`;
-    const jugObs =
-      jugadorObservadoFiltro === "mismo"
-        ? "mismo jugador"
-        : jugadorObservadoFiltro === "cualquiera"
-        ? "cualquier jugador"
-        : nombre(jugadorObservadoFiltro);
-    partes.push(`${tipoObs} de ${jugObs}`);
-
-    return partes.join(" ");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    disparador,
-    jugadorFiltroId,
-    tipoObservado,
-    jugadorObservadoFiltro,
-  ]);
-
-  // Handlers
-  const agregarRacha = () => setRachas((prev) => [...prev, nuevaRacha()]);
-  const eliminarRacha = (id: string) =>
-    setRachas((prev) => prev.filter((r) => r.id !== id));
-  const actualizarRacha = (id: string, cambios: Partial<RachaHistorica>) => {
-    setRachas((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, ...cambios } : r))
-    );
+  // Handlers de panel
+  const setPanel = (cual: "A" | "B") => (nuevo: ConfiguracionPanel) => {
+    if (cual === "A") setPanelA(nuevo);
+    else setPanelB(nuevo);
   };
 
+  const restablecerTodo = () => {
+    setPreguntaActivaId(null);
+    const baseA = panelInicial();
+    if (jugadorId) {
+      baseA.bloques[0].filtro.jugadorId = jugadorId;
+      baseA.jugadorObservadoFiltro = "mismo";
+    }
+    setPanelA(baseA);
+    setPanelB(panelInicial());
+    setModoComparacion(false);
+  };
+
+  // Aplicar pregunta rápida solo al panel A (o a ambos en modo comparar?)
+  // Por simplicidad: al A. El usuario puede duplicar.
   const aplicarPreguntaRapida = (p: PreguntaRapida) => {
     setPreguntaActivaId(p.id);
-    setDisparador({ tipo: p.tipo, resultado: p.resultado });
-    setTipoObservado(p.tipoObservado);
-    setAlcance(p.alcance);
-    setRachas([]);
-    setContextoPartido(p.contextoPartido ?? { ...CONTEXTO_PARTIDO_VACIO });
-    const obs = jugadorId ? "mismo" : p.jugadorObservado;
-    setJugadorObservadoFiltro(obs);
-    setCoincidencias({
-      ...COINCIDENCIA_VACIA,
-      mismoJugadorTrigger: obs === "mismo",
-    });
+    const nuevo: ConfiguracionPanel = {
+      bloques: [p.bloque],
+      tipoObservado: p.tipoObservado,
+      jugadorObservadoFiltro: p.jugadorObservadoRelacion,
+      alcance: p.alcance,
+      coincidencias: { ...COINCIDENCIA_VACIA },
+    };
+    setPanelA(nuevo);
   };
 
-  const cambiarJugadorObservado = (valor: string) => {
-    setPreguntaActivaId(null);
-    setJugadorObservadoFiltro(valor);
-    setCoincidencias((prev) => ({
-      ...prev,
-      mismoJugadorTrigger: valor === "mismo",
-    }));
+  const duplicarAenB = () => {
+    setPanelB(JSON.parse(JSON.stringify(panelA)));
   };
 
-  const restablecer = () => {
-    setPreguntaActivaId(null);
-    setDisparador({ tipo: "ataque", resultado: "error" });
-    setTipoObservado("ataque");
-    setAlcance("partido");
-    setRachas([]);
-    setContextoPartido({ ...CONTEXTO_PARTIDO_VACIO });
-    setJugadorFiltroId(jugadorId ?? null);
-    setJugadorObservadoFiltro(jugadorId ? "mismo" : "cualquiera");
-    setCoincidencias({ ...COINCIDENCIA_VACIA });
-  };
-
-  const cantCasos = resultado?.totalOcurrencias ?? 0;
+  const cantCasosA = useMemo(
+    () => evaluarPanel(acciones, panelA, jugadoresParaDropdown.length).totalOcurrencias,
+    [acciones, panelA, jugadoresParaDropdown.length]
+  );
+  const cantCasosB = useMemo(
+    () =>
+      modoComparacion
+        ? evaluarPanel(acciones, panelB, jugadoresParaDropdown.length)
+            .totalOcurrencias
+        : 0,
+    [acciones, panelB, modoComparacion, jugadoresParaDropdown.length]
+  );
 
   return (
-    <div
-      className="rounded-xl border border-white/10 p-4 space-y-3"
-      style={cardBase}
-    >
+    <div className="space-y-3" style={cardBase}>
       {/* ====== HEADER ====== */}
-      <div className="flex items-start justify-between gap-2">
+      <div className="p-4 border-b border-white/10 flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-0.5">
             <span className="text-sm font-bold uppercase tracking-wider text-slate-100">
               {titulo}
             </span>
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-white/10 text-slate-300 bg-white/5">
-              {cantCasos} caso{cantCasos !== 1 ? "s" : ""}
+              A: {cantCasosA} caso{cantCasosA !== 1 ? "s" : ""}
             </span>
+            {modoComparacion && (
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-violet-500/30 text-violet-300 bg-violet-500/10">
+                B: {cantCasosB} caso{cantCasosB !== 1 ? "s" : ""}
+              </span>
+            )}
           </div>
-          <p
-            className="text-[11px] text-slate-400 truncate"
-            title={receta}
-          >
-            {receta}
+          <p className="text-[11px] text-slate-400">
+            Filtrá acciones con OR/AND/NOT y analizá qué pasa después.
           </p>
         </div>
-        <button
-          onClick={restablecer}
-          className="shrink-0 text-xs px-2 py-1 rounded border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition"
-          title="Restablecer"
-        >
-          ↻
-        </button>
+        <div className="flex flex-col gap-1 items-end shrink-0">
+          <button
+            onClick={() => setModoComparacion((v) => !v)}
+            className={`text-xs px-2.5 py-1 rounded border transition ${
+              modoComparacion
+                ? "bg-violet-500/20 text-violet-200 border-violet-400/60"
+                : "border-white/10 text-slate-300 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            {modoComparacion ? "✕ Comparar" : "⇄ Comparar"}
+          </button>
+          <button
+            onClick={restablecerTodo}
+            className="text-xs px-2 py-1 rounded border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition"
+            title="Restablecer todo"
+          >
+            ↻
+          </button>
+        </div>
       </div>
 
       {/* ====== PREGUNTAS RÁPIDAS ====== */}
-      <div className="flex flex-wrap gap-1">
+      <div className="px-4 flex flex-wrap gap-1">
         {PREGUNTAS_RAPIDAS.map((p) => {
           const activa = preguntaActivaId === p.id;
           return (
@@ -599,115 +500,427 @@ export default function AnalisisConsecuencias({
         })}
       </div>
 
-      {/* ====== BLOQUE INTEGRADO CUANDO → MIRAR ====== */}
-      <div className="rounded-xl border border-white/10 bg-slate-900/40 p-3 space-y-1.5">
-        {/* CUANDO (trigger) */}
-        <div>
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
-              Cuando
+      {/* ====== PANELES ====== */}
+      <div
+        className={`px-4 pb-4 ${
+          modoComparacion
+            ? "grid grid-cols-1 xl:grid-cols-2 gap-3"
+            : "space-y-3"
+        }`}
+      >
+        <PanelAnalisis
+          acciones={acciones}
+          config={panelA}
+          setConfig={setPanel("A")}
+          nombre={nombre}
+          jugadoresParaDropdown={jugadoresParaDropdown}
+          setsUnicos={setsUnicos}
+          puntosUnicos={puntosUnicos}
+          partidosDisponibles={partidosDisponibles}
+          onIrAPunto={onIrAPunto}
+          etiqueta="A"
+          onDuplicar={modoComparacion ? undefined : duplicarAenB}
+          onRestablecer={() => setPanelA(panelInicial())}
+        />
+
+        {modoComparacion && (
+          <PanelAnalisis
+            acciones={acciones}
+            config={panelB}
+            setConfig={setPanel("B")}
+            nombre={nombre}
+            jugadoresParaDropdown={jugadoresParaDropdown}
+            setsUnicos={setsUnicos}
+            puntosUnicos={puntosUnicos}
+            partidosDisponibles={partidosDisponibles}
+            onIrAPunto={onIrAPunto}
+            etiqueta="B"
+            onRestablecer={() => setPanelB(panelInicial())}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// EVALUACIÓN DE UN PANEL (para contadores en el header)
+// ============================================================
+
+function evaluarPanel(
+  acciones: AccionVisual[],
+  config: ConfiguracionPanel,
+  _lenJugadores: number
+): ResultadoAnalisis {
+  return analizarConsecuencias(acciones, construirFiltros(config));
+}
+
+function construirFiltros(config: ConfiguracionPanel): FiltrosAnalisis {
+  const esRelacion =
+    config.jugadorObservadoFiltro === "cualquiera" ||
+    config.jugadorObservadoFiltro === "mismo" ||
+    config.jugadorObservadoFiltro === "companero" ||
+    config.jugadorObservadoFiltro === "rival";
+
+  const jugadorObservadoRelacion: RelacionJugadorObservado = esRelacion
+    ? (config.jugadorObservadoFiltro as RelacionJugadorObservado)
+    : "cualquiera";
+
+  const jugadorObservadoId = esRelacion
+    ? null
+    : config.jugadorObservadoFiltro;
+
+  return {
+    bloques: config.bloques,
+    tipoObservado: config.tipoObservado,
+    jugadorObservadoRelacion,
+    jugadorObservadoId,
+    alcance: config.alcance,
+    ventana: 1 as Ventana,
+    coincidencias: config.coincidencias,
+  };
+}
+
+// ============================================================
+// PREGUNTAS RÁPIDAS (definidas después por simplicidad)
+// ============================================================
+
+interface PreguntaRapida {
+  id: string;
+  titulo: string;
+  bloque: BloqueTrigger;
+  tipoObservado: TipoDisparador | "cualquiera";
+  jugadorObservadoRelacion: RelacionJugadorObservado;
+  alcance: "partido" | "mismo_punto";
+}
+
+const PREGUNTAS_RAPIDAS: PreguntaRapida[] = [
+  {
+    id: "error-ataque",
+    titulo: "Error ataque → sig. ataque",
+    bloque: {
+      id: "qr-1",
+      operador: "AND",
+      filtro: {
+        ...BLOQUE_TRIGGER_VACIO,
+        tipo: "ataque",
+        resultado: "error",
+      },
+    },
+    tipoObservado: "ataque",
+    jugadorObservadoRelacion: "mismo",
+    alcance: "partido",
+  },
+  {
+    id: "mala-recep",
+    titulo: "Recep. negativa → sig. ataque",
+    bloque: {
+      id: "qr-2",
+      operador: "AND",
+      filtro: {
+        ...BLOQUE_TRIGGER_VACIO,
+        tipo: "recepcion",
+        resultado: "negativa",
+      },
+    },
+    tipoObservado: "ataque",
+    jugadorObservadoRelacion: "cualquiera",
+    alcance: "partido",
+  },
+  {
+    id: "ace-saque",
+    titulo: "Ace → sig. saque",
+    bloque: {
+      id: "qr-3",
+      operador: "AND",
+      filtro: {
+        ...BLOQUE_TRIGGER_VACIO,
+        tipo: "saque",
+        resultado: "ace",
+      },
+    },
+    tipoObservado: "saque",
+    jugadorObservadoRelacion: "mismo",
+    alcance: "partido",
+  },
+  {
+    id: "punto-ataque-o-bloqueo",
+    titulo: "Punto por ataque O bloqueo",
+    bloque: {
+      id: "qr-4a",
+      operador: "AND",
+      filtro: {
+        ...BLOQUE_TRIGGER_VACIO,
+        tipo: "ataque",
+        resultado: "punto",
+      },
+    },
+    tipoObservado: "cualquiera",
+    jugadorObservadoRelacion: "cualquiera",
+    alcance: "partido",
+  },
+  {
+    id: "cierre-set",
+    titulo: "Cierre de set",
+    bloque: {
+      id: "qr-5",
+      operador: "AND",
+      filtro: {
+        ...BLOQUE_TRIGGER_VACIO,
+        tipo: "ataque",
+        contextoPartido: {
+          ...CONTEXTO_PARTIDO_VACIO,
+          marcador: {
+            ...CONTEXTO_PARTIDO_VACIO.marcador,
+            puntosParaCerrar: "<=3",
+          },
+        },
+      },
+    },
+    tipoObservado: "ataque",
+    jugadorObservadoRelacion: "cualquiera",
+    alcance: "partido",
+  },
+  {
+    id: "racha-ganando",
+    titulo: "Racha 3+ ganando",
+    bloque: {
+      id: "qr-6",
+      operador: "AND",
+      filtro: {
+        ...BLOQUE_TRIGGER_VACIO,
+        tipo: "ataque",
+        contextoPartido: {
+          ...CONTEXTO_PARTIDO_VACIO,
+          rachaPuntos: 3,
+        },
+      },
+    },
+    tipoObservado: "ataque",
+    jugadorObservadoRelacion: "cualquiera",
+    alcance: "partido",
+  },
+  {
+    id: "inmediata",
+    titulo: "Acción inmediata siguiente",
+    bloque: {
+      id: "qr-7",
+      operador: "AND",
+      filtro: { ...BLOQUE_TRIGGER_VACIO, tipo: "ataque" },
+    },
+    tipoObservado: "cualquiera",
+    jugadorObservadoRelacion: "cualquiera",
+    alcance: "mismo_punto",
+  },
+];
+
+// ============================================================
+// PANEL DE ANÁLISIS (A o B)
+// ============================================================
+
+function PanelAnalisis({
+  acciones,
+  config,
+  setConfig,
+  nombre,
+  jugadoresParaDropdown,
+  setsUnicos,
+  puntosUnicos,
+  partidosDisponibles,
+  onIrAPunto,
+  etiqueta,
+  onDuplicar,
+  onRestablecer,
+}: {
+  acciones: AccionVisual[];
+  config: ConfiguracionPanel;
+  setConfig: (c: ConfiguracionPanel) => void;
+  nombre: (id: string | null) => string;
+  jugadoresParaDropdown: { id: string; nombre: string }[];
+  setsUnicos: number[];
+  puntosUnicos: number[];
+  partidosDisponibles?: { id: string; nombre: string }[];
+  onIrAPunto?: (set: number, punto: number) => void;
+  etiqueta: string;
+  onDuplicar?: () => void;
+  onRestablecer?: () => void;
+}) {
+  const resultado = useMemo(
+    () => analizarConsecuencias(acciones, construirFiltros(config)),
+    [acciones, config]
+  );
+
+  const esRelacion =
+    config.jugadorObservadoFiltro === "cualquiera" ||
+    config.jugadorObservadoFiltro === "mismo" ||
+    config.jugadorObservadoFiltro === "companero" ||
+    config.jugadorObservadoFiltro === "rival";
+
+  const receta = useMemo(() => {
+    const partes: string[] = [];
+    config.bloques.forEach((b, i) => {
+      if (i > 0) partes.push(etiquetaOperador(b.operador).toUpperCase());
+      partes.push(resumenBloque(b.filtro));
+    });
+    partes.push("→");
+    const tipoObs =
+      config.tipoObservado === "cualquiera"
+        ? "siguiente acción"
+        : `sig. ${etiquetaTipoDisparador(config.tipoObservado)}`;
+    const jugObs = esRelacion
+      ? etiquetaRelacionObservado(config.jugadorObservadoFiltro as RelacionJugadorObservado)
+      : nombre(config.jugadorObservadoFiltro);
+    partes.push(`${tipoObs} · ${jugObs}`);
+    return partes.join(" ");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config]);
+
+  // Handlers
+  const agregarBloque = () => {
+    setConfig({
+      ...config,
+      bloques: [...config.bloques, bloqueVacio("AND")],
+    });
+  };
+  const eliminarBloque = (id: string) => {
+    if (config.bloques.length <= 1) return;
+    setConfig({
+      ...config,
+      bloques: config.bloques.filter((b) => b.id !== id),
+    });
+  };
+  const actualizarBloque = (id: string, cambios: Partial<BloqueTrigger>) => {
+    setConfig({
+      ...config,
+      bloques: config.bloques.map((b) =>
+        b.id === id ? { ...b, ...cambios } : b
+      ),
+    });
+  };
+  const actualizarFiltroBloque = (
+    id: string,
+    cambios: Partial<BloqueTriggerFiltro>
+  ) => {
+    setConfig({
+      ...config,
+      bloques: config.bloques.map((b) =>
+        b.id === id ? { ...b, filtro: { ...b.filtro, ...cambios } } : b
+      ),
+    });
+  };
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-slate-900/40">
+      {/* ====== HEADER DEL PANEL ====== */}
+      <div className="px-3 py-2 border-b border-white/10 flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-700 text-slate-100 border border-white/10">
+              {etiqueta}
             </span>
-            <span className="text-[10px] text-slate-400">
-              la acción disparadora
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-white/10 text-slate-300 bg-white/5">
+              {resultado.totalOcurrencias} caso
+              {resultado.totalOcurrencias !== 1 ? "s" : ""}
             </span>
           </div>
-          <div className="grid grid-cols-3 gap-1.5">
-            <select
-              value={disparador.tipo}
-              onChange={(e) => {
-                setPreguntaActivaId(null);
-                setDisparador({
-                  tipo: e.target.value as TipoDisparador,
-                  resultado: "cualquiera",
-                });
-              }}
-              className={selectCls}
-              title="Tipo de acción"
+          <p className="text-[11px] text-slate-400 truncate" title={receta}>
+            {receta}
+          </p>
+        </div>
+        <div className="flex gap-1 shrink-0">
+          {onDuplicar && (
+            <button
+              onClick={onDuplicar}
+              className="text-[10px] px-1.5 py-0.5 rounded border border-white/10 text-slate-300 hover:text-white hover:bg-white/5"
+              title="Duplicar a B"
             >
-              {TIPOS.map((t) => (
-                <option key={t.v} value={t.v}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
+              ⇄
+            </button>
+          )}
+          {onRestablecer && (
+            <button
+              onClick={onRestablecer}
+              className="text-[10px] px-1.5 py-0.5 rounded border border-white/10 text-slate-300 hover:text-white hover:bg-white/5"
+              title="Restablecer"
+            >
+              ↻
+            </button>
+          )}
+        </div>
+      </div>
 
-            <select
-              value={disparador.resultado}
-              onChange={(e) => {
-                setPreguntaActivaId(null);
-                setDisparador({ ...disparador, resultado: e.target.value });
-              }}
-              className={selectCls}
-              title="Resultado"
-            >
-              {resultadosPorTipoAnalisis(disparador.tipo).map((r) => (
-                <option key={r} value={r}>
-                  {etiquetaResultado(r)}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={jugadorFiltroId ?? "todos"}
-              onChange={(e) => {
-                setPreguntaActivaId(null);
-                const val =
-                  e.target.value === "todos" ? null : e.target.value;
-                setJugadorFiltroId(val);
-                if (val) {
-                  setJugadorObservadoFiltro("mismo");
-                  setCoincidencias((prev) => ({
-                    ...prev,
-                    mismoJugadorTrigger: true,
-                  }));
-                }
-              }}
-              className={selectCls}
-              title="Jugador"
-            >
-              <option value="todos">Todo el equipo</option>
-              {jugadorId && (
-                <option value={jugadorId}>
-                  {nombre(jugadorId)} (jugador)
-                </option>
+      <div className="p-3 space-y-2">
+        {/* ====== BLOQUES CUANDO ====== */}
+        <div className="space-y-1.5">
+          {config.bloques.map((b, idx) => (
+            <div key={b.id}>
+              {/* Operador (excepto primero) */}
+              {idx > 0 && (
+                <div className="flex items-center gap-1 mb-1 ml-2">
+                  <span className="text-slate-500 text-[10px]">└</span>
+                  <select
+                    value={b.operador}
+                    onChange={(e) =>
+                      actualizarBloque(b.id, {
+                        operador: e.target.value as OperadorBloque,
+                      })
+                    }
+                    className="bg-slate-900 text-white text-[10px] font-bold uppercase rounded px-1.5 py-0.5 border border-white/10 cursor-pointer"
+                  >
+                    {OPERADORES.map((op) => (
+                      <option key={op.v} value={op.v}>
+                        {op.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               )}
-              {jugadoresParaDropdown
-                .filter((j) => j.id !== jugadorId)
-                .map((j) => (
-                  <option key={j.id} value={j.id}>
-                    {j.nombre}
-                  </option>
-                ))}
-            </select>
-          </div>
+
+              <BloqueEditor
+                bloque={b}
+                idx={idx}
+                totalBloques={config.bloques.length}
+                nombre={nombre}
+                jugadoresParaDropdown={jugadoresParaDropdown}
+                setsUnicos={setsUnicos}
+                puntosUnicos={puntosUnicos}
+                partidosDisponibles={partidosDisponibles}
+                onCambiarFiltro={(cambios) =>
+                  actualizarFiltroBloque(b.id, cambios)
+                }
+                onEliminar={() => eliminarBloque(b.id)}
+              />
+            </div>
+          ))}
+
+          <button
+            onClick={agregarBloque}
+            className="w-full px-2 py-1 text-[10px] font-semibold rounded border border-dashed border-violet-500/40 bg-violet-500/5 text-violet-300 hover:bg-violet-500/15"
+          >
+            + Añadir otro CUANDO
+          </button>
         </div>
 
-        {/* ARROW */}
-        <div className="flex items-center justify-center py-1 text-slate-500">
-          <span className="text-base leading-none">⬇</span>
-        </div>
-
-        {/* MIRAR (observado) */}
-        <div>
+        {/* ====== MIRAR ====== */}
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-2">
           <div className="flex items-center gap-1.5 mb-1.5">
             <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30">
               Mirar
             </span>
-            <span className="text-[10px] text-slate-400">
-              qué pasa después
-            </span>
+            <span className="text-[10px] text-slate-400">qué pasa después</span>
           </div>
           <div className="grid grid-cols-2 gap-1.5">
             <select
-              value={tipoObservado}
-              onChange={(e) => {
-                setPreguntaActivaId(null);
-                setTipoObservado(
-                  e.target.value as TipoDisparador | "cualquiera"
-                );
-              }}
+              value={config.tipoObservado}
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  tipoObservado: e.target.value as
+                    | TipoDisparador
+                    | "cualquiera",
+                })
+              }
               className={selectCls}
-              title="Acción observada"
             >
               {TIPOS_OBSERVADOS.map((t) => (
                 <option key={t.v} value={t.v}>
@@ -717,17 +930,20 @@ export default function AnalisisConsecuencias({
             </select>
 
             <select
-              value={jugadorObservadoFiltro}
-              onChange={(e) => cambiarJugadorObservado(e.target.value)}
+              value={config.jugadorObservadoFiltro}
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  jugadorObservadoFiltro: e.target.value,
+                })
+              }
               className={selectCls}
-              title="Jugador observado"
             >
-              <option value="mismo">
-                {jugadorFiltroId
-                  ? `Mismo (${nombre(jugadorFiltroId)})`
-                  : "Mismo jugador"}
-              </option>
-              <option value="cualquiera">Cualquier jugador</option>
+              {RELACIONES_OBSERVADO.map((r) => (
+                <option key={r.v} value={r.v}>
+                  {r.label}
+                </option>
+              ))}
               {jugadoresParaDropdown.length > 0 && (
                 <optgroup label="Jugador específico">
                   {jugadoresParaDropdown.map((j) => (
@@ -740,141 +956,888 @@ export default function AnalisisConsecuencias({
             </select>
           </div>
         </div>
-      </div>
 
-      {/* ====== FILTROS AVANZADOS ====== */}
-      <details className="rounded-xl border border-white/10 bg-white/[0.02]">
-        <summary className="px-3 py-2 cursor-pointer text-xs font-bold text-slate-300 hover:bg-white/5 rounded-xl flex items-center justify-between">
-          <span>⚙️ Filtros avanzados</span>
-          {cantAvanzados > 0 ? (
-            <span className="bg-violet-500/20 text-violet-200 border border-violet-500/40 px-1.5 py-0.5 rounded text-[10px]">
-              {cantAvanzados}
-            </span>
-          ) : (
-            <span className="text-[10px] text-slate-500">sin filtros</span>
-          )}
-        </summary>
-
-        <div className="p-3 pt-2 space-y-3 border-t border-white/10">
-          {/* Alcance */}
-          <div>
-            <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
-              Alcance de búsqueda
-            </label>
-            <select
-              value={alcance}
-              onChange={(e) =>
-                setAlcance(e.target.value as "partido" | "mismo_punto")
-              }
-              className={selectCls}
-            >
-              {ALCANCES.map((a) => (
-                <option key={a.v} value={a.v}>
-                  {a.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Rachas */}
-          <RachasSection
-            rachas={rachas}
-            onAgregar={agregarRacha}
-            onEliminar={eliminarRacha}
-            onActualizar={actualizarRacha}
-          />
-
-          {/* Contexto del partido */}
-          <ContextoSection
-            contexto={contextoPartido}
-            setContexto={setContextoPartido}
-          />
-
-          {/* Comparadores */}
-          <ComparadoresSection
-            coincidencias={coincidencias}
-            setCoincidencias={setCoincidencias}
-          />
-        </div>
-      </details>
-
-      {/* ====== RESULTADOS ====== */}
-      {resultado && (
-        <div className="space-y-3">
-          {resultado.totalOcurrencias === 0 ? (
-            <div className="rounded-lg border border-white/10 p-6 text-center text-xs text-slate-400">
-              No hay casos que cumplan todos los criterios.
+        {/* ====== AVANZADO (alcance + comparadores) ====== */}
+        <details className="rounded-lg border border-white/10 bg-white/[0.02]">
+          <summary className="px-2 py-1.5 cursor-pointer text-[11px] font-bold uppercase text-slate-300 flex items-center justify-between">
+            <span>⚙️ Avanzado del análisis</span>
+            <span className="text-slate-500 text-[10px]">▼</span>
+          </summary>
+          <div className="p-2 pt-0 space-y-2">
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                Alcance
+              </label>
+              <select
+                value={config.alcance}
+                onChange={(e) =>
+                  setConfig({
+                    ...config,
+                    alcance: e.target.value as "partido" | "mismo_punto",
+                  })
+                }
+                className={selectCls}
+              >
+                {ALANCES.map((a) => (
+                  <option key={a.v} value={a.v}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
             </div>
-          ) : (
-            <>
-              {resultado.comportamientoTrigger && (
-                <SeccionComportamiento
-                  comportamiento={resultado.comportamientoTrigger}
-                  nombreDeJugador={(id) => nombre(id)}
-                />
-              )}
 
-              {resultado.estadisticasObservadas && (
-                <SeccionConsecuencia
-                  resultado={resultado}
-                  disparador={disparador}
-                  tipoObservado={tipoObservado}
-                  jugadorObservadoFiltro={jugadorObservadoFiltro}
-                  nombre={nombre}
-                  coincidencias={coincidencias}
-                  onIrAPunto={onIrAPunto}
-                />
-              )}
-            </>
-          )}
-        </div>
-      )}
+            <ComparadoresSection
+              coincidencias={config.coincidencias}
+              setCoincidencias={(c) =>
+                setConfig({ ...config, coincidencias: c })
+              }
+            />
+          </div>
+        </details>
+
+        {/* ====== RESULTADOS ====== */}
+        {resultado.totalOcurrencias === 0 ? (
+          <div className="rounded-lg border border-white/10 p-4 text-center text-xs text-slate-400">
+            No hay casos que cumplan los criterios.
+          </div>
+        ) : (
+          <>
+            {resultado.comportamientoTrigger && (
+              <SeccionComportamiento
+                comportamiento={resultado.comportamientoTrigger}
+                nombreDeJugador={(id) => nombre(id)}
+              />
+            )}
+            {resultado.estadisticasObservadas && (
+              <SeccionConsecuencia
+                resultado={resultado}
+                tipoObservado={config.tipoObservado}
+                jugadorObservadoFiltro={config.jugadorObservadoFiltro}
+                nombre={nombre}
+                coincidencias={config.coincidencias}
+                onIrAPunto={onIrAPunto}
+              />
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
 
 // ============================================================
-// RACHAS SECTION
+// BLOQUE EDITOR
+// ============================================================
+
+function BloqueEditor({
+  bloque,
+  idx,
+  totalBloques,
+  nombre,
+  jugadoresParaDropdown,
+  setsUnicos,
+  puntosUnicos,
+  partidosDisponibles,
+  onCambiarFiltro,
+  onEliminar,
+}: {
+  bloque: BloqueTrigger;
+  idx: number;
+  totalBloques: number;
+  nombre: (id: string | null) => string;
+  jugadoresParaDropdown: { id: string; nombre: string }[];
+  setsUnicos: number[];
+  puntosUnicos: number[];
+  partidosDisponibles?: { id: string; nombre: string }[];
+  onCambiarFiltro: (cambios: Partial<BloqueTriggerFiltro>) => void;
+  onEliminar: () => void;
+}) {
+  const f = bloque.filtro;
+  const avanzadoActivo = hayFiltrosAvanzadosEnBloque(f);
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-slate-900/30 p-2 space-y-1.5">
+      {/* Header del bloque */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+            Cuando #{idx + 1}
+          </span>
+          {avanzadoActivo && (
+            <span className="text-[8px] px-1 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/40">
+              ⚙️
+            </span>
+          )}
+        </div>
+        {totalBloques > 1 && (
+          <button
+            onClick={onEliminar}
+            className="text-[10px] text-rose-400 hover:text-rose-300"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      {/* Mínimo esencial: tipo + jugador */}
+      <div className="grid grid-cols-2 gap-1">
+        <select
+          value={f.tipo}
+          onChange={(e) =>
+            onCambiarFiltro({
+              tipo: e.target.value as TipoDisparador,
+              resultado: "cualquiera",
+            })
+          }
+          className={selectCls}
+        >
+          {TIPOS.map((t) => (
+            <option key={t.v} value={t.v}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={f.jugadorId ?? "todos"}
+          onChange={(e) =>
+            onCambiarFiltro({
+              jugadorId: e.target.value === "todos" ? null : e.target.value,
+            })
+          }
+          className={selectCls}
+        >
+          <option value="todos">Todo el equipo</option>
+          {jugadoresParaDropdown.map((j) => (
+            <option key={j.id} value={j.id}>
+              {j.nombre}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Scope y avanzado del bloque */}
+      <details
+        className={`rounded border ${
+          avanzadoActivo
+            ? "border-violet-500/40 bg-violet-500/[0.04]"
+            : "border-white/10 bg-white/[0.02]"
+        }`}
+      >
+        <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
+          <span>Filtros del bloque {avanzadoActivo && "✓"}</span>
+          <span className="text-slate-500 text-[9px]">▼</span>
+        </summary>
+        <div className="p-2 pt-0 space-y-2">
+          {/* Resultado */}
+          <div>
+            <label className="block text-[9px] font-bold uppercase text-slate-500 mb-0.5">
+              Resultado del trigger
+            </label>
+            <select
+              value={f.resultado}
+              onChange={(e) => onCambiarFiltro({ resultado: e.target.value })}
+              className={selectCls}
+            >
+              {resultadosPorTipoAnalisis(f.tipo).map((r) => (
+                <option key={r} value={r}>
+                  {etiquetaResultado(r)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Scope */}
+          <ScopeSection
+            filtro={f}
+            onChange={onCambiarFiltro}
+            setsUnicos={setsUnicos}
+            puntosUnicos={puntosUnicos}
+            partidosDisponibles={partidosDisponibles}
+          />
+
+          {/* Acción previa directa */}
+          <AccionPreviaSection
+            previa={f.accionPreviaDirecta}
+            onCambiar={(p) => onCambiarFiltro({ accionPreviaDirecta: p })}
+          />
+
+          {/* Racha de jugador */}
+          <RachaJugadorSection
+            racha={f.rachaJugador}
+            onCambiar={(r) => onCambiarFiltro({ rachaJugador: r })}
+            jugadoresParaDropdown={jugadoresParaDropdown}
+          />
+
+          {/* Patrón previo */}
+          <PatronSection
+            patron={f.patronPrevio}
+            onCambiar={(p) => onCambiarFiltro({ patronPrevio: p })}
+          />
+
+          {/* Top % y Vs promedio */}
+          <div className="grid grid-cols-2 gap-1">
+            <div>
+              <label className="block text-[9px] font-bold uppercase text-slate-500 mb-0.5">
+                Top % del tipo
+              </label>
+              <select
+                value={f.topPorcentaje === null ? "" : String(f.topPorcentaje)}
+                onChange={(e) =>
+                  onCambiarFiltro({
+                    topPorcentaje:
+                      e.target.value === ""
+                        ? null
+                        : parseInt(e.target.value, 10),
+                  })
+                }
+                className={selectCls}
+              >
+                <option value="">Sin filtro</option>
+                <option value="10">Top 10%</option>
+                <option value="20">Top 20%</option>
+                <option value="30">Top 30%</option>
+                <option value="50">Top 50%</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[9px] font-bold uppercase text-slate-500 mb-0.5">
+                Vs promedio
+              </label>
+              <select
+                value={f.vsPromedio ?? ""}
+                onChange={(e) =>
+                  onCambiarFiltro({
+                    vsPromedio:
+                      e.target.value === ""
+                        ? null
+                        : (e.target.value as "por_encima" | "por_debajo"),
+                  })
+                }
+                className={selectCls}
+              >
+                <option value="">Sin filtro</option>
+                <option value="por_encima">Por encima</option>
+                <option value="por_debajo">Por debajo</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Rachas históricas */}
+          <RachasSection
+            rachas={f.rachas}
+            onCambiar={(rachas) => onCambiarFiltro({ rachas })}
+          />
+
+          {/* Contexto del partido */}
+          <ContextoSection
+            contexto={f.contextoPartido}
+            onCambiar={(c) => onCambiarFiltro({ contextoPartido: c })}
+          />
+        </div>
+      </details>
+    </div>
+  );
+}
+
+// ============================================================
+// SCOPE (sets, puntos, partidos, roles, zonas, rotaciones)
+// ============================================================
+
+function ScopeSection({
+  filtro,
+  onChange,
+  setsUnicos,
+  puntosUnicos,
+  partidosDisponibles,
+}: {
+  filtro: BloqueTriggerFiltro;
+  onChange: (cambios: Partial<BloqueTriggerFiltro>) => void;
+  setsUnicos: number[];
+  puntosUnicos: number[];
+  partidosDisponibles?: { id: string; nombre: string }[];
+}) {
+  const activo =
+    filtro.sets.length > 0 ||
+    filtro.puntos.length > 0 ||
+    filtro.partidos.length > 0 ||
+    filtro.roles.length > 0 ||
+    filtro.zonasJugador.length > 0 ||
+    filtro.rotaciones.length > 0;
+
+  return (
+    <details
+      className={`rounded border ${
+        activo
+          ? "border-violet-500/40 bg-violet-500/[0.04]"
+          : "border-white/10 bg-white/[0.02]"
+      }`}
+    >
+      <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
+        <span>
+          Scope {activo && "✓"}
+        </span>
+        <span className="text-slate-500 text-[9px]">▼</span>
+      </summary>
+      <div className="p-2 pt-0 space-y-1.5">
+        <MultiChip
+          label="Sets"
+          opciones={setsUnicos.map((s) => ({ v: String(s), label: `S${s}` }))}
+          seleccionados={filtro.sets.map(String)}
+          onChange={(vals) =>
+            onChange({ sets: vals.map((v) => parseInt(v, 10)) })
+          }
+        />
+        <MultiChip
+          label="Puntos"
+          opciones={puntosUnicos.map((p) => ({
+            v: String(p),
+            label: `P${p}`,
+          }))}
+          seleccionados={filtro.puntos.map(String)}
+          onChange={(vals) =>
+            onChange({ puntos: vals.map((v) => parseInt(v, 10)) })
+          }
+        />
+        {partidosDisponibles && partidosDisponibles.length > 0 && (
+          <MultiChip
+            label="Partidos"
+            opciones={partidosDisponibles.map((p) => ({
+              v: p.id,
+              label: p.nombre,
+            }))}
+            seleccionados={filtro.partidos}
+            onChange={(vals) => onChange({ partidos: vals })}
+          />
+        )}
+        <MultiChip
+          label="Roles"
+          opciones={ROLES.map((r) => ({ v: r, label: r }))}
+          seleccionados={filtro.roles}
+          onChange={(vals) => onChange({ roles: vals })}
+        />
+        <MultiChip
+          label="Zonas jugador"
+          opciones={ZONAS_JUGADOR.map((z) => ({
+            v: String(z.v),
+            label: z.label,
+          }))}
+          seleccionados={filtro.zonasJugador.map(String)}
+          onChange={(vals) =>
+            onChange({ zonasJugador: vals.map((v) => parseInt(v, 10)) })
+          }
+        />
+        <MultiChip
+          label="Rotaciones"
+          opciones={ROTACIONES.map((r) => ({
+            v: String(r),
+            label: `R${r}`,
+          }))}
+          seleccionados={filtro.rotaciones.map(String)}
+          onChange={(vals) =>
+            onChange({ rotaciones: vals.map((v) => parseInt(v, 10)) })
+          }
+        />
+      </div>
+    </details>
+  );
+}
+
+function MultiChip({
+  label,
+  opciones,
+  seleccionados,
+  onChange,
+}: {
+  label: string;
+  opciones: { v: string; label: string }[];
+  seleccionados: string[];
+  onChange: (vals: string[]) => void;
+}) {
+  const toggle = (v: string) => {
+    if (seleccionados.includes(v)) {
+      onChange(seleccionados.filter((x) => x !== v));
+    } else {
+      onChange([...seleccionados, v]);
+    }
+  };
+  return (
+    <div>
+      <label className="block text-[9px] font-bold uppercase text-slate-500 mb-0.5">
+        {label}
+        {seleccionados.length > 0 && ` (${seleccionados.length})`}
+      </label>
+      <div className="flex flex-wrap gap-0.5">
+        {opciones.map((o) => {
+          const sel = seleccionados.includes(o.v);
+          return (
+            <button
+              key={o.v}
+              onClick={() => toggle(o.v)}
+              className={`px-1.5 py-0.5 text-[9px] font-semibold rounded border transition ${
+                sel
+                  ? "bg-violet-500/30 border-violet-400/60 text-violet-200"
+                  : "bg-white/[0.02] border-white/10 text-slate-400 hover:text-white"
+              }`}
+              title={o.label}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+        {opciones.length === 0 && (
+          <span className="text-[9px] text-slate-500 italic">Sin opciones</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// ACCIÓN PREVIA DIRECTA
+// ============================================================
+
+function AccionPreviaSection({
+  previa,
+  onCambiar,
+}: {
+  previa: FiltroAccionHistorica | null;
+  onCambiar: (p: FiltroAccionHistorica | null) => void;
+}) {
+  const activo = !!previa;
+
+  return (
+    <details
+      className={`rounded border ${
+        activo
+          ? "border-violet-500/40 bg-violet-500/[0.04]"
+          : "border-white/10 bg-white/[0.02]"
+      }`}
+    >
+      <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
+        <span>
+          ⏮️ Acción previa {activo && "✓"}
+        </span>
+        <span className="text-slate-500 text-[9px]">▼</span>
+      </summary>
+      <div className="p-2 pt-0 space-y-1">
+        <div className="flex items-center justify-between">
+          <p className="text-[9px] text-slate-500 italic">
+            Filtra la acción inmediatamente anterior.
+          </p>
+          <button
+            onClick={() =>
+              onCambiar(
+                activo ? null : { ...FILTRO_ACCION_HISTORICA_VACIO }
+              )
+            }
+            className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border ${
+              activo
+                ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                : "bg-violet-500/20 text-violet-300 border-violet-500/40"
+            }`}
+          >
+            {activo ? "✕" : "+"}
+          </button>
+        </div>
+
+        {previa && (
+          <div className="grid grid-cols-2 gap-1">
+            <select
+              value={previa.tipos[0] ?? ""}
+              onChange={(e) =>
+                onCambiar({
+                  ...previa,
+                  tipos: e.target.value
+                    ? [e.target.value as TipoDisparador]
+                    : [],
+                  resultados: [],
+                })
+              }
+              className={selectCls}
+            >
+              <option value="">Cualquier tipo</option>
+              {TIPOS.map((t) => (
+                <option key={t.v} value={t.v}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            {previa.tipos.length > 0 ? (
+              <select
+                value={previa.resultados[0] ?? ""}
+                onChange={(e) =>
+                  onCambiar({
+                    ...previa,
+                    resultados: e.target.value ? [e.target.value] : [],
+                  })
+                }
+                className={selectCls}
+              >
+                <option value="">Cualquier resultado</option>
+                {resultadosPorTipoAnalisis(previa.tipos[0])
+                  .filter((r) => r !== "cualquiera")
+                  .map((r) => (
+                    <option key={r} value={r}>
+                      {etiquetaResultado(r)}
+                    </option>
+                  ))}
+              </select>
+            ) : (
+              <div />
+            )}
+            <select
+              value={previa.relacionJugador}
+              onChange={(e) =>
+                onCambiar({
+                  ...previa,
+                  relacionJugador: e.target.value as RelacionJugador,
+                })
+              }
+              className={`${selectCls} col-span-2`}
+            >
+              {RELACIONES_PREVIA.map((r) => (
+                <option key={r.v} value={r.v}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
+// ============================================================
+// RACHA JUGADOR
+// ============================================================
+
+function RachaJugadorSection({
+  racha,
+  onCambiar,
+  jugadoresParaDropdown,
+}: {
+  racha: RachaJugadorFiltro | null;
+  onCambiar: (r: RachaJugadorFiltro | null) => void;
+  jugadoresParaDropdown: { id: string; nombre: string }[];
+}) {
+  const activo = !!racha;
+
+  return (
+    <details
+      className={`rounded border ${
+        activo
+          ? "border-violet-500/40 bg-violet-500/[0.04]"
+          : "border-white/10 bg-white/[0.02]"
+      }`}
+    >
+      <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
+        <span>
+          🔥 Racha de jugador {activo && "✓"}
+        </span>
+        <span className="text-slate-500 text-[9px]">▼</span>
+      </summary>
+      <div className="p-2 pt-0 space-y-1">
+        <div className="flex items-center justify-between">
+          <p className="text-[9px] text-slate-500 italic">
+            Ej: "después de 2 errores seguidos"
+          </p>
+          <button
+            onClick={() =>
+              onCambiar(
+                activo
+                  ? null
+                  : {
+                      jugadorId: null,
+                      tipo: "errores_seguidos",
+                      minimo: 2,
+                      ambito: "puntos_del_set",
+                    }
+              )
+            }
+            className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border ${
+              activo
+                ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                : "bg-violet-500/20 text-violet-300 border-violet-500/40"
+            }`}
+          >
+            {activo ? "✕" : "+"}
+          </button>
+        </div>
+
+        {racha && (
+          <div className="grid grid-cols-2 gap-1">
+            <select
+              value={racha.tipo}
+              onChange={(e) =>
+                onCambiar({
+                  ...racha,
+                  tipo: e.target.value as TipoRachaJugador,
+                })
+              }
+              className={`${selectCls} col-span-2`}
+            >
+              {TIPOS_RACHA_JUGADOR.map((t) => (
+                <option key={t.v} value={t.v}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={racha.ambito}
+              onChange={(e) =>
+                onCambiar({
+                  ...racha,
+                  ambito: e.target.value as AmbitoRacha,
+                })
+              }
+              className={selectCls}
+            >
+              {AMBITOS.map((a) => (
+                <option key={a.v} value={a.v}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min={1}
+              max={10}
+              value={racha.minimo}
+              onChange={(e) =>
+                onCambiar({
+                  ...racha,
+                  minimo: Math.max(1, parseInt(e.target.value || "1", 10)),
+                })
+              }
+              className={inputCls}
+              placeholder="Mínimo"
+            />
+            <select
+              value={racha.jugadorId ?? "trigger"}
+              onChange={(e) =>
+                onCambiar({
+                  ...racha,
+                  jugadorId:
+                    e.target.value === "trigger" ? null : e.target.value,
+                })
+              }
+              className={`${selectCls} col-span-2`}
+            >
+              <option value="trigger">Jugador del trigger</option>
+              {jugadoresParaDropdown.map((j) => (
+                <option key={j.id} value={j.id}>
+                  {j.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
+// ============================================================
+// PATRÓN PREVIO
+// ============================================================
+
+function PatronSection({
+  patron,
+  onCambiar,
+}: {
+  patron: PatronPrevioFiltro | null;
+  onCambiar: (p: PatronPrevioFiltro | null) => void;
+}) {
+  const activo = !!patron;
+
+  const agregar = () => {
+    if (!patron) {
+      onCambiar({ acciones: [{ tipo: "recepcion", resultado: "cualquiera" }] });
+      return;
+    }
+    if (patron.acciones.length >= 3) return;
+    onCambiar({
+      acciones: [...patron.acciones, { tipo: "armado", resultado: "cualquiera" }],
+    });
+  };
+
+  const eliminar = (i: number) => {
+    if (!patron) return;
+    if (patron.acciones.length <= 1) {
+      onCambiar(null);
+      return;
+    }
+    onCambiar({
+      acciones: patron.acciones.filter((_, idx) => idx !== i),
+    });
+  };
+
+  const actualizar = (i: number, cambios: Partial<ItemPatron>) => {
+    if (!patron) return;
+    onCambiar({
+      acciones: patron.acciones.map((a, idx) =>
+        idx === i ? { ...a, ...cambios } : a
+      ),
+    });
+  };
+
+  return (
+    <details
+      className={`rounded border ${
+        activo
+          ? "border-violet-500/40 bg-violet-500/[0.04]"
+          : "border-white/10 bg-white/[0.02]"
+      }`}
+    >
+      <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
+        <span>
+          🎯 Patrón previo {activo && `(${patron!.acciones.length})`}
+        </span>
+        <span className="text-slate-500 text-[9px]">▼</span>
+      </summary>
+      <div className="p-2 pt-0 space-y-1">
+        <div className="flex items-center justify-between">
+          <p className="text-[9px] text-slate-500 italic">
+            Secuencia exacta de hasta 3 acciones previas.
+          </p>
+          <div className="flex gap-1">
+            {activo && (
+              <button
+                onClick={() => onCambiar(null)}
+                className="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-rose-500/20 text-rose-300 border-rose-500/40"
+              >
+                ✕
+              </button>
+            )}
+            <button
+              onClick={agregar}
+              disabled={activo && patron!.acciones.length >= 3}
+              className="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-violet-500/20 text-violet-300 border-violet-500/40 disabled:opacity-40"
+            >
+              + Acción
+            </button>
+          </div>
+        </div>
+
+        {patron && patron.acciones.length > 0 && (
+          <div className="space-y-1">
+            {patron.acciones.map((item, i) => (
+              <div
+                key={i}
+                className="grid grid-cols-[auto_1fr_auto] gap-1 items-center"
+              >
+                <span className="text-[9px] text-slate-500">
+                  {i + 1}.
+                </span>
+                <div className="grid grid-cols-2 gap-1">
+                  <select
+                    value={item.tipo}
+                    onChange={(e) =>
+                      actualizar(i, {
+                        tipo: e.target.value as TipoDisparador,
+                        resultado: "cualquiera",
+                      })
+                    }
+                    className={selectCls}
+                  >
+                    {TIPOS.map((t) => (
+                      <option key={t.v} value={t.v}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={item.resultado}
+                    onChange={(e) =>
+                      actualizar(i, { resultado: e.target.value })
+                    }
+                    className={selectCls}
+                  >
+                    {resultadosPorTipoAnalisis(item.tipo).map((r) => (
+                      <option key={r} value={r}>
+                        {etiquetaResultado(r)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={() => eliminar(i)}
+                  className="text-rose-400 hover:text-rose-300 text-[10px]"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
+// ============================================================
+// RACHAS HISTÓRICAS
 // ============================================================
 
 function RachasSection({
   rachas,
-  onAgregar,
-  onEliminar,
-  onActualizar,
+  onCambiar,
 }: {
   rachas: RachaHistorica[];
-  onAgregar: () => void;
-  onEliminar: (id: string) => void;
-  onActualizar: (id: string, cambios: Partial<RachaHistorica>) => void;
+  onCambiar: (r: RachaHistorica[]) => void;
 }) {
+  let _c = 0;
+  const nuevo = (): RachaHistorica => {
+    _c += 1;
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? `r-${crypto.randomUUID()}`
+        : `r-${Date.now()}-${_c}`;
+    return {
+      id,
+      ambito: "mismo_punto",
+      desdeAtras: 0,
+      minimo: 1,
+      filtro: { ...FILTRO_ACCION_HISTORICA_VACIO },
+    };
+  };
+
   return (
-    <details className="rounded-lg border border-white/10 bg-white/[0.02]">
-      <summary className="px-2 py-1.5 cursor-pointer text-[11px] font-bold uppercase text-slate-300 flex items-center justify-between">
+    <details
+      className={`rounded border ${
+        rachas.length > 0
+          ? "border-violet-500/40 bg-violet-500/[0.04]"
+          : "border-white/10 bg-white/[0.02]"
+      }`}
+    >
+      <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
         <span>📜 Historia previa ({rachas.length})</span>
-        <span className="text-slate-500 text-[10px]">▼</span>
+        <span className="text-slate-500 text-[9px]">▼</span>
       </summary>
-      <div className="p-2 pt-0 space-y-1.5">
+      <div className="p-2 pt-0 space-y-1">
         {rachas.map((r, i) => (
           <RachaFila
             key={r.id}
             idx={i}
             racha={r}
-            onCambiar={(c) => onActualizar(r.id, c)}
-            onEliminar={() => onEliminar(r.id)}
+            onCambiar={(c) =>
+              onCambiar(
+                rachas.map((x) => (x.id === r.id ? { ...x, ...c } : x))
+              )
+            }
+            onEliminar={() =>
+              onCambiar(rachas.filter((x) => x.id !== r.id))
+            }
           />
         ))}
         <button
-          onClick={onAgregar}
-          className="w-full px-2 py-1 text-[10px] font-semibold rounded border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
+          onClick={() => onCambiar([...rachas, nuevo()])}
+          className="w-full px-2 py-1 text-[9px] font-semibold rounded border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
         >
           + Añadir racha
         </button>
-        {rachas.length === 0 && (
-          <p className="text-[10px] text-slate-500 italic text-center py-1">
-            Sin filtro de historia.
-          </p>
-        )}
       </div>
     </details>
   );
@@ -888,46 +1851,26 @@ function RachaFila({
 }: {
   idx: number;
   racha: RachaHistorica;
-  onCambiar: (cambios: Partial<RachaHistorica>) => void;
+  onCambiar: (c: Partial<RachaHistorica>) => void;
   onEliminar: () => void;
 }) {
   const tipoActual = racha.filtro.tipos[0] ?? "";
-  const setTipo = (tipo: string) => {
-    onCambiar({
-      filtro: {
-        ...racha.filtro,
-        tipos: tipo ? [tipo as TipoDisparador] : [],
-        resultados: [],
-      },
-    });
-  };
-
-  const setFiltro = <K extends keyof FiltroAccionHistorica>(
-    key: K,
-    val: FiltroAccionHistorica[K]
-  ) => {
-    onCambiar({ filtro: { ...racha.filtro, [key]: val } });
-  };
-
   return (
-    <div className="rounded border border-white/10 bg-slate-900/40 p-1.5 space-y-1.5">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-bold text-violet-300">
+    <div className="rounded border border-white/10 bg-slate-900/40 p-1 space-y-1">
+      <div className="flex items-center justify-between gap-1">
+        <span className="text-[9px] font-bold text-violet-300">
           #{idx + 1}
         </span>
-        <span className="text-[9px] text-slate-400 truncate flex-1">
+        <span className="text-[8px] text-slate-400 truncate flex-1">
           {resumenRacha(racha)}
         </span>
         <button
           onClick={onEliminar}
-          className="text-rose-400 hover:text-rose-300 text-[10px] shrink-0"
+          className="text-rose-400 hover:text-rose-300 text-[9px]"
         >
           ✕
         </button>
       </div>
-
-      {/* Fila básica */}
       <div className="grid grid-cols-2 gap-1">
         <select
           value={racha.ambito}
@@ -935,7 +1878,6 @@ function RachaFila({
             onCambiar({ ambito: e.target.value as AmbitoRacha })
           }
           className={selectCls}
-          title="Ámbito"
         >
           {AMBITOS.map((a) => (
             <option key={a.v} value={a.v}>
@@ -943,7 +1885,6 @@ function RachaFila({
             </option>
           ))}
         </select>
-
         <input
           type="number"
           min={1}
@@ -954,16 +1895,23 @@ function RachaFila({
               minimo: Math.max(1, parseInt(e.target.value || "1", 10)),
             })
           }
-          className={selectCls}
+          className={inputCls}
           placeholder="Mínimo"
-          title="Mínimo consecutivas"
         />
-
         <select
           value={tipoActual}
-          onChange={(e) => setTipo(e.target.value)}
+          onChange={(e) =>
+            onCambiar({
+              filtro: {
+                ...racha.filtro,
+                tipos: e.target.value
+                  ? [e.target.value as TipoDisparador]
+                  : [],
+                resultados: [],
+              },
+            })
+          }
           className={selectCls}
-          title="Tipo de acción"
         >
           <option value="">Cualquier tipo</option>
           {TIPOS.map((t) => (
@@ -972,7 +1920,6 @@ function RachaFila({
             </option>
           ))}
         </select>
-
         {tipoActual ? (
           <select
             value={racha.filtro.resultados[0] ?? ""}
@@ -985,7 +1932,6 @@ function RachaFila({
               })
             }
             className={selectCls}
-            title="Resultado"
           >
             <option value="">Cualquier resultado</option>
             {resultadosPorTipoAnalisis(tipoActual as TipoDisparador)
@@ -999,380 +1945,334 @@ function RachaFila({
         ) : (
           <div />
         )}
+        <input
+          type="number"
+          min={0}
+          max={10}
+          value={racha.desdeAtras}
+          onChange={(e) =>
+            onCambiar({
+              desdeAtras: Math.max(0, parseInt(e.target.value || "0", 10)),
+            })
+          }
+          className={`${inputCls} col-span-2`}
+          placeholder="Saltar N del tipo"
+        />
       </div>
-
-      {/* Avanzado */}
-      <details>
-        <summary className="text-[9px] text-slate-500 cursor-pointer hover:text-slate-300">
-          Más opciones
-        </summary>
-        <div className="grid grid-cols-2 gap-1 mt-1">
-          <input
-            type="number"
-            min={0}
-            max={10}
-            value={racha.desdeAtras}
-            onChange={(e) =>
-              onCambiar({
-                desdeAtras: Math.max(0, parseInt(e.target.value || "0", 10)),
-              })
-            }
-            className={selectCls}
-            placeholder="Saltar N"
-            title="Saltar los últimos N del tipo"
-          />
-
-          <select
-            value={racha.filtro.ubicacion}
-            onChange={(e) =>
-              setFiltro("ubicacion", e.target.value as UbicacionFiltro)
-            }
-            className={selectCls}
-            title="Ubicación"
-          >
-            {UBICACIONES.map((u) => (
-              <option key={u.v} value={u.v}>
-                {u.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={String(racha.filtro.zonaJugador)}
-            onChange={(e) =>
-              setFiltro(
-                "zonaJugador",
-                e.target.value === "cualquiera"
-                  ? "cualquiera"
-                  : parseInt(e.target.value, 10)
-              )
-            }
-            className={selectCls}
-            title="Zona"
-          >
-            {ZONAS_JUGADOR.map((z) => (
-              <option key={String(z.v)} value={String(z.v)}>
-                {z.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={
-              racha.filtro.velocidad === null
-                ? ""
-                : String(racha.filtro.velocidad)
-            }
-            onChange={(e) =>
-              setFiltro(
-                "velocidad",
-                e.target.value === "" ? null : parseFloat(e.target.value)
-              )
-            }
-            className={selectCls}
-            title="Velocidad"
-          >
-            {VELOCIDADES.map((v) => (
-              <option key={String(v.v)} value={v.v === null ? "" : String(v.v)}>
-                {v.label === "Cualquiera" ? "Vel. cualquiera" : `v${v.label}`}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={racha.filtro.tipoSaque ?? ""}
-            onChange={(e) =>
-              setFiltro(
-                "tipoSaque",
-                e.target.value === ""
-                  ? null
-                  : (e.target.value as "potencia" | "flotado")
-              )
-            }
-            className={selectCls}
-            title="Tipo saque"
-          >
-            {TIPOS_SAQUE.map((v) => (
-              <option key={String(v.v)} value={v.v ?? ""}>
-                {v.label === "Cualquiera" ? "Saque cualquiera" : v.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={racha.filtro.relacionJugador}
-            onChange={(e) =>
-              setFiltro(
-                "relacionJugador",
-                e.target.value as RelacionJugador
-              )
-            }
-            className={selectCls}
-            title="Relación"
-          >
-            {RELACIONES.map((r) => (
-              <option key={r.v} value={r.v}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={racha.filtro.cierraPunto}
-            onChange={(e) =>
-              setFiltro("cierraPunto", e.target.value as CierraPuntoFiltro)
-            }
-            className={`${selectCls} col-span-2`}
-            title="Cierra punto"
-          >
-            {CIERRAS.map((c) => (
-              <option key={c.v} value={c.v}>
-                {etiquetaCierraPunto(c.v)}
-              </option>
-            ))}
-          </select>
-        </div>
-      </details>
     </div>
   );
 }
 
 // ============================================================
-// CONTEXTO SECTION
+// CONTEXTO DEL PARTIDO
 // ============================================================
 
 function ContextoSection({
   contexto,
-  setContexto,
+  onCambiar,
 }: {
-  contexto: ContextoPartidoFiltro;
-  setContexto: (c: ContextoPartidoFiltro) => void;
+  contexto: ContextoPartidoFiltro | null;
+  onCambiar: (c: ContextoPartidoFiltro | null) => void;
 }) {
-  const activo = hayContextoPartidoActivo(contexto);
-
-  const setMarcador = (cambios: Partial<MarcadorFiltro>) => {
-    setContexto({ ...contexto, marcador: { ...contexto.marcador, ...cambios } });
-  };
+  const activo = !!contexto && hayContextoPartidoActivo(contexto);
 
   return (
     <details
-      className={`rounded-lg border ${
+      className={`rounded border ${
         activo
           ? "border-violet-500/40 bg-violet-500/[0.04]"
           : "border-white/10 bg-white/[0.02]"
       }`}
     >
-      <summary className="px-2 py-1.5 cursor-pointer text-[11px] font-bold uppercase text-slate-300 flex items-center justify-between">
+      <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
         <span>
-          📊 Contexto del partido{" "}
-          {activo && <span className="text-violet-300">✓</span>}
+          📊 Contexto del partido {activo && "✓"}
         </span>
-        <span className="text-slate-500 text-[10px]">▼</span>
+        <span className="text-slate-500 text-[9px]">▼</span>
       </summary>
-      <div className="p-2 pt-0 space-y-2">
-        {/* Marcador */}
-        <div>
-          <p className="text-[9px] font-bold uppercase text-slate-500 mb-1">
-            Marcador
-          </p>
-          <div className="grid grid-cols-2 gap-1">
-            <select
-              value={contexto.marcador.estado}
-              onChange={(e) =>
-                setMarcador({
-                  estado: e.target.value as MarcadorFiltro["estado"],
-                })
-              }
-              className={selectCls}
-            >
-              {ESTADOS_MARCADOR.map((s) => (
-                <option key={s.v} value={s.v}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={contexto.marcador.diferencia}
-              onChange={(e) =>
-                setMarcador({
-                  diferencia: e.target.value as MarcadorFiltro["diferencia"],
-                })
-              }
-              className={selectCls}
-            >
-              {DIFERENCIAS_MARCADOR.map((d) => (
-                <option key={d.v} value={d.v}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={contexto.marcador.puntosParaCerrar}
-              onChange={(e) =>
-                setMarcador({
-                  puntosParaCerrar: e.target
-                    .value as MarcadorFiltro["puntosParaCerrar"],
-                })
-              }
-              className={selectCls}
-            >
-              {PUNTOS_CERRAR.map((p) => (
-                <option key={p.v} value={p.v}>
-                  {p.v === "cualquiera" ? "Sin filtro de cierre" : p.label}
-                </option>
-              ))}
-            </select>
-
-            <button
-              onClick={() =>
-                setMarcador({ soloCriticos: !contexto.marcador.soloCriticos })
-              }
-              className={`px-2 py-1 text-[10px] font-semibold rounded border transition ${
-                contexto.marcador.soloCriticos
-                  ? "bg-amber-500/20 text-amber-200 border-amber-500/50"
-                  : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10"
-              }`}
-            >
-              {contexto.marcador.soloCriticos ? "✓ Solo críticos" : "Solo críticos"}
-            </button>
-          </div>
+      <div className="p-2 pt-0 space-y-1.5">
+        <div className="flex justify-end">
+          <button
+            onClick={() =>
+              onCambiar(
+                contexto ? null : { ...CONTEXTO_PARTIDO_VACIO }
+              )
+            }
+            className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${
+              contexto
+                ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                : "bg-violet-500/20 text-violet-300 border-violet-500/40"
+            }`}
+          >
+            {contexto ? "✕ Quitar" : "+ Activar"}
+          </button>
         </div>
 
-        {/* Rally */}
-        <div>
-          <p className="text-[9px] font-bold uppercase text-slate-500 mb-1">
-            Rally
-          </p>
-          <div className="grid grid-cols-2 gap-1">
-            <select
-              value={contexto.faseRally}
-              onChange={(e) =>
-                setContexto({
-                  ...contexto,
-                  faseRally: e.target
-                    .value as ContextoPartidoFiltro["faseRally"],
-                })
-              }
-              className={selectCls}
-            >
-              {FASES_RALLY.map((f) => (
-                <option key={f.v} value={f.v}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
+        {contexto && (
+          <>
+            {/* Marcador */}
+            <div>
+              <p className="text-[9px] font-bold uppercase text-slate-500 mb-0.5">
+                Marcador
+              </p>
+              <div className="grid grid-cols-2 gap-1">
+                <select
+                  value={contexto.marcador.estado}
+                  onChange={(e) =>
+                    onCambiar({
+                      ...contexto,
+                      marcador: {
+                        ...contexto.marcador,
+                        estado: e.target
+                          .value as MarcadorFiltro["estado"],
+                      },
+                    })
+                  }
+                  className={selectCls}
+                >
+                  {ESTADOS_MARCADOR.map((s) => (
+                    <option key={s.v} value={s.v}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={contexto.marcador.diferencia}
+                  onChange={(e) =>
+                    onCambiar({
+                      ...contexto,
+                      marcador: {
+                        ...contexto.marcador,
+                        diferencia: e.target
+                          .value as MarcadorFiltro["diferencia"],
+                      },
+                    })
+                  }
+                  className={selectCls}
+                >
+                  {DIFERENCIAS_MARCADOR.map((d) => (
+                    <option key={d.v} value={d.v}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min={0}
+                  max={20}
+                  value={
+                    contexto.marcador.diferenciaExacta === null
+                      ? ""
+                      : contexto.marcador.diferenciaExacta
+                  }
+                  onChange={(e) =>
+                    onCambiar({
+                      ...contexto,
+                      marcador: {
+                        ...contexto.marcador,
+                        diferenciaExacta:
+                          e.target.value === ""
+                            ? null
+                            : parseInt(e.target.value, 10),
+                      },
+                    })
+                  }
+                  placeholder="Diff exacta"
+                  className={inputCls}
+                />
+                <select
+                  value={contexto.marcador.puntosParaCerrar}
+                  onChange={(e) =>
+                    onCambiar({
+                      ...contexto,
+                      marcador: {
+                        ...contexto.marcador,
+                        puntosParaCerrar: e.target
+                          .value as MarcadorFiltro["puntosParaCerrar"],
+                      },
+                    })
+                  }
+                  className={selectCls}
+                >
+                  {PUNTOS_CERRAR.map((p) => (
+                    <option key={p.v} value={p.v}>
+                      {p.v === "cualquiera"
+                        ? "Sin filtro de cierre"
+                        : p.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() =>
+                    onCambiar({
+                      ...contexto,
+                      marcador: {
+                        ...contexto.marcador,
+                        soloCriticos: !contexto.marcador.soloCriticos,
+                      },
+                    })
+                  }
+                  className={`px-2 py-1 text-[10px] font-semibold rounded border transition col-span-2 ${
+                    contexto.marcador.soloCriticos
+                      ? "bg-amber-500/20 text-amber-200 border-amber-500/50"
+                      : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10"
+                  }`}
+                >
+                  {contexto.marcador.soloCriticos
+                    ? "✓ Solo críticos"
+                    : "Solo críticos"}
+                </button>
+              </div>
+            </div>
 
-            <select
-              value={contexto.inicioPunto}
-              onChange={(e) =>
-                setContexto({
-                  ...contexto,
-                  inicioPunto: e.target
-                    .value as ContextoPartidoFiltro["inicioPunto"],
-                })
-              }
-              className={selectCls}
-            >
-              {INICIOS_PUNTO.map((i) => (
-                <option key={i.v} value={i.v}>
-                  {i.label}
-                </option>
-              ))}
-            </select>
+            {/* Rally */}
+            <div>
+              <p className="text-[9px] font-bold uppercase text-slate-500 mb-0.5">
+                Rally
+              </p>
+              <div className="grid grid-cols-2 gap-1">
+                <select
+                  value={contexto.faseRally}
+                  onChange={(e) =>
+                    onCambiar({
+                      ...contexto,
+                      faseRally: e.target
+                        .value as ContextoPartidoFiltro["faseRally"],
+                    })
+                  }
+                  className={selectCls}
+                >
+                  {FASES_RALLY.map((f) => (
+                    <option key={f.v} value={f.v}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={contexto.inicioPunto}
+                  onChange={(e) =>
+                    onCambiar({
+                      ...contexto,
+                      inicioPunto: e.target
+                        .value as ContextoPartidoFiltro["inicioPunto"],
+                    })
+                  }
+                  className={selectCls}
+                >
+                  {INICIOS_PUNTO.map((i) => (
+                    <option key={i.v} value={i.v}>
+                      {i.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={contexto.esPrimerToque}
+                  onChange={(e) =>
+                    onCambiar({
+                      ...contexto,
+                      esPrimerToque: e.target
+                        .value as ContextoPartidoFiltro["esPrimerToque"],
+                    })
+                  }
+                  className={selectCls}
+                >
+                  <option value="cualquiera">Primer toque: cualq.</option>
+                  <option value="si">Sí (primer toque)</option>
+                  <option value="no">No (2° o 3er)</option>
+                </select>
+                <select
+                  value={contexto.toquesMinimo ?? "cualquiera"}
+                  onChange={(e) =>
+                    onCambiar({
+                      ...contexto,
+                      toquesMinimo:
+                        e.target.value === "cualquiera"
+                          ? null
+                          : parseInt(e.target.value, 10),
+                    })
+                  }
+                  className={selectCls}
+                >
+                  <option value="cualquiera">Toques: cualq.</option>
+                  <option value="2">≥ 2</option>
+                  <option value="3">≥ 3</option>
+                  <option value="4">≥ 4</option>
+                </select>
+              </div>
+            </div>
 
-            <select
-              value={contexto.esPrimerToque}
-              onChange={(e) =>
-                setContexto({
-                  ...contexto,
-                  esPrimerToque: e.target
-                    .value as ContextoPartidoFiltro["esPrimerToque"],
-                })
-              }
-              className={selectCls}
-            >
-              <option value="cualquiera">Primer toque: cualquiera</option>
-              <option value="si">Sí (primer toque)</option>
-              <option value="no">No (2° o 3er toque)</option>
-            </select>
-
-            <select
-              value={contexto.toquesMinimo ?? "cualquiera"}
-              onChange={(e) =>
-                setContexto({
-                  ...contexto,
-                  toquesMinimo:
-                    e.target.value === "cualquiera"
-                      ? null
-                      : parseInt(e.target.value, 10),
-                })
-              }
-              className={selectCls}
-            >
-              <option value="cualquiera">Toques mín: cualquiera</option>
-              <option value="2">≥ 2 toques</option>
-              <option value="3">≥ 3 toques</option>
-              <option value="4">≥ 4 toques</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Jugador */}
-        <div>
-          <p className="text-[9px] font-bold uppercase text-slate-500 mb-1">
-            Jugador
-          </p>
-          <div className="grid grid-cols-2 gap-1">
-            <select
-              value={contexto.ubicacionTrigger}
-              onChange={(e) =>
-                setContexto({
-                  ...contexto,
-                  ubicacionTrigger: e.target
-                    .value as ContextoPartidoFiltro["ubicacionTrigger"],
-                })
-              }
-              className={selectCls}
-            >
-              {UBICACIONES.map((u) => (
-                <option key={u.v} value={u.v}>
-                  {u.v === "cualquiera"
-                    ? "Cualquier ubicación"
-                    : u.label}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={contexto.rachaPuntos ?? "cualquiera"}
-              onChange={(e) =>
-                setContexto({
-                  ...contexto,
-                  rachaPuntos:
-                    e.target.value === "cualquiera"
-                      ? null
-                      : parseInt(e.target.value, 10),
-                })
-              }
-              className={selectCls}
-            >
-              <option value="cualquiera">Racha: cualquiera</option>
-              <option value="2">≥ 2 seguidos</option>
-              <option value="3">≥ 3 seguidos</option>
-              <option value="4">≥ 4 seguidos</option>
-              <option value="5">≥ 5 seguidos</option>
-            </select>
-          </div>
-        </div>
+            {/* Jugador / set */}
+            <div>
+              <p className="text-[9px] font-bold uppercase text-slate-500 mb-0.5">
+                Jugador / set
+              </p>
+              <div className="grid grid-cols-2 gap-1">
+                <select
+                  value={contexto.ubicacionTrigger}
+                  onChange={(e) =>
+                    onCambiar({
+                      ...contexto,
+                      ubicacionTrigger: e.target
+                        .value as ContextoPartidoFiltro["ubicacionTrigger"],
+                    })
+                  }
+                  className={selectCls}
+                >
+                  {UBICACIONES.map((u) => (
+                    <option key={u.v} value={u.v}>
+                      {u.v === "cualquiera"
+                        ? "Cualquier ubicación"
+                        : u.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={contexto.rachaPuntos ?? "cualquiera"}
+                  onChange={(e) =>
+                    onCambiar({
+                      ...contexto,
+                      rachaPuntos:
+                        e.target.value === "cualquiera"
+                          ? null
+                          : parseInt(e.target.value, 10),
+                    })
+                  }
+                  className={selectCls}
+                >
+                  <option value="cualquiera">Racha: cualq.</option>
+                  <option value="2">≥ 2 seguidos</option>
+                  <option value="3">≥ 3 seguidos</option>
+                  <option value="4">≥ 4 seguidos</option>
+                  <option value="5">≥ 5 seguidos</option>
+                </select>
+                <select
+                  value={contexto.posicionEnSet}
+                  onChange={(e) =>
+                    onCambiar({
+                      ...contexto,
+                      posicionEnSet: e.target
+                        .value as PosicionEnSet,
+                    })
+                  }
+                  className={`${selectCls} col-span-2`}
+                >
+                  {POSICIONES_SET.map((p) => (
+                    <option key={p.v} value={p.v}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </details>
   );
 }
 
 // ============================================================
-// COMPARADORES SECTION
+// COMPARADORES
 // ============================================================
 
 function ComparadoresSection({
@@ -1383,24 +2283,21 @@ function ComparadoresSection({
   setCoincidencias: (c: CoincidenciaFiltro) => void;
 }) {
   const cantActivos = Object.values(coincidencias).filter(Boolean).length;
-
   const toggle = (key: keyof CoincidenciaFiltro) => {
     setCoincidencias({ ...coincidencias, [key]: !coincidencias[key] });
   };
 
   return (
     <details
-      className={`rounded-lg border ${
+      className={`rounded border ${
         cantActivos > 0
           ? "border-violet-500/40 bg-violet-500/[0.04]"
           : "border-white/10 bg-white/[0.02]"
       }`}
     >
-      <summary className="px-2 py-1.5 cursor-pointer text-[11px] font-bold uppercase text-slate-300 flex items-center justify-between">
-        <span>
-          🔗 Comparadores ({cantActivos})
-        </span>
-        <span className="text-slate-500 text-[10px]">▼</span>
+      <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
+        <span>🔗 Comparadores ({cantActivos})</span>
+        <span className="text-slate-500 text-[9px]">▼</span>
       </summary>
       <div className="p-2 pt-0 flex flex-wrap gap-1">
         {COMPARADORES.map((c) => {
@@ -1409,7 +2306,7 @@ function ComparadoresSection({
             <button
               key={c.key}
               onClick={() => toggle(c.key)}
-              className={`px-2 py-1 text-[10px] font-semibold rounded border transition flex items-center gap-1 ${
+              className={`px-2 py-0.5 text-[10px] font-semibold rounded border transition flex items-center gap-1 ${
                 act
                   ? "bg-violet-500/30 border-violet-400/60 text-violet-200"
                   : "bg-white/[0.02] border-white/10 text-slate-400 hover:text-white"
@@ -1426,7 +2323,7 @@ function ComparadoresSection({
 }
 
 // ============================================================
-// COMPORTAMIENTO DEL TRIGGER
+// DISTRIBUCIÓN
 // ============================================================
 
 function DistribucionLista({
@@ -1448,7 +2345,7 @@ function DistribucionLista({
       <div className="space-y-0.5">
         {items.map((it) => (
           <div key={it.label} className="flex items-center gap-2 text-[10px]">
-            <span className="w-20 truncate text-slate-300">{it.label}</span>
+            <span className="w-24 truncate text-slate-300">{it.label}</span>
             <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
               <div
                 className={`h-full ${color} rounded-full`}
@@ -1464,6 +2361,10 @@ function DistribucionLista({
     </div>
   );
 }
+
+// ============================================================
+// SECCIÓN: COMPORTAMIENTO
+// ============================================================
 
 function SeccionComportamiento({
   comportamiento,
@@ -1484,6 +2385,17 @@ function SeccionComportamiento({
         </span>
       </summary>
       <div className="p-3 space-y-2 border-t border-white/10">
+        {comportamiento.porBloque.length > 0 && (
+          <DistribucionLista
+            titulo="Cumplimiento por bloque"
+            items={comportamiento.porBloque.map((x) => ({
+              label: `#${x.bloqueId.slice(0, 5)} ${x.tipo}`,
+              count: x.count,
+              pct: x.pct,
+            }))}
+            color="bg-fuchsia-400"
+          />
+        )}
         <DistribucionLista
           titulo="Por subtipo"
           items={comportamiento.porSubtipo.map((x) => ({
@@ -1535,12 +2447,11 @@ function SeccionComportamiento({
 }
 
 // ============================================================
-// CONSECUENCIA
+// SECCIÓN: CONSECUENCIA
 // ============================================================
 
 function SeccionConsecuencia({
   resultado,
-  disparador,
   tipoObservado,
   jugadorObservadoFiltro,
   nombre,
@@ -1548,7 +2459,6 @@ function SeccionConsecuencia({
   onIrAPunto,
 }: {
   resultado: ResultadoAnalisis;
-  disparador: DisparadorFiltro;
   tipoObservado: TipoDisparador | "cualquiera";
   jugadorObservadoFiltro: string;
   nombre: (id: string | null) => string;
@@ -1558,6 +2468,12 @@ function SeccionConsecuencia({
   const est = resultado.estadisticasObservadas;
   if (!est) return null;
   const evalR = est.evaluacionResultado;
+
+  const esRelacion =
+    jugadorObservadoFiltro === "cualquiera" ||
+    jugadorObservadoFiltro === "mismo" ||
+    jugadorObservadoFiltro === "companero" ||
+    jugadorObservadoFiltro === "rival";
 
   return (
     <details
@@ -1572,80 +2488,53 @@ function SeccionConsecuencia({
             : `sig. ${tipoObservado}`}
         </span>
         <span className="text-[10px] text-slate-400 font-normal">
-          {evalR.total} casos · {evalR.masFrecuente === "punto"
-            ? "predominante: punto"
+          {evalR.total} casos ·{" "}
+          {evalR.masFrecuente === "punto"
+            ? "punto"
             : evalR.masFrecuente === "error"
-            ? "predominante: error"
-            : "predominante: neutro"}
+            ? "error"
+            : "neutro"}
         </span>
       </summary>
 
-      <div className="p-3 space-y-3 border-t border-white/10">
+      <div className="p-3 space-y-2 border-t border-white/10">
+        <p className="text-[10px] text-slate-400 -mt-1">
+          {esRelacion
+            ? etiquetaRelacionObservado(
+                jugadorObservadoFiltro as RelacionJugadorObservado
+              )
+            : `Jugador específico: ${nombre(jugadorObservadoFiltro)}`}
+        </p>
+
         {/* Balance */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-[11px]">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span className="text-slate-300">Puntos</span>
-            </div>
-            <div className="flex items-center gap-2 flex-1 max-w-xs ml-2">
-              <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                <div
-                  className="h-full bg-emerald-500 rounded-full"
-                  style={{ width: `${evalR.pctPuntos}%` }}
-                />
-              </div>
-              <span className="font-mono text-emerald-300 font-semibold text-[10px] w-12 text-right">
-                {evalR.pctPuntos}%
-              </span>
-            </div>
-            <span className="font-mono text-slate-500 text-[10px] w-14 text-right">
-              {evalR.puntos}/{evalR.total}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between text-[11px]">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-              <span className="text-slate-300">Neutro</span>
-            </div>
-            <div className="flex items-center gap-2 flex-1 max-w-xs ml-2">
-              <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                <div
-                  className="h-full bg-amber-500 rounded-full"
-                  style={{ width: `${evalR.pctNeutros}%` }}
-                />
-              </div>
-              <span className="font-mono text-amber-300 font-semibold text-[10px] w-12 text-right">
-                {evalR.pctNeutros}%
-              </span>
-            </div>
-            <span className="font-mono text-slate-500 text-[10px] w-14 text-right">
-              {evalR.neutros}/{evalR.total}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between text-[11px]">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-rose-400" />
-              <span className="text-slate-300">Error</span>
-            </div>
-            <div className="flex items-center gap-2 flex-1 max-w-xs ml-2">
-              <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                <div
-                  className="h-full bg-rose-500 rounded-full"
-                  style={{ width: `${evalR.pctErrores}%` }}
-                />
-              </div>
-              <span className="font-mono text-rose-300 font-semibold text-[10px] w-12 text-right">
-                {evalR.pctErrores}%
-              </span>
-            </div>
-            <span className="font-mono text-slate-500 text-[10px] w-14 text-right">
-              {evalR.errores}/{evalR.total}
-            </span>
-          </div>
-
+        <div className="space-y-1">
+          <BalanceFila
+            color="bg-emerald-400"
+            label="Puntos"
+            pct={evalR.pctPuntos}
+            count={evalR.puntos}
+            total={evalR.total}
+            colorTexto="text-emerald-300"
+            colorBarra="bg-emerald-500"
+          />
+          <BalanceFila
+            color="bg-amber-400"
+            label="Neutro"
+            pct={evalR.pctNeutros}
+            count={evalR.neutros}
+            total={evalR.total}
+            colorTexto="text-amber-300"
+            colorBarra="bg-amber-500"
+          />
+          <BalanceFila
+            color="bg-rose-400"
+            label="Error"
+            pct={evalR.pctErrores}
+            count={evalR.errores}
+            total={evalR.total}
+            colorTexto="text-rose-300"
+            colorBarra="bg-rose-500"
+          />
           <div className="flex items-center justify-between text-[11px] pt-1 border-t border-white/5">
             <span className="text-slate-300 font-medium">
               Efectividad neta
@@ -1666,12 +2555,12 @@ function SeccionConsecuencia({
         </div>
 
         {/* Indicadores */}
-        <div className="pt-2 border-t border-white/5 space-y-1 text-[11px]">
+        <div className="pt-2 border-t border-white/5 space-y-0.5 text-[11px]">
           <div className="flex justify-between gap-2">
             <span className="text-slate-400">Subtipo más frecuente:</span>
             <span className="font-semibold text-white capitalize truncate">
-              {est.subtipoMasFrecuente || "—"}
-              <span className="text-slate-400 font-normal ml-1">
+              {est.subtipoMasFrecuente || "—"}{" "}
+              <span className="text-slate-400 font-normal">
                 ({est.subtiposRanking[0]?.pct ?? 0}%)
               </span>
             </span>
@@ -1679,7 +2568,7 @@ function SeccionConsecuencia({
           <div className="flex justify-between gap-2">
             <span className="text-slate-400">Distancia promedio:</span>
             <span className="font-mono text-white">
-              ~{est.promedioAccionesDistancia} toques ·{" "}
+              ~{est.promedioAccionesDistancia}t ·{" "}
               {est.promedioPuntosDistancia === 0
                 ? "mismo punto"
                 : `+${est.promedioPuntosDistancia} pts`}
@@ -1708,14 +2597,13 @@ function SeccionConsecuencia({
           <summary className="text-[10px] font-bold uppercase text-slate-400 cursor-pointer">
             Registro ({resultado.ocurrencias.length})
           </summary>
-          <div className="mt-2 overflow-x-auto max-h-[340px] overflow-y-auto rounded border border-white/10">
-            <table className="w-full text-[10px] min-w-[600px]">
+          <div className="mt-2 overflow-x-auto max-h-[280px] overflow-y-auto rounded border border-white/10">
+            <table className="w-full text-[10px] min-w-[560px]">
               <thead className="sticky top-0 bg-slate-950 border-b border-white/10 text-slate-400 text-left">
                 <tr>
                   <th className="py-1.5 px-2">Momento</th>
                   <th className="py-1.5 px-2">Trigger</th>
                   <th className="py-1.5 px-2">Observada</th>
-                  <th className="py-1.5 px-2">Dist.</th>
                   <th className="py-1.5 px-2">Desenlace</th>
                   {onIrAPunto && <th className="py-1.5 px-2" />}
                 </tr>
@@ -1726,16 +2614,15 @@ function SeccionConsecuencia({
                   return (
                     <tr
                       key={`${o.set_numero}-${o.punto_numero}-${o.triggerId}`}
-                      className="hover:bg-white/[0.03]"
                     >
                       <td className="py-1.5 px-2 font-mono text-slate-400 whitespace-nowrap">
                         S{o.set_numero}·P{o.punto_numero}
                       </td>
                       <td className="py-1.5 px-2">
                         <span className="text-slate-100 capitalize">
-                          {o.triggerSubtipo ?? disparador.tipo}
-                        </span>
-                        <span className="text-slate-500 ml-1">
+                          {o.triggerSubtipo}
+                        </span>{" "}
+                        <span className="text-slate-500">
                           ({nombre(o.triggerJugadorId)})
                         </span>
                       </td>
@@ -1744,17 +2631,14 @@ function SeccionConsecuencia({
                           <>
                             <span className="text-slate-100 capitalize">
                               {obs.subtipo}
-                            </span>
-                            <span className="text-slate-500 ml-1">
+                            </span>{" "}
+                            <span className="text-slate-500">
                               ({nombre(obs.accion.jugador_id)})
                             </span>
                           </>
                         ) : (
                           <span className="text-slate-500 italic">—</span>
                         )}
-                      </td>
-                      <td className="py-1.5 px-2 font-mono text-slate-400">
-                        {obs ? `${obs.distanciaAcciones}t` : "—"}
                       </td>
                       <td className="py-1.5 px-2">
                         {obs ? (
@@ -1768,10 +2652,10 @@ function SeccionConsecuencia({
                             }`}
                           >
                             {obs.categoriaResultado === "punto"
-                              ? "Punto"
+                              ? "P"
                               : obs.categoriaResultado === "error"
-                              ? "Error"
-                              : "Neutro"}
+                              ? "E"
+                              : "N"}
                           </span>
                         ) : (
                           "—"
@@ -1798,5 +2682,46 @@ function SeccionConsecuencia({
         </details>
       </div>
     </details>
+  );
+}
+
+function BalanceFila({
+  color,
+  label,
+  pct,
+  count,
+  total,
+  colorTexto,
+  colorBarra,
+}: {
+  color: string;
+  label: string;
+  pct: number;
+  count: number;
+  total: number;
+  colorTexto: string;
+  colorBarra: string;
+}) {
+  return (
+    <div className="flex items-center justify-between text-[11px]">
+      <div className="flex items-center gap-2">
+        <span className={`w-2 h-2 rounded-full ${color}`} />
+        <span className="text-slate-300">{label}</span>
+      </div>
+      <div className="flex items-center gap-2 flex-1 max-w-xs ml-2">
+        <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+          <div
+            className={`h-full ${colorBarra} rounded-full`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <span className={`font-mono font-semibold text-[10px] w-12 text-right ${colorTexto}`}>
+          {pct}%
+        </span>
+      </div>
+      <span className="font-mono text-slate-500 text-[10px] w-14 text-right">
+        {count}/{total}
+      </span>
+    </div>
   );
 }
