@@ -1,2718 +1,1874 @@
-"use client";
-
 // ============================================================
-// ANÁLISIS DE CONSECUENCIAS — UI v4 con buscador de texto
+// ANÁLISIS DE CONSECUENCIAS — motor puro (v5)
 // ============================================================
-// Estructura por panel (A y B):
-//   1. BUSCADOR: input de texto libre + chips + aplicar
-//   2. Bloques CUANDO con operador AND/OR/NOT
-//   3. MIRAR (acción observada + relación jugador)
-//   4. Avanzado (alcance + comparadores)
-//   5. Resultados: Comportamiento + Consecuencia
+// Cambios v5:
+//   + OR/AND/NOT entre N bloques trigger.
+//   + Filtros de scope: sets, puntos, partidos, roles, zonas,
+//     rotaciones, diferencia exacta, primer/último punto del set.
+//   + Racha específica de jugador (puntos ganados/perdidos del
+//     equipo, o errores/aciertos seguidos del jugador).
+//   + Patrón previo (secuencia exacta de hasta 3 acciones).
+//   + Top N% por puntaje de la acción del trigger.
+//   + Vs promedio del jugador (por encima / por debajo).
 //
-// El buscador usa parsearBusqueda() de lib/parserBusqueda.ts
-// (rule-based, español de vóley). Al aplicar, reemplaza los
-// bloques del panel con el bloque parseado.
+// Jerarquía conceptual:
+//   DISPARADOR = cada BloqueTrigger tiene su propio filtro completo.
+//   El análisis combina los bloques con el operador elegido.
+//
+// Ejemplo:
+//   [A: ataque·error·Juan] AND [B: bloqueo·punto·Pedro]
+//   → "Cuando Juan erró un ataque Y Pedro metió un bloqueo-punto"
+//
+//   [A: ataque·punto] OR [B: bloqueo·punto]
+//   → "Cuando el equipo metió punto por ataque O por bloqueo"
+//
+//   NOT [A: armado]
+//   → "Cuando NO es armado" (se combina con el bloque anterior)
 // ============================================================
 
-import { useMemo, useState, useEffect } from "react";
+import type { AccionVisual } from "../app/equipo/adaptadorUnificadoV2";
 import {
-  analizarConsecuencias,
-  etiquetaAmbito,
-  etiquetaCierraPunto,
-  etiquetaOperador,
-  etiquetaRelacion,
-  etiquetaRelacionObservado,
-  etiquetaResultado,
-  etiquetaTipoDisparador,
-  etiquetaUbicacion,
-  hayComparadoresActivos,
-  hayContextoPartidoActivo,
-  hayFiltrosAvanzadosEnBloque,
-  resultadosPorTipoAnalisis,
-  BLOQUE_TRIGGER_VACIO,
-  COINCIDENCIA_VACIA,
-  CONTEXTO_PARTIDO_VACIO,
-  FILTRO_ACCION_HISTORICA_VACIO,
-  type AmbitoRacha,
-  type BloqueTrigger,
-  type BloqueTriggerFiltro,
-  type CierraPuntoFiltro,
-  type CoincidenciaFiltro,
-  type ComportamientoTrigger,
-  type ContextoPartidoFiltro,
-  type FiltroAccionHistorica,
-  type FiltrosAnalisis,
-  type ItemPatron,
-  type MarcadorFiltro,
-  type OperadorBloque,
-  type PatronPrevioFiltro,
-  type PosicionEnSet,
-  type RachaHistorica,
-  type RachaJugadorFiltro,
-  type RelacionJugador,
-  type RelacionJugadorObservado,
-  type ResultadoAnalisis,
-  type TipoDisparador,
-  type TipoRachaJugador,
-  type UbicacionFiltro,
-  type Ventana,
-} from "@/lib/analisisConsecuencias";
-import {
-  parsearBusqueda,
-  type CategoriaMatch,
-  type MatchParser,
-  type ResultadoParser,
-} from "@/lib/parserBusqueda";
-import type { AccionVisual } from "./adaptadorUnificadoV2";
+  calcularContextoRally,
+  type ContextoRally,
+  type FaseRally,
+  type InicioPunto,
+  type EstadoMarcador,
+  type DiferenciaMarcador,
+} from "./contextoRally";
 
 // ------------------------------------------------------------
-// OPCIONES
+// TIPOS BASE
 // ------------------------------------------------------------
 
-const TIPOS: { v: TipoDisparador; label: string }[] = [
-  { v: "ataque", label: "Ataque" },
-  { v: "saque", label: "Saque" },
-  { v: "recepcion", label: "Recepción" },
-  { v: "bloqueo", label: "Bloqueo" },
-  { v: "armado", label: "Armado" },
-  { v: "defensa", label: "Defensa" },
-  { v: "libre", label: "Pelota libre" },
-  { v: "roce-red", label: "Roce red" },
-];
+export type TipoDisparador =
+  | "saque"
+  | "recepcion"
+  | "armado"
+  | "ataque"
+  | "bloqueo"
+  | "defensa"
+  | "libre"
+  | "roce-red";
 
-const TIPOS_OBSERVADOS: { v: TipoDisparador | "cualquiera"; label: string }[] = [
-  { v: "cualquiera", label: "1ª acción siguiente" },
-  { v: "ataque", label: "Sig. ataque" },
-  { v: "saque", label: "Sig. saque" },
-  { v: "recepcion", label: "Sig. recepción" },
-  { v: "bloqueo", label: "Sig. bloqueo" },
-  { v: "armado", label: "Sig. armado" },
-  { v: "defensa", label: "Sig. defensa" },
-];
+export type Ventana = 1 | 2 | 3 | "todas";
+export type CategoriaResultado = "punto" | "error" | "neutro";
 
-const RELACIONES_OBSERVADO: { v: RelacionJugadorObservado; label: string }[] = [
-  { v: "cualquiera", label: "Cualquier jugador" },
-  { v: "mismo", label: "Mismo que el trigger" },
-  { v: "companero", label: "Un compañero" },
-  { v: "rival", label: "Un rival" },
-];
+export type UbicacionFiltro =
+  | "cualquiera"
+  | "delantero"
+  | "zaguero"
+  | "libero"
+  | "otro";
 
-const ALANCES = [
-  { v: "partido" as const, label: "En el partido" },
-  { v: "mismo_punto" as const, label: "Solo en el mismo punto" },
-];
+export type RelacionJugador =
+  | "cualquiera"
+  | "mismo"
+  | "companero"
+  | "rival";
 
-const OPERADORES: { v: OperadorBloque; label: string }[] = [
-  { v: "AND", label: "Y" },
-  { v: "OR", label: "O" },
-  { v: "NOT", label: "Y NO" },
-];
+export type RelacionJugadorObservado =
+  | "cualquiera"
+  | "mismo"
+  | "companero"
+  | "rival";
 
-const AMBITOS: { v: AmbitoRacha; label: string }[] = [
-  { v: "mismo_punto", label: "Mismo punto" },
-  { v: "puntos_del_set", label: "Este set" },
-  { v: "partido", label: "Todo el partido" },
-];
+export type AmbitoRacha = "mismo_punto" | "puntos_del_set" | "partido";
+export type CierraPuntoFiltro = "cualquiera" | "si" | "no";
+export type PosicionEnSet = "cualquiera" | "primero" | "ultimo";
 
-const UBICACIONES: { v: UbicacionFiltro; label: string }[] = [
-  { v: "cualquiera", label: "Cualquiera" },
-  { v: "delantero", label: "Delantero" },
-  { v: "zaguero", label: "Zaguero" },
-  { v: "libero", label: "Líbero" },
-  { v: "otro", label: "Otro" },
-];
+export type OperadorBloque = "AND" | "OR" | "NOT";
 
-const RELACIONES_PREVIA: { v: RelacionJugador; label: string }[] = [
-  { v: "cualquiera", label: "Cualquier jugador" },
-  { v: "mismo", label: "Mismo jugador" },
-  { v: "companero", label: "Compañero" },
-  { v: "rival", label: "Rival" },
-];
+// ------------------------------------------------------------
+// FILTRO DE UNA ACCIÓN HISTÓRICA
+// ------------------------------------------------------------
 
-const CIERRAS: { v: CierraPuntoFiltro; label: string }[] = [
-  { v: "cualquiera", label: "Cualquiera" },
-  { v: "si", label: "Cerró el punto" },
-  { v: "no", label: "NO cerró el punto" },
-];
+export interface FiltroAccionHistorica {
+  tipos: TipoDisparador[];
+  resultados: string[];
+  cierraPunto: CierraPuntoFiltro;
+  ubicacion: UbicacionFiltro;
+  zonaJugador: number | "cualquiera";
+  velocidad: number | null;
+  tipoSaque: "potencia" | "flotado" | null;
+  relacionJugador: RelacionJugador;
+}
 
-const VELOCIDADES: { v: number | null; label: string }[] = [
-  { v: null, label: "Cualquiera" },
-  { v: 1, label: "1" },
-  { v: 1.5, label: "1.5" },
-  { v: 2, label: "2" },
-  { v: 3, label: "3" },
-  { v: 5, label: "5" },
-];
-
-const TIPOS_SAQUE: { v: "potencia" | "flotado" | null; label: string }[] = [
-  { v: null, label: "Cualquiera" },
-  { v: "potencia", label: "Potencia" },
-  { v: "flotado", label: "Flotado" },
-];
-
-const ZONAS_JUGADOR: { v: number; label: string }[] = [
-  { v: 1, label: "Z1" },
-  { v: 2, label: "Z2" },
-  { v: 3, label: "Z3" },
-  { v: 4, label: "Z4" },
-  { v: 5, label: "Z5" },
-  { v: 6, label: "Z6" },
-];
-
-const ROLES = ["A", "O", "C1", "C2", "P1", "P2", "L"];
-const ROTACIONES = [1, 2, 3, 4, 5, 6];
-
-const ESTADOS_MARCADOR = [
-  { v: "cualquiera" as const, label: "Cualquier estado" },
-  { v: "empatado" as const, label: "Empatado" },
-  { v: "ganando" as const, label: "Ganando" },
-  { v: "perdiendo" as const, label: "Perdiendo" },
-];
-
-const DIFERENCIAS_MARCADOR = [
-  { v: "cualquiera" as const, label: "Cualquiera" },
-  { v: "0" as const, label: "Empate (0)" },
-  { v: "1-2" as const, label: "1-2 pts" },
-  { v: "3-5" as const, label: "3-5 pts" },
-  { v: "6+" as const, label: "6+ pts" },
-];
-
-const PUNTOS_CERRAR = [
-  { v: "cualquiera" as const, label: "Cualquiera" },
-  { v: "<=1" as const, label: "≤ 1 (match)" },
-  { v: "<=3" as const, label: "≤ 3" },
-  { v: "<=5" as const, label: "≤ 5" },
-];
-
-const FASES_RALLY = [
-  { v: "cualquiera" as const, label: "Cualquier fase" },
-  { v: "side-out" as const, label: "Side-out" },
-  { v: "contraataque" as const, label: "Contraataque" },
-  { v: "free-ball" as const, label: "Free ball" },
-  { v: "otro" as const, label: "Otro" },
-];
-
-const INICIOS_PUNTO = [
-  { v: "cualquiera" as const, label: "Cualquiera" },
-  { v: "ace_propio" as const, label: "Ace propio" },
-  { v: "ace_rival" as const, label: "Ace rival" },
-  { v: "recepcion_positiva" as const, label: "Recepción +" },
-  { v: "recepcion_neutra" as const, label: "Recepción !" },
-  { v: "recepcion_negativa" as const, label: "Recepción -" },
-  { v: "overpass" as const, label: "Overpass" },
-  { v: "error_directo" as const, label: "Error directo" },
-  { v: "otro" as const, label: "Otro" },
-];
-
-const POSICIONES_SET: { v: PosicionEnSet; label: string }[] = [
-  { v: "cualquiera", label: "Cualquiera" },
-  { v: "primero", label: "Primer punto del set" },
-  { v: "ultimo", label: "Último punto del set" },
-];
-
-const TIPOS_RACHA_JUGADOR: { v: TipoRachaJugador; label: string }[] = [
-  { v: "puntos_ganados", label: "Puntos ganados seguidos" },
-  { v: "puntos_perdidos", label: "Puntos perdidos seguidos" },
-  { v: "errores_seguidos", label: "Errores seguidos" },
-  { v: "aciertos_seguidos", label: "Aciertos seguidos" },
-];
-
-const COMPARADORES: {
-  key: keyof CoincidenciaFiltro;
-  etiqueta: string;
-}[] = [
-  { key: "mismaZonaTriggerDestino", etiqueta: "Misma zona destino" },
-  { key: "mismaZonaTriggerOrigen", etiqueta: "Misma zona origen" },
-  { key: "mismaVelocidadAnterior", etiqueta: "Misma velocidad" },
-];
-
-const CATEGORIA_COLOR: Record<CategoriaMatch, string> = {
-  tipo: "bg-blue-500/20 text-blue-200 border-blue-500/40",
-  resultado: "bg-emerald-500/20 text-emerald-200 border-emerald-500/40",
-  jugador: "bg-amber-500/20 text-amber-200 border-amber-500/40",
-  set: "bg-violet-500/20 text-violet-200 border-violet-500/40",
-  punto: "bg-violet-500/20 text-violet-200 border-violet-500/40",
-  partido: "bg-fuchsia-500/20 text-fuchsia-200 border-fuchsia-500/40",
-  rol: "bg-cyan-500/20 text-cyan-200 border-cyan-500/40",
-  zona: "bg-cyan-500/20 text-cyan-200 border-cyan-500/40",
-  rotacion: "bg-cyan-500/20 text-cyan-200 border-cyan-500/40",
-  velocidad: "bg-sky-500/20 text-sky-200 border-sky-500/40",
-  "tipo-saque": "bg-orange-500/20 text-orange-200 border-orange-500/40",
-  previa: "bg-rose-500/20 text-rose-200 border-rose-500/40",
-  "racha-jugador": "bg-rose-500/20 text-rose-200 border-rose-500/40",
-  top: "bg-yellow-500/20 text-yellow-200 border-yellow-500/40",
-  "vs-promedio": "bg-yellow-500/20 text-yellow-200 border-yellow-500/40",
-  contexto: "bg-slate-500/20 text-slate-200 border-slate-500/40",
-  "posicion-set": "bg-slate-500/20 text-slate-200 border-slate-500/40",
+export const FILTRO_ACCION_HISTORICA_VACIO: FiltroAccionHistorica = {
+  tipos: [],
+  resultados: [],
+  cierraPunto: "cualquiera",
+  ubicacion: "cualquiera",
+  zonaJugador: "cualquiera",
+  velocidad: null,
+  tipoSaque: null,
+  relacionJugador: "cualquiera",
 };
 
 // ------------------------------------------------------------
-// CONFIGURACIÓN DE UN PANEL
+// RACHA HISTÓRICA
 // ------------------------------------------------------------
 
-interface ConfiguracionPanel {
+export interface RachaHistorica {
+  id: string;
+  ambito: AmbitoRacha;
+  desdeAtras: number;
+  minimo: number;
+  filtro: FiltroAccionHistorica;
+}
+
+// ------------------------------------------------------------
+// RACHA ESPECÍFICA DE JUGADOR
+// ------------------------------------------------------------
+// Distinto de RachaHistorica:
+//   - "puntos_ganados" / "puntos_perdidos": cuenta puntos del SET
+//     que el equipo del jugador ganó/perdió consecutivamente.
+//   - "errores_seguidos": cuenta las últimas N acciones de ese
+//     jugador que resultaron en error (de cualquier tipo).
+//   - "aciertos_seguidos": cuenta las últimas N acciones que
+//     resultaron en punto/positivo.
+
+export type TipoRachaJugador =
+  | "puntos_ganados"
+  | "puntos_perdidos"
+  | "errores_seguidos"
+  | "aciertos_seguidos";
+
+export interface RachaJugadorFiltro {
+  jugadorId: string | null;
+  tipo: TipoRachaJugador;
+  minimo: number;
+  ambito: AmbitoRacha;
+}
+
+// ------------------------------------------------------------
+// PATRÓN PREVIO
+// ------------------------------------------------------------
+// Secuencia exacta de acciones anteriores del mismo punto.
+
+export interface ItemPatron {
+  tipo: TipoDisparador;
+  resultado: string | "cualquiera";
+}
+
+export interface PatronPrevioFiltro {
+  acciones: ItemPatron[];
+}
+
+// ------------------------------------------------------------
+// CONTEXTO DEL PARTIDO
+// ------------------------------------------------------------
+
+export interface MarcadorFiltro {
+  estado: "cualquiera" | EstadoMarcador;
+  diferencia: "cualquiera" | DiferenciaMarcador;
+  diferenciaExacta: number | null;
+  soloCriticos: boolean;
+  puntosParaCerrar: "cualquiera" | "<=1" | "<=3" | "<=5";
+}
+
+export interface ContextoPartidoFiltro {
+  marcador: MarcadorFiltro;
+  faseRally: "cualquiera" | FaseRally;
+  inicioPunto: "cualquiera" | InicioPunto;
+  rachaPuntos: number | null;
+  ubicacionTrigger: UbicacionFiltro;
+  esPrimerToque: "cualquiera" | "si" | "no";
+  toquesMinimo: number | null;
+  posicionEnSet: PosicionEnSet;
+}
+
+export const CONTEXTO_PARTIDO_VACIO: ContextoPartidoFiltro = {
+  marcador: {
+    estado: "cualquiera",
+    diferencia: "cualquiera",
+    diferenciaExacta: null,
+    soloCriticos: false,
+    puntosParaCerrar: "cualquiera",
+  },
+  faseRally: "cualquiera",
+  inicioPunto: "cualquiera",
+  rachaPuntos: null,
+  ubicacionTrigger: "cualquiera",
+  esPrimerToque: "cualquiera",
+  toquesMinimo: null,
+  posicionEnSet: "cualquiera",
+};
+
+// ------------------------------------------------------------
+// COINCIDENCIA
+// ------------------------------------------------------------
+
+export interface CoincidenciaFiltro {
+  mismoJugadorTrigger: boolean;
+  mismaZonaTriggerDestino: boolean;
+  mismaZonaTriggerOrigen: boolean;
+  mismaZonaAnteriorOrigen: boolean;
+  mismaZonaAnteriorDestino: boolean;
+  mismaVelocidadAnterior: boolean;
+  mismoTipoSaqueAnterior: boolean;
+  mismoReceptorAnterior: boolean;
+}
+
+export const COINCIDENCIA_VACIA: CoincidenciaFiltro = {
+  mismoJugadorTrigger: false,
+  mismaZonaTriggerDestino: false,
+  mismaZonaTriggerOrigen: false,
+  mismaZonaAnteriorOrigen: false,
+  mismaZonaAnteriorDestino: false,
+  mismaVelocidadAnterior: false,
+  mismoTipoSaqueAnterior: false,
+  mismoReceptorAnterior: false,
+};
+
+// ------------------------------------------------------------
+// FILTRO COMPLETO DE UN BLOQUE TRIGGER
+// ------------------------------------------------------------
+
+export interface BloqueTriggerFiltro {
+  tipo: TipoDisparador;
+  jugadorId: string | null;
+  resultado: string | "cualquiera";
+  sets: number[];
+  puntos: number[];
+  partidos: string[];
+  roles: string[];
+  zonasJugador: number[];
+  rotaciones: number[];
+  rachas: RachaHistorica[];
+  accionPreviaDirecta: FiltroAccionHistorica | null;
+  rachaJugador: RachaJugadorFiltro | null;
+  patronPrevio: PatronPrevioFiltro | null;
+  topPorcentaje: number | null;
+  vsPromedio: "por_encima" | "por_debajo" | null;
+  contextoPartido: ContextoPartidoFiltro | null;
+}
+
+export const BLOQUE_TRIGGER_VACIO: BloqueTriggerFiltro = {
+  tipo: "ataque",
+  jugadorId: null,
+  resultado: "cualquiera",
+  sets: [],
+  puntos: [],
+  partidos: [],
+  roles: [],
+  zonasJugador: [],
+  rotaciones: [],
+  rachas: [],
+  accionPreviaDirecta: null,
+  rachaJugador: null,
+  patronPrevio: null,
+  topPorcentaje: null,
+  vsPromedio: null,
+  contextoPartido: null,
+};
+
+// ------------------------------------------------------------
+// BLOQUE TRIGGER (con operador)
+// ------------------------------------------------------------
+
+export interface BloqueTrigger {
+  id: string;
+  operador: OperadorBloque;
+  filtro: BloqueTriggerFiltro;
+}
+
+// ------------------------------------------------------------
+// FILTROS COMPLETOS
+// ------------------------------------------------------------
+
+export interface FiltrosAnalisis {
   bloques: BloqueTrigger[];
-  tipoObservado: TipoDisparador | "cualquiera";
-  jugadorObservadoFiltro: string;
-  alcance: "partido" | "mismo_punto";
+  tipoObservado?: TipoDisparador | "cualquiera";
+  jugadorObservadoRelacion?: RelacionJugadorObservado;
+  jugadorObservadoId?: string | null;
+  alcance?: "partido" | "mismo_punto";
+  ventana: Ventana;
   coincidencias: CoincidenciaFiltro;
 }
 
-let _blockCounter = 0;
-function generarIdBloque(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `b-${crypto.randomUUID()}`;
+export const FILTROS_ANALISIS_VACIO: FiltrosAnalisis = {
+  bloques: [],
+  tipoObservado: "cualquiera",
+  jugadorObservadoRelacion: "cualquiera",
+  jugadorObservadoId: null,
+  alcance: "partido",
+  ventana: 1,
+  coincidencias: { ...COINCIDENCIA_VACIA },
+};
+
+// ------------------------------------------------------------
+// RESULTADOS
+// ------------------------------------------------------------
+
+export interface DetalleAccionObservada {
+  accion: AccionVisual;
+  distanciaAcciones: number;
+  distanciaPuntos: number;
+  esMismoPunto: boolean;
+  categoriaResultado: CategoriaResultado;
+  subtipo: string;
+}
+
+export interface OcurrenciaTrigger {
+  set_numero: number;
+  punto_numero: number;
+  triggerId: string;
+  triggerJugadorId: string | null;
+  triggerSubtipo: string | null;
+  anteriorId: string | null;
+  anteriorJugadorId: string | null;
+  anteriorSubtipo: string | null;
+  siguientes: AccionVisual[];
+  accionObservada?: DetalleAccionObservada | null;
+}
+
+export interface CoincidenciasResumen {
+  mismoJugadorTrigger: number;
+  mismaZonaTriggerDestino: number;
+  mismaZonaTriggerOrigen: number;
+  mismaZonaAnteriorOrigen: number;
+  mismaZonaAnteriorDestino: number;
+  mismaVelocidadAnterior: number;
+  mismoTipoSaqueAnterior: number;
+  mismoReceptorAnterior: number;
+}
+
+export interface ResumenPorTipo {
+  tipo: string;
+  count: number;
+  coincidencias: CoincidenciasResumen;
+}
+
+export interface EvaluacionResultado {
+  masFrecuente: CategoriaResultado;
+  puntos: number;
+  errores: number;
+  neutros: number;
+  total: number;
+  pctPuntos: number;
+  pctErrores: number;
+  pctNeutros: number;
+  efectividadNeta: number;
+}
+
+export interface EstadisticasObservadas {
+  tipoObservado: TipoDisparador | "cualquiera";
+  totalEncontradas: number;
+  promedioAccionesDistancia: number;
+  promedioPuntosDistancia: number;
+  pctMismoPunto: number;
+  pctPuntosPosteriores: number;
+  evaluacionResultado: EvaluacionResultado;
+  subtiposRanking: { subtipo: string; count: number; pct: number }[];
+  subtipoMasFrecuente: string | null;
+  jugadoresRanking: { jugadorId: string; count: number; pct: number }[];
+  jugadorMasFrecuenteId: string | null;
+  zonasRanking: { zona: number; count: number; pct: number }[];
+  zonaMasFrecuente: number | null;
+}
+
+export interface ComportamientoTrigger {
+  totalTriggers: number;
+  porSubtipo: { subtipo: string; count: number; pct: number }[];
+  porZonaDestino: { zona: number | null; count: number; pct: number }[];
+  porVelocidad: { velocidad: number | null; count: number; pct: number }[];
+  porJugador: { jugadorId: string; count: number; pct: number }[];
+  porSet: { set: number; count: number; pct: number }[];
+  porBloque: { bloqueId: string; tipo: string; count: number; pct: number }[];
+}
+
+export interface ResultadoAnalisis {
+  totalOcurrencias: number;
+  ocurrencias: OcurrenciaTrigger[];
+  distribucionSiguiente: Record<string, number>;
+  distribucionSubtipo: Record<string, number>;
+  resumenPorTipo: ResumenPorTipo[];
+  coincidenciasGlobales: CoincidenciasResumen;
+  estadisticasObservadas?: EstadisticasObservadas;
+  comportamientoTrigger?: ComportamientoTrigger;
+}
+
+// ------------------------------------------------------------
+// CLASIFICACIÓN DE RESULTADOS
+// ------------------------------------------------------------
+
+export function clasificarResultado(a: AccionVisual): CategoriaResultado {
+  const sub = baseSubtipo(a).toLowerCase();
+  const tipo = a.tipo;
+
+  if (a.es_error) return "error";
+
+  if (tipo === "ataque") {
+    if (sub === "punto") return "punto";
+    if (
+      sub.includes("error") ||
+      sub.includes("gorro") ||
+      sub === "use_rival_ataque" ||
+      sub === "error_red_ataque" ||
+      sub === "error_afuera_ataque"
+    )
+      return "error";
+    return "neutro";
   }
-  _blockCounter += 1;
-  return `b-${Date.now()}-${_blockCounter}`;
-}
 
-function bloqueVacio(operador: OperadorBloque = "AND"): BloqueTrigger {
-  return {
-    id: generarIdBloque(),
-    operador,
-    filtro: { ...BLOQUE_TRIGGER_VACIO },
-  };
-}
+  if (tipo === "saque") {
+    if (sub === "ace") return "punto";
+    if (sub === "negativo" || sub.includes("error")) return "error";
+    return "neutro";
+  }
 
-function panelInicial(): ConfiguracionPanel {
-  return {
-    bloques: [bloqueVacio("AND")],
-    tipoObservado: "ataque",
-    jugadorObservadoFiltro: "cualquiera",
-    alcance: "partido",
-    coincidencias: { ...COINCIDENCIA_VACIA },
-  };
-}
+  if (tipo === "bloqueo") {
+    if (sub === "punto") return "punto";
+    if (sub === "red" || sub === "use_rival") return "error";
+    return "neutro";
+  }
 
-// ------------------------------------------------------------
-// PROPS
-// ------------------------------------------------------------
+  if (tipo === "recepcion") {
+    if (sub === "ace_contra" || sub === "error_directo") return "error";
+    if (sub === "perfecta" || sub === "2x_positiva" || sub === "positiva")
+      return "punto";
+    return "neutro";
+  }
 
-interface Props {
-  acciones: AccionVisual[];
-  onIrAPunto?: (set: number, punto: number) => void;
-  nombreDeJugador?: (id: string | null) => string;
-  titulo?: string;
-  jugadorId?: string;
-  jugadoresDisponibles?: { id: string; nombre: string }[];
-  partidosDisponibles?: { id: string; nombre: string }[];
+  if (tipo === "defensa") {
+    if (
+      sub === "error_def" ||
+      sub === "errores_graves" ||
+      sub === "mala_libre"
+    )
+      return "error";
+    if (
+      sub === "gran_def" ||
+      sub === "toque_positiva" ||
+      sub === "cobertura_positiva"
+    )
+      return "punto";
+    return "neutro";
+  }
+
+  if (sub.includes("punto") || sub === "ace") return "punto";
+  if (sub.includes("error") || sub === "horrible" || sub === "malo")
+    return "error";
+  return "neutro";
 }
 
 // ------------------------------------------------------------
 // HELPERS
 // ------------------------------------------------------------
 
-const selectCls =
-  "w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1.5 border border-white/10 focus:outline-none focus:border-slate-400 cursor-pointer";
-const inputCls = selectCls;
+export function baseSubtipo(a: AccionVisual): string {
+  const s =
+    a.subtipo !== null && a.subtipo !== undefined ? String(a.subtipo) : "";
+  return s.startsWith("toque:") ? s.slice(6) : s;
+}
 
-const cardBase: React.CSSProperties = {
-  background: "var(--sx-surface-1)",
-  border: "1px solid var(--sx-border)",
-};
+function ubicacionDeZona(zona: number | null): UbicacionFiltro {
+  if (zona === null || zona === undefined) return "otro";
+  if (zona === 1 || zona === 5 || zona === 6) return "zaguero";
+  if (zona === 2 || zona === 3 || zona === 4) return "delantero";
+  return "otro";
+}
 
-function resumenRacha(r: RachaHistorica): string {
-  const partes: string[] = [];
-  partes.push(etiquetaAmbito(r.ambito));
-  partes.push(`≥${r.minimo}`);
-  if (r.desdeAtras > 0) partes.push(`saltar ${r.desdeAtras}`);
-  if (r.filtro.tipos.length > 0) {
-    partes.push(r.filtro.tipos.map((t) => etiquetaTipoDisparador(t)).join("|"));
-  } else {
-    partes.push("cualquier acción");
+function puntajeDeAccion(a: AccionVisual): number | null {
+  const sub = baseSubtipo(a);
+  if (a.tipo === "saque") {
+    switch (sub) {
+      case "ace": return 10;
+      case "positivo_mas": return 8;
+      case "positivo": return 6;
+      case "neutro": return 5;
+      case "negativo": return 2;
+      default: return null;
+    }
   }
-  if (r.filtro.resultados.length > 0) partes.push(r.filtro.resultados[0]);
-  return partes.join(" · ");
+  if (a.tipo === "recepcion") {
+    switch (sub) {
+      case "perfecta": return 10;
+      case "positiva": return 8;
+      case "intermedia": return 5;
+      case "negativa": return 4;
+      case "doble_negativa": return 2;
+      case "overpass": return 1;
+      case "error_directo": return 0;
+      default: return null;
+    }
+  }
+  if (a.tipo === "armado") {
+    if (sub === "R") return 5;
+    const n = parseInt(sub, 10);
+    if (isNaN(n)) return null;
+    switch (n) {
+      case 6: return 10;
+      case 5: return 8;
+      case 4: return 6;
+      case 3: return 3;
+      case 2: return 1;
+      case 1: return 0;
+      default: return null;
+    }
+  }
+  if (a.tipo === "ataque") {
+    switch (sub) {
+      case "punto":
+      case "punto_directo_ataque":
+      case "punto_desviado_ataque":
+      case "use_rival_ataque":
+        return 10;
+      case "neutro":
+      case "neutro_bloqueo_cobertura_ataque":
+      case "neutro_desvio_bloqueo_defensa_ataque":
+      case "neutro_defensa_ataque":
+        return 2;
+      case "error":
+      case "error_red_ataque":
+      case "error_afuera_ataque":
+      case "gorro_ataque":
+        return 0;
+      default: return null;
+    }
+  }
+  if (a.tipo === "bloqueo") {
+    switch (sub) {
+      case "punto": return 10;
+      case "positivo_mas": return 8;
+      case "positivo": return 6;
+      case "neutro": return 5;
+      case "use_rival": return 3;
+      case "filtrada": return 2;
+      case "red": return 0;
+      default: return null;
+    }
+  }
+  if (a.tipo === "defensa") {
+    switch (sub) {
+      case "gran_def":
+      case "toque_positiva":
+      case "cobertura_positiva":
+        return 10;
+      case "neutro": return 5;
+      case "toque_negativa":
+      case "error_def":
+      case "cobertura_negativa":
+      case "errores_graves":
+        return 0;
+      case "mala_libre": return -2;
+      default: return null;
+    }
+  }
+  return null;
 }
 
-function resumenBloque(b: BloqueTriggerFiltro): string {
-  const partes: string[] = [];
-  partes.push(etiquetaTipoDisparador(b.tipo));
-  if (b.resultado !== "cualquiera") partes.push(b.resultado);
-  if (b.jugadorId) partes.push(`jugador`);
-  return partes.join(" · ");
+function cumpleFiltroAccion(
+  a: AccionVisual,
+  trigger: AccionVisual,
+  f: FiltroAccionHistorica
+): boolean {
+  if (f.tipos.length > 0) {
+    if (!f.tipos.includes(a.tipo as TipoDisparador)) return false;
+  }
+  if (f.resultados.length > 0) {
+    const sub = baseSubtipo(a);
+    if (!f.resultados.includes(sub)) return false;
+  }
+  if (f.cierraPunto !== "cualquiera") {
+    const cierra = !!a.es_ultima_del_punto;
+    if (f.cierraPunto === "si" && !cierra) return false;
+    if (f.cierraPunto === "no" && cierra) return false;
+  }
+  if (f.ubicacion !== "cualquiera") {
+    const ubi = ubicacionDeZona(a.zona_jugador);
+    if (ubi !== f.ubicacion) return false;
+  }
+  if (f.zonaJugador !== "cualquiera") {
+    if (a.zona_jugador !== f.zonaJugador) return false;
+  }
+  if (f.velocidad !== null) {
+    if (a.velocidad !== f.velocidad) return false;
+  }
+  if (f.tipoSaque !== null) {
+    if (a.tipo_saque !== f.tipoSaque) return false;
+  }
+  if (f.relacionJugador !== "cualquiera") {
+    const mismoJugador = a.jugador_id === trigger.jugador_id;
+    const mismoEquipo = a.es_rival === trigger.es_rival;
+    if (f.relacionJugador === "mismo" && !mismoJugador) return false;
+    if (f.relacionJugador === "companero" && (mismoJugador || !mismoEquipo))
+      return false;
+    if (f.relacionJugador === "rival" && mismoEquipo) return false;
+  }
+  return true;
 }
 
-function construirFiltros(config: ConfiguracionPanel): FiltrosAnalisis {
-  const esRelacion =
-    config.jugadorObservadoFiltro === "cualquiera" ||
-    config.jugadorObservadoFiltro === "mismo" ||
-    config.jugadorObservadoFiltro === "companero" ||
-    config.jugadorObservadoFiltro === "rival";
+function verificarRacha(
+  accionesCronologicas: AccionVisual[],
+  triggerIdxGlobal: number,
+  trigger: AccionVisual,
+  racha: RachaHistorica
+): boolean {
+  if (racha.minimo <= 0) return true;
 
-  const jugadorObservadoRelacion: RelacionJugadorObservado = esRelacion
-    ? (config.jugadorObservadoFiltro as RelacionJugadorObservado)
-    : "cualquiera";
+  const candidatas: AccionVisual[] = [];
+  let salteadas = 0;
 
-  const jugadorObservadoId = esRelacion ? null : config.jugadorObservadoFiltro;
+  for (let k = triggerIdxGlobal - 1; k >= 0; k--) {
+    const cand = accionesCronologicas[k];
+    if (cand.oculta) continue;
+
+    if (racha.ambito === "mismo_punto") {
+      if (
+        cand.set_numero !== trigger.set_numero ||
+        cand.punto_numero !== trigger.punto_numero ||
+        cand.partido_id !== trigger.partido_id
+      )
+        break;
+    } else if (racha.ambito === "puntos_del_set") {
+      if (
+        cand.set_numero !== trigger.set_numero ||
+        cand.partido_id !== trigger.partido_id
+      )
+        break;
+    } else if (racha.ambito === "partido") {
+      if (cand.partido_id !== trigger.partido_id) break;
+    }
+
+    if (racha.filtro.tipos.length > 0) {
+      if (!racha.filtro.tipos.includes(cand.tipo as TipoDisparador)) {
+        continue;
+      }
+    }
+
+    if (salteadas < racha.desdeAtras) {
+      salteadas++;
+      continue;
+    }
+
+    candidatas.push(cand);
+    if (candidatas.length >= racha.minimo) break;
+  }
+
+  if (candidatas.length < racha.minimo) return false;
+
+  for (const cand of candidatas) {
+    if (!cumpleFiltroAccion(cand, trigger, racha.filtro)) return false;
+  }
+
+  return true;
+}
+
+function cumpleAccionPreviaDirecta(
+  listaPunto: AccionVisual[],
+  idxEnPunto: number,
+  trigger: AccionVisual,
+  filtro: FiltroAccionHistorica
+): boolean {
+  if (idxEnPunto <= 0) return false;
+  for (let k = idxEnPunto - 1; k >= 0; k--) {
+    const cand = listaPunto[k];
+    if (cand.oculta) continue;
+    return cumpleFiltroAccion(cand, trigger, filtro);
+  }
+  return false;
+}
+
+// ------------------------------------------------------------
+// RACHA ESPECÍFICA DE JUGADOR
+// ------------------------------------------------------------
+
+function verificarRachaJugador(
+  trigger: AccionVisual,
+  filtro: RachaJugadorFiltro,
+  contextoRally: Map<string, ContextoRally> | null,
+  accionesCronologicas: AccionVisual[],
+  triggerIdxGlobal: number,
+  _equipoDelJugador: "propio" | "rival" | "cualquiera"
+): boolean {
+  const jugadorObjetivo = filtro.jugadorId ?? trigger.jugador_id;
+  if (!jugadorObjetivo) return false;
+
+  if (filtro.tipo === "puntos_ganados" || filtro.tipo === "puntos_perdidos") {
+    if (!contextoRally) return false;
+    const ctx = contextoRally.get(trigger.id);
+    if (!ctx) return false;
+    const racha =
+      filtro.tipo === "puntos_ganados"
+        ? ctx.rachaGanadosActual
+        : ctx.rachaPerdidosActual;
+    return racha >= filtro.minimo;
+  }
+
+  const esError = filtro.tipo === "errores_seguidos";
+  let contador = 0;
+
+  for (let k = triggerIdxGlobal - 1; k >= 0; k--) {
+    const cand = accionesCronologicas[k];
+    if (cand.oculta) continue;
+
+    if (filtro.ambito === "mismo_punto") {
+      if (
+        cand.set_numero !== trigger.set_numero ||
+        cand.punto_numero !== trigger.punto_numero ||
+        cand.partido_id !== trigger.partido_id
+      )
+        break;
+    } else if (filtro.ambito === "puntos_del_set") {
+      if (
+        cand.set_numero !== trigger.set_numero ||
+        cand.partido_id !== trigger.partido_id
+      )
+        break;
+    } else if (filtro.ambito === "partido") {
+      if (cand.partido_id !== trigger.partido_id) break;
+    }
+
+    if (cand.jugador_id !== jugadorObjetivo) continue;
+
+    const cat = clasificarResultado(cand);
+    const esAcierto = cat === "punto";
+    const esFalla = cat === "error";
+
+    if (esError ? esFalla : esAcierto) {
+      contador++;
+      if (contador >= filtro.minimo) return true;
+    } else {
+      return false;
+    }
+  }
+
+  return contador >= filtro.minimo;
+}
+
+// ------------------------------------------------------------
+// PATRÓN PREVIO
+// ------------------------------------------------------------
+
+function cumplePatronPrevio(
+  listaPunto: AccionVisual[],
+  idxEnPunto: number,
+  patron: PatronPrevioFiltro
+): boolean {
+  if (patron.acciones.length === 0) return true;
+
+  const anteriores: AccionVisual[] = [];
+  for (
+    let k = idxEnPunto - 1;
+    k >= 0 && anteriores.length < patron.acciones.length;
+    k--
+  ) {
+    const cand = listaPunto[k];
+    if (cand.oculta) continue;
+    anteriores.push(cand);
+  }
+
+  if (anteriores.length < patron.acciones.length) return false;
+
+  anteriores.reverse();
+
+  for (let i = 0; i < patron.acciones.length; i++) {
+    const esperado = patron.acciones[i];
+    const real = anteriores[i];
+    if (real.tipo !== esperado.tipo) return false;
+    if (esperado.resultado !== "cualquiera") {
+      if (baseSubtipo(real) !== esperado.resultado) return false;
+    }
+  }
+
+  return true;
+}
+
+// ------------------------------------------------------------
+// TOP N% y VS PROMEDIO
+// ------------------------------------------------------------
+
+function calcularIdsTopPorcentaje(
+  todasAcciones: AccionVisual[],
+  tipo: TipoDisparador,
+  porcentaje: number
+): Set<string> {
+  const delTipo = todasAcciones
+    .filter((a) => !a.oculta && a.tipo === tipo)
+    .map((a) => ({ id: a.id, p: puntajeDeAccion(a) }))
+    .filter((x): x is { id: string; p: number } => x.p !== null);
+
+  if (delTipo.length === 0) return new Set();
+
+  delTipo.sort((a, b) => b.p - a.p);
+  const cuantos = Math.max(1, Math.ceil((delTipo.length * porcentaje) / 100));
+  return new Set(delTipo.slice(0, cuantos).map((x) => x.id));
+}
+
+function calcularIdsVsPromedio(
+  todasAcciones: AccionVisual[],
+  tipo: TipoDisparador,
+  modo: "por_encima" | "por_debajo"
+): Set<string> {
+  const delTipo = todasAcciones
+    .filter((a) => !a.oculta && a.tipo === tipo)
+    .map((a) => ({ id: a.id, p: puntajeDeAccion(a) }))
+    .filter((x): x is { id: string; p: number } => x.p !== null);
+
+  if (delTipo.length === 0) return new Set();
+
+  const suma = delTipo.reduce((s, x) => s + x.p, 0);
+  const prom = suma / delTipo.length;
+
+  const out = new Set<string>();
+  for (const x of delTipo) {
+    if (modo === "por_encima" && x.p > prom) out.add(x.id);
+    else if (modo === "por_debajo" && x.p < prom) out.add(x.id);
+  }
+  return out;
+}
+
+// ------------------------------------------------------------
+// CONTEXTO DEL PARTIDO
+// ------------------------------------------------------------
+
+export function hayContextoPartidoActivo(
+  ctx: ContextoPartidoFiltro | null | undefined
+): boolean {
+  if (!ctx) return false;
+  if (ctx.marcador.estado !== "cualquiera") return true;
+  if (ctx.marcador.diferencia !== "cualquiera") return true;
+  if (ctx.marcador.diferenciaExacta !== null) return true;
+  if (ctx.marcador.soloCriticos) return true;
+  if (ctx.marcador.puntosParaCerrar !== "cualquiera") return true;
+  if (ctx.faseRally !== "cualquiera") return true;
+  if (ctx.inicioPunto !== "cualquiera") return true;
+  if (ctx.rachaPuntos !== null) return true;
+  if (ctx.ubicacionTrigger !== "cualquiera") return true;
+  if (ctx.esPrimerToque !== "cualquiera") return true;
+  if (ctx.toquesMinimo !== null) return true;
+  if (ctx.posicionEnSet !== "cualquiera") return true;
+  return false;
+}
+
+function cumpleContextoPartido(
+  ctx: ContextoRally | undefined,
+  filtro: ContextoPartidoFiltro,
+  posicionEnSet: "primero" | "ultimo" | "intermedio"
+): boolean {
+  if (!ctx) return false;
+
+  if (
+    filtro.marcador.estado !== "cualquiera" &&
+    ctx.estadoMarcador !== filtro.marcador.estado
+  )
+    return false;
+
+  if (
+    filtro.marcador.diferencia !== "cualquiera" &&
+    ctx.diferencia !== filtro.marcador.diferencia
+  )
+    return false;
+
+  if (filtro.marcador.diferenciaExacta !== null) {
+    const diff = Math.abs(ctx.puntosPropios - ctx.puntosRivales);
+    if (diff !== filtro.marcador.diferenciaExacta) return false;
+  }
+
+  if (filtro.marcador.soloCriticos && !ctx.esPuntoCritico) return false;
+
+  if (filtro.marcador.puntosParaCerrar !== "cualquiera") {
+    const maxPts = Math.max(ctx.puntosPropios, ctx.puntosRivales);
+    const ptsCerrar = Math.max(0, 25 - maxPts);
+    const max = parseInt(
+      filtro.marcador.puntosParaCerrar.replace("<=", "").trim(),
+      10
+    );
+    if (ptsCerrar > max) return false;
+  }
+
+  if (filtro.faseRally !== "cualquiera" && ctx.fase !== filtro.faseRally) {
+    return false;
+  }
+
+  if (
+    filtro.inicioPunto !== "cualquiera" &&
+    ctx.inicioPunto !== filtro.inicioPunto
+  ) {
+    return false;
+  }
+
+  if (filtro.esPrimerToque !== "cualquiera") {
+    const esperado = filtro.esPrimerToque === "si";
+    if (ctx.esPrimerToqueDelEquipo !== esperado) return false;
+  }
+
+  if (filtro.toquesMinimo !== null) {
+    if (ctx.toquesDelEquipoEnPunto < filtro.toquesMinimo) return false;
+  }
+
+  if (filtro.rachaPuntos !== null) {
+    if (
+      ctx.rachaGanadosActual < filtro.rachaPuntos &&
+      ctx.rachaPerdidosActual < filtro.rachaPuntos
+    ) {
+      return false;
+    }
+  }
+
+  if (
+    filtro.ubicacionTrigger !== "cualquiera" &&
+    ctx.ubicacion !== filtro.ubicacionTrigger
+  ) {
+    return false;
+  }
+
+  if (filtro.posicionEnSet !== "cualquiera") {
+    if (posicionEnSet !== filtro.posicionEnSet) return false;
+  }
+
+  return true;
+}
+
+// ------------------------------------------------------------
+// COINCIDENCIAS
+// ------------------------------------------------------------
+
+function coincide(
+  a: AccionVisual,
+  filtro: CoincidenciaFiltro,
+  ref: { trigger: AccionVisual; anterior: AccionVisual | null }
+): CoincidenciasResumen {
+  const { trigger, anterior } = ref;
+  return {
+    mismoJugadorTrigger:
+      !!filtro.mismoJugadorTrigger &&
+      a.jugador_id !== null &&
+      a.jugador_id === trigger.jugador_id
+        ? 1
+        : 0,
+    mismaZonaTriggerDestino:
+      !!filtro.mismaZonaTriggerDestino &&
+      a.zona_destino !== null &&
+      a.zona_destino === trigger.zona_destino
+        ? 1
+        : 0,
+    mismaZonaTriggerOrigen:
+      !!filtro.mismaZonaTriggerOrigen &&
+      a.zona_origen !== null &&
+      a.zona_origen === trigger.zona_origen
+        ? 1
+        : 0,
+    mismaZonaAnteriorOrigen:
+      !!filtro.mismaZonaAnteriorOrigen &&
+      !!anterior &&
+      a.zona_origen !== null &&
+      a.zona_origen === anterior.zona_origen
+        ? 1
+        : 0,
+    mismaZonaAnteriorDestino:
+      !!filtro.mismaZonaAnteriorDestino &&
+      !!anterior &&
+      a.zona_destino !== null &&
+      a.zona_destino === anterior.zona_destino
+        ? 1
+        : 0,
+    mismaVelocidadAnterior:
+      !!filtro.mismaVelocidadAnterior &&
+      !!anterior &&
+      a.velocidad !== null &&
+      anterior.velocidad !== null &&
+      a.velocidad === anterior.velocidad
+        ? 1
+        : 0,
+    mismoTipoSaqueAnterior:
+      !!filtro.mismoTipoSaqueAnterior &&
+      !!anterior &&
+      a.tipo_saque !== null &&
+      anterior.tipo_saque !== null &&
+      a.tipo_saque === anterior.tipo_saque
+        ? 1
+        : 0,
+    mismoReceptorAnterior:
+      !!filtro.mismoReceptorAnterior &&
+      !!anterior &&
+      a.jugador_id !== null &&
+      a.jugador_id === anterior.jugador_id
+        ? 1
+        : 0,
+  };
+}
+
+function sumarCoincidencias(
+  a: CoincidenciasResumen,
+  b: CoincidenciasResumen
+): CoincidenciasResumen {
+  return {
+    mismoJugadorTrigger: a.mismoJugadorTrigger + b.mismoJugadorTrigger,
+    mismaZonaTriggerDestino:
+      a.mismaZonaTriggerDestino + b.mismaZonaTriggerDestino,
+    mismaZonaTriggerOrigen:
+      a.mismaZonaTriggerOrigen + b.mismaZonaTriggerOrigen,
+    mismaZonaAnteriorOrigen:
+      a.mismaZonaAnteriorOrigen + b.mismaZonaAnteriorOrigen,
+    mismaZonaAnteriorDestino:
+      a.mismaZonaAnteriorDestino + b.mismaZonaAnteriorDestino,
+    mismaVelocidadAnterior:
+      a.mismaVelocidadAnterior + b.mismaVelocidadAnterior,
+    mismoTipoSaqueAnterior:
+      a.mismoTipoSaqueAnterior + b.mismoTipoSaqueAnterior,
+    mismoReceptorAnterior:
+      a.mismoReceptorAnterior + b.mismoReceptorAnterior,
+  };
+}
+
+export function coincidenciasVacias(): CoincidenciasResumen {
+  return {
+    mismoJugadorTrigger: 0,
+    mismaZonaTriggerDestino: 0,
+    mismaZonaTriggerOrigen: 0,
+    mismaZonaAnteriorOrigen: 0,
+    mismaZonaAnteriorDestino: 0,
+    mismaVelocidadAnterior: 0,
+    mismoTipoSaqueAnterior: 0,
+    mismoReceptorAnterior: 0,
+  };
+}
+
+export function hayComparadoresActivos(f: CoincidenciaFiltro): boolean {
+  return Object.values(f).some(Boolean);
+}
+
+export function hayFiltroAnalisisActivo(f: FiltrosAnalisis): boolean {
+  return f.bloques.length > 0;
+}
+
+export function hayFiltrosAvanzadosEnBloque(f: BloqueTriggerFiltro): boolean {
+  return !!(
+    f.resultado !== "cualquiera" ||
+    f.sets.length > 0 ||
+    f.puntos.length > 0 ||
+    f.partidos.length > 0 ||
+    f.roles.length > 0 ||
+    f.zonasJugador.length > 0 ||
+    f.rotaciones.length > 0 ||
+    f.rachas.length > 0 ||
+    f.accionPreviaDirecta ||
+    f.rachaJugador ||
+    f.patronPrevio ||
+    f.topPorcentaje !== null ||
+    f.vsPromedio ||
+    (f.contextoPartido && hayContextoPartidoActivo(f.contextoPartido))
+  );
+}
+
+// ------------------------------------------------------------
+// COMPORTAMIENTO DEL TRIGGER
+// ------------------------------------------------------------
+
+function calcularComportamientoTrigger(
+  triggers: AccionVisual[],
+  bloques: BloqueTrigger[],
+  cumplePorBloque: Map<string, Set<string>>
+): ComportamientoTrigger {
+  const total = triggers.length;
+  const subtiposCount: Record<string, number> = {};
+  const zonasCount: Record<string, number> = {};
+  const velocidadesCount: Record<string, number> = {};
+  const jugadoresCount: Record<string, number> = {};
+  const setsCount: Record<string, number> = {};
+
+  for (const a of triggers) {
+    const sub = baseSubtipo(a) || "—";
+    subtiposCount[sub] = (subtiposCount[sub] ?? 0) + 1;
+    const zk =
+      a.zona_destino !== null && a.zona_destino !== undefined
+        ? String(a.zona_destino)
+        : "null";
+    zonasCount[zk] = (zonasCount[zk] ?? 0) + 1;
+    const vk =
+      a.velocidad !== null && a.velocidad !== undefined
+        ? String(a.velocidad)
+        : "null";
+    velocidadesCount[vk] = (velocidadesCount[vk] ?? 0) + 1;
+    if (a.jugador_id) {
+      jugadoresCount[a.jugador_id] =
+        (jugadoresCount[a.jugador_id] ?? 0) + 1;
+    }
+    setsCount[String(a.set_numero)] =
+      (setsCount[String(a.set_numero)] ?? 0) + 1;
+  }
+
+  const pct = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
+
+  const porBloque: {
+    bloqueId: string;
+    tipo: string;
+    count: number;
+    pct: number;
+  }[] = bloques.map((b) => {
+    const set = cumplePorBloque.get(b.id) ?? new Set();
+    return {
+      bloqueId: b.id,
+      tipo: b.filtro.tipo,
+      count: set.size,
+      pct: pct(set.size),
+    };
+  });
 
   return {
-    bloques: config.bloques,
-    tipoObservado: config.tipoObservado,
-    jugadorObservadoRelacion,
-    jugadorObservadoId,
-    alcance: config.alcance,
-    ventana: 1 as Ventana,
-    coincidencias: config.coincidencias,
+    totalTriggers: total,
+    porSubtipo: Object.entries(subtiposCount)
+      .map(([subtipo, count]) => ({ subtipo, count, pct: pct(count) }))
+      .sort((a, b) => b.count - a.count),
+    porZonaDestino: Object.entries(zonasCount)
+      .map(([k, count]) => ({
+        zona: k === "null" ? null : Number(k),
+        count,
+        pct: pct(count),
+      }))
+      .sort((a, b) => b.count - a.count),
+    porVelocidad: Object.entries(velocidadesCount)
+      .map(([k, count]) => ({
+        velocidad: k === "null" ? null : Number(k),
+        count,
+        pct: pct(count),
+      }))
+      .sort((a, b) => b.count - a.count),
+    porJugador: Object.entries(jugadoresCount)
+      .map(([jugadorId, count]) => ({ jugadorId, count, pct: pct(count) }))
+      .sort((a, b) => b.count - a.count),
+    porSet: Object.entries(setsCount)
+      .map(([k, count]) => ({ set: Number(k), count, pct: pct(count) }))
+      .sort((a, b) => a.set - b.set),
+    porBloque,
   };
 }
 
 // ------------------------------------------------------------
-// COMPONENTE PRINCIPAL
+// EVALUACIÓN DE UN BLOQUE TRIGGER
 // ------------------------------------------------------------
 
-export default function AnalisisConsecuencias({
-  acciones,
-  onIrAPunto,
-  nombreDeJugador,
-  titulo = "Análisis de consecuencias",
-  jugadorId,
-  jugadoresDisponibles,
-  partidosDisponibles,
-}: Props) {
-  const [modoComparacion, setModoComparacion] = useState(false);
-  const [panelA, setPanelA] = useState<ConfiguracionPanel>(() => {
-    const p = panelInicial();
-    if (jugadorId) {
-      p.bloques[0].filtro.jugadorId = jugadorId;
-      p.jugadorObservadoFiltro = "mismo";
-    }
-    return p;
-  });
-  const [panelB, setPanelB] = useState<ConfiguracionPanel>(panelInicial);
+function cumpleBloqueTrigger(
+  a: AccionVisual,
+  bloque: BloqueTriggerFiltro,
+  accionesCronologicas: AccionVisual[],
+  triggerIdxGlobal: number,
+  porPunto: Map<string, AccionVisual[]>,
+  contextoRally: Map<string, ContextoRally> | null,
+  posicionEnSet: "primero" | "ultimo" | "intermedio",
+  idsTopPorcentaje: Set<string> | null,
+  idsVsPromedio: Set<string> | null
+): boolean {
+  if (bloque.tipo !== a.tipo) return false;
+  if (bloque.jugadorId && a.jugador_id !== bloque.jugadorId) return false;
+  if (bloque.resultado !== "cualquiera") {
+    if (baseSubtipo(a) !== bloque.resultado) return false;
+  }
 
-  const listaJugadores = useMemo(() => {
-    const ids = new Set<string>();
-    for (const a of acciones) if (a.jugador_id) ids.add(a.jugador_id);
-    if (jugadoresDisponibles) {
-      for (const j of jugadoresDisponibles) ids.add(j.id);
-    }
-    return Array.from(ids);
-  }, [acciones, jugadoresDisponibles]);
+  if (bloque.sets.length > 0 && !bloque.sets.includes(a.set_numero))
+    return false;
+  if (bloque.puntos.length > 0 && !bloque.puntos.includes(a.punto_numero))
+    return false;
+  if (
+    bloque.partidos.length > 0 &&
+    !bloque.partidos.includes(a.partido_id || "")
+  )
+    return false;
+  if (
+    bloque.roles.length > 0 &&
+    (!a.rol_jugador || !bloque.roles.includes(a.rol_jugador))
+  )
+    return false;
+  if (
+    bloque.zonasJugador.length > 0 &&
+    (a.zona_jugador === null || !bloque.zonasJugador.includes(a.zona_jugador))
+  )
+    return false;
+  if (
+    bloque.rotaciones.length > 0 &&
+    (a.rotacion_numero === null ||
+      !bloque.rotaciones.includes(a.rotacion_numero))
+  )
+    return false;
 
-  const nombre = (id: string | null): string => {
-    if (!id) return "—";
-    if (nombreDeJugador) return nombreDeJugador(id);
-    const j = jugadoresDisponibles?.find((x) => x.id === id);
-    if (j) return j.nombre;
-    return id.slice(0, 8);
-  };
+  for (const racha of bloque.rachas) {
+    if (!verificarRacha(accionesCronologicas, triggerIdxGlobal, a, racha))
+      return false;
+  }
 
-  const jugadoresParaDropdown = useMemo(
-    () =>
-      listaJugadores
-        .map((id) => ({ id, nombre: nombre(id) }))
-        .sort((a, b) => a.nombre.localeCompare(b.nombre)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [listaJugadores, nombreDeJugador, jugadoresDisponibles]
-  );
+  if (bloque.accionPreviaDirecta) {
+    const listaPunto =
+      porPunto.get(
+        `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`
+      ) ?? [];
+    const idxEnPunto = listaPunto.findIndex((x) => x.id === a.id);
+    if (
+      !cumpleAccionPreviaDirecta(
+        listaPunto,
+        idxEnPunto,
+        a,
+        bloque.accionPreviaDirecta
+      )
+    )
+      return false;
+  }
 
-  const { setsUnicos, puntosUnicos } = useMemo(() => {
-    const sets = new Set<number>();
-    const puntos = new Set<number>();
-    for (const a of acciones) {
-      sets.add(a.set_numero);
-      puntos.add(a.punto_numero);
-    }
-    return {
-      setsUnicos: Array.from(sets).sort(),
-      puntosUnicos: Array.from(puntos).sort(),
-    };
-  }, [acciones]);
+  if (bloque.rachaJugador) {
+    if (
+      !verificarRachaJugador(
+        a,
+        bloque.rachaJugador,
+        contextoRally,
+        accionesCronologicas,
+        triggerIdxGlobal,
+        "cualquiera"
+      )
+    )
+      return false;
+  }
 
-  const cantCasosA = useMemo(() => {
-    return analizarConsecuencias(acciones, construirFiltros(panelA))
-      .totalOcurrencias;
-  }, [acciones, panelA]);
+  if (bloque.patronPrevio) {
+    const listaPunto =
+      porPunto.get(
+        `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`
+      ) ?? [];
+    const idxEnPunto = listaPunto.findIndex((x) => x.id === a.id);
+    if (!cumplePatronPrevio(listaPunto, idxEnPunto, bloque.patronPrevio))
+      return false;
+  }
 
-  const cantCasosB = useMemo(() => {
-    if (!modoComparacion) return 0;
-    return analizarConsecuencias(acciones, construirFiltros(panelB))
-      .totalOcurrencias;
-  }, [acciones, panelB, modoComparacion]);
+  if (bloque.topPorcentaje !== null) {
+    if (!idsTopPorcentaje || !idsTopPorcentaje.has(a.id)) return false;
+  }
 
-  const restablecerTodo = () => {
-    const baseA = panelInicial();
-    if (jugadorId) {
-      baseA.bloques[0].filtro.jugadorId = jugadorId;
-      baseA.jugadorObservadoFiltro = "mismo";
-    }
-    setPanelA(baseA);
-    setPanelB(panelInicial());
-    setModoComparacion(false);
-  };
+  if (bloque.vsPromedio !== null) {
+    if (!idsVsPromedio || !idsVsPromedio.has(a.id)) return false;
+  }
 
-  return (
-    <div className="space-y-3" style={cardBase}>
-      {/* ====== HEADER ====== */}
-      <div className="p-4 border-b border-white/10 flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-0.5">
-            <span className="text-sm font-bold uppercase tracking-wider text-slate-100">
-              {titulo}
-            </span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-white/10 text-slate-300 bg-white/5">
-              A: {cantCasosA}
-            </span>
-            {modoComparacion && (
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-violet-500/30 text-violet-300 bg-violet-500/10">
-                B: {cantCasosB}
-              </span>
-            )}
-          </div>
-          <p className="text-[11px] text-slate-400">
-            Buscá una jugada en lenguaje natural y mirá qué pasa después.
-          </p>
-        </div>
-        <div className="flex flex-col gap-1 items-end shrink-0">
-          <button
-            onClick={() => setModoComparacion((v) => !v)}
-            className={`text-xs px-2.5 py-1 rounded border transition ${
-              modoComparacion
-                ? "bg-violet-500/20 text-violet-200 border-violet-400/60"
-                : "border-white/10 text-slate-300 hover:text-white hover:bg-white/5"
-            }`}
-          >
-            {modoComparacion ? "✕ Comparar" : "⇄ Comparar"}
-          </button>
-          <button
-            onClick={restablecerTodo}
-            className="text-xs px-2 py-1 rounded border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition"
-            title="Restablecer todo"
-          >
-            ↻
-          </button>
-        </div>
-      </div>
+  if (
+    bloque.contextoPartido &&
+    hayContextoPartidoActivo(bloque.contextoPartido)
+  ) {
+    if (!contextoRally) return false;
+    if (
+      !cumpleContextoPartido(
+        contextoRally.get(a.id),
+        bloque.contextoPartido,
+        posicionEnSet
+      )
+    )
+      return false;
+  }
 
-      {/* ====== PANELES ====== */}
-      <div
-        className={`px-4 pb-4 ${
-          modoComparacion
-            ? "grid grid-cols-1 xl:grid-cols-2 gap-3"
-            : "space-y-3"
-        }`}
-      >
-        <PanelAnalisis
-          acciones={acciones}
-          config={panelA}
-          setConfig={setPanelA}
-          nombre={nombre}
-          jugadoresParaDropdown={jugadoresParaDropdown}
-          setsUnicos={setsUnicos}
-          puntosUnicos={puntosUnicos}
-          partidosDisponibles={partidosDisponibles}
-          onIrAPunto={onIrAPunto}
-          etiqueta="A"
-          onRestablecer={() => {
-            const base = panelInicial();
-            if (jugadorId) {
-              base.bloques[0].filtro.jugadorId = jugadorId;
-              base.jugadorObservadoFiltro = "mismo";
-            }
-            setPanelA(base);
-          }}
-        />
-
-        {modoComparacion && (
-          <PanelAnalisis
-            acciones={acciones}
-            config={panelB}
-            setConfig={setPanelB}
-            nombre={nombre}
-            jugadoresParaDropdown={jugadoresParaDropdown}
-            setsUnicos={setsUnicos}
-            puntosUnicos={puntosUnicos}
-            partidosDisponibles={partidosDisponibles}
-            onIrAPunto={onIrAPunto}
-            etiqueta="B"
-            onRestablecer={() => setPanelB(panelInicial())}
-          />
-        )}
-      </div>
-    </div>
-  );
+  return true;
 }
 
-// ============================================================
-// PANEL DE ANÁLISIS (A o B)
-// ============================================================
+// ------------------------------------------------------------
+// MOTOR PRINCIPAL
+// ------------------------------------------------------------
 
-function PanelAnalisis({
-  acciones,
-  config,
-  setConfig,
-  nombre,
-  jugadoresParaDropdown,
-  setsUnicos,
-  puntosUnicos,
-  partidosDisponibles,
-  onIrAPunto,
-  etiqueta,
-  onRestablecer,
-}: {
-  acciones: AccionVisual[];
-  config: ConfiguracionPanel;
-  setConfig: (c: ConfiguracionPanel) => void;
-  nombre: (id: string | null) => string;
-  jugadoresParaDropdown: { id: string; nombre: string }[];
-  setsUnicos: number[];
-  puntosUnicos: number[];
-  partidosDisponibles?: { id: string; nombre: string }[];
-  onIrAPunto?: (set: number, punto: number) => void;
-  etiqueta: string;
-  onRestablecer?: () => void;
-}) {
-  const resultado = useMemo(
-    () => analizarConsecuencias(acciones, construirFiltros(config)),
-    [acciones, config]
-  );
+export function analizarConsecuencias(
+  acciones: AccionVisual[],
+  filtros: FiltrosAnalisis
+): ResultadoAnalisis {
+  const vacio: ResultadoAnalisis = {
+    totalOcurrencias: 0,
+    ocurrencias: [],
+    distribucionSiguiente: {},
+    distribucionSubtipo: {},
+    resumenPorTipo: [],
+    coincidenciasGlobales: coincidenciasVacias(),
+  };
 
-  const esRelacion =
-    config.jugadorObservadoFiltro === "cualquiera" ||
-    config.jugadorObservadoFiltro === "mismo" ||
-    config.jugadorObservadoFiltro === "companero" ||
-    config.jugadorObservadoFiltro === "rival";
+  if (filtros.bloques.length === 0) return vacio;
 
-  const receta = useMemo(() => {
-    const partes: string[] = [];
-    config.bloques.forEach((b, i) => {
-      if (i > 0) partes.push(etiquetaOperador(b.operador).toUpperCase());
-      partes.push(resumenBloque(b.filtro));
+  const {
+    ventana,
+    coincidencias,
+    tipoObservado = "cualquiera",
+    alcance = "partido",
+    jugadorObservadoId = null,
+    jugadorObservadoRelacion = "cualquiera",
+  } = filtros;
+
+  const accionesCronologicas = acciones
+    .filter((a) => !a.oculta)
+    .sort((x, y) => {
+      if (x.partido_id !== y.partido_id)
+        return (x.partido_id || "").localeCompare(y.partido_id || "");
+      if (x.set_numero !== y.set_numero) return x.set_numero - y.set_numero;
+      if (x.punto_numero !== y.punto_numero)
+        return x.punto_numero - y.punto_numero;
+      return x.orden - y.orden;
     });
-    partes.push("→");
-    const tipoObs =
-      config.tipoObservado === "cualquiera"
-        ? "siguiente acción"
-        : `sig. ${etiquetaTipoDisparador(config.tipoObservado)}`;
-    const jugObs = esRelacion
-      ? etiquetaRelacionObservado(
-          config.jugadorObservadoFiltro as RelacionJugadorObservado
+
+  const indiceGlobalPorId = new Map<string, number>();
+  for (let i = 0; i < accionesCronologicas.length; i++) {
+    indiceGlobalPorId.set(accionesCronologicas[i].id, i);
+  }
+
+  const porPunto = new Map<string, AccionVisual[]>();
+  for (const a of accionesCronologicas) {
+    const k = `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`;
+    let lista = porPunto.get(k);
+    if (!lista) {
+      lista = [];
+      porPunto.set(k, lista);
+    }
+    lista.push(a);
+  }
+
+  const necesitaContexto = filtros.bloques.some(
+    (b) =>
+      (b.filtro.contextoPartido &&
+        hayContextoPartidoActivo(b.filtro.contextoPartido)) ||
+      (b.filtro.rachaJugador &&
+        (b.filtro.rachaJugador.tipo === "puntos_ganados" ||
+          b.filtro.rachaJugador.tipo === "puntos_perdidos"))
+  );
+  const contextoRally = necesitaContexto
+    ? calcularContextoRally(accionesCronologicas)
+    : null;
+
+  const idsTopPorcentajePorBloque = new Map<string, Set<string>>();
+  const idsVsPromedioPorBloque = new Map<string, Set<string>>();
+  for (const b of filtros.bloques) {
+    if (b.filtro.topPorcentaje !== null) {
+      idsTopPorcentajePorBloque.set(
+        b.id,
+        calcularIdsTopPorcentaje(
+          accionesCronologicas,
+          b.filtro.tipo,
+          b.filtro.topPorcentaje
         )
-      : nombre(config.jugadorObservadoFiltro);
-    partes.push(`${tipoObs} · ${jugObs}`);
-    return partes.join(" ");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config]);
-
-  // Handlers
-  const agregarBloque = () => {
-    setConfig({
-      ...config,
-      bloques: [...config.bloques, bloqueVacio("AND")],
-    });
-  };
-  const eliminarBloque = (id: string) => {
-    if (config.bloques.length <= 1) return;
-    setConfig({
-      ...config,
-      bloques: config.bloques.filter((b) => b.id !== id),
-    });
-  };
-  const actualizarBloque = (id: string, cambios: Partial<BloqueTrigger>) => {
-    setConfig({
-      ...config,
-      bloques: config.bloques.map((b) =>
-        b.id === id ? { ...b, ...cambios } : b
-      ),
-    });
-  };
-  const actualizarFiltroBloque = (
-    id: string,
-    cambios: Partial<BloqueTriggerFiltro>
-  ) => {
-    setConfig({
-      ...config,
-      bloques: config.bloques.map((b) =>
-        b.id === id ? { ...b, filtro: { ...b.filtro, ...cambios } } : b
-      ),
-    });
-  };
-
-  return (
-    <div className="rounded-xl border border-white/10 bg-slate-900/40">
-      {/* ====== HEADER DEL PANEL ====== */}
-      <div className="px-3 py-2 border-b border-white/10 flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-700 text-slate-100 border border-white/10">
-              {etiqueta}
-            </span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-white/10 text-slate-300 bg-white/5">
-              {resultado.totalOcurrencias} caso
-              {resultado.totalOcurrencias !== 1 ? "s" : ""}
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-400 truncate" title={receta}>
-            {receta}
-          </p>
-        </div>
-        {onRestablecer && (
-          <button
-            onClick={onRestablecer}
-            className="text-[10px] px-1.5 py-0.5 rounded border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 shrink-0"
-            title="Restablecer"
-          >
-            ↻
-          </button>
-        )}
-      </div>
-
-      <div className="p-3 space-y-2">
-        {/* ====== BUSCADOR ====== */}
-        <PanelBusqueda
-          acciones={acciones}
-          config={config}
-          setConfig={setConfig}
-          jugadoresParaDropdown={jugadoresParaDropdown}
-          partidosDisponibles={partidosDisponibles}
-        />
-
-        {/* ====== BLOQUES CUANDO ====== */}
-        <div className="space-y-1.5">
-          {config.bloques.map((b, idx) => (
-            <div key={b.id}>
-              {idx > 0 && (
-                <div className="flex items-center gap-1 mb-1 ml-2">
-                  <span className="text-slate-500 text-[10px]">└</span>
-                  <select
-                    value={b.operador}
-                    onChange={(e) =>
-                      actualizarBloque(b.id, {
-                        operador: e.target.value as OperadorBloque,
-                      })
-                    }
-                    className="bg-slate-900 text-white text-[10px] font-bold uppercase rounded px-1.5 py-0.5 border border-white/10 cursor-pointer"
-                  >
-                    {OPERADORES.map((op) => (
-                      <option key={op.v} value={op.v}>
-                        {op.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <BloqueEditor
-                bloque={b}
-                idx={idx}
-                totalBloques={config.bloques.length}
-                nombre={nombre}
-                jugadoresParaDropdown={jugadoresParaDropdown}
-                setsUnicos={setsUnicos}
-                puntosUnicos={puntosUnicos}
-                partidosDisponibles={partidosDisponibles}
-                onCambiarFiltro={(cambios) =>
-                  actualizarFiltroBloque(b.id, cambios)
-                }
-                onEliminar={() => eliminarBloque(b.id)}
-              />
-            </div>
-          ))}
-
-          <button
-            onClick={agregarBloque}
-            className="w-full px-2 py-1 text-[10px] font-semibold rounded border border-dashed border-violet-500/40 bg-violet-500/5 text-violet-300 hover:bg-violet-500/15"
-          >
-            + Añadir otro CUANDO
-          </button>
-        </div>
-
-        {/* ====== MIRAR ====== */}
-        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-2">
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30">
-              Mirar
-            </span>
-            <span className="text-[10px] text-slate-400">qué pasa después</span>
-          </div>
-          <div className="grid grid-cols-2 gap-1.5">
-            <select
-              value={config.tipoObservado}
-              onChange={(e) =>
-                setConfig({
-                  ...config,
-                  tipoObservado: e.target.value as
-                    | TipoDisparador
-                    | "cualquiera",
-                })
-              }
-              className={selectCls}
-            >
-              {TIPOS_OBSERVADOS.map((t) => (
-                <option key={t.v} value={t.v}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={config.jugadorObservadoFiltro}
-              onChange={(e) =>
-                setConfig({
-                  ...config,
-                  jugadorObservadoFiltro: e.target.value,
-                })
-              }
-              className={selectCls}
-            >
-              {RELACIONES_OBSERVADO.map((r) => (
-                <option key={r.v} value={r.v}>
-                  {r.label}
-                </option>
-              ))}
-              {jugadoresParaDropdown.length > 0 && (
-                <optgroup label="Jugador específico">
-                  {jugadoresParaDropdown.map((j) => (
-                    <option key={j.id} value={j.id}>
-                      {j.nombre}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-          </div>
-        </div>
-
-        {/* ====== AVANZADO (alcance + comparadores) ====== */}
-        <details className="rounded-lg border border-white/10 bg-white/[0.02]">
-          <summary className="px-2 py-1.5 cursor-pointer text-[11px] font-bold uppercase text-slate-300 flex items-center justify-between">
-            <span>⚙️ Avanzado del análisis</span>
-            <span className="text-slate-500 text-[10px]">▼</span>
-          </summary>
-          <div className="p-2 pt-0 space-y-2">
-            <div>
-              <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
-                Alcance
-              </label>
-              <select
-                value={config.alcance}
-                onChange={(e) =>
-                  setConfig({
-                    ...config,
-                    alcance: e.target.value as "partido" | "mismo_punto",
-                  })
-                }
-                className={selectCls}
-              >
-                {ALANCES.map((a) => (
-                  <option key={a.v} value={a.v}>
-                    {a.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <ComparadoresSection
-              coincidencias={config.coincidencias}
-              setCoincidencias={(c) =>
-                setConfig({ ...config, coincidencias: c })
-              }
-            />
-          </div>
-        </details>
-
-        {/* ====== RESULTADOS ====== */}
-        {resultado.totalOcurrencias === 0 ? (
-          <div className="rounded-lg border border-white/10 p-4 text-center text-xs text-slate-400">
-            No hay casos que cumplan los criterios.
-          </div>
-        ) : (
-          <>
-            {resultado.comportamientoTrigger && (
-              <SeccionComportamiento
-                comportamiento={resultado.comportamientoTrigger}
-                nombreDeJugador={(id) => nombre(id)}
-              />
-            )}
-            {resultado.estadisticasObservadas && (
-              <SeccionConsecuencia
-                resultado={resultado}
-                tipoObservado={config.tipoObservado}
-                jugadorObservadoFiltro={config.jugadorObservadoFiltro}
-                nombre={nombre}
-                coincidencias={config.coincidencias}
-                onIrAPunto={onIrAPunto}
-              />
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// PANEL DE BÚSQUEDA
-// ============================================================
-
-function PanelBusqueda({
-  acciones,
-  config,
-  setConfig,
-  jugadoresParaDropdown,
-  partidosDisponibles,
-}: {
-  acciones: AccionVisual[];
-  config: ConfiguracionPanel;
-  setConfig: (c: ConfiguracionPanel) => void;
-  jugadoresParaDropdown: { id: string; nombre: string }[];
-  partidosDisponibles?: { id: string; nombre: string }[];
-}) {
-  const [texto, setTexto] = useState("");
-  const [verDatosDelJugador, setVerDatosDelJugador] = useState(true);
-
-  const parseResult: ResultadoParser = useMemo(
-    () =>
-      parsearBusqueda(texto, {
-        jugadores: jugadoresParaDropdown,
-        partidos: partidosDisponibles,
-      }),
-    [texto, jugadoresParaDropdown, partidosDisponibles]
-  );
-
-  const jugadorDetectadoId = parseResult.filtro.jugadorId ?? null;
-
-  const aplicar = () => {
-    if (!parseResult.aplicado) return;
-
-    const nuevoBloque: BloqueTrigger = {
-      id: generarIdBloque(),
-      operador: "AND",
-      filtro: parseResult.filtro,
-    };
-
-    const nuevoJugadorObservadoFiltro =
-      jugadorDetectadoId && verDatosDelJugador
-        ? "mismo"
-        : config.jugadorObservadoFiltro;
-
-    setConfig({
-      ...config,
-      bloques: [nuevoBloque],
-      jugadorObservadoFiltro: nuevoJugadorObservadoFiltro,
-    });
-  };
-
-  const limpiar = () => setTexto("");
-
-  return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.02] p-2 space-y-1.5">
-      <div className="flex items-center gap-1.5">
-        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30">
-          🔍 Buscar
-        </span>
-        <span className="text-[10px] text-slate-400">
-          escribí la jugada en lenguaje natural
-        </span>
-      </div>
-
-      <div className="flex gap-1.5">
-        <input
-          type="text"
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") aplicar();
-          }}
-          placeholder='Ej: "ataques de Juan después de errar", "pipes en cierre de set"'
-          className="flex-1 bg-slate-900 text-white text-[11px] rounded px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-slate-400 placeholder:text-slate-600"
-        />
-        {texto && (
-          <button
-            onClick={limpiar}
-            className="text-[10px] px-2 py-1 rounded border border-white/10 text-slate-300 hover:text-white hover:bg-white/5"
-            title="Limpiar"
-          >
-            ✕
-          </button>
-        )}
-        <button
-          onClick={aplicar}
-          disabled={!parseResult.aplicado}
-          className={`text-[10px] font-bold px-2.5 py-1 rounded border transition shrink-0 ${
-            parseResult.aplicado
-              ? "bg-emerald-500/20 text-emerald-200 border-emerald-400/60 hover:bg-emerald-500/30"
-              : "bg-white/5 text-slate-500 border-white/10 cursor-not-allowed"
-          }`}
-        >
-          Aplicar
-        </button>
-      </div>
-
-      {/* Chips de lo que entendió */}
-      {parseResult.matches.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {parseResult.matches.map((m, i) => (
-            <span
-              key={`${m.clave}-${i}`}
-              className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${CATEGORIA_COLOR[m.categoria]}`}
-              title={m.fragmento}
-            >
-              {m.clave === "tipo"
-                ? etiquetaTipoDisparador(m.valor as TipoDisparador)
-                : m.clave === "resultado"
-                ? etiquetaResultado(m.valor)
-                : m.clave === "jugador"
-                ? m.valor
-                : m.clave === "contexto.cierre"
-                ? `cierre ${m.valor}`
-                : m.clave === "contexto.critico"
-                ? "crítico"
-                : m.clave === "contexto.fase"
-                ? m.valor
-                : m.clave === "contexto.posicion"
-                ? `${m.valor} punto`
-                : m.clave === "previa"
-                ? `previa ${m.valor}`
-                : m.clave === "top"
-                ? m.valor
-                : m.clave === "vs-promedio"
-                ? m.valor === "por_encima"
-                  ? "sobre promedio"
-                  : "bajo promedio"
-                : m.clave === "velocidad"
-                ? `v${m.valor}`
-                : m.clave === "tipo-saque"
-                ? `saque ${m.valor}`
-                : m.clave === "rol"
-                ? `rol ${m.valor}`
-                : m.clave === "racha-jugador"
-                ? m.valor
-                : `${m.clave}: ${m.valor}`}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Warnings de no reconocidas */}
-      {parseResult.noReconocidas.length > 0 && (
-        <div className="flex flex-wrap gap-1 items-center">
-          <span className="text-[9px] text-amber-400">
-            ⚠️ No reconocí:
-          </span>
-          {parseResult.noReconocidas.slice(0, 8).map((w, i) => (
-            <span
-              key={`${w}-${i}`}
-              className="text-[9px] px-1 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 font-mono"
-            >
-              {w}
-            </span>
-          ))}
-          {parseResult.noReconocidas.length > 8 && (
-            <span className="text-[9px] text-amber-400">
-              +{parseResult.noReconocidas.length - 8}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Toggle ver datos del jugador (solo si detectó jugador) */}
-      {jugadorDetectadoId && (
-        <label className="flex items-center gap-1.5 text-[10px] text-slate-300 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={verDatosDelJugador}
-            onChange={(e) => setVerDatosDelJugador(e.target.checked)}
-            className="w-3 h-3 accent-emerald-500"
-          />
-          <span>
-            Ver datos del mismo jugador buscado (
-            {jugadoresParaDropdown.find((j) => j.id === jugadorDetectadoId)
-              ?.nombre ?? "?"}
-            )
-          </span>
-        </label>
-      )}
-
-      {/* Ayuda con ejemplos */}
-      {!texto && (
-        <div className="flex flex-wrap gap-1">
-          <span className="text-[9px] text-slate-500 italic">Ejemplos:</span>
-          {parseResult.sugerencias.slice(0, 4).map((sug, i) => (
-            <button
-              key={`${sug}-${i}`}
-              onClick={() => setTexto(sug)}
-              className="text-[9px] px-1.5 py-0.5 rounded border border-white/10 text-slate-400 hover:text-white hover:bg-white/5"
-            >
-              {sug}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================================
-// BLOQUE EDITOR
-// ============================================================
-
-function BloqueEditor({
-  bloque,
-  idx,
-  totalBloques,
-  nombre,
-  jugadoresParaDropdown,
-  setsUnicos,
-  puntosUnicos,
-  partidosDisponibles,
-  onCambiarFiltro,
-  onEliminar,
-}: {
-  bloque: BloqueTrigger;
-  idx: number;
-  totalBloques: number;
-  nombre: (id: string | null) => string;
-  jugadoresParaDropdown: { id: string; nombre: string }[];
-  setsUnicos: number[];
-  puntosUnicos: number[];
-  partidosDisponibles?: { id: string; nombre: string }[];
-  onCambiarFiltro: (cambios: Partial<BloqueTriggerFiltro>) => void;
-  onEliminar: () => void;
-}) {
-  const f = bloque.filtro;
-  const avanzadoActivo = hayFiltrosAvanzadosEnBloque(f);
-
-  return (
-    <div className="rounded-lg border border-white/10 bg-slate-900/30 p-2 space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
-            Cuando #{idx + 1}
-          </span>
-          {avanzadoActivo && (
-            <span className="text-[8px] px-1 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/40">
-              ⚙️
-            </span>
-          )}
-        </div>
-        {totalBloques > 1 && (
-          <button
-            onClick={onEliminar}
-            className="text-[10px] text-rose-400 hover:text-rose-300"
-          >
-            ✕
-          </button>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-1">
-        <select
-          value={f.tipo}
-          onChange={(e) =>
-            onCambiarFiltro({
-              tipo: e.target.value as TipoDisparador,
-              resultado: "cualquiera",
-            })
-          }
-          className={selectCls}
-        >
-          {TIPOS.map((t) => (
-            <option key={t.v} value={t.v}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={f.jugadorId ?? "todos"}
-          onChange={(e) =>
-            onCambiarFiltro({
-              jugadorId: e.target.value === "todos" ? null : e.target.value,
-            })
-          }
-          className={selectCls}
-        >
-          <option value="todos">Todo el equipo</option>
-          {jugadoresParaDropdown.map((j) => (
-            <option key={j.id} value={j.id}>
-              {j.nombre}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <details
-        className={`rounded border ${
-          avanzadoActivo
-            ? "border-violet-500/40 bg-violet-500/[0.04]"
-            : "border-white/10 bg-white/[0.02]"
-        }`}
-      >
-        <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
-          <span>Filtros del bloque {avanzadoActivo && "✓"}</span>
-          <span className="text-slate-500 text-[9px]">▼</span>
-        </summary>
-        <div className="p-2 pt-0 space-y-2">
-          <div>
-            <label className="block text-[9px] font-bold uppercase text-slate-500 mb-0.5">
-              Resultado del trigger
-            </label>
-            <select
-              value={f.resultado}
-              onChange={(e) => onCambiarFiltro({ resultado: e.target.value })}
-              className={selectCls}
-            >
-              {resultadosPorTipoAnalisis(f.tipo).map((r) => (
-                <option key={r} value={r}>
-                  {etiquetaResultado(r)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <ScopeSection
-            filtro={f}
-            onChange={onCambiarFiltro}
-            setsUnicos={setsUnicos}
-            puntosUnicos={puntosUnicos}
-            partidosDisponibles={partidosDisponibles}
-          />
-
-          <AccionPreviaSection
-            previa={f.accionPreviaDirecta}
-            onCambiar={(p) => onCambiarFiltro({ accionPreviaDirecta: p })}
-          />
-
-          <RachaJugadorSection
-            racha={f.rachaJugador}
-            onCambiar={(r) => onCambiarFiltro({ rachaJugador: r })}
-            jugadoresParaDropdown={jugadoresParaDropdown}
-          />
-
-          <PatronSection
-            patron={f.patronPrevio}
-            onCambiar={(p) => onCambiarFiltro({ patronPrevio: p })}
-          />
-
-          <div className="grid grid-cols-2 gap-1">
-            <div>
-              <label className="block text-[9px] font-bold uppercase text-slate-500 mb-0.5">
-                Top % del tipo
-              </label>
-              <select
-                value={f.topPorcentaje === null ? "" : String(f.topPorcentaje)}
-                onChange={(e) =>
-                  onCambiarFiltro({
-                    topPorcentaje:
-                      e.target.value === ""
-                        ? null
-                        : parseInt(e.target.value, 10),
-                  })
-                }
-                className={selectCls}
-              >
-                <option value="">Sin filtro</option>
-                <option value="10">Top 10%</option>
-                <option value="20">Top 20%</option>
-                <option value="30">Top 30%</option>
-                <option value="50">Top 50%</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[9px] font-bold uppercase text-slate-500 mb-0.5">
-                Vs promedio
-              </label>
-              <select
-                value={f.vsPromedio ?? ""}
-                onChange={(e) =>
-                  onCambiarFiltro({
-                    vsPromedio:
-                      e.target.value === ""
-                        ? null
-                        : (e.target.value as "por_encima" | "por_debajo"),
-                  })
-                }
-                className={selectCls}
-              >
-                <option value="">Sin filtro</option>
-                <option value="por_encima">Por encima</option>
-                <option value="por_debajo">Por debajo</option>
-              </select>
-            </div>
-          </div>
-
-          <RachasSection
-            rachas={f.rachas}
-            onCambiar={(rachas) => onCambiarFiltro({ rachas })}
-          />
-
-          <ContextoSection
-            contexto={f.contextoPartido}
-            onCambiar={(c) => onCambiarFiltro({ contextoPartido: c })}
-          />
-        </div>
-      </details>
-    </div>
-  );
-}
-
-// ============================================================
-// SCOPE
-// ============================================================
-
-function ScopeSection({
-  filtro,
-  onChange,
-  setsUnicos,
-  puntosUnicos,
-  partidosDisponibles,
-}: {
-  filtro: BloqueTriggerFiltro;
-  onChange: (cambios: Partial<BloqueTriggerFiltro>) => void;
-  setsUnicos: number[];
-  puntosUnicos: number[];
-  partidosDisponibles?: { id: string; nombre: string }[];
-}) {
-  const activo =
-    filtro.sets.length > 0 ||
-    filtro.puntos.length > 0 ||
-    filtro.partidos.length > 0 ||
-    filtro.roles.length > 0 ||
-    filtro.zonasJugador.length > 0 ||
-    filtro.rotaciones.length > 0;
-
-  return (
-    <details
-      className={`rounded border ${
-        activo
-          ? "border-violet-500/40 bg-violet-500/[0.04]"
-          : "border-white/10 bg-white/[0.02]"
-      }`}
-    >
-      <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
-        <span>Scope {activo && "✓"}</span>
-        <span className="text-slate-500 text-[9px]">▼</span>
-      </summary>
-      <div className="p-2 pt-0 space-y-1.5">
-        <MultiChip
-          label="Sets"
-          opciones={setsUnicos.map((s) => ({ v: String(s), label: `S${s}` }))}
-          seleccionados={filtro.sets.map(String)}
-          onChange={(vals) =>
-            onChange({ sets: vals.map((v) => parseInt(v, 10)) })
-          }
-        />
-        <MultiChip
-          label="Puntos"
-          opciones={puntosUnicos.map((p) => ({
-            v: String(p),
-            label: `P${p}`,
-          }))}
-          seleccionados={filtro.puntos.map(String)}
-          onChange={(vals) =>
-            onChange({ puntos: vals.map((v) => parseInt(v, 10)) })
-          }
-        />
-        {partidosDisponibles && partidosDisponibles.length > 0 && (
-          <MultiChip
-            label="Partidos"
-            opciones={partidosDisponibles.map((p) => ({
-              v: p.id,
-              label: p.nombre,
-            }))}
-            seleccionados={filtro.partidos}
-            onChange={(vals) => onChange({ partidos: vals })}
-          />
-        )}
-        <MultiChip
-          label="Roles"
-          opciones={ROLES.map((r) => ({ v: r, label: r }))}
-          seleccionados={filtro.roles}
-          onChange={(vals) => onChange({ roles: vals })}
-        />
-        <MultiChip
-          label="Zonas jugador"
-          opciones={ZONAS_JUGADOR.map((z) => ({
-            v: String(z.v),
-            label: z.label,
-          }))}
-          seleccionados={filtro.zonasJugador.map(String)}
-          onChange={(vals) =>
-            onChange({ zonasJugador: vals.map((v) => parseInt(v, 10)) })
-          }
-        />
-        <MultiChip
-          label="Rotaciones"
-          opciones={ROTACIONES.map((r) => ({
-            v: String(r),
-            label: `R${r}`,
-          }))}
-          seleccionados={filtro.rotaciones.map(String)}
-          onChange={(vals) =>
-            onChange({ rotaciones: vals.map((v) => parseInt(v, 10)) })
-          }
-        />
-      </div>
-    </details>
-  );
-}
-
-function MultiChip({
-  label,
-  opciones,
-  seleccionados,
-  onChange,
-}: {
-  label: string;
-  opciones: { v: string; label: string }[];
-  seleccionados: string[];
-  onChange: (vals: string[]) => void;
-}) {
-  const toggle = (v: string) => {
-    if (seleccionados.includes(v)) {
-      onChange(seleccionados.filter((x) => x !== v));
-    } else {
-      onChange([...seleccionados, v]);
+      );
     }
-  };
-  return (
-    <div>
-      <label className="block text-[9px] font-bold uppercase text-slate-500 mb-0.5">
-        {label}
-        {seleccionados.length > 0 && ` (${seleccionados.length})`}
-      </label>
-      <div className="flex flex-wrap gap-0.5">
-        {opciones.map((o) => {
-          const sel = seleccionados.includes(o.v);
-          return (
-            <button
-              key={o.v}
-              onClick={() => toggle(o.v)}
-              className={`px-1.5 py-0.5 text-[9px] font-semibold rounded border transition ${
-                sel
-                  ? "bg-violet-500/30 border-violet-400/60 text-violet-200"
-                  : "bg-white/[0.02] border-white/10 text-slate-400 hover:text-white"
-              }`}
-              title={o.label}
-            >
-              {o.label}
-            </button>
-          );
-        })}
-        {opciones.length === 0 && (
-          <span className="text-[9px] text-slate-500 italic">Sin opciones</span>
-        )}
-      </div>
-    </div>
-  );
-}
+    if (b.filtro.vsPromedio !== null) {
+      idsVsPromedioPorBloque.set(
+        b.id,
+        calcularIdsVsPromedio(
+          accionesCronologicas,
+          b.filtro.tipo,
+          b.filtro.vsPromedio
+        )
+      );
+    }
+  }
 
-// ============================================================
-// ACCIÓN PREVIA DIRECTA
-// ============================================================
+  const posicionEnSetPorAccion = new Map<
+    string,
+    "primero" | "ultimo" | "intermedio"
+  >();
+  {
+    const porSet = new Map<string, AccionVisual[]>();
+    for (const a of accionesCronologicas) {
+      const k = `${a.partido_id || ""}|${a.set_numero}`;
+      let lista = porSet.get(k);
+      if (!lista) {
+        lista = [];
+        porSet.set(k, lista);
+      }
+      if (!lista.some((x) => x.punto_numero === a.punto_numero)) {
+        lista.push(a);
+      }
+    }
+    for (const lista of porSet.values()) {
+      lista.sort((x, y) => x.punto_numero - y.punto_numero);
+      if (lista.length === 0) continue;
+      const primero = lista[0].punto_numero;
+      const ultimo = lista[lista.length - 1].punto_numero;
+      for (const a of lista) {
+        if (a.punto_numero === primero) {
+          posicionEnSetPorAccion.set(a.id, "primero");
+        } else if (a.punto_numero === ultimo) {
+          posicionEnSetPorAccion.set(a.id, "ultimo");
+        } else {
+          posicionEnSetPorAccion.set(a.id, "intermedio");
+        }
+      }
+    }
+  }
 
-function AccionPreviaSection({
-  previa,
-  onCambiar,
-}: {
-  previa: FiltroAccionHistorica | null;
-  onCambiar: (p: FiltroAccionHistorica | null) => void;
-}) {
-  const activo = !!previa;
+  const cumplePorBloque = new Map<string, Set<string>>();
+  for (const b of filtros.bloques) {
+    cumplePorBloque.set(b.id, new Set());
+  }
 
-  return (
-    <details
-      className={`rounded border ${
-        activo
-          ? "border-violet-500/40 bg-violet-500/[0.04]"
-          : "border-white/10 bg-white/[0.02]"
-      }`}
-    >
-      <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
-        <span>⏮️ Acción previa {activo && "✓"}</span>
-        <span className="text-slate-500 text-[9px]">▼</span>
-      </summary>
-      <div className="p-2 pt-0 space-y-1">
-        <div className="flex items-center justify-between">
-          <p className="text-[9px] text-slate-500 italic">
-            Filtra la acción inmediatamente anterior.
-          </p>
-          <button
-            onClick={() =>
-              onCambiar(
-                activo ? null : { ...FILTRO_ACCION_HISTORICA_VACIO }
-              )
-            }
-            className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border ${
-              activo
-                ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
-                : "bg-violet-500/20 text-violet-300 border-violet-500/40"
-            }`}
-          >
-            {activo ? "✕" : "+"}
-          </button>
-        </div>
+  const triggers: AccionVisual[] = [];
+  for (let i = 0; i < accionesCronologicas.length; i++) {
+    const a = accionesCronologicas[i];
 
-        {previa && (
-          <div className="grid grid-cols-2 gap-1">
-            <select
-              value={previa.tipos[0] ?? ""}
-              onChange={(e) =>
-                onCambiar({
-                  ...previa,
-                  tipos: e.target.value
-                    ? [e.target.value as TipoDisparador]
-                    : [],
-                  resultados: [],
-                })
-              }
-              className={selectCls}
-            >
-              <option value="">Cualquier tipo</option>
-              {TIPOS.map((t) => (
-                <option key={t.v} value={t.v}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-            {previa.tipos.length > 0 ? (
-              <select
-                value={previa.resultados[0] ?? ""}
-                onChange={(e) =>
-                  onCambiar({
-                    ...previa,
-                    resultados: e.target.value ? [e.target.value] : [],
-                  })
-                }
-                className={selectCls}
-              >
-                <option value="">Cualquier resultado</option>
-                {resultadosPorTipoAnalisis(previa.tipos[0])
-                  .filter((r) => r !== "cualquiera")
-                  .map((r) => (
-                    <option key={r} value={r}>
-                      {etiquetaResultado(r)}
-                    </option>
-                  ))}
-              </select>
-            ) : (
-              <div />
-            )}
-            <select
-              value={previa.relacionJugador}
-              onChange={(e) =>
-                onCambiar({
-                  ...previa,
-                  relacionJugador: e.target.value as RelacionJugador,
-                })
-              }
-              className={`${selectCls} col-span-2`}
-            >
-              {RELACIONES_PREVIA.map((r) => (
-                <option key={r.v} value={r.v}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-      </div>
-    </details>
-  );
-}
+    const cumple: boolean[] = [];
+    for (const b of filtros.bloques) {
+      const cumpleB = cumpleBloqueTrigger(
+        a,
+        b.filtro,
+        accionesCronologicas,
+        i,
+        porPunto,
+        contextoRally,
+        posicionEnSetPorAccion.get(a.id) ?? "intermedio",
+        idsTopPorcentajePorBloque.get(b.id) ?? null,
+        idsVsPromedioPorBloque.get(b.id) ?? null
+      );
+      cumple.push(cumpleB);
+      if (cumpleB) {
+        cumplePorBloque.get(b.id)!.add(a.id);
+      }
+    }
 
-// ============================================================
-// RACHA JUGADOR
-// ============================================================
+    let resultado = cumple[0];
+    for (let bi = 1; bi < filtros.bloques.length; bi++) {
+      const op = filtros.bloques[bi].operador;
+      const c = cumple[bi];
+      if (op === "AND") resultado = resultado && c;
+      else if (op === "OR") resultado = resultado || c;
+      else if (op === "NOT") resultado = resultado && !c;
+    }
 
-function RachaJugadorSection({
-  racha,
-  onCambiar,
-  jugadoresParaDropdown,
-}: {
-  racha: RachaJugadorFiltro | null;
-  onCambiar: (r: RachaJugadorFiltro | null) => void;
-  jugadoresParaDropdown: { id: string; nombre: string }[];
-}) {
-  const activo = !!racha;
+    if (resultado) triggers.push(a);
+  }
 
-  return (
-    <details
-      className={`rounded border ${
-        activo
-          ? "border-violet-500/40 bg-violet-500/[0.04]"
-          : "border-white/10 bg-white/[0.02]"
-      }`}
-    >
-      <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
-        <span>🔥 Racha de jugador {activo && "✓"}</span>
-        <span className="text-slate-500 text-[9px]">▼</span>
-      </summary>
-      <div className="p-2 pt-0 space-y-1">
-        <div className="flex items-center justify-between">
-          <p className="text-[9px] text-slate-500 italic">
-            Ej: "después de 2 errores seguidos"
-          </p>
-          <button
-            onClick={() =>
-              onCambiar(
-                activo
-                  ? null
-                  : {
-                      jugadorId: null,
-                      tipo: "errores_seguidos",
-                      minimo: 2,
-                      ambito: "puntos_del_set",
-                    }
-              )
-            }
-            className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border ${
-              activo
-                ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
-                : "bg-violet-500/20 text-violet-300 border-violet-500/40"
-            }`}
-          >
-            {activo ? "✕" : "+"}
-          </button>
-        </div>
+  const comportamientoTrigger =
+    triggers.length > 0
+      ? calcularComportamientoTrigger(
+          triggers,
+          filtros.bloques,
+          cumplePorBloque
+        )
+      : undefined;
 
-        {racha && (
-          <div className="grid grid-cols-2 gap-1">
-            <select
-              value={racha.tipo}
-              onChange={(e) =>
-                onCambiar({
-                  ...racha,
-                  tipo: e.target.value as TipoRachaJugador,
-                })
-              }
-              className={`${selectCls} col-span-2`}
-            >
-              {TIPOS_RACHA_JUGADOR.map((t) => (
-                <option key={t.v} value={t.v}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-            <select
-              value={racha.ambito}
-              onChange={(e) =>
-                onCambiar({
-                  ...racha,
-                  ambito: e.target.value as AmbitoRacha,
-                })
-              }
-              className={selectCls}
-            >
-              {AMBITOS.map((a) => (
-                <option key={a.v} value={a.v}>
-                  {a.label}
-                </option>
-              ))}
-            </select>
-            <input
-              type="number"
-              min={1}
-              max={10}
-              value={racha.minimo}
-              onChange={(e) =>
-                onCambiar({
-                  ...racha,
-                  minimo: Math.max(1, parseInt(e.target.value || "1", 10)),
-                })
-              }
-              className={inputCls}
-              placeholder="Mínimo"
-            />
-            <select
-              value={racha.jugadorId ?? "trigger"}
-              onChange={(e) =>
-                onCambiar({
-                  ...racha,
-                  jugadorId:
-                    e.target.value === "trigger" ? null : e.target.value,
-                })
-              }
-              className={`${selectCls} col-span-2`}
-            >
-              <option value="trigger">Jugador del trigger</option>
-              {jugadoresParaDropdown.map((j) => (
-                <option key={j.id} value={j.id}>
-                  {j.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-      </div>
-    </details>
-  );
-}
+  const ocurrencias: OcurrenciaTrigger[] = [];
+  const distribucionSiguiente: Record<string, number> = {};
+  const distribucionSubtipo: Record<string, number> = {};
+  const porTipoCoincidencias = new Map<string, CoincidenciasResumen>();
+  let coincidenciasGlobales = coincidenciasVacias();
 
-// ============================================================
-// PATRÓN PREVIO
-// ============================================================
+  const maxSiguientes =
+    ventana === "todas" ? Number.POSITIVE_INFINITY : ventana;
 
-function PatronSection({
-  patron,
-  onCambiar,
-}: {
-  patron: PatronPrevioFiltro | null;
-  onCambiar: (p: PatronPrevioFiltro | null) => void;
-}) {
-  const activo = !!patron;
+  let sumDistanciaAcciones = 0;
+  let sumDistanciaPuntos = 0;
+  let countObservadas = 0;
+  let countMismoPunto = 0;
+  let countPuntos = 0;
+  let countErrores = 0;
+  let countNeutros = 0;
+  const subtiposCount: Record<string, number> = {};
+  const jugadoresCount: Record<string, number> = {};
+  const zonasCount: Record<number, number> = {};
 
-  const agregar = () => {
-    if (!patron) {
-      onCambiar({
-        acciones: [{ tipo: "recepcion", resultado: "cualquiera" }],
+  for (const a of triggers) {
+    const i = indiceGlobalPorId.get(a.id) ?? -1;
+    if (i < 0) continue;
+
+    const listaPunto =
+      porPunto.get(`${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`) ??
+      [];
+    const idxEnPunto = listaPunto.findIndex((x) => x.id === a.id);
+    const anterior = idxEnPunto > 0 ? listaPunto[idxEnPunto - 1] : null;
+
+    const siguientes =
+      idxEnPunto >= 0
+        ? listaPunto.slice(idxEnPunto + 1, idxEnPunto + 1 + maxSiguientes)
+        : [];
+
+    let accionObservada: DetalleAccionObservada | null = null;
+    for (let j = i + 1; j < accionesCronologicas.length; j++) {
+      const cand = accionesCronologicas[j];
+
+      if (
+        alcance === "mismo_punto" &&
+        (cand.set_numero !== a.set_numero ||
+          cand.punto_numero !== a.punto_numero ||
+          cand.partido_id !== a.partido_id)
+      )
+        break;
+
+      const coincideTipo =
+        tipoObservado === "cualquiera" || cand.tipo === tipoObservado;
+      if (!coincideTipo) continue;
+
+      if (jugadorObservadoId && cand.jugador_id !== jugadorObservadoId)
+        continue;
+
+      if (jugadorObservadoRelacion === "mismo") {
+        if (!a.jugador_id || cand.jugador_id !== a.jugador_id) continue;
+      } else if (jugadorObservadoRelacion === "companero") {
+        if (cand.es_rival !== a.es_rival) continue;
+      } else if (jugadorObservadoRelacion === "rival") {
+        if (cand.es_rival === a.es_rival) continue;
+      }
+
+      if (
+        jugadorObservadoRelacion === "cualquiera" &&
+        coincidencias.mismoJugadorTrigger
+      ) {
+        if (!a.jugador_id || cand.jugador_id !== a.jugador_id) continue;
+      }
+
+      if (
+        coincidencias.mismaZonaTriggerDestino &&
+        a.zona_destino !== null &&
+        a.zona_destino !== undefined
+      ) {
+        if (cand.zona_destino !== a.zona_destino) continue;
+      }
+      if (
+        coincidencias.mismaZonaTriggerOrigen &&
+        a.zona_origen !== null &&
+        a.zona_origen !== undefined
+      ) {
+        if (cand.zona_origen !== a.zona_origen) continue;
+      }
+      if (coincidencias.mismaVelocidadAnterior && a.velocidad) {
+        if (cand.velocidad !== a.velocidad) continue;
+      }
+
+      const distanciaAcciones = j - i;
+      let distanciaPuntos = 0;
+      if (
+        cand.partido_id === a.partido_id &&
+        cand.set_numero === a.set_numero
+      ) {
+        distanciaPuntos = Math.max(0, cand.punto_numero - a.punto_numero);
+      } else if (cand.partido_id === a.partido_id) {
+        distanciaPuntos = Math.max(
+          0,
+          (cand.set_numero - a.set_numero) * 25 +
+            cand.punto_numero -
+            a.punto_numero
+        );
+      } else {
+        distanciaPuntos = 999;
+      }
+
+      const esMismoPunto =
+        cand.set_numero === a.set_numero &&
+        cand.punto_numero === a.punto_numero &&
+        cand.partido_id === a.partido_id;
+      const categoriaResultado = clasificarResultado(cand);
+      const sub = baseSubtipo(cand) || "—";
+
+      accionObservada = {
+        accion: cand,
+        distanciaAcciones,
+        distanciaPuntos,
+        esMismoPunto,
+        categoriaResultado,
+        subtipo: sub,
+      };
+
+      countObservadas++;
+      sumDistanciaAcciones += distanciaAcciones;
+      sumDistanciaPuntos += distanciaPuntos;
+      if (esMismoPunto) countMismoPunto++;
+
+      if (categoriaResultado === "punto") countPuntos++;
+      else if (categoriaResultado === "error") countErrores++;
+      else countNeutros++;
+
+      subtiposCount[sub] = (subtiposCount[sub] ?? 0) + 1;
+
+      if (cand.jugador_id) {
+        jugadoresCount[cand.jugador_id] =
+          (jugadoresCount[cand.jugador_id] ?? 0) + 1;
+      }
+
+      if (cand.zona_destino !== null && cand.zona_destino !== undefined) {
+        zonasCount[cand.zona_destino] =
+          (zonasCount[cand.zona_destino] ?? 0) + 1;
+      }
+
+      break;
+    }
+
+    ocurrencias.push({
+      set_numero: a.set_numero,
+      punto_numero: a.punto_numero,
+      triggerId: a.id,
+      triggerJugadorId: a.jugador_id,
+      triggerSubtipo: baseSubtipo(a) || null,
+      anteriorId: anterior?.id ?? null,
+      anteriorJugadorId: anterior?.jugador_id ?? null,
+      anteriorSubtipo: anterior ? baseSubtipo(anterior) || null : null,
+      siguientes,
+      accionObservada,
+    });
+
+    if (siguientes.length > 0) {
+      const s0 = siguientes[0];
+      const tipoKey = s0.tipo;
+      distribucionSiguiente[tipoKey] =
+        (distribucionSiguiente[tipoKey] ?? 0) + 1;
+
+      const subKey = `${s0.tipo}|${baseSubtipo(s0) || "—"}`;
+      distribucionSubtipo[subKey] =
+        (distribucionSubtipo[subKey] ?? 0) + 1;
+
+      const coincideS0 = coincide(s0, coincidencias, {
+        trigger: a,
+        anterior,
       });
-      return;
-    }
-    if (patron.acciones.length >= 3) return;
-    onCambiar({
-      acciones: [
-        ...patron.acciones,
-        { tipo: "armado", resultado: "cualquiera" },
-      ],
-    });
-  };
+      coincidenciasGlobales = sumarCoincidencias(
+        coincidenciasGlobales,
+        coincideS0
+      );
 
-  const eliminar = (i: number) => {
-    if (!patron) return;
-    if (patron.acciones.length <= 1) {
-      onCambiar(null);
-      return;
+      const prev = porTipoCoincidencias.get(s0.tipo);
+      porTipoCoincidencias.set(
+        s0.tipo,
+        prev ? sumarCoincidencias(prev, coincideS0) : coincideS0
+      );
     }
-    onCambiar({
-      acciones: patron.acciones.filter((_, idx) => idx !== i),
-    });
-  };
+  }
 
-  const actualizar = (i: number, cambios: Partial<ItemPatron>) => {
-    if (!patron) return;
-    onCambiar({
-      acciones: patron.acciones.map((a, idx) =>
-        idx === i ? { ...a, ...cambios } : a
+  const resumenPorTipo: ResumenPorTipo[] = Array.from(
+    porTipoCoincidencias.entries()
+  )
+    .map(([tipo, coinc]) => ({
+      tipo,
+      count: distribucionSiguiente[tipo] ?? 0,
+      coincidencias: coinc,
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  let estadisticasObservadas: EstadisticasObservadas | undefined;
+  if (countObservadas > 0) {
+    const total = countObservadas;
+    const pctPuntos = Math.round((countPuntos / total) * 100);
+    const pctErrores = Math.round((countErrores / total) * 100);
+    const pctNeutros = Math.round((countNeutros / total) * 100);
+
+    let masFrecuente: CategoriaResultado = "neutro";
+    if (countPuntos >= countErrores && countPuntos >= countNeutros)
+      masFrecuente = "punto";
+    else if (countErrores >= countPuntos && countErrores >= countNeutros)
+      masFrecuente = "error";
+
+    const evaluacionResultado: EvaluacionResultado = {
+      masFrecuente,
+      puntos: countPuntos,
+      errores: countErrores,
+      neutros: countNeutros,
+      total,
+      pctPuntos,
+      pctErrores,
+      pctNeutros,
+      efectividadNeta: Math.round(
+        ((countPuntos - countErrores) / total) * 100
       ),
-    });
-  };
-
-  return (
-    <details
-      className={`rounded border ${
-        activo
-          ? "border-violet-500/40 bg-violet-500/[0.04]"
-          : "border-white/10 bg-white/[0.02]"
-      }`}
-    >
-      <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
-        <span>
-          🎯 Patrón previo {activo && `(${patron!.acciones.length})`}
-        </span>
-        <span className="text-slate-500 text-[9px]">▼</span>
-      </summary>
-      <div className="p-2 pt-0 space-y-1">
-        <div className="flex items-center justify-between">
-          <p className="text-[9px] text-slate-500 italic">
-            Secuencia exacta de hasta 3 acciones previas.
-          </p>
-          <div className="flex gap-1">
-            {activo && (
-              <button
-                onClick={() => onCambiar(null)}
-                className="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-rose-500/20 text-rose-300 border-rose-500/40"
-              >
-                ✕
-              </button>
-            )}
-            <button
-              onClick={agregar}
-              disabled={activo && patron!.acciones.length >= 3}
-              className="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-violet-500/20 text-violet-300 border-violet-500/40 disabled:opacity-40"
-            >
-              + Acción
-            </button>
-          </div>
-        </div>
-
-        {patron && patron.acciones.length > 0 && (
-          <div className="space-y-1">
-            {patron.acciones.map((item, i) => (
-              <div
-                key={i}
-                className="grid grid-cols-[auto_1fr_auto] gap-1 items-center"
-              >
-                <span className="text-[9px] text-slate-500">{i + 1}.</span>
-                <div className="grid grid-cols-2 gap-1">
-                  <select
-                    value={item.tipo}
-                    onChange={(e) =>
-                      actualizar(i, {
-                        tipo: e.target.value as TipoDisparador,
-                        resultado: "cualquiera",
-                      })
-                    }
-                    className={selectCls}
-                  >
-                    {TIPOS.map((t) => (
-                      <option key={t.v} value={t.v}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={item.resultado}
-                    onChange={(e) =>
-                      actualizar(i, { resultado: e.target.value })
-                    }
-                    className={selectCls}
-                  >
-                    {resultadosPorTipoAnalisis(item.tipo).map((r) => (
-                      <option key={r} value={r}>
-                        {etiquetaResultado(r)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  onClick={() => eliminar(i)}
-                  className="text-rose-400 hover:text-rose-300 text-[10px]"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </details>
-  );
-}
-
-// ============================================================
-// RACHAS HISTÓRICAS
-// ============================================================
-
-function RachasSection({
-  rachas,
-  onCambiar,
-}: {
-  rachas: RachaHistorica[];
-  onCambiar: (r: RachaHistorica[]) => void;
-}) {
-  let _c = 0;
-  const nuevo = (): RachaHistorica => {
-    _c += 1;
-    const id =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? `r-${crypto.randomUUID()}`
-        : `r-${Date.now()}-${_c}`;
-    return {
-      id,
-      ambito: "mismo_punto",
-      desdeAtras: 0,
-      minimo: 1,
-      filtro: { ...FILTRO_ACCION_HISTORICA_VACIO },
     };
+
+    const subtiposRanking = Object.entries(subtiposCount)
+      .map(([subtipo, count]) => ({
+        subtipo,
+        count,
+        pct: Math.round((count / total) * 100),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const jugadoresRanking = Object.entries(jugadoresCount)
+      .map(([jugadorId, count]) => ({
+        jugadorId,
+        count,
+        pct: Math.round((count / total) * 100),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const zonasRanking = Object.entries(zonasCount)
+      .map(([k, count]) => ({
+        zona: Number(k),
+        count,
+        pct: Math.round((count / total) * 100),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    estadisticasObservadas = {
+      tipoObservado,
+      totalEncontradas: total,
+      promedioAccionesDistancia:
+        Math.round((sumDistanciaAcciones / total) * 10) / 10,
+      promedioPuntosDistancia:
+        Math.round((sumDistanciaPuntos / total) * 10) / 10,
+      pctMismoPunto: Math.round((countMismoPunto / total) * 100),
+      pctPuntosPosteriores: Math.round(
+        ((total - countMismoPunto) / total) * 100
+      ),
+      evaluacionResultado,
+      subtiposRanking,
+      subtipoMasFrecuente: subtiposRanking[0]?.subtipo ?? null,
+      jugadoresRanking,
+      jugadorMasFrecuenteId: jugadoresRanking[0]?.jugadorId ?? null,
+      zonasRanking,
+      zonaMasFrecuente: zonasRanking[0]?.zona ?? null,
+    };
+  }
+
+  return {
+    totalOcurrencias: triggers.length,
+    ocurrencias,
+    distribucionSiguiente,
+    distribucionSubtipo,
+    resumenPorTipo,
+    coincidenciasGlobales,
+    estadisticasObservadas,
+    comportamientoTrigger,
   };
-
-  return (
-    <details
-      className={`rounded border ${
-        rachas.length > 0
-          ? "border-violet-500/40 bg-violet-500/[0.04]"
-          : "border-white/10 bg-white/[0.02]"
-      }`}
-    >
-      <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
-        <span>📜 Historia previa ({rachas.length})</span>
-        <span className="text-slate-500 text-[9px]">▼</span>
-      </summary>
-      <div className="p-2 pt-0 space-y-1">
-        {rachas.map((r, i) => (
-          <RachaFila
-            key={r.id}
-            idx={i}
-            racha={r}
-            onCambiar={(c) =>
-              onCambiar(
-                rachas.map((x) => (x.id === r.id ? { ...x, ...c } : x))
-              )
-            }
-            onEliminar={() => onCambiar(rachas.filter((x) => x.id !== r.id))}
-          />
-        ))}
-        <button
-          onClick={() => onCambiar([...rachas, nuevo()])}
-          className="w-full px-2 py-1 text-[9px] font-semibold rounded border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
-        >
-          + Añadir racha
-        </button>
-      </div>
-    </details>
-  );
 }
 
-function RachaFila({
-  idx,
-  racha,
-  onCambiar,
-  onEliminar,
-}: {
-  idx: number;
-  racha: RachaHistorica;
-  onCambiar: (c: Partial<RachaHistorica>) => void;
-  onEliminar: () => void;
-}) {
-  const tipoActual = racha.filtro.tipos[0] ?? "";
-  return (
-    <div className="rounded border border-white/10 bg-slate-900/40 p-1 space-y-1">
-      <div className="flex items-center justify-between gap-1">
-        <span className="text-[9px] font-bold text-violet-300">#{idx + 1}</span>
-        <span className="text-[8px] text-slate-400 truncate flex-1">
-          {resumenRacha(racha)}
-        </span>
-        <button
-          onClick={onEliminar}
-          className="text-rose-400 hover:text-rose-300 text-[9px]"
-        >
-          ✕
-        </button>
-      </div>
-      <div className="grid grid-cols-2 gap-1">
-        <select
-          value={racha.ambito}
-          onChange={(e) => onCambiar({ ambito: e.target.value as AmbitoRacha })}
-          className={selectCls}
-        >
-          {AMBITOS.map((a) => (
-            <option key={a.v} value={a.v}>
-              {a.label}
-            </option>
-          ))}
-        </select>
-        <input
-          type="number"
-          min={1}
-          max={10}
-          value={racha.minimo}
-          onChange={(e) =>
-            onCambiar({
-              minimo: Math.max(1, parseInt(e.target.value || "1", 10)),
-            })
-          }
-          className={inputCls}
-          placeholder="Mínimo"
-        />
-        <select
-          value={tipoActual}
-          onChange={(e) =>
-            onCambiar({
-              filtro: {
-                ...racha.filtro,
-                tipos: e.target.value
-                  ? [e.target.value as TipoDisparador]
-                  : [],
-                resultados: [],
-              },
-            })
-          }
-          className={selectCls}
-        >
-          <option value="">Cualquier tipo</option>
-          {TIPOS.map((t) => (
-            <option key={t.v} value={t.v}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-        {tipoActual ? (
-          <select
-            value={racha.filtro.resultados[0] ?? ""}
-            onChange={(e) =>
-              onCambiar({
-                filtro: {
-                  ...racha.filtro,
-                  resultados: e.target.value ? [e.target.value] : [],
-                },
-              })
-            }
-            className={selectCls}
-          >
-            <option value="">Cualquier resultado</option>
-            {resultadosPorTipoAnalisis(tipoActual as TipoDisparador)
-              .filter((r) => r !== "cualquiera")
-              .map((r) => (
-                <option key={r} value={r}>
-                  {etiquetaResultado(r)}
-                </option>
-              ))}
-          </select>
-        ) : (
-          <div />
-        )}
-        <input
-          type="number"
-          min={0}
-          max={10}
-          value={racha.desdeAtras}
-          onChange={(e) =>
-            onCambiar({
-              desdeAtras: Math.max(0, parseInt(e.target.value || "0", 10)),
-            })
-          }
-          className={`${inputCls} col-span-2`}
-          placeholder="Saltar N del tipo"
-        />
-      </div>
-    </div>
-  );
+// ------------------------------------------------------------
+// RESULTADOS DISPONIBLES POR TIPO
+// ------------------------------------------------------------
+
+export function resultadosPorTipoAnalisis(tipo: TipoDisparador): string[] {
+  switch (tipo) {
+    case "saque":
+      return [
+        "cualquiera",
+        "ace",
+        "positivo_mas",
+        "positivo",
+        "neutro",
+        "negativo",
+        "error_rival",
+      ];
+    case "recepcion":
+      return [
+        "cualquiera",
+        "perfecta",
+        "positiva",
+        "intermedia",
+        "negativa",
+        "doble_negativa",
+        "overpass",
+        "error_directo",
+      ];
+    case "armado":
+      return ["cualquiera", "1", "2", "3", "4", "5", "6", "R"];
+    case "ataque":
+      return [
+        "cualquiera",
+        "punto",
+        "neutro",
+        "error",
+        "error_afuera_ataque",
+        "error_red_ataque",
+        "gorro_ataque",
+        "use_rival_ataque",
+        "buena_rival",
+        "peligroso",
+        "simple",
+        "libre",
+      ];
+    case "bloqueo":
+      return [
+        "cualquiera",
+        "punto",
+        "positivo_mas",
+        "positivo",
+        "neutro",
+        "use_rival",
+        "red",
+        "filtrada",
+      ];
+    case "defensa":
+      return [
+        "cualquiera",
+        "toque_positiva",
+        "toque_negativa",
+        "gran_def",
+        "error_def",
+        "mala_libre",
+        "cobertura_positiva",
+        "cobertura_negativa",
+        "errores_graves",
+        "neutro",
+      ];
+    case "libre":
+      return ["cualquiera", "toque", "libre"];
+    case "roce-red":
+      return [
+        "cualquiera",
+        "ofensivo-propio",
+        "invasion-zaguero",
+        "invasion-delantero",
+        "roce-red-rival",
+      ];
+    default:
+      return ["cualquiera"];
+  }
 }
 
-// ============================================================
-// CONTEXTO DEL PARTIDO
-// ============================================================
+// ------------------------------------------------------------
+// ETIQUETAS
+// ------------------------------------------------------------
 
-function ContextoSection({
-  contexto,
-  onCambiar,
-}: {
-  contexto: ContextoPartidoFiltro | null;
-  onCambiar: (c: ContextoPartidoFiltro | null) => void;
-}) {
-  const activo = !!contexto && hayContextoPartidoActivo(contexto);
-
-  return (
-    <details
-      className={`rounded border ${
-        activo
-          ? "border-violet-500/40 bg-violet-500/[0.04]"
-          : "border-white/10 bg-white/[0.02]"
-      }`}
-    >
-      <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
-        <span>📊 Contexto del partido {activo && "✓"}</span>
-        <span className="text-slate-500 text-[9px]">▼</span>
-      </summary>
-      <div className="p-2 pt-0 space-y-1.5">
-        <div className="flex justify-end">
-          <button
-            onClick={() =>
-              onCambiar(contexto ? null : { ...CONTEXTO_PARTIDO_VACIO })
-            }
-            className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${
-              contexto
-                ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
-                : "bg-violet-500/20 text-violet-300 border-violet-500/40"
-            }`}
-          >
-            {contexto ? "✕ Quitar" : "+ Activar"}
-          </button>
-        </div>
-
-        {contexto && (
-          <>
-            <div>
-              <p className="text-[9px] font-bold uppercase text-slate-500 mb-0.5">
-                Marcador
-              </p>
-              <div className="grid grid-cols-2 gap-1">
-                <select
-                  value={contexto.marcador.estado}
-                  onChange={(e) =>
-                    onCambiar({
-                      ...contexto,
-                      marcador: {
-                        ...contexto.marcador,
-                        estado: e.target.value as MarcadorFiltro["estado"],
-                      },
-                    })
-                  }
-                  className={selectCls}
-                >
-                  {ESTADOS_MARCADOR.map((s) => (
-                    <option key={s.v} value={s.v}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={contexto.marcador.diferencia}
-                  onChange={(e) =>
-                    onCambiar({
-                      ...contexto,
-                      marcador: {
-                        ...contexto.marcador,
-                        diferencia: e.target
-                          .value as MarcadorFiltro["diferencia"],
-                      },
-                    })
-                  }
-                  className={selectCls}
-                >
-                  {DIFERENCIAS_MARCADOR.map((d) => (
-                    <option key={d.v} value={d.v}>
-                      {d.label}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  min={0}
-                  max={20}
-                  value={
-                    contexto.marcador.diferenciaExacta === null
-                      ? ""
-                      : contexto.marcador.diferenciaExacta
-                  }
-                  onChange={(e) =>
-                    onCambiar({
-                      ...contexto,
-                      marcador: {
-                        ...contexto.marcador,
-                        diferenciaExacta:
-                          e.target.value === ""
-                            ? null
-                            : parseInt(e.target.value, 10),
-                      },
-                    })
-                  }
-                  placeholder="Diff exacta"
-                  className={inputCls}
-                />
-                <select
-                  value={contexto.marcador.puntosParaCerrar}
-                  onChange={(e) =>
-                    onCambiar({
-                      ...contexto,
-                      marcador: {
-                        ...contexto.marcador,
-                        puntosParaCerrar: e.target
-                          .value as MarcadorFiltro["puntosParaCerrar"],
-                      },
-                    })
-                  }
-                  className={selectCls}
-                >
-                  {PUNTOS_CERRAR.map((p) => (
-                    <option key={p.v} value={p.v}>
-                      {p.v === "cualquiera"
-                        ? "Sin filtro de cierre"
-                        : p.label}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={() =>
-                    onCambiar({
-                      ...contexto,
-                      marcador: {
-                        ...contexto.marcador,
-                        soloCriticos: !contexto.marcador.soloCriticos,
-                      },
-                    })
-                  }
-                  className={`px-2 py-1 text-[10px] font-semibold rounded border transition col-span-2 ${
-                    contexto.marcador.soloCriticos
-                      ? "bg-amber-500/20 text-amber-200 border-amber-500/50"
-                      : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10"
-                  }`}
-                >
-                  {contexto.marcador.soloCriticos
-                    ? "✓ Solo críticos"
-                    : "Solo críticos"}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-[9px] font-bold uppercase text-slate-500 mb-0.5">
-                Rally
-              </p>
-              <div className="grid grid-cols-2 gap-1">
-                <select
-                  value={contexto.faseRally}
-                  onChange={(e) =>
-                    onCambiar({
-                      ...contexto,
-                      faseRally: e.target
-                        .value as ContextoPartidoFiltro["faseRally"],
-                    })
-                  }
-                  className={selectCls}
-                >
-                  {FASES_RALLY.map((f) => (
-                    <option key={f.v} value={f.v}>
-                      {f.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={contexto.inicioPunto}
-                  onChange={(e) =>
-                    onCambiar({
-                      ...contexto,
-                      inicioPunto: e.target
-                        .value as ContextoPartidoFiltro["inicioPunto"],
-                    })
-                  }
-                  className={selectCls}
-                >
-                  {INICIOS_PUNTO.map((i) => (
-                    <option key={i.v} value={i.v}>
-                      {i.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={contexto.esPrimerToque}
-                  onChange={(e) =>
-                    onCambiar({
-                      ...contexto,
-                      esPrimerToque: e.target
-                        .value as ContextoPartidoFiltro["esPrimerToque"],
-                    })
-                  }
-                  className={selectCls}
-                >
-                  <option value="cualquiera">Primer toque: cualq.</option>
-                  <option value="si">Sí (primer toque)</option>
-                  <option value="no">No (2° o 3er)</option>
-                </select>
-                <select
-                  value={contexto.toquesMinimo ?? "cualquiera"}
-                  onChange={(e) =>
-                    onCambiar({
-                      ...contexto,
-                      toquesMinimo:
-                        e.target.value === "cualquiera"
-                          ? null
-                          : parseInt(e.target.value, 10),
-                    })
-                  }
-                  className={selectCls}
-                >
-                  <option value="cualquiera">Toques: cualq.</option>
-                  <option value="2">≥ 2</option>
-                  <option value="3">≥ 3</option>
-                  <option value="4">≥ 4</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-[9px] font-bold uppercase text-slate-500 mb-0.5">
-                Jugador / set
-              </p>
-              <div className="grid grid-cols-2 gap-1">
-                <select
-                  value={contexto.ubicacionTrigger}
-                  onChange={(e) =>
-                    onCambiar({
-                      ...contexto,
-                      ubicacionTrigger: e.target
-                        .value as ContextoPartidoFiltro["ubicacionTrigger"],
-                    })
-                  }
-                  className={selectCls}
-                >
-                  {UBICACIONES.map((u) => (
-                    <option key={u.v} value={u.v}>
-                      {u.v === "cualquiera"
-                        ? "Cualquier ubicación"
-                        : u.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={contexto.rachaPuntos ?? "cualquiera"}
-                  onChange={(e) =>
-                    onCambiar({
-                      ...contexto,
-                      rachaPuntos:
-                        e.target.value === "cualquiera"
-                          ? null
-                          : parseInt(e.target.value, 10),
-                    })
-                  }
-                  className={selectCls}
-                >
-                  <option value="cualquiera">Racha: cualq.</option>
-                  <option value="2">≥ 2 seguidos</option>
-                  <option value="3">≥ 3 seguidos</option>
-                  <option value="4">≥ 4 seguidos</option>
-                  <option value="5">≥ 5 seguidos</option>
-                </select>
-                <select
-                  value={contexto.posicionEnSet}
-                  onChange={(e) =>
-                    onCambiar({
-                      ...contexto,
-                      posicionEnSet: e.target.value as PosicionEnSet,
-                    })
-                  }
-                  className={`${selectCls} col-span-2`}
-                >
-                  {POSICIONES_SET.map((p) => (
-                    <option key={p.v} value={p.v}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </details>
-  );
-}
-
-// ============================================================
-// COMPARADORES
-// ============================================================
-
-function ComparadoresSection({
-  coincidencias,
-  setCoincidencias,
-}: {
-  coincidencias: CoincidenciaFiltro;
-  setCoincidencias: (c: CoincidenciaFiltro) => void;
-}) {
-  const cantActivos = Object.values(coincidencias).filter(Boolean).length;
-  const toggle = (key: keyof CoincidenciaFiltro) => {
-    setCoincidencias({ ...coincidencias, [key]: !coincidencias[key] });
+export function etiquetaTipoDisparador(t: TipoDisparador): string {
+  const map: Record<TipoDisparador, string> = {
+    saque: "Saque",
+    recepcion: "Recepción",
+    armado: "Armado",
+    ataque: "Ataque",
+    bloqueo: "Bloqueo",
+    defensa: "Defensa",
+    libre: "Libre",
+    "roce-red": "Roce red",
   };
-
-  return (
-    <details
-      className={`rounded border ${
-        cantActivos > 0
-          ? "border-violet-500/40 bg-violet-500/[0.04]"
-          : "border-white/10 bg-white/[0.02]"
-      }`}
-    >
-      <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
-        <span>🔗 Comparadores ({cantActivos})</span>
-        <span className="text-slate-500 text-[9px]">▼</span>
-      </summary>
-      <div className="p-2 pt-0 flex flex-wrap gap-1">
-        {COMPARADORES.map((c) => {
-          const act = coincidencias[c.key];
-          return (
-            <button
-              key={c.key}
-              onClick={() => toggle(c.key)}
-              className={`px-2 py-0.5 text-[10px] font-semibold rounded border transition flex items-center gap-1 ${
-                act
-                  ? "bg-violet-500/30 border-violet-400/60 text-violet-200"
-                  : "bg-white/[0.02] border-white/10 text-slate-400 hover:text-white"
-              }`}
-            >
-              <span>{act ? "✓" : "+"}</span>
-              <span>{c.etiqueta}</span>
-            </button>
-          );
-        })}
-      </div>
-    </details>
-  );
+  return map[t] ?? t;
 }
 
-// ============================================================
-// DISTRIBUCIÓN
-// ============================================================
-
-function DistribucionLista({
-  titulo,
-  items,
-  color = "bg-sky-400",
-}: {
-  titulo: string;
-  items: { label: string; count: number; pct: number }[];
-  color?: string;
-}) {
-  if (items.length === 0) return null;
-  const maxPct = Math.max(...items.map((i) => i.pct), 1);
-  return (
-    <div>
-      <h6 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-        {titulo}
-      </h6>
-      <div className="space-y-0.5">
-        {items.map((it) => (
-          <div key={it.label} className="flex items-center gap-2 text-[10px]">
-            <span className="w-24 truncate text-slate-300">{it.label}</span>
-            <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
-              <div
-                className={`h-full ${color} rounded-full`}
-                style={{ width: `${(it.pct / maxPct) * 100}%` }}
-              />
-            </div>
-            <span className="w-14 text-right font-mono text-slate-300">
-              {it.count} ({it.pct}%)
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+export function etiquetaResultado(r: string): string {
+  if (r === "cualquiera") return "Cualquier resultado";
+  return r.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// ============================================================
-// SECCIÓN: COMPORTAMIENTO
-// ============================================================
-
-function SeccionComportamiento({
-  comportamiento,
-  nombreDeJugador,
-}: {
-  comportamiento: ComportamientoTrigger;
-  nombreDeJugador: (id: string) => string;
-}) {
-  return (
-    <details
-      open
-      className="rounded-lg border border-white/10 overflow-hidden bg-slate-900/40"
-    >
-      <summary className="px-3 py-2 cursor-pointer text-xs font-bold uppercase tracking-wider text-slate-200 bg-white/[0.02] flex items-center justify-between">
-        <span>📊 Comportamiento del trigger</span>
-        <span className="text-[10px] text-slate-400 font-normal">
-          {comportamiento.totalTriggers} triggers
-        </span>
-      </summary>
-      <div className="p-3 space-y-2 border-t border-white/10">
-        {comportamiento.porBloque.length > 0 && (
-          <DistribucionLista
-            titulo="Cumplimiento por bloque"
-            items={comportamiento.porBloque.map((x) => ({
-              label: `#${x.bloqueId.slice(0, 5)} ${x.tipo}`,
-              count: x.count,
-              pct: x.pct,
-            }))}
-            color="bg-fuchsia-400"
-          />
-        )}
-        <DistribucionLista
-          titulo="Por subtipo"
-          items={comportamiento.porSubtipo.map((x) => ({
-            label: x.subtipo,
-            count: x.count,
-            pct: x.pct,
-          }))}
-          color="bg-sky-400"
-        />
-        <DistribucionLista
-          titulo="Por zona destino"
-          items={comportamiento.porZonaDestino.map((x) => ({
-            label: x.zona === null ? "Sin dato" : `Zona ${x.zona}`,
-            count: x.count,
-            pct: x.pct,
-          }))}
-          color="bg-violet-400"
-        />
-        <DistribucionLista
-          titulo="Por velocidad"
-          items={comportamiento.porVelocidad.map((x) => ({
-            label: x.velocidad === null ? "Sin dato" : `v${x.velocidad}`,
-            count: x.count,
-            pct: x.pct,
-          }))}
-          color="bg-emerald-400"
-        />
-        <DistribucionLista
-          titulo="Por jugador"
-          items={comportamiento.porJugador.map((x) => ({
-            label: nombreDeJugador(x.jugadorId),
-            count: x.count,
-            pct: x.pct,
-          }))}
-          color="bg-amber-400"
-        />
-        <DistribucionLista
-          titulo="Por set"
-          items={comportamiento.porSet.map((x) => ({
-            label: `Set ${x.set}`,
-            count: x.count,
-            pct: x.pct,
-          }))}
-          color="bg-rose-400"
-        />
-      </div>
-    </details>
-  );
+export function etiquetaAmbito(a: AmbitoRacha): string {
+  const map: Record<AmbitoRacha, string> = {
+    mismo_punto: "Mismo punto",
+    puntos_del_set: "Este set",
+    partido: "Todo el partido",
+  };
+  return map[a];
 }
 
-// ============================================================
-// SECCIÓN: CONSECUENCIA
-// ============================================================
-
-function SeccionConsecuencia({
-  resultado,
-  tipoObservado,
-  jugadorObservadoFiltro,
-  nombre,
-  coincidencias,
-  onIrAPunto,
-}: {
-  resultado: ResultadoAnalisis;
-  tipoObservado: TipoDisparador | "cualquiera";
-  jugadorObservadoFiltro: string;
-  nombre: (id: string | null) => string;
-  coincidencias: CoincidenciaFiltro;
-  onIrAPunto?: (set: number, punto: number) => void;
-}) {
-  const est = resultado.estadisticasObservadas;
-  if (!est) return null;
-  const evalR = est.evaluacionResultado;
-
-  const esRelacion =
-    jugadorObservadoFiltro === "cualquiera" ||
-    jugadorObservadoFiltro === "mismo" ||
-    jugadorObservadoFiltro === "companero" ||
-    jugadorObservadoFiltro === "rival";
-
-  return (
-    <details
-      open
-      className="rounded-lg border border-white/10 overflow-hidden bg-slate-900/40"
-    >
-      <summary className="px-3 py-2 cursor-pointer text-xs font-bold uppercase tracking-wider text-slate-200 bg-white/[0.02] flex items-center justify-between">
-        <span>
-          🎯 Consecuencia:{" "}
-          {tipoObservado === "cualquiera"
-            ? "1ª acción siguiente"
-            : `sig. ${tipoObservado}`}
-        </span>
-        <span className="text-[10px] text-slate-400 font-normal">
-          {evalR.total} casos ·{" "}
-          {evalR.masFrecuente === "punto"
-            ? "punto"
-            : evalR.masFrecuente === "error"
-            ? "error"
-            : "neutro"}
-        </span>
-      </summary>
-
-      <div className="p-3 space-y-2 border-t border-white/10">
-        <p className="text-[10px] text-slate-400 -mt-1">
-          {esRelacion
-            ? etiquetaRelacionObservado(
-                jugadorObservadoFiltro as RelacionJugadorObservado
-              )
-            : `Jugador específico: ${nombre(jugadorObservadoFiltro)}`}
-        </p>
-
-        <div className="space-y-1">
-          <BalanceFila
-            color="bg-emerald-400"
-            label="Puntos"
-            pct={evalR.pctPuntos}
-            count={evalR.puntos}
-            total={evalR.total}
-            colorTexto="text-emerald-300"
-            colorBarra="bg-emerald-500"
-          />
-          <BalanceFila
-            color="bg-amber-400"
-            label="Neutro"
-            pct={evalR.pctNeutros}
-            count={evalR.neutros}
-            total={evalR.total}
-            colorTexto="text-amber-300"
-            colorBarra="bg-amber-500"
-          />
-          <BalanceFila
-            color="bg-rose-400"
-            label="Error"
-            pct={evalR.pctErrores}
-            count={evalR.errores}
-            total={evalR.total}
-            colorTexto="text-rose-300"
-            colorBarra="bg-rose-500"
-          />
-          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-white/5">
-            <span className="text-slate-300 font-medium">
-              Efectividad neta
-            </span>
-            <span
-              className={`font-mono font-bold px-2 py-0.5 rounded text-[10px] ${
-                evalR.efectividadNeta > 0
-                  ? "bg-emerald-500/15 text-emerald-300"
-                  : evalR.efectividadNeta < 0
-                  ? "bg-rose-500/15 text-rose-300"
-                  : "bg-slate-700 text-slate-300"
-              }`}
-            >
-              {evalR.efectividadNeta > 0 ? "+" : ""}
-              {evalR.efectividadNeta}%
-            </span>
-          </div>
-        </div>
-
-        <div className="pt-2 border-t border-white/5 space-y-0.5 text-[11px]">
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-400">Subtipo más frecuente:</span>
-            <span className="font-semibold text-white capitalize truncate">
-              {est.subtipoMasFrecuente || "—"}{" "}
-              <span className="text-slate-400 font-normal">
-                ({est.subtiposRanking[0]?.pct ?? 0}%)
-              </span>
-            </span>
-          </div>
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-400">Distancia promedio:</span>
-            <span className="font-mono text-white">
-              ~{est.promedioAccionesDistancia}t ·{" "}
-              {est.promedioPuntosDistancia === 0
-                ? "mismo punto"
-                : `+${est.promedioPuntosDistancia} pts`}
-            </span>
-          </div>
-          {hayComparadoresActivos(coincidencias) && (
-            <div className="flex justify-between gap-2">
-              <span className="text-slate-400">Coincidencias:</span>
-              <span className="text-slate-300">
-                {COMPARADORES.filter((c) => coincidencias[c.key])
-                  .map((c) => {
-                    const val = resultado.coincidenciasGlobales[c.key] ?? 0;
-                    const pct = Math.round(
-                      (val / Math.max(1, resultado.totalOcurrencias)) * 100
-                    );
-                    return `${c.etiqueta}: ${pct}%`;
-                  })
-                  .join(" · ")}
-              </span>
-            </div>
-          )}
-        </div>
-
-        <details className="pt-2 border-t border-white/5">
-          <summary className="text-[10px] font-bold uppercase text-slate-400 cursor-pointer">
-            Registro ({resultado.ocurrencias.length})
-          </summary>
-          <div className="mt-2 overflow-x-auto max-h-[280px] overflow-y-auto rounded border border-white/10">
-            <table className="w-full text-[10px] min-w-[560px]">
-              <thead className="sticky top-0 bg-slate-950 border-b border-white/10 text-slate-400 text-left">
-                <tr>
-                  <th className="py-1.5 px-2">Momento</th>
-                  <th className="py-1.5 px-2">Trigger</th>
-                  <th className="py-1.5 px-2">Observada</th>
-                  <th className="py-1.5 px-2">Desenlace</th>
-                  {onIrAPunto && <th className="py-1.5 px-2" />}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {resultado.ocurrencias.map((o) => {
-                  const obs = o.accionObservada;
-                  return (
-                    <tr
-                      key={`${o.set_numero}-${o.punto_numero}-${o.triggerId}`}
-                    >
-                      <td className="py-1.5 px-2 font-mono text-slate-400 whitespace-nowrap">
-                        S{o.set_numero}·P{o.punto_numero}
-                      </td>
-                      <td className="py-1.5 px-2">
-                        <span className="text-slate-100 capitalize">
-                          {o.triggerSubtipo}
-                        </span>{" "}
-                        <span className="text-slate-500">
-                          ({nombre(o.triggerJugadorId)})
-                        </span>
-                      </td>
-                      <td className="py-1.5 px-2">
-                        {obs ? (
-                          <>
-                            <span className="text-slate-100 capitalize">
-                              {obs.subtipo}
-                            </span>{" "}
-                            <span className="text-slate-500">
-                              ({nombre(obs.accion.jugador_id)})
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-slate-500 italic">—</span>
-                        )}
-                      </td>
-                      <td className="py-1.5 px-2">
-                        {obs ? (
-                          <span
-                            className={`px-1.5 py-0.5 rounded font-semibold ${
-                              obs.categoriaResultado === "punto"
-                                ? "bg-emerald-500/15 text-emerald-300"
-                                : obs.categoriaResultado === "error"
-                                ? "bg-rose-500/15 text-rose-300"
-                                : "bg-amber-500/15 text-amber-300"
-                            }`}
-                          >
-                            {obs.categoriaResultado === "punto"
-                              ? "P"
-                              : obs.categoriaResultado === "error"
-                              ? "E"
-                              : "N"}
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      {onIrAPunto && (
-                        <td className="py-1.5 px-2 text-right">
-                          <button
-                            onClick={() =>
-                              onIrAPunto(o.set_numero, o.punto_numero)
-                            }
-                            className="text-sky-400 hover:text-sky-300 underline"
-                          >
-                            ver
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </details>
-      </div>
-    </details>
-  );
+export function etiquetaUbicacion(u: UbicacionFiltro): string {
+  const map: Record<UbicacionFiltro, string> = {
+    cualquiera: "Cualquier ubicación",
+    delantero: "Delantero",
+    zaguero: "Zaguero",
+    libero: "Líbero",
+    otro: "Otro",
+  };
+  return map[u];
 }
 
-function BalanceFila({
-  color,
-  label,
-  pct,
-  count,
-  total,
-  colorTexto,
-  colorBarra,
-}: {
-  color: string;
-  label: string;
-  pct: number;
-  count: number;
-  total: number;
-  colorTexto: string;
-  colorBarra: string;
-}) {
-  return (
-    <div className="flex items-center justify-between text-[11px]">
-      <div className="flex items-center gap-2">
-        <span className={`w-2 h-2 rounded-full ${color}`} />
-        <span className="text-slate-300">{label}</span>
-      </div>
-      <div className="flex items-center gap-2 flex-1 max-w-xs ml-2">
-        <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
-          <div
-            className={`h-full ${colorBarra} rounded-full`}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-        <span
-          className={`font-mono font-semibold text-[10px] w-12 text-right ${colorTexto}`}
-        >
-          {pct}%
-        </span>
-      </div>
-      <span className="font-mono text-slate-500 text-[10px] w-14 text-right">
-        {count}/{total}
-      </span>
-    </div>
-  );
+export function etiquetaRelacion(r: RelacionJugador): string {
+  const map: Record<RelacionJugador, string> = {
+    cualquiera: "Cualquier jugador",
+    mismo: "El mismo jugador",
+    companero: "Un compañero",
+    rival: "Un rival",
+  };
+  return map[r];
+}
+
+export function etiquetaRelacionObservado(r: RelacionJugadorObservado): string {
+  const map: Record<RelacionJugadorObservado, string> = {
+    cualquiera: "Cualquier jugador",
+    mismo: "El mismo jugador",
+    companero: "Un compañero",
+    rival: "Un rival",
+  };
+  return map[r];
+}
+
+export function etiquetaCierraPunto(c: CierraPuntoFiltro): string {
+  const map: Record<CierraPuntoFiltro, string> = {
+    cualquiera: "Cualquiera",
+    si: "Solo si cerró",
+    no: "Solo si NO cerró",
+  };
+  return map[c];
+}
+
+export function etiquetaOperador(op: OperadorBloque): string {
+  const map: Record<OperadorBloque, string> = {
+    AND: "Y",
+    OR: "O",
+    NOT: "Y NO",
+  };
+  return map[op];
 }

@@ -1,16 +1,18 @@
 "use client";
 
 // ============================================================
-// ANÁLISIS DE CONSECUENCIAS — UI v3 con OR/AND/NOT + comparar
+// ANÁLISIS DE CONSECUENCIAS — UI v4 con buscador de texto
 // ============================================================
-// Estructura:
-//   [Header] resumen + casos + reset + toggle "comparar"
-//   [Chips]  preguntas rápidas
-//   [Panel A] y [Panel B] (si comparación activa):
-//     - Bloques CUANDO (lista con AND/OR/NOT entre ellos)
-//     - MIRAR (acción observada + relación jugador)
-//     - Filtros avanzados (alcance + comparadores)
-//     - Resultados (comportamiento + consecuencia)
+// Estructura por panel (A y B):
+//   1. BUSCADOR: input de texto libre + chips + aplicar
+//   2. Bloques CUANDO con operador AND/OR/NOT
+//   3. MIRAR (acción observada + relación jugador)
+//   4. Avanzado (alcance + comparadores)
+//   5. Resultados: Comportamiento + Consecuencia
+//
+// El buscador usa parsearBusqueda() de lib/parserBusqueda.ts
+// (rule-based, español de vóley). Al aplicar, reemplaza los
+// bloques del panel con el bloque parseado.
 // ============================================================
 
 import { useMemo, useState, useEffect } from "react";
@@ -56,6 +58,12 @@ import {
   type UbicacionFiltro,
   type Ventana,
 } from "@/lib/analisisConsecuencias";
+import {
+  parsearBusqueda,
+  type CategoriaMatch,
+  type MatchParser,
+  type ResultadoParser,
+} from "@/lib/parserBusqueda";
 import type { AccionVisual } from "./adaptadorUnificadoV2";
 
 // ------------------------------------------------------------
@@ -153,7 +161,6 @@ const ZONAS_JUGADOR: { v: number; label: string }[] = [
 ];
 
 const ROLES = ["A", "O", "C1", "C2", "P1", "P2", "L"];
-
 const ROTACIONES = [1, 2, 3, 4, 5, 6];
 
 const ESTADOS_MARCADOR = [
@@ -219,6 +226,26 @@ const COMPARADORES: {
   { key: "mismaZonaTriggerOrigen", etiqueta: "Misma zona origen" },
   { key: "mismaVelocidadAnterior", etiqueta: "Misma velocidad" },
 ];
+
+const CATEGORIA_COLOR: Record<CategoriaMatch, string> = {
+  tipo: "bg-blue-500/20 text-blue-200 border-blue-500/40",
+  resultado: "bg-emerald-500/20 text-emerald-200 border-emerald-500/40",
+  jugador: "bg-amber-500/20 text-amber-200 border-amber-500/40",
+  set: "bg-violet-500/20 text-violet-200 border-violet-500/40",
+  punto: "bg-violet-500/20 text-violet-200 border-violet-500/40",
+  partido: "bg-fuchsia-500/20 text-fuchsia-200 border-fuchsia-500/40",
+  rol: "bg-cyan-500/20 text-cyan-200 border-cyan-500/40",
+  zona: "bg-cyan-500/20 text-cyan-200 border-cyan-500/40",
+  rotacion: "bg-cyan-500/20 text-cyan-200 border-cyan-500/40",
+  velocidad: "bg-sky-500/20 text-sky-200 border-sky-500/40",
+  "tipo-saque": "bg-orange-500/20 text-orange-200 border-orange-500/40",
+  previa: "bg-rose-500/20 text-rose-200 border-rose-500/40",
+  "racha-jugador": "bg-rose-500/20 text-rose-200 border-rose-500/40",
+  top: "bg-yellow-500/20 text-yellow-200 border-yellow-500/40",
+  "vs-promedio": "bg-yellow-500/20 text-yellow-200 border-yellow-500/40",
+  contexto: "bg-slate-500/20 text-slate-200 border-slate-500/40",
+  "posicion-set": "bg-slate-500/20 text-slate-200 border-slate-500/40",
+};
 
 // ------------------------------------------------------------
 // CONFIGURACIÓN DE UN PANEL
@@ -300,26 +327,36 @@ function resumenRacha(r: RachaHistorica): string {
   return partes.join(" · ");
 }
 
-function resumenPrevia(p: FiltroAccionHistorica): string {
-  const partes: string[] = [];
-  if (p.tipos.length > 0) {
-    partes.push(p.tipos.map((t) => etiquetaTipoDisparador(t)).join("|"));
-  } else {
-    partes.push("cualquier acción");
-  }
-  if (p.resultados.length > 0) partes.push(p.resultados[0]);
-  if (p.relacionJugador !== "cualquiera") {
-    partes.push(etiquetaRelacion(p.relacionJugador));
-  }
-  return partes.join(" · ");
-}
-
 function resumenBloque(b: BloqueTriggerFiltro): string {
   const partes: string[] = [];
   partes.push(etiquetaTipoDisparador(b.tipo));
   if (b.resultado !== "cualquiera") partes.push(b.resultado);
-  if (b.jugadorId) partes.push(`jugador:${b.jugadorId.slice(0, 6)}…`);
+  if (b.jugadorId) partes.push(`jugador`);
   return partes.join(" · ");
+}
+
+function construirFiltros(config: ConfiguracionPanel): FiltrosAnalisis {
+  const esRelacion =
+    config.jugadorObservadoFiltro === "cualquiera" ||
+    config.jugadorObservadoFiltro === "mismo" ||
+    config.jugadorObservadoFiltro === "companero" ||
+    config.jugadorObservadoFiltro === "rival";
+
+  const jugadorObservadoRelacion: RelacionJugadorObservado = esRelacion
+    ? (config.jugadorObservadoFiltro as RelacionJugadorObservado)
+    : "cualquiera";
+
+  const jugadorObservadoId = esRelacion ? null : config.jugadorObservadoFiltro;
+
+  return {
+    bloques: config.bloques,
+    tipoObservado: config.tipoObservado,
+    jugadorObservadoRelacion,
+    jugadorObservadoId,
+    alcance: config.alcance,
+    ventana: 1 as Ventana,
+    coincidencias: config.coincidencias,
+  };
 }
 
 // ------------------------------------------------------------
@@ -345,9 +382,7 @@ export default function AnalisisConsecuencias({
     return p;
   });
   const [panelB, setPanelB] = useState<ConfiguracionPanel>(panelInicial);
-  const [preguntaActivaId, setPreguntaActivaId] = useState<string | null>(null);
 
-  // Lista de jugadores únicos (para dropdowns)
   const listaJugadores = useMemo(() => {
     const ids = new Set<string>();
     for (const a of acciones) if (a.jugador_id) ids.add(a.jugador_id);
@@ -374,7 +409,6 @@ export default function AnalisisConsecuencias({
     [listaJugadores, nombreDeJugador, jugadoresDisponibles]
   );
 
-  // Sets y puntos únicos (para filtros de scope)
   const { setsUnicos, puntosUnicos } = useMemo(() => {
     const sets = new Set<number>();
     const puntos = new Set<number>();
@@ -388,14 +422,18 @@ export default function AnalisisConsecuencias({
     };
   }, [acciones]);
 
-  // Handlers de panel
-  const setPanel = (cual: "A" | "B") => (nuevo: ConfiguracionPanel) => {
-    if (cual === "A") setPanelA(nuevo);
-    else setPanelB(nuevo);
-  };
+  const cantCasosA = useMemo(() => {
+    return analizarConsecuencias(acciones, construirFiltros(panelA))
+      .totalOcurrencias;
+  }, [acciones, panelA]);
+
+  const cantCasosB = useMemo(() => {
+    if (!modoComparacion) return 0;
+    return analizarConsecuencias(acciones, construirFiltros(panelB))
+      .totalOcurrencias;
+  }, [acciones, panelB, modoComparacion]);
 
   const restablecerTodo = () => {
-    setPreguntaActivaId(null);
     const baseA = panelInicial();
     if (jugadorId) {
       baseA.bloques[0].filtro.jugadorId = jugadorId;
@@ -405,37 +443,6 @@ export default function AnalisisConsecuencias({
     setPanelB(panelInicial());
     setModoComparacion(false);
   };
-
-  // Aplicar pregunta rápida solo al panel A (o a ambos en modo comparar?)
-  // Por simplicidad: al A. El usuario puede duplicar.
-  const aplicarPreguntaRapida = (p: PreguntaRapida) => {
-    setPreguntaActivaId(p.id);
-    const nuevo: ConfiguracionPanel = {
-      bloques: [p.bloque],
-      tipoObservado: p.tipoObservado,
-      jugadorObservadoFiltro: p.jugadorObservadoRelacion,
-      alcance: p.alcance,
-      coincidencias: { ...COINCIDENCIA_VACIA },
-    };
-    setPanelA(nuevo);
-  };
-
-  const duplicarAenB = () => {
-    setPanelB(JSON.parse(JSON.stringify(panelA)));
-  };
-
-  const cantCasosA = useMemo(
-    () => evaluarPanel(acciones, panelA, jugadoresParaDropdown.length).totalOcurrencias,
-    [acciones, panelA, jugadoresParaDropdown.length]
-  );
-  const cantCasosB = useMemo(
-    () =>
-      modoComparacion
-        ? evaluarPanel(acciones, panelB, jugadoresParaDropdown.length)
-            .totalOcurrencias
-        : 0,
-    [acciones, panelB, modoComparacion, jugadoresParaDropdown.length]
-  );
 
   return (
     <div className="space-y-3" style={cardBase}>
@@ -447,16 +454,16 @@ export default function AnalisisConsecuencias({
               {titulo}
             </span>
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-white/10 text-slate-300 bg-white/5">
-              A: {cantCasosA} caso{cantCasosA !== 1 ? "s" : ""}
+              A: {cantCasosA}
             </span>
             {modoComparacion && (
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-violet-500/30 text-violet-300 bg-violet-500/10">
-                B: {cantCasosB} caso{cantCasosB !== 1 ? "s" : ""}
+                B: {cantCasosB}
               </span>
             )}
           </div>
           <p className="text-[11px] text-slate-400">
-            Filtrá acciones con OR/AND/NOT y analizá qué pasa después.
+            Buscá una jugada en lenguaje natural y mirá qué pasa después.
           </p>
         </div>
         <div className="flex flex-col gap-1 items-end shrink-0">
@@ -480,26 +487,6 @@ export default function AnalisisConsecuencias({
         </div>
       </div>
 
-      {/* ====== PREGUNTAS RÁPIDAS ====== */}
-      <div className="px-4 flex flex-wrap gap-1">
-        {PREGUNTAS_RAPIDAS.map((p) => {
-          const activa = preguntaActivaId === p.id;
-          return (
-            <button
-              key={p.id}
-              onClick={() => aplicarPreguntaRapida(p)}
-              className={`px-2 py-1 text-[10px] font-semibold rounded border transition ${
-                activa
-                  ? "bg-violet-500/20 border-violet-400/60 text-violet-200"
-                  : "bg-white/[0.02] border-white/10 text-slate-300 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              {p.titulo}
-            </button>
-          );
-        })}
-      </div>
-
       {/* ====== PANELES ====== */}
       <div
         className={`px-4 pb-4 ${
@@ -511,7 +498,7 @@ export default function AnalisisConsecuencias({
         <PanelAnalisis
           acciones={acciones}
           config={panelA}
-          setConfig={setPanel("A")}
+          setConfig={setPanelA}
           nombre={nombre}
           jugadoresParaDropdown={jugadoresParaDropdown}
           setsUnicos={setsUnicos}
@@ -519,15 +506,21 @@ export default function AnalisisConsecuencias({
           partidosDisponibles={partidosDisponibles}
           onIrAPunto={onIrAPunto}
           etiqueta="A"
-          onDuplicar={modoComparacion ? undefined : duplicarAenB}
-          onRestablecer={() => setPanelA(panelInicial())}
+          onRestablecer={() => {
+            const base = panelInicial();
+            if (jugadorId) {
+              base.bloques[0].filtro.jugadorId = jugadorId;
+              base.jugadorObservadoFiltro = "mismo";
+            }
+            setPanelA(base);
+          }}
         />
 
         {modoComparacion && (
           <PanelAnalisis
             acciones={acciones}
             config={panelB}
-            setConfig={setPanel("B")}
+            setConfig={setPanelB}
             nombre={nombre}
             jugadoresParaDropdown={jugadoresParaDropdown}
             setsUnicos={setsUnicos}
@@ -544,177 +537,6 @@ export default function AnalisisConsecuencias({
 }
 
 // ============================================================
-// EVALUACIÓN DE UN PANEL (para contadores en el header)
-// ============================================================
-
-function evaluarPanel(
-  acciones: AccionVisual[],
-  config: ConfiguracionPanel,
-  _lenJugadores: number
-): ResultadoAnalisis {
-  return analizarConsecuencias(acciones, construirFiltros(config));
-}
-
-function construirFiltros(config: ConfiguracionPanel): FiltrosAnalisis {
-  const esRelacion =
-    config.jugadorObservadoFiltro === "cualquiera" ||
-    config.jugadorObservadoFiltro === "mismo" ||
-    config.jugadorObservadoFiltro === "companero" ||
-    config.jugadorObservadoFiltro === "rival";
-
-  const jugadorObservadoRelacion: RelacionJugadorObservado = esRelacion
-    ? (config.jugadorObservadoFiltro as RelacionJugadorObservado)
-    : "cualquiera";
-
-  const jugadorObservadoId = esRelacion
-    ? null
-    : config.jugadorObservadoFiltro;
-
-  return {
-    bloques: config.bloques,
-    tipoObservado: config.tipoObservado,
-    jugadorObservadoRelacion,
-    jugadorObservadoId,
-    alcance: config.alcance,
-    ventana: 1 as Ventana,
-    coincidencias: config.coincidencias,
-  };
-}
-
-// ============================================================
-// PREGUNTAS RÁPIDAS (definidas después por simplicidad)
-// ============================================================
-
-interface PreguntaRapida {
-  id: string;
-  titulo: string;
-  bloque: BloqueTrigger;
-  tipoObservado: TipoDisparador | "cualquiera";
-  jugadorObservadoRelacion: RelacionJugadorObservado;
-  alcance: "partido" | "mismo_punto";
-}
-
-const PREGUNTAS_RAPIDAS: PreguntaRapida[] = [
-  {
-    id: "error-ataque",
-    titulo: "Error ataque → sig. ataque",
-    bloque: {
-      id: "qr-1",
-      operador: "AND",
-      filtro: {
-        ...BLOQUE_TRIGGER_VACIO,
-        tipo: "ataque",
-        resultado: "error",
-      },
-    },
-    tipoObservado: "ataque",
-    jugadorObservadoRelacion: "mismo",
-    alcance: "partido",
-  },
-  {
-    id: "mala-recep",
-    titulo: "Recep. negativa → sig. ataque",
-    bloque: {
-      id: "qr-2",
-      operador: "AND",
-      filtro: {
-        ...BLOQUE_TRIGGER_VACIO,
-        tipo: "recepcion",
-        resultado: "negativa",
-      },
-    },
-    tipoObservado: "ataque",
-    jugadorObservadoRelacion: "cualquiera",
-    alcance: "partido",
-  },
-  {
-    id: "ace-saque",
-    titulo: "Ace → sig. saque",
-    bloque: {
-      id: "qr-3",
-      operador: "AND",
-      filtro: {
-        ...BLOQUE_TRIGGER_VACIO,
-        tipo: "saque",
-        resultado: "ace",
-      },
-    },
-    tipoObservado: "saque",
-    jugadorObservadoRelacion: "mismo",
-    alcance: "partido",
-  },
-  {
-    id: "punto-ataque-o-bloqueo",
-    titulo: "Punto por ataque O bloqueo",
-    bloque: {
-      id: "qr-4a",
-      operador: "AND",
-      filtro: {
-        ...BLOQUE_TRIGGER_VACIO,
-        tipo: "ataque",
-        resultado: "punto",
-      },
-    },
-    tipoObservado: "cualquiera",
-    jugadorObservadoRelacion: "cualquiera",
-    alcance: "partido",
-  },
-  {
-    id: "cierre-set",
-    titulo: "Cierre de set",
-    bloque: {
-      id: "qr-5",
-      operador: "AND",
-      filtro: {
-        ...BLOQUE_TRIGGER_VACIO,
-        tipo: "ataque",
-        contextoPartido: {
-          ...CONTEXTO_PARTIDO_VACIO,
-          marcador: {
-            ...CONTEXTO_PARTIDO_VACIO.marcador,
-            puntosParaCerrar: "<=3",
-          },
-        },
-      },
-    },
-    tipoObservado: "ataque",
-    jugadorObservadoRelacion: "cualquiera",
-    alcance: "partido",
-  },
-  {
-    id: "racha-ganando",
-    titulo: "Racha 3+ ganando",
-    bloque: {
-      id: "qr-6",
-      operador: "AND",
-      filtro: {
-        ...BLOQUE_TRIGGER_VACIO,
-        tipo: "ataque",
-        contextoPartido: {
-          ...CONTEXTO_PARTIDO_VACIO,
-          rachaPuntos: 3,
-        },
-      },
-    },
-    tipoObservado: "ataque",
-    jugadorObservadoRelacion: "cualquiera",
-    alcance: "partido",
-  },
-  {
-    id: "inmediata",
-    titulo: "Acción inmediata siguiente",
-    bloque: {
-      id: "qr-7",
-      operador: "AND",
-      filtro: { ...BLOQUE_TRIGGER_VACIO, tipo: "ataque" },
-    },
-    tipoObservado: "cualquiera",
-    jugadorObservadoRelacion: "cualquiera",
-    alcance: "mismo_punto",
-  },
-];
-
-// ============================================================
 // PANEL DE ANÁLISIS (A o B)
 // ============================================================
 
@@ -729,7 +551,6 @@ function PanelAnalisis({
   partidosDisponibles,
   onIrAPunto,
   etiqueta,
-  onDuplicar,
   onRestablecer,
 }: {
   acciones: AccionVisual[];
@@ -742,7 +563,6 @@ function PanelAnalisis({
   partidosDisponibles?: { id: string; nombre: string }[];
   onIrAPunto?: (set: number, punto: number) => void;
   etiqueta: string;
-  onDuplicar?: () => void;
   onRestablecer?: () => void;
 }) {
   const resultado = useMemo(
@@ -768,7 +588,9 @@ function PanelAnalisis({
         ? "siguiente acción"
         : `sig. ${etiquetaTipoDisparador(config.tipoObservado)}`;
     const jugObs = esRelacion
-      ? etiquetaRelacionObservado(config.jugadorObservadoFiltro as RelacionJugadorObservado)
+      ? etiquetaRelacionObservado(
+          config.jugadorObservadoFiltro as RelacionJugadorObservado
+        )
       : nombre(config.jugadorObservadoFiltro);
     partes.push(`${tipoObs} · ${jugObs}`);
     return partes.join(" ");
@@ -827,34 +649,31 @@ function PanelAnalisis({
             {receta}
           </p>
         </div>
-        <div className="flex gap-1 shrink-0">
-          {onDuplicar && (
-            <button
-              onClick={onDuplicar}
-              className="text-[10px] px-1.5 py-0.5 rounded border border-white/10 text-slate-300 hover:text-white hover:bg-white/5"
-              title="Duplicar a B"
-            >
-              ⇄
-            </button>
-          )}
-          {onRestablecer && (
-            <button
-              onClick={onRestablecer}
-              className="text-[10px] px-1.5 py-0.5 rounded border border-white/10 text-slate-300 hover:text-white hover:bg-white/5"
-              title="Restablecer"
-            >
-              ↻
-            </button>
-          )}
-        </div>
+        {onRestablecer && (
+          <button
+            onClick={onRestablecer}
+            className="text-[10px] px-1.5 py-0.5 rounded border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 shrink-0"
+            title="Restablecer"
+          >
+            ↻
+          </button>
+        )}
       </div>
 
       <div className="p-3 space-y-2">
+        {/* ====== BUSCADOR ====== */}
+        <PanelBusqueda
+          acciones={acciones}
+          config={config}
+          setConfig={setConfig}
+          jugadoresParaDropdown={jugadoresParaDropdown}
+          partidosDisponibles={partidosDisponibles}
+        />
+
         {/* ====== BLOQUES CUANDO ====== */}
         <div className="space-y-1.5">
           {config.bloques.map((b, idx) => (
             <div key={b.id}>
-              {/* Operador (excepto primero) */}
               {idx > 0 && (
                 <div className="flex items-center gap-1 mb-1 ml-2">
                   <span className="text-slate-500 text-[10px]">└</span>
@@ -1026,6 +845,208 @@ function PanelAnalisis({
 }
 
 // ============================================================
+// PANEL DE BÚSQUEDA
+// ============================================================
+
+function PanelBusqueda({
+  acciones,
+  config,
+  setConfig,
+  jugadoresParaDropdown,
+  partidosDisponibles,
+}: {
+  acciones: AccionVisual[];
+  config: ConfiguracionPanel;
+  setConfig: (c: ConfiguracionPanel) => void;
+  jugadoresParaDropdown: { id: string; nombre: string }[];
+  partidosDisponibles?: { id: string; nombre: string }[];
+}) {
+  const [texto, setTexto] = useState("");
+  const [verDatosDelJugador, setVerDatosDelJugador] = useState(true);
+
+  const parseResult: ResultadoParser = useMemo(
+    () =>
+      parsearBusqueda(texto, {
+        jugadores: jugadoresParaDropdown,
+        partidos: partidosDisponibles,
+      }),
+    [texto, jugadoresParaDropdown, partidosDisponibles]
+  );
+
+  const jugadorDetectadoId = parseResult.filtro.jugadorId ?? null;
+
+  const aplicar = () => {
+    if (!parseResult.aplicado) return;
+
+    const nuevoBloque: BloqueTrigger = {
+      id: generarIdBloque(),
+      operador: "AND",
+      filtro: parseResult.filtro,
+    };
+
+    const nuevoJugadorObservadoFiltro =
+      jugadorDetectadoId && verDatosDelJugador
+        ? "mismo"
+        : config.jugadorObservadoFiltro;
+
+    setConfig({
+      ...config,
+      bloques: [nuevoBloque],
+      jugadorObservadoFiltro: nuevoJugadorObservadoFiltro,
+    });
+  };
+
+  const limpiar = () => setTexto("");
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.02] p-2 space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30">
+          🔍 Buscar
+        </span>
+        <span className="text-[10px] text-slate-400">
+          escribí la jugada en lenguaje natural
+        </span>
+      </div>
+
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") aplicar();
+          }}
+          placeholder='Ej: "ataques de Juan después de errar", "pipes en cierre de set"'
+          className="flex-1 bg-slate-900 text-white text-[11px] rounded px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-slate-400 placeholder:text-slate-600"
+        />
+        {texto && (
+          <button
+            onClick={limpiar}
+            className="text-[10px] px-2 py-1 rounded border border-white/10 text-slate-300 hover:text-white hover:bg-white/5"
+            title="Limpiar"
+          >
+            ✕
+          </button>
+        )}
+        <button
+          onClick={aplicar}
+          disabled={!parseResult.aplicado}
+          className={`text-[10px] font-bold px-2.5 py-1 rounded border transition shrink-0 ${
+            parseResult.aplicado
+              ? "bg-emerald-500/20 text-emerald-200 border-emerald-400/60 hover:bg-emerald-500/30"
+              : "bg-white/5 text-slate-500 border-white/10 cursor-not-allowed"
+          }`}
+        >
+          Aplicar
+        </button>
+      </div>
+
+      {/* Chips de lo que entendió */}
+      {parseResult.matches.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {parseResult.matches.map((m, i) => (
+            <span
+              key={`${m.clave}-${i}`}
+              className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${CATEGORIA_COLOR[m.categoria]}`}
+              title={m.fragmento}
+            >
+              {m.clave === "tipo"
+                ? etiquetaTipoDisparador(m.valor as TipoDisparador)
+                : m.clave === "resultado"
+                ? etiquetaResultado(m.valor)
+                : m.clave === "jugador"
+                ? m.valor
+                : m.clave === "contexto.cierre"
+                ? `cierre ${m.valor}`
+                : m.clave === "contexto.critico"
+                ? "crítico"
+                : m.clave === "contexto.fase"
+                ? m.valor
+                : m.clave === "contexto.posicion"
+                ? `${m.valor} punto`
+                : m.clave === "previa"
+                ? `previa ${m.valor}`
+                : m.clave === "top"
+                ? m.valor
+                : m.clave === "vs-promedio"
+                ? m.valor === "por_encima"
+                  ? "sobre promedio"
+                  : "bajo promedio"
+                : m.clave === "velocidad"
+                ? `v${m.valor}`
+                : m.clave === "tipo-saque"
+                ? `saque ${m.valor}`
+                : m.clave === "rol"
+                ? `rol ${m.valor}`
+                : m.clave === "racha-jugador"
+                ? m.valor
+                : `${m.clave}: ${m.valor}`}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Warnings de no reconocidas */}
+      {parseResult.noReconocidas.length > 0 && (
+        <div className="flex flex-wrap gap-1 items-center">
+          <span className="text-[9px] text-amber-400">
+            ⚠️ No reconocí:
+          </span>
+          {parseResult.noReconocidas.slice(0, 8).map((w, i) => (
+            <span
+              key={`${w}-${i}`}
+              className="text-[9px] px-1 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 font-mono"
+            >
+              {w}
+            </span>
+          ))}
+          {parseResult.noReconocidas.length > 8 && (
+            <span className="text-[9px] text-amber-400">
+              +{parseResult.noReconocidas.length - 8}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Toggle ver datos del jugador (solo si detectó jugador) */}
+      {jugadorDetectadoId && (
+        <label className="flex items-center gap-1.5 text-[10px] text-slate-300 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={verDatosDelJugador}
+            onChange={(e) => setVerDatosDelJugador(e.target.checked)}
+            className="w-3 h-3 accent-emerald-500"
+          />
+          <span>
+            Ver datos del mismo jugador buscado (
+            {jugadoresParaDropdown.find((j) => j.id === jugadorDetectadoId)
+              ?.nombre ?? "?"}
+            )
+          </span>
+        </label>
+      )}
+
+      {/* Ayuda con ejemplos */}
+      {!texto && (
+        <div className="flex flex-wrap gap-1">
+          <span className="text-[9px] text-slate-500 italic">Ejemplos:</span>
+          {parseResult.sugerencias.slice(0, 4).map((sug, i) => (
+            <button
+              key={`${sug}-${i}`}
+              onClick={() => setTexto(sug)}
+              className="text-[9px] px-1.5 py-0.5 rounded border border-white/10 text-slate-400 hover:text-white hover:bg-white/5"
+            >
+              {sug}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
 // BLOQUE EDITOR
 // ============================================================
 
@@ -1057,7 +1078,6 @@ function BloqueEditor({
 
   return (
     <div className="rounded-lg border border-white/10 bg-slate-900/30 p-2 space-y-1.5">
-      {/* Header del bloque */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
@@ -1079,7 +1099,6 @@ function BloqueEditor({
         )}
       </div>
 
-      {/* Mínimo esencial: tipo + jugador */}
       <div className="grid grid-cols-2 gap-1">
         <select
           value={f.tipo}
@@ -1116,7 +1135,6 @@ function BloqueEditor({
         </select>
       </div>
 
-      {/* Scope y avanzado del bloque */}
       <details
         className={`rounded border ${
           avanzadoActivo
@@ -1129,7 +1147,6 @@ function BloqueEditor({
           <span className="text-slate-500 text-[9px]">▼</span>
         </summary>
         <div className="p-2 pt-0 space-y-2">
-          {/* Resultado */}
           <div>
             <label className="block text-[9px] font-bold uppercase text-slate-500 mb-0.5">
               Resultado del trigger
@@ -1147,7 +1164,6 @@ function BloqueEditor({
             </select>
           </div>
 
-          {/* Scope */}
           <ScopeSection
             filtro={f}
             onChange={onCambiarFiltro}
@@ -1156,26 +1172,22 @@ function BloqueEditor({
             partidosDisponibles={partidosDisponibles}
           />
 
-          {/* Acción previa directa */}
           <AccionPreviaSection
             previa={f.accionPreviaDirecta}
             onCambiar={(p) => onCambiarFiltro({ accionPreviaDirecta: p })}
           />
 
-          {/* Racha de jugador */}
           <RachaJugadorSection
             racha={f.rachaJugador}
             onCambiar={(r) => onCambiarFiltro({ rachaJugador: r })}
             jugadoresParaDropdown={jugadoresParaDropdown}
           />
 
-          {/* Patrón previo */}
           <PatronSection
             patron={f.patronPrevio}
             onCambiar={(p) => onCambiarFiltro({ patronPrevio: p })}
           />
 
-          {/* Top % y Vs promedio */}
           <div className="grid grid-cols-2 gap-1">
             <div>
               <label className="block text-[9px] font-bold uppercase text-slate-500 mb-0.5">
@@ -1223,13 +1235,11 @@ function BloqueEditor({
             </div>
           </div>
 
-          {/* Rachas históricas */}
           <RachasSection
             rachas={f.rachas}
             onCambiar={(rachas) => onCambiarFiltro({ rachas })}
           />
 
-          {/* Contexto del partido */}
           <ContextoSection
             contexto={f.contextoPartido}
             onCambiar={(c) => onCambiarFiltro({ contextoPartido: c })}
@@ -1241,7 +1251,7 @@ function BloqueEditor({
 }
 
 // ============================================================
-// SCOPE (sets, puntos, partidos, roles, zonas, rotaciones)
+// SCOPE
 // ============================================================
 
 function ScopeSection({
@@ -1274,9 +1284,7 @@ function ScopeSection({
       }`}
     >
       <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
-        <span>
-          Scope {activo && "✓"}
-        </span>
+        <span>Scope {activo && "✓"}</span>
         <span className="text-slate-500 text-[9px]">▼</span>
       </summary>
       <div className="p-2 pt-0 space-y-1.5">
@@ -1415,9 +1423,7 @@ function AccionPreviaSection({
       }`}
     >
       <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
-        <span>
-          ⏮️ Acción previa {activo && "✓"}
-        </span>
+        <span>⏮️ Acción previa {activo && "✓"}</span>
         <span className="text-slate-500 text-[9px]">▼</span>
       </summary>
       <div className="p-2 pt-0 space-y-1">
@@ -1533,9 +1539,7 @@ function RachaJugadorSection({
       }`}
     >
       <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
-        <span>
-          🔥 Racha de jugador {activo && "✓"}
-        </span>
+        <span>🔥 Racha de jugador {activo && "✓"}</span>
         <span className="text-slate-500 text-[9px]">▼</span>
       </summary>
       <div className="p-2 pt-0 space-y-1">
@@ -1654,12 +1658,17 @@ function PatronSection({
 
   const agregar = () => {
     if (!patron) {
-      onCambiar({ acciones: [{ tipo: "recepcion", resultado: "cualquiera" }] });
+      onCambiar({
+        acciones: [{ tipo: "recepcion", resultado: "cualquiera" }],
+      });
       return;
     }
     if (patron.acciones.length >= 3) return;
     onCambiar({
-      acciones: [...patron.acciones, { tipo: "armado", resultado: "cualquiera" }],
+      acciones: [
+        ...patron.acciones,
+        { tipo: "armado", resultado: "cualquiera" },
+      ],
     });
   };
 
@@ -1728,9 +1737,7 @@ function PatronSection({
                 key={i}
                 className="grid grid-cols-[auto_1fr_auto] gap-1 items-center"
               >
-                <span className="text-[9px] text-slate-500">
-                  {i + 1}.
-                </span>
+                <span className="text-[9px] text-slate-500">{i + 1}.</span>
                 <div className="grid grid-cols-2 gap-1">
                   <select
                     value={item.tipo}
@@ -1827,9 +1834,7 @@ function RachasSection({
                 rachas.map((x) => (x.id === r.id ? { ...x, ...c } : x))
               )
             }
-            onEliminar={() =>
-              onCambiar(rachas.filter((x) => x.id !== r.id))
-            }
+            onEliminar={() => onCambiar(rachas.filter((x) => x.id !== r.id))}
           />
         ))}
         <button
@@ -1858,9 +1863,7 @@ function RachaFila({
   return (
     <div className="rounded border border-white/10 bg-slate-900/40 p-1 space-y-1">
       <div className="flex items-center justify-between gap-1">
-        <span className="text-[9px] font-bold text-violet-300">
-          #{idx + 1}
-        </span>
+        <span className="text-[9px] font-bold text-violet-300">#{idx + 1}</span>
         <span className="text-[8px] text-slate-400 truncate flex-1">
           {resumenRacha(racha)}
         </span>
@@ -1874,9 +1877,7 @@ function RachaFila({
       <div className="grid grid-cols-2 gap-1">
         <select
           value={racha.ambito}
-          onChange={(e) =>
-            onCambiar({ ambito: e.target.value as AmbitoRacha })
-          }
+          onChange={(e) => onCambiar({ ambito: e.target.value as AmbitoRacha })}
           className={selectCls}
         >
           {AMBITOS.map((a) => (
@@ -1985,18 +1986,14 @@ function ContextoSection({
       }`}
     >
       <summary className="px-2 py-1 cursor-pointer text-[10px] font-bold uppercase text-slate-400 flex items-center justify-between">
-        <span>
-          📊 Contexto del partido {activo && "✓"}
-        </span>
+        <span>📊 Contexto del partido {activo && "✓"}</span>
         <span className="text-slate-500 text-[9px]">▼</span>
       </summary>
       <div className="p-2 pt-0 space-y-1.5">
         <div className="flex justify-end">
           <button
             onClick={() =>
-              onCambiar(
-                contexto ? null : { ...CONTEXTO_PARTIDO_VACIO }
-              )
+              onCambiar(contexto ? null : { ...CONTEXTO_PARTIDO_VACIO })
             }
             className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${
               contexto
@@ -2010,7 +2007,6 @@ function ContextoSection({
 
         {contexto && (
           <>
-            {/* Marcador */}
             <div>
               <p className="text-[9px] font-bold uppercase text-slate-500 mb-0.5">
                 Marcador
@@ -2023,8 +2019,7 @@ function ContextoSection({
                       ...contexto,
                       marcador: {
                         ...contexto.marcador,
-                        estado: e.target
-                          .value as MarcadorFiltro["estado"],
+                        estado: e.target.value as MarcadorFiltro["estado"],
                       },
                     })
                   }
@@ -2125,7 +2120,6 @@ function ContextoSection({
               </div>
             </div>
 
-            {/* Rally */}
             <div>
               <p className="text-[9px] font-bold uppercase text-slate-500 mb-0.5">
                 Rally
@@ -2201,7 +2195,6 @@ function ContextoSection({
               </div>
             </div>
 
-            {/* Jugador / set */}
             <div>
               <p className="text-[9px] font-bold uppercase text-slate-500 mb-0.5">
                 Jugador / set
@@ -2250,8 +2243,7 @@ function ContextoSection({
                   onChange={(e) =>
                     onCambiar({
                       ...contexto,
-                      posicionEnSet: e.target
-                        .value as PosicionEnSet,
+                      posicionEnSet: e.target.value as PosicionEnSet,
                     })
                   }
                   className={`${selectCls} col-span-2`}
@@ -2506,7 +2498,6 @@ function SeccionConsecuencia({
             : `Jugador específico: ${nombre(jugadorObservadoFiltro)}`}
         </p>
 
-        {/* Balance */}
         <div className="space-y-1">
           <BalanceFila
             color="bg-emerald-400"
@@ -2554,7 +2545,6 @@ function SeccionConsecuencia({
           </div>
         </div>
 
-        {/* Indicadores */}
         <div className="pt-2 border-t border-white/5 space-y-0.5 text-[11px]">
           <div className="flex justify-between gap-2">
             <span className="text-slate-400">Subtipo más frecuente:</span>
@@ -2592,7 +2582,6 @@ function SeccionConsecuencia({
           )}
         </div>
 
-        {/* Registro */}
         <details className="pt-2 border-t border-white/5">
           <summary className="text-[10px] font-bold uppercase text-slate-400 cursor-pointer">
             Registro ({resultado.ocurrencias.length})
@@ -2715,7 +2704,9 @@ function BalanceFila({
             style={{ width: `${pct}%` }}
           />
         </div>
-        <span className={`font-mono font-semibold text-[10px] w-12 text-right ${colorTexto}`}>
+        <span
+          className={`font-mono font-semibold text-[10px] w-12 text-right ${colorTexto}`}
+        >
           {pct}%
         </span>
       </div>
