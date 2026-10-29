@@ -1,19 +1,21 @@
 "use client";
 
 // ============================================================
-// ANÁLISIS DE CONSECUENCIAS — UI
+// ANÁLISIS DE CONSECUENCIAS — UI simplificada
 // ============================================================
-// Secciones:
-//   1. Preguntas tácticas rápidas
-//   2. Parámetros
-//      a. Trigger + Acción observada
-//      b. Contexto del partido (marcador, rally, inicio, ubicación, racha)
-//      c. Rachas históricas (lista dinámica con desdeAtras)
-//      d. Comparadores
-//   3. Comportamiento del trigger (cómo actúa el jugador)
-//   4. Consecuencia (qué pasa después)
-//
-// Consume el motor de lib/analisisConsecuencias.ts.
+// Estructura:
+//   1. Header con resumen tipo "receta" + casos + reset
+//   2. Chips de preguntas rápidas
+//   3. Bloque integrado CUANDO → MIRAR
+//      (trigger + observado en un solo flujo visual)
+//   4. Filtros avanzados (colapsados)
+//      - Alcance
+//      - Historia previa (rachas)
+//      - Contexto del partido
+//      - Comparadores
+//   5. Resultados:
+//      - Comportamiento del trigger
+//      - Consecuencia
 // ============================================================
 
 import { useMemo, useState, useEffect } from "react";
@@ -27,7 +29,6 @@ import {
   etiquetaUbicacion,
   hayComparadoresActivos,
   hayContextoPartidoActivo,
-  hayFiltroAnalisisActivo,
   resultadosPorTipoAnalisis,
   COINCIDENCIA_VACIA,
   CONTEXTO_PARTIDO_VACIO,
@@ -54,7 +55,7 @@ import type { AccionVisual } from "./adaptadorUnificadoV2";
 // OPCIONES
 // ------------------------------------------------------------
 
-const TIPOS_DISPARADOR: { v: TipoDisparador; label: string }[] = [
+const TIPOS: { v: TipoDisparador; label: string }[] = [
   { v: "ataque", label: "Ataque" },
   { v: "saque", label: "Saque" },
   { v: "recepcion", label: "Recepción" },
@@ -87,24 +88,24 @@ const AMBITOS: { v: AmbitoRacha; label: string }[] = [
 ];
 
 const UBICACIONES: { v: UbicacionFiltro; label: string }[] = [
-  { v: "cualquiera", label: "Cualquier ubicación" },
-  { v: "delantero", label: "Delantero (Z2/Z3/Z4)" },
-  { v: "zaguero", label: "Zaguero (Z1/Z5/Z6)" },
+  { v: "cualquiera", label: "Cualquiera" },
+  { v: "delantero", label: "Delantero" },
+  { v: "zaguero", label: "Zaguero" },
   { v: "libero", label: "Líbero" },
   { v: "otro", label: "Otro" },
 ];
 
 const RELACIONES: { v: RelacionJugador; label: string }[] = [
   { v: "cualquiera", label: "Cualquier jugador" },
-  { v: "mismo", label: "El mismo jugador" },
-  { v: "companero", label: "Un compañero" },
-  { v: "rival", label: "Un rival" },
+  { v: "mismo", label: "Mismo jugador" },
+  { v: "companero", label: "Compañero" },
+  { v: "rival", label: "Rival" },
 ];
 
 const CIERRAS: { v: CierraPuntoFiltro; label: string }[] = [
   { v: "cualquiera", label: "Cualquiera" },
-  { v: "si", label: "Solo si cerró el punto" },
-  { v: "no", label: "Solo si NO cerró el punto" },
+  { v: "si", label: "Cerró el punto" },
+  { v: "no", label: "NO cerró el punto" },
 ];
 
 const VELOCIDADES: { v: number | null; label: string }[] = [
@@ -132,70 +133,46 @@ const ZONAS_JUGADOR: { v: number | "cualquiera"; label: string }[] = [
   { v: 6, label: "Z6" },
 ];
 
-const ESTADOS_MARCADOR: {
-  v: "cualquiera" | "empatado" | "ganando" | "perdiendo";
-  label: string;
-}[] = [
-  { v: "cualquiera", label: "Cualquier estado" },
-  { v: "empatado", label: "Empatado" },
-  { v: "ganando", label: "Ganando" },
-  { v: "perdiendo", label: "Perdiendo" },
+const ESTADOS_MARCADOR = [
+  { v: "cualquiera" as const, label: "Cualquier estado" },
+  { v: "empatado" as const, label: "Empatado" },
+  { v: "ganando" as const, label: "Ganando" },
+  { v: "perdiendo" as const, label: "Perdiendo" },
 ];
 
-const DIFERENCIAS_MARCADOR: {
-  v: "cualquiera" | "0" | "1-2" | "3-5" | "6+";
-  label: string;
-}[] = [
-  { v: "cualquiera", label: "Cualquier diferencia" },
-  { v: "0", label: "Empate (0)" },
-  { v: "1-2", label: "1-2 puntos" },
-  { v: "3-5", label: "3-5 puntos" },
-  { v: "6+", label: "6+ puntos" },
+const DIFERENCIAS_MARCADOR = [
+  { v: "cualquiera" as const, label: "Cualquiera" },
+  { v: "0" as const, label: "Empate (0)" },
+  { v: "1-2" as const, label: "1-2 puntos" },
+  { v: "3-5" as const, label: "3-5 puntos" },
+  { v: "6+" as const, label: "6+ puntos" },
 ];
 
-const PUNTOS_CERRAR: {
-  v: "cualquiera" | "<=1" | "<=3" | "<=5";
-  label: string;
-}[] = [
-  { v: "cualquiera", label: "Cualquiera" },
-  { v: "<=1", label: "≤ 1 (match point)" },
-  { v: "<=3", label: "≤ 3 (cierre inminente)" },
-  { v: "<=5", label: "≤ 5 (crítico)" },
+const PUNTOS_CERRAR = [
+  { v: "cualquiera" as const, label: "Cualquiera" },
+  { v: "<=1" as const, label: "≤ 1 (match point)" },
+  { v: "<=3" as const, label: "≤ 3" },
+  { v: "<=5" as const, label: "≤ 5" },
 ];
 
-const FASES_RALLY: {
-  v: "cualquiera" | "side-out" | "contraataque" | "free-ball" | "otro";
-  label: string;
-}[] = [
-  { v: "cualquiera", label: "Cualquier fase" },
-  { v: "side-out", label: "Side-out" },
-  { v: "contraataque", label: "Contraataque" },
-  { v: "free-ball", label: "Free ball" },
-  { v: "otro", label: "Otro" },
+const FASES_RALLY = [
+  { v: "cualquiera" as const, label: "Cualquier fase" },
+  { v: "side-out" as const, label: "Side-out" },
+  { v: "contraataque" as const, label: "Contraataque" },
+  { v: "free-ball" as const, label: "Free ball" },
+  { v: "otro" as const, label: "Otro" },
 ];
 
-const INICIOS_PUNTO: {
-  v:
-    | "cualquiera"
-    | "ace_propio"
-    | "ace_rival"
-    | "recepcion_positiva"
-    | "recepcion_neutra"
-    | "recepcion_negativa"
-    | "overpass"
-    | "error_directo"
-    | "otro";
-  label: string;
-}[] = [
-  { v: "cualquiera", label: "Cualquier inicio" },
-  { v: "ace_propio", label: "Ace propio" },
-  { v: "ace_rival", label: "Ace rival" },
-  { v: "recepcion_positiva", label: "Recepción positiva" },
-  { v: "recepcion_neutra", label: "Recepción neutra" },
-  { v: "recepcion_negativa", label: "Recepción negativa" },
-  { v: "overpass", label: "Overpass" },
-  { v: "error_directo", label: "Error directo" },
-  { v: "otro", label: "Otro" },
+const INICIOS_PUNTO = [
+  { v: "cualquiera" as const, label: "Cualquiera" },
+  { v: "ace_propio" as const, label: "Ace propio" },
+  { v: "ace_rival" as const, label: "Ace rival" },
+  { v: "recepcion_positiva" as const, label: "Recepción positiva" },
+  { v: "recepcion_neutra" as const, label: "Recepción neutra" },
+  { v: "recepcion_negativa" as const, label: "Recepción negativa" },
+  { v: "overpass" as const, label: "Overpass" },
+  { v: "error_directo" as const, label: "Error directo" },
+  { v: "otro" as const, label: "Otro" },
 ];
 
 // ------------------------------------------------------------
@@ -205,21 +182,18 @@ const INICIOS_PUNTO: {
 interface PreguntaRapida {
   id: string;
   titulo: string;
-  descripcion: string;
   tipo: TipoDisparador;
   resultado: string;
   tipoObservado: TipoDisparador | "cualquiera";
   alcance: "partido" | "mismo_punto";
   jugadorObservado: "mismo" | "cualquiera";
-  rachas?: RachaHistorica[];
   contextoPartido?: ContextoPartidoFiltro;
 }
 
 const PREGUNTAS_RAPIDAS: PreguntaRapida[] = [
   {
-    id: "error-ataque-a-ataque",
-    titulo: "Tras error de ataque → Siguiente ataque",
-    descripcion: "¿Qué desenlace tiene el siguiente ataque?",
+    id: "error-ataque",
+    titulo: "Error ataque → sig. ataque",
     tipo: "ataque",
     resultado: "error",
     tipoObservado: "ataque",
@@ -227,9 +201,8 @@ const PREGUNTAS_RAPIDAS: PreguntaRapida[] = [
     jugadorObservado: "mismo",
   },
   {
-    id: "mala-recep-a-ataque",
-    titulo: "Tras mala recepción → Siguiente ataque",
-    descripcion: "¿Cómo se resuelve el ataque?",
+    id: "mala-recep",
+    titulo: "Recep. negativa → sig. ataque",
     tipo: "recepcion",
     resultado: "negativa",
     tipoObservado: "ataque",
@@ -237,9 +210,8 @@ const PREGUNTAS_RAPIDAS: PreguntaRapida[] = [
     jugadorObservado: "cualquiera",
   },
   {
-    id: "ace-saque-a-saque",
-    titulo: "Tras ace de saque → Siguiente saque",
-    descripcion: "¿Se mantiene la presión o hay error?",
+    id: "ace-saque",
+    titulo: "Ace → sig. saque",
     tipo: "saque",
     resultado: "ace",
     tipoObservado: "saque",
@@ -247,9 +219,8 @@ const PREGUNTAS_RAPIDAS: PreguntaRapida[] = [
     jugadorObservado: "mismo",
   },
   {
-    id: "bloqueo-a-ataque",
-    titulo: "Tras bloqueo punto → Siguiente ataque",
-    descripcion: "¿En qué concluye el siguiente ataque?",
+    id: "bloqueo-punto",
+    titulo: "Bloqueo punto → sig. ataque",
     tipo: "bloqueo",
     resultado: "punto",
     tipoObservado: "ataque",
@@ -257,9 +228,8 @@ const PREGUNTAS_RAPIDAS: PreguntaRapida[] = [
     jugadorObservado: "cualquiera",
   },
   {
-    id: "defensa-a-ataque",
-    titulo: "Tras defensa positiva → Siguiente ataque",
-    descripcion: "¿Efectividad del contraataque?",
+    id: "defensa-pos",
+    titulo: "Defensa positiva → sig. ataque",
     tipo: "defensa",
     resultado: "toque_positiva",
     tipoObservado: "ataque",
@@ -267,19 +237,8 @@ const PREGUNTAS_RAPIDAS: PreguntaRapida[] = [
     jugadorObservado: "cualquiera",
   },
   {
-    id: "inmediata-siguiente",
-    titulo: "Acción inmediata siguiente",
-    descripcion: "¿Cuál es el primer toque siguiente?",
-    tipo: "ataque",
-    resultado: "cualquiera",
-    tipoObservado: "cualquiera",
-    alcance: "mismo_punto",
-    jugadorObservado: "cualquiera",
-  },
-  {
-    id: "cierre-de-set",
-    titulo: "Acciones en cierre de set",
-    descripcion: "¿Qué hace el equipo en los puntos críticos del set?",
+    id: "cierre-set",
+    titulo: "Cierre de set",
     tipo: "ataque",
     resultado: "cualquiera",
     tipoObservado: "ataque",
@@ -294,9 +253,8 @@ const PREGUNTAS_RAPIDAS: PreguntaRapida[] = [
     },
   },
   {
-    id: "en-racha-ganando",
-    titulo: "En racha ganadora (3+)",
-    descripcion: "¿Cómo juega el equipo cuando ganó 3+ puntos seguidos?",
+    id: "racha-ganando",
+    titulo: "Racha 3+ ganando",
     tipo: "ataque",
     resultado: "cualquiera",
     tipoObservado: "ataque",
@@ -307,6 +265,15 @@ const PREGUNTAS_RAPIDAS: PreguntaRapida[] = [
       rachaPuntos: 3,
     },
   },
+  {
+    id: "inmediata",
+    titulo: "Acción inmediata siguiente",
+    tipo: "ataque",
+    resultado: "cualquiera",
+    tipoObservado: "cualquiera",
+    alcance: "mismo_punto",
+    jugadorObservado: "cualquiera",
+  },
 ];
 
 // ------------------------------------------------------------
@@ -316,23 +283,10 @@ const PREGUNTAS_RAPIDAS: PreguntaRapida[] = [
 const COMPARADORES: {
   key: keyof CoincidenciaFiltro;
   etiqueta: string;
-  detalle: string;
 }[] = [
-  {
-    key: "mismaZonaTriggerDestino",
-    etiqueta: "Misma zona destino",
-    detalle: "La observada cae en la misma zona destino que el trigger",
-  },
-  {
-    key: "mismaZonaTriggerOrigen",
-    etiqueta: "Misma zona origen",
-    detalle: "La observada sale de la misma zona origen que el trigger",
-  },
-  {
-    key: "mismaVelocidadAnterior",
-    etiqueta: "Misma velocidad",
-    detalle: "La observada tiene la misma velocidad que la previa",
-  },
+  { key: "mismaZonaTriggerDestino", etiqueta: "Misma zona destino" },
+  { key: "mismaZonaTriggerOrigen", etiqueta: "Misma zona origen" },
+  { key: "mismaVelocidadAnterior", etiqueta: "Misma velocidad" },
 ];
 
 // ------------------------------------------------------------
@@ -377,20 +331,12 @@ function resumenRacha(r: RachaHistorica): string {
   partes.push(`≥${r.minimo}`);
   if (r.desdeAtras > 0) partes.push(`saltar ${r.desdeAtras}`);
   if (r.filtro.tipos.length > 0) {
-    partes.push(
-      r.filtro.tipos.map((t) => etiquetaTipoDisparador(t)).join("|")
-    );
+    partes.push(r.filtro.tipos.map((t) => etiquetaTipoDisparador(t)).join("|"));
   } else {
     partes.push("cualquier acción");
   }
   if (r.filtro.resultados.length > 0) {
     partes.push(r.filtro.resultados[0]);
-  }
-  if (r.filtro.ubicacion !== "cualquiera") {
-    partes.push(etiquetaUbicacion(r.filtro.ubicacion));
-  }
-  if (r.filtro.cierraPunto !== "cualquiera") {
-    partes.push(etiquetaCierraPunto(r.filtro.cierraPunto));
   }
   return partes.join(" · ");
 }
@@ -400,8 +346,12 @@ const cardBase: React.CSSProperties = {
   border: "1px solid var(--sx-border)",
 };
 
+// Estilos compartidos para selects compactos
+const selectCls =
+  "w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1.5 border border-white/10 focus:outline-none focus:border-slate-400 cursor-pointer";
+
 // ------------------------------------------------------------
-// COMPONENTE PRINCIPAL
+// COMPONENTE
 // ------------------------------------------------------------
 
 export default function AnalisisConsecuencias({
@@ -412,7 +362,7 @@ export default function AnalisisConsecuencias({
   jugadorId,
   jugadoresDisponibles,
 }: Props) {
-  const [disparador, setDisparador] = useState<DisparadorFiltro | null>({
+  const [disparador, setDisparador] = useState<DisparadorFiltro>({
     tipo: "ataque",
     resultado: "error",
   });
@@ -500,12 +450,54 @@ export default function AnalisisConsecuencias({
     coincidencias,
   ]);
 
-  const resultado: ResultadoAnalisis | null = useMemo(() => {
-    if (!disparador) return null;
-    return analizarConsecuencias(acciones, filtros);
-  }, [acciones, filtros, disparador]);
+  const resultado: ResultadoAnalisis | null = useMemo(
+    () => analizarConsecuencias(acciones, filtros),
+    [acciones, filtros]
+  );
 
-  const activo = hayFiltroAnalisisActivo(filtros);
+  // Cantidad de filtros avanzados activos
+  const cantAvanzados = useMemo(() => {
+    let n = 0;
+    if (alcance !== "partido") n++;
+    n += rachas.length;
+    if (hayContextoPartidoActivo(contextoPartido)) n++;
+    n += Object.values(coincidencias).filter(Boolean).length;
+    return n;
+  }, [alcance, rachas, contextoPartido, coincidencias]);
+
+  // Receta resumen
+  const receta = useMemo(() => {
+    const partes: string[] = [];
+    const tipoTrig = etiquetaTipoDisparador(disparador.tipo);
+    const resTrig =
+      disparador.resultado !== "cualquiera"
+        ? ` · ${etiquetaResultado(disparador.resultado)}`
+        : "";
+    const jugTrig = jugadorFiltroId ? ` · ${nombre(jugadorFiltroId)}` : "";
+    partes.push(`${tipoTrig}${resTrig}${jugTrig}`);
+
+    partes.push("→");
+
+    const tipoObs =
+      tipoObservado === "cualquiera"
+        ? "siguiente acción"
+        : `siguiente ${etiquetaTipoDisparador(tipoObservado)}`;
+    const jugObs =
+      jugadorObservadoFiltro === "mismo"
+        ? "mismo jugador"
+        : jugadorObservadoFiltro === "cualquiera"
+        ? "cualquier jugador"
+        : nombre(jugadorObservadoFiltro);
+    partes.push(`${tipoObs} de ${jugObs}`);
+
+    return partes.join(" ");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    disparador,
+    jugadorFiltroId,
+    tipoObservado,
+    jugadorObservadoFiltro,
+  ]);
 
   // Handlers
   const agregarRacha = () => setRachas((prev) => [...prev, nuevaRacha()]);
@@ -517,23 +509,12 @@ export default function AnalisisConsecuencias({
     );
   };
 
-  const actualizarContexto = (cambios: Partial<ContextoPartidoFiltro>) => {
-    setContextoPartido((prev) => ({ ...prev, ...cambios }));
-  };
-
-  const actualizarMarcador = (cambios: Partial<MarcadorFiltro>) => {
-    setContextoPartido((prev) => ({
-      ...prev,
-      marcador: { ...prev.marcador, ...cambios },
-    }));
-  };
-
   const aplicarPreguntaRapida = (p: PreguntaRapida) => {
     setPreguntaActivaId(p.id);
     setDisparador({ tipo: p.tipo, resultado: p.resultado });
     setTipoObservado(p.tipoObservado);
     setAlcance(p.alcance);
-    setRachas(p.rachas ?? []);
+    setRachas([]);
     setContextoPartido(p.contextoPartido ?? { ...CONTEXTO_PARTIDO_VACIO });
     const obs = jugadorId ? "mismo" : p.jugadorObservado;
     setJugadorObservadoFiltro(obs);
@@ -541,11 +522,6 @@ export default function AnalisisConsecuencias({
       ...COINCIDENCIA_VACIA,
       mismoJugadorTrigger: obs === "mismo",
     });
-  };
-
-  const toggleComparador = (key: keyof CoincidenciaFiltro) => {
-    setPreguntaActivaId(null);
-    setCoincidencias((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const cambiarJugadorObservado = (valor: string) => {
@@ -569,316 +545,265 @@ export default function AnalisisConsecuencias({
     setCoincidencias({ ...COINCIDENCIA_VACIA });
   };
 
+  const cantCasos = resultado?.totalOcurrencias ?? 0;
+
   return (
     <div
-      className="rounded-xl border border-white/10 p-4 sm:p-5 space-y-4"
+      className="rounded-xl border border-white/10 p-4 space-y-3"
       style={cardBase}
     >
-      {/* HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
-        <div>
-          <div className="flex items-center gap-2">
+      {/* ====== HEADER ====== */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-0.5">
             <span className="text-sm font-bold uppercase tracking-wider text-slate-100">
               {titulo}
             </span>
-            {activo && resultado && (
-              <span className="text-[11px] font-mono px-2 py-0.5 rounded border border-white/10 text-slate-300 bg-white/5">
-                {resultado.totalOcurrencias} caso
-                {resultado.totalOcurrencias !== 1 ? "s" : ""}
-              </span>
-            )}
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-white/10 text-slate-300 bg-white/5">
+              {cantCasos} caso{cantCasos !== 1 ? "s" : ""}
+            </span>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Análisis de comportamiento y consecuencias en contexto táctico
+          <p
+            className="text-[11px] text-slate-400 truncate"
+            title={receta}
+          >
+            {receta}
           </p>
         </div>
         <button
           onClick={restablecer}
-          className="text-xs px-2.5 py-1 rounded border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition"
+          className="shrink-0 text-xs px-2 py-1 rounded border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition"
+          title="Restablecer"
         >
-          Restablecer
+          ↻
         </button>
       </div>
 
-      {/* PREGUNTAS RÁPIDAS */}
-      <div>
-        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-          Consultas tácticas predeterminadas
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-          {PREGUNTAS_RAPIDAS.map((p) => {
-            const activa = preguntaActivaId === p.id;
-            return (
-              <button
-                key={p.id}
-                onClick={() => aplicarPreguntaRapida(p)}
-                className={`text-left px-3 py-2 rounded-lg border text-xs transition ${
-                  activa
-                    ? "bg-white/10 border-slate-300 text-white font-medium"
-                    : "bg-white/[0.02] border-white/10 text-slate-300 hover:bg-white/5 hover:text-white"
-                }`}
-              >
-                <div className="font-semibold">{p.titulo}</div>
-                <div className="text-[10px] text-slate-400 truncate mt-0.5">
-                  {p.descripcion}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+      {/* ====== PREGUNTAS RÁPIDAS ====== */}
+      <div className="flex flex-wrap gap-1">
+        {PREGUNTAS_RAPIDAS.map((p) => {
+          const activa = preguntaActivaId === p.id;
+          return (
+            <button
+              key={p.id}
+              onClick={() => aplicarPreguntaRapida(p)}
+              className={`px-2 py-1 text-[10px] font-semibold rounded border transition ${
+                activa
+                  ? "bg-violet-500/20 border-violet-400/60 text-violet-200"
+                  : "bg-white/[0.02] border-white/10 text-slate-300 hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              {p.titulo}
+            </button>
+          );
+        })}
       </div>
 
-      {/* PARÁMETROS */}
-      <div
-        className="rounded-lg border border-white/10 p-3 sm:p-4 space-y-3"
-        style={{ background: "var(--sx-surface-2)" }}
-      >
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-            Parámetros
-          </span>
-          {jugadorFiltroId && (
-            <span className="text-[11px] text-slate-400">
-              Trigger:{" "}
-              <strong className="text-slate-200">
-                {nombre(jugadorFiltroId)}
-              </strong>
+      {/* ====== BLOQUE INTEGRADO CUANDO → MIRAR ====== */}
+      <div className="rounded-xl border border-white/10 bg-slate-900/40 p-3 space-y-1.5">
+        {/* CUANDO (trigger) */}
+        <div>
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+              Cuando
             </span>
-          )}
+            <span className="text-[10px] text-slate-400">
+              la acción disparadora
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            <select
+              value={disparador.tipo}
+              onChange={(e) => {
+                setPreguntaActivaId(null);
+                setDisparador({
+                  tipo: e.target.value as TipoDisparador,
+                  resultado: "cualquiera",
+                });
+              }}
+              className={selectCls}
+              title="Tipo de acción"
+            >
+              {TIPOS.map((t) => (
+                <option key={t.v} value={t.v}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={disparador.resultado}
+              onChange={(e) => {
+                setPreguntaActivaId(null);
+                setDisparador({ ...disparador, resultado: e.target.value });
+              }}
+              className={selectCls}
+              title="Resultado"
+            >
+              {resultadosPorTipoAnalisis(disparador.tipo).map((r) => (
+                <option key={r} value={r}>
+                  {etiquetaResultado(r)}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={jugadorFiltroId ?? "todos"}
+              onChange={(e) => {
+                setPreguntaActivaId(null);
+                const val =
+                  e.target.value === "todos" ? null : e.target.value;
+                setJugadorFiltroId(val);
+                if (val) {
+                  setJugadorObservadoFiltro("mismo");
+                  setCoincidencias((prev) => ({
+                    ...prev,
+                    mismoJugadorTrigger: true,
+                  }));
+                }
+              }}
+              className={selectCls}
+              title="Jugador"
+            >
+              <option value="todos">Todo el equipo</option>
+              {jugadorId && (
+                <option value={jugadorId}>
+                  {nombre(jugadorId)} (jugador)
+                </option>
+              )}
+              {jugadoresParaDropdown
+                .filter((j) => j.id !== jugadorId)
+                .map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.nombre}
+                  </option>
+                ))}
+            </select>
+          </div>
         </div>
 
-        {/* Trigger + Acción observada */}
-        {disparador && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-            <div className="space-y-1">
-              <label className="text-[11px] text-slate-400 font-medium">
-                Trigger · tipo
-              </label>
-              <select
-                value={disparador.tipo}
-                onChange={(e) => {
-                  setPreguntaActivaId(null);
-                  setDisparador({
-                    tipo: e.target.value as TipoDisparador,
-                    resultado: "cualquiera",
-                  });
-                }}
-                className="w-full bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none"
-              >
-                {TIPOS_DISPARADOR.map((t) => (
-                  <option key={t.v} value={t.v}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+        {/* ARROW */}
+        <div className="flex items-center justify-center py-1 text-slate-500">
+          <span className="text-base leading-none">⬇</span>
+        </div>
 
-            <div className="space-y-1">
-              <label className="text-[11px] text-slate-400 font-medium">
-                Trigger · resultado
-              </label>
-              <select
-                value={disparador.resultado}
-                onChange={(e) => {
-                  setPreguntaActivaId(null);
-                  setDisparador({ ...disparador, resultado: e.target.value });
-                }}
-                className="w-full bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none"
-              >
-                {resultadosPorTipoAnalisis(disparador.tipo).map((r) => (
-                  <option key={r} value={r}>
-                    {etiquetaResultado(r)}
-                  </option>
-                ))}
-              </select>
-            </div>
+        {/* MIRAR (observado) */}
+        <div>
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30">
+              Mirar
+            </span>
+            <span className="text-[10px] text-slate-400">
+              qué pasa después
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            <select
+              value={tipoObservado}
+              onChange={(e) => {
+                setPreguntaActivaId(null);
+                setTipoObservado(
+                  e.target.value as TipoDisparador | "cualquiera"
+                );
+              }}
+              className={selectCls}
+              title="Acción observada"
+            >
+              {TIPOS_OBSERVADOS.map((t) => (
+                <option key={t.v} value={t.v}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
 
-            <div className="space-y-1">
-              <label className="text-[11px] text-slate-400 font-medium">
-                Trigger · jugador
-              </label>
-              <select
-                value={jugadorFiltroId ?? "todos"}
-                onChange={(e) => {
-                  setPreguntaActivaId(null);
-                  const val =
-                    e.target.value === "todos" ? null : e.target.value;
-                  setJugadorFiltroId(val);
-                  if (val) {
-                    setJugadorObservadoFiltro("mismo");
-                    setCoincidencias((prev) => ({
-                      ...prev,
-                      mismoJugadorTrigger: true,
-                    }));
-                  }
-                }}
-                className="w-full bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none"
-              >
-                <option value="todos">Todo el equipo</option>
-                {jugadorId && (
-                  <option value={jugadorId}>
-                    {nombre(jugadorId)} (jugador)
-                  </option>
-                )}
-                {jugadoresParaDropdown
-                  .filter((j) => j.id !== jugadorId)
-                  .map((j) => (
+            <select
+              value={jugadorObservadoFiltro}
+              onChange={(e) => cambiarJugadorObservado(e.target.value)}
+              className={selectCls}
+              title="Jugador observado"
+            >
+              <option value="mismo">
+                {jugadorFiltroId
+                  ? `Mismo (${nombre(jugadorFiltroId)})`
+                  : "Mismo jugador"}
+              </option>
+              <option value="cualquiera">Cualquier jugador</option>
+              {jugadoresParaDropdown.length > 0 && (
+                <optgroup label="Jugador específico">
+                  {jugadoresParaDropdown.map((j) => (
                     <option key={j.id} value={j.id}>
                       {j.nombre}
                     </option>
                   ))}
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] text-slate-400 font-medium">
-                Observado · tipo
-              </label>
-              <select
-                value={tipoObservado}
-                onChange={(e) => {
-                  setPreguntaActivaId(null);
-                  setTipoObservado(
-                    e.target.value as TipoDisparador | "cualquiera"
-                  );
-                }}
-                className="w-full bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none"
-              >
-                {TIPOS_OBSERVADOS.map((t) => (
-                  <option key={t.v} value={t.v}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] text-slate-400 font-medium">
-                Observado · jugador
-              </label>
-              <select
-                value={jugadorObservadoFiltro}
-                onChange={(e) => cambiarJugadorObservado(e.target.value)}
-                className="w-full bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none"
-              >
-                <option value="mismo">
-                  {jugadorFiltroId
-                    ? `Mismo que el trigger (${nombre(jugadorFiltroId)})`
-                    : "Mismo jugador que el trigger"}
-                </option>
-                <option value="cualquiera">Cualquier jugador</option>
-                {jugadoresParaDropdown.length > 0 && (
-                  <optgroup label="Jugador específico">
-                    {jugadoresParaDropdown.map((j) => (
-                      <option key={j.id} value={j.id}>
-                        {j.nombre}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] text-slate-400 font-medium">
-                Observado · alcance
-              </label>
-              <select
-                value={alcance}
-                onChange={(e) => {
-                  setPreguntaActivaId(null);
-                  setAlcance(e.target.value as "partido" | "mismo_punto");
-                }}
-                className="w-full bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none"
-              >
-                {ALCANCES.map((a) => (
-                  <option key={a.v} value={a.v}>
-                    {a.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        )}
-
-        {/* CONTEXTO DEL PARTIDO */}
-        <ContextoPartidoEditor
-          contexto={contextoPartido}
-          onCambiar={actualizarContexto}
-          onCambiarMarcador={actualizarMarcador}
-        />
-
-        {/* RACHAS HISTÓRICAS */}
-        <div className="pt-3 border-t border-white/5 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300">
-              Historia previa al trigger ({rachas.length})
-            </span>
-            <button
-              onClick={agregarRacha}
-              className="px-2.5 py-1 text-[11px] font-semibold rounded border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
-            >
-              + Agregar racha
-            </button>
-          </div>
-
-          {rachas.length === 0 ? (
-            <p className="text-[11px] text-slate-500 italic">
-              Sin filtro de historia. Se analizan todos los triggers.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {rachas.map((racha, idx) => (
-                <RachaEditor
-                  key={racha.id}
-                  indice={idx + 1}
-                  racha={racha}
-                  onCambiar={(cambios) => actualizarRacha(racha.id, cambios)}
-                  onEliminar={() => eliminarRacha(racha.id)}
-                />
-              ))}
-              <p className="text-[10px] text-slate-500 italic">
-                Todas las rachas se combinan con AND (el trigger tiene que
-                cumplirlas todas).
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* COMPARADORES */}
-        <div className="pt-3 border-t border-white/5">
-          <p className="text-[11px] text-slate-400 mb-1.5">
-            Comparadores de la acción observada
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {COMPARADORES.map((c) => {
-              const act = coincidencias[c.key];
-              return (
-                <button
-                  key={c.key}
-                  onClick={() => toggleComparador(c.key)}
-                  title={c.detalle}
-                  className={`px-2.5 py-1 text-xs rounded border transition flex items-center gap-1.5 ${
-                    act
-                      ? "bg-slate-700 border-slate-400 text-white font-medium"
-                      : "bg-white/[0.02] border-white/10 text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <span>{act ? "✓" : "+"}</span>
-                  <span>{c.etiqueta}</span>
-                </button>
-              );
-            })}
+                </optgroup>
+              )}
+            </select>
           </div>
         </div>
       </div>
 
-      {/* RESULTADOS */}
-      {disparador && resultado && (
-        <div className="space-y-4">
+      {/* ====== FILTROS AVANZADOS ====== */}
+      <details className="rounded-xl border border-white/10 bg-white/[0.02]">
+        <summary className="px-3 py-2 cursor-pointer text-xs font-bold text-slate-300 hover:bg-white/5 rounded-xl flex items-center justify-between">
+          <span>⚙️ Filtros avanzados</span>
+          {cantAvanzados > 0 ? (
+            <span className="bg-violet-500/20 text-violet-200 border border-violet-500/40 px-1.5 py-0.5 rounded text-[10px]">
+              {cantAvanzados}
+            </span>
+          ) : (
+            <span className="text-[10px] text-slate-500">sin filtros</span>
+          )}
+        </summary>
+
+        <div className="p-3 pt-2 space-y-3 border-t border-white/10">
+          {/* Alcance */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+              Alcance de búsqueda
+            </label>
+            <select
+              value={alcance}
+              onChange={(e) =>
+                setAlcance(e.target.value as "partido" | "mismo_punto")
+              }
+              className={selectCls}
+            >
+              {ALCANCES.map((a) => (
+                <option key={a.v} value={a.v}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Rachas */}
+          <RachasSection
+            rachas={rachas}
+            onAgregar={agregarRacha}
+            onEliminar={eliminarRacha}
+            onActualizar={actualizarRacha}
+          />
+
+          {/* Contexto del partido */}
+          <ContextoSection
+            contexto={contextoPartido}
+            setContexto={setContextoPartido}
+          />
+
+          {/* Comparadores */}
+          <ComparadoresSection
+            coincidencias={coincidencias}
+            setCoincidencias={setCoincidencias}
+          />
+        </div>
+      </details>
+
+      {/* ====== RESULTADOS ====== */}
+      {resultado && (
+        <div className="space-y-3">
           {resultado.totalOcurrencias === 0 ? (
             <div className="rounded-lg border border-white/10 p-6 text-center text-xs text-slate-400">
-              No hay triggers que cumplan todos los criterios.
+              No hay casos que cumplan todos los criterios.
             </div>
           ) : (
             <>
@@ -909,310 +834,63 @@ export default function AnalisisConsecuencias({
 }
 
 // ============================================================
-// SUBCOMPONENTE: CONTEXTO DEL PARTIDO
+// RACHAS SECTION
 // ============================================================
 
-function ContextoPartidoEditor({
-  contexto,
-  onCambiar,
-  onCambiarMarcador,
+function RachasSection({
+  rachas,
+  onAgregar,
+  onEliminar,
+  onActualizar,
 }: {
-  contexto: ContextoPartidoFiltro;
-  onCambiar: (cambios: Partial<ContextoPartidoFiltro>) => void;
-  onCambiarMarcador: (cambios: Partial<MarcadorFiltro>) => void;
+  rachas: RachaHistorica[];
+  onAgregar: () => void;
+  onEliminar: (id: string) => void;
+  onActualizar: (id: string, cambios: Partial<RachaHistorica>) => void;
 }) {
-  const [abierto, setAbierto] = useState(false);
-  const activo = hayContextoPartidoActivo(contexto);
-
   return (
-    <div
-      className="pt-3 border-t border-white/5"
-      style={{
-        background: activo ? "rgba(167,139,250,0.06)" : "transparent",
-        borderRadius: 8,
-        padding: activo ? 8 : 0,
-      }}
-    >
-      <button
-        onClick={() => setAbierto(!abierto)}
-        className="w-full flex items-center justify-between text-[11px] font-bold uppercase tracking-wider"
-        style={{ color: "var(--sx-text-primary)" }}
-      >
-        <span className="flex items-center gap-1.5">
-          Contexto del partido
-          {activo && (
-            <span
-              className="text-[9px] px-1.5 py-0.5 rounded-full font-bold"
-              style={{
-                background: "rgba(167,139,250,0.2)",
-                color: "#C4B5FD",
-                border: "1px solid rgba(167,139,250,0.4)",
-              }}
-            >
-              Activo
-            </span>
-          )}
-        </span>
-        <span
-          className="transition-transform"
-          style={{
-            color: "var(--sx-text-muted)",
-            transform: abierto ? "rotate(180deg)" : "none",
-          }}
+    <details className="rounded-lg border border-white/10 bg-white/[0.02]">
+      <summary className="px-2 py-1.5 cursor-pointer text-[11px] font-bold uppercase text-slate-300 flex items-center justify-between">
+        <span>📜 Historia previa ({rachas.length})</span>
+        <span className="text-slate-500 text-[10px]">▼</span>
+      </summary>
+      <div className="p-2 pt-0 space-y-1.5">
+        {rachas.map((r, i) => (
+          <RachaFila
+            key={r.id}
+            idx={i}
+            racha={r}
+            onCambiar={(c) => onActualizar(r.id, c)}
+            onEliminar={() => onEliminar(r.id)}
+          />
+        ))}
+        <button
+          onClick={onAgregar}
+          className="w-full px-2 py-1 text-[10px] font-semibold rounded border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
         >
-          ▼
-        </span>
-      </button>
-
-      {abierto && (
-        <div className="mt-2 space-y-3">
-          {/* Marcador */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-              Marcador
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400">Estado</label>
-                <select
-                  value={contexto.marcador.estado}
-                  onChange={(e) =>
-                    onCambiarMarcador({
-                      estado: e.target.value as MarcadorFiltro["estado"],
-                    })
-                  }
-                  className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-                >
-                  {ESTADOS_MARCADOR.map((s) => (
-                    <option key={s.v} value={s.v}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400">
-                  Diferencia
-                </label>
-                <select
-                  value={contexto.marcador.diferencia}
-                  onChange={(e) =>
-                    onCambiarMarcador({
-                      diferencia: e.target
-                        .value as MarcadorFiltro["diferencia"],
-                    })
-                  }
-                  className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-                >
-                  {DIFERENCIAS_MARCADOR.map((d) => (
-                    <option key={d.v} value={d.v}>
-                      {d.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400">
-                  Puntos para cerrar set
-                </label>
-                <select
-                  value={contexto.marcador.puntosParaCerrar}
-                  onChange={(e) =>
-                    onCambiarMarcador({
-                      puntosParaCerrar: e.target
-                        .value as MarcadorFiltro["puntosParaCerrar"],
-                    })
-                  }
-                  className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-                >
-                  {PUNTOS_CERRAR.map((p) => (
-                    <option key={p.v} value={p.v}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1 flex items-end">
-                <button
-                  onClick={() =>
-                    onCambiarMarcador({
-                      soloCriticos: !contexto.marcador.soloCriticos,
-                    })
-                  }
-                  className={`w-full text-left px-2 py-1 text-[10px] font-medium rounded border transition ${
-                    contexto.marcador.soloCriticos
-                      ? "bg-amber-500/20 text-amber-200 border-amber-500/50"
-                      : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10"
-                  }`}
-                >
-                  {contexto.marcador.soloCriticos
-                    ? "✓ Solo críticos"
-                    : "Solo críticos"}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Rally */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-              Rally
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400">Fase</label>
-                <select
-                  value={contexto.faseRally}
-                  onChange={(e) =>
-                    onCambiar({
-                      faseRally: e.target
-                        .value as ContextoPartidoFiltro["faseRally"],
-                    })
-                  }
-                  className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-                >
-                  {FASES_RALLY.map((f) => (
-                    <option key={f.v} value={f.v}>
-                      {f.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400">
-                  ¿Primer toque del equipo?
-                </label>
-                <select
-                  value={contexto.esPrimerToque}
-                  onChange={(e) =>
-                    onCambiar({
-                      esPrimerToque: e.target
-                        .value as ContextoPartidoFiltro["esPrimerToque"],
-                    })
-                  }
-                  className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-                >
-                  <option value="cualquiera">Cualquiera</option>
-                  <option value="si">Sí</option>
-                  <option value="no">No</option>
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400">
-                  Toques mínimo del equipo
-                </label>
-                <select
-                  value={contexto.toquesMinimo ?? "cualquiera"}
-                  onChange={(e) =>
-                    onCambiar({
-                      toquesMinimo:
-                        e.target.value === "cualquiera"
-                          ? null
-                          : parseInt(e.target.value, 10),
-                    })
-                  }
-                  className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-                >
-                  <option value="cualquiera">Cualquiera</option>
-                  <option value="2">≥ 2</option>
-                  <option value="3">≥ 3</option>
-                  <option value="4">≥ 4</option>
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400">
-                  Inicio del punto
-                </label>
-                <select
-                  value={contexto.inicioPunto}
-                  onChange={(e) =>
-                    onCambiar({
-                      inicioPunto: e.target
-                        .value as ContextoPartidoFiltro["inicioPunto"],
-                    })
-                  }
-                  className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-                >
-                  {INICIOS_PUNTO.map((i) => (
-                    <option key={i.v} value={i.v}>
-                      {i.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Ubicación + Racha */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className="text-[10px] text-slate-400">
-                Ubicación del trigger
-              </label>
-              <select
-                value={contexto.ubicacionTrigger}
-                onChange={(e) =>
-                  onCambiar({
-                    ubicacionTrigger: e.target
-                      .value as ContextoPartidoFiltro["ubicacionTrigger"],
-                  })
-                }
-                className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-              >
-                {UBICACIONES.map((u) => (
-                  <option key={u.v} value={u.v}>
-                    {u.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] text-slate-400">
-                Racha de puntos seguidos
-              </label>
-              <select
-                value={contexto.rachaPuntos ?? "cualquiera"}
-                onChange={(e) =>
-                  onCambiar({
-                    rachaPuntos:
-                      e.target.value === "cualquiera"
-                        ? null
-                        : parseInt(e.target.value, 10),
-                  })
-                }
-                className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-              >
-                <option value="cualquiera">Cualquiera</option>
-                <option value="2">≥ 2 ganados/perdidos</option>
-                <option value="3">≥ 3 ganados/perdidos</option>
-                <option value="4">≥ 4 ganados/perdidos</option>
-                <option value="5">≥ 5 ganados/perdidos</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+          + Añadir racha
+        </button>
+        {rachas.length === 0 && (
+          <p className="text-[10px] text-slate-500 italic text-center py-1">
+            Sin filtro de historia.
+          </p>
+        )}
+      </div>
+    </details>
   );
 }
 
-// ============================================================
-// SUBCOMPONENTE: RACHA EDITOR
-// ============================================================
-
-function RachaEditor({
-  indice,
+function RachaFila({
+  idx,
   racha,
   onCambiar,
   onEliminar,
 }: {
-  indice: number;
+  idx: number;
   racha: RachaHistorica;
   onCambiar: (cambios: Partial<RachaHistorica>) => void;
   onEliminar: () => void;
 }) {
-  const [abierto, setAbierto] = useState(true);
-
   const tipoActual = racha.filtro.tipos[0] ?? "";
   const setTipo = (tipo: string) => {
     onCambiar({
@@ -1224,283 +902,531 @@ function RachaEditor({
     });
   };
 
-  const setResultado = (resultado: string) => {
-    onCambiar({
-      filtro: {
-        ...racha.filtro,
-        resultados: resultado ? [resultado] : [],
-      },
-    });
-  };
-
   const setFiltro = <K extends keyof FiltroAccionHistorica>(
     key: K,
     val: FiltroAccionHistorica[K]
   ) => {
-    onCambiar({
-      filtro: { ...racha.filtro, [key]: val },
-    });
+    onCambiar({ filtro: { ...racha.filtro, [key]: val } });
   };
 
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.02]">
-      <div className="flex items-center justify-between p-2">
+    <div className="rounded border border-white/10 bg-slate-900/40 p-1.5 space-y-1.5">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-bold text-violet-300">
+          #{idx + 1}
+        </span>
+        <span className="text-[9px] text-slate-400 truncate flex-1">
+          {resumenRacha(racha)}
+        </span>
         <button
-          onClick={() => setAbierto(!abierto)}
-          className="flex-1 text-left text-[11px] text-slate-200 truncate"
+          onClick={onEliminar}
+          className="text-rose-400 hover:text-rose-300 text-[10px] shrink-0"
         >
-          <span className="font-bold text-violet-300">#{indice}</span>{" "}
-          <span className="text-slate-300">{resumenRacha(racha)}</span>
+          ✕
         </button>
-        <div className="flex gap-1 shrink-0">
-          <button
-            onClick={() => setAbierto(!abierto)}
-            className="w-5 h-5 rounded text-slate-400 hover:text-white text-[10px]"
-          >
-            {abierto ? "▲" : "▼"}
-          </button>
-          <button
-            onClick={onEliminar}
-            className="w-5 h-5 rounded text-rose-400 hover:text-rose-300 text-[10px]"
-          >
-            ✕
-          </button>
-        </div>
       </div>
 
-      {abierto && (
-        <div className="grid grid-cols-2 gap-2 p-2 pt-0">
-          <div className="space-y-1">
-            <label className="text-[10px] text-slate-400">Ámbito</label>
-            <select
-              value={racha.ambito}
-              onChange={(e) =>
-                onCambiar({ ambito: e.target.value as AmbitoRacha })
-              }
-              className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-            >
-              {AMBITOS.map((a) => (
-                <option key={a.v} value={a.v}>
-                  {a.label}
+      {/* Fila básica */}
+      <div className="grid grid-cols-2 gap-1">
+        <select
+          value={racha.ambito}
+          onChange={(e) =>
+            onCambiar({ ambito: e.target.value as AmbitoRacha })
+          }
+          className={selectCls}
+          title="Ámbito"
+        >
+          {AMBITOS.map((a) => (
+            <option key={a.v} value={a.v}>
+              {a.label}
+            </option>
+          ))}
+        </select>
+
+        <input
+          type="number"
+          min={1}
+          max={10}
+          value={racha.minimo}
+          onChange={(e) =>
+            onCambiar({
+              minimo: Math.max(1, parseInt(e.target.value || "1", 10)),
+            })
+          }
+          className={selectCls}
+          placeholder="Mínimo"
+          title="Mínimo consecutivas"
+        />
+
+        <select
+          value={tipoActual}
+          onChange={(e) => setTipo(e.target.value)}
+          className={selectCls}
+          title="Tipo de acción"
+        >
+          <option value="">Cualquier tipo</option>
+          {TIPOS.map((t) => (
+            <option key={t.v} value={t.v}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+
+        {tipoActual ? (
+          <select
+            value={racha.filtro.resultados[0] ?? ""}
+            onChange={(e) =>
+              onCambiar({
+                filtro: {
+                  ...racha.filtro,
+                  resultados: e.target.value ? [e.target.value] : [],
+                },
+              })
+            }
+            className={selectCls}
+            title="Resultado"
+          >
+            <option value="">Cualquier resultado</option>
+            {resultadosPorTipoAnalisis(tipoActual as TipoDisparador)
+              .filter((r) => r !== "cualquiera")
+              .map((r) => (
+                <option key={r} value={r}>
+                  {etiquetaResultado(r)}
                 </option>
               ))}
-            </select>
-          </div>
+          </select>
+        ) : (
+          <div />
+        )}
+      </div>
 
-          <div className="space-y-1">
-            <label className="text-[10px] text-slate-400">
-              Mínimo consecutivas
-            </label>
-            <input
-              type="number"
-              min={1}
-              max={10}
-              value={racha.minimo}
-              onChange={(e) =>
-                onCambiar({
-                  minimo: Math.max(1, parseInt(e.target.value || "1", 10)),
-                })
-              }
-              className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-            />
-          </div>
+      {/* Avanzado */}
+      <details>
+        <summary className="text-[9px] text-slate-500 cursor-pointer hover:text-slate-300">
+          Más opciones
+        </summary>
+        <div className="grid grid-cols-2 gap-1 mt-1">
+          <input
+            type="number"
+            min={0}
+            max={10}
+            value={racha.desdeAtras}
+            onChange={(e) =>
+              onCambiar({
+                desdeAtras: Math.max(0, parseInt(e.target.value || "0", 10)),
+              })
+            }
+            className={selectCls}
+            placeholder="Saltar N"
+            title="Saltar los últimos N del tipo"
+          />
 
-          <div className="space-y-1">
-            <label className="text-[10px] text-slate-400">
-              Saltar últimos N del tipo
-            </label>
-            <input
-              type="number"
-              min={0}
-              max={10}
-              value={racha.desdeAtras}
-              onChange={(e) =>
-                onCambiar({
-                  desdeAtras: Math.max(
-                    0,
-                    parseInt(e.target.value || "0", 10)
-                  ),
-                })
-              }
-              className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-            />
-          </div>
+          <select
+            value={racha.filtro.ubicacion}
+            onChange={(e) =>
+              setFiltro("ubicacion", e.target.value as UbicacionFiltro)
+            }
+            className={selectCls}
+            title="Ubicación"
+          >
+            {UBICACIONES.map((u) => (
+              <option key={u.v} value={u.v}>
+                {u.label}
+              </option>
+            ))}
+          </select>
 
-          <div className="space-y-1">
-            <label className="text-[10px] text-slate-400">
-              Tipo de acción
-            </label>
-            <select
-              value={tipoActual}
-              onChange={(e) => setTipo(e.target.value)}
-              className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-            >
-              <option value="">Cualquier tipo</option>
-              {TIPOS_DISPARADOR.map((t) => (
-                <option key={t.v} value={t.v}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <select
+            value={String(racha.filtro.zonaJugador)}
+            onChange={(e) =>
+              setFiltro(
+                "zonaJugador",
+                e.target.value === "cualquiera"
+                  ? "cualquiera"
+                  : parseInt(e.target.value, 10)
+              )
+            }
+            className={selectCls}
+            title="Zona"
+          >
+            {ZONAS_JUGADOR.map((z) => (
+              <option key={String(z.v)} value={String(z.v)}>
+                {z.label}
+              </option>
+            ))}
+          </select>
 
-          {tipoActual && (
-            <div className="space-y-1">
-              <label className="text-[10px] text-slate-400">Resultado</label>
-              <select
-                value={racha.filtro.resultados[0] ?? ""}
-                onChange={(e) => setResultado(e.target.value)}
-                className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-              >
-                <option value="">Cualquier resultado</option>
-                {resultadosPorTipoAnalisis(tipoActual as TipoDisparador)
-                  .filter((r) => r !== "cualquiera")
-                  .map((r) => (
-                    <option key={r} value={r}>
-                      {etiquetaResultado(r)}
-                    </option>
-                  ))}
-              </select>
-            </div>
-          )}
+          <select
+            value={
+              racha.filtro.velocidad === null
+                ? ""
+                : String(racha.filtro.velocidad)
+            }
+            onChange={(e) =>
+              setFiltro(
+                "velocidad",
+                e.target.value === "" ? null : parseFloat(e.target.value)
+              )
+            }
+            className={selectCls}
+            title="Velocidad"
+          >
+            {VELOCIDADES.map((v) => (
+              <option key={String(v.v)} value={v.v === null ? "" : String(v.v)}>
+                {v.label === "Cualquiera" ? "Vel. cualquiera" : `v${v.label}`}
+              </option>
+            ))}
+          </select>
 
-          <div className="space-y-1">
-            <label className="text-[10px] text-slate-400">Ubicación</label>
-            <select
-              value={racha.filtro.ubicacion}
-              onChange={(e) =>
-                setFiltro("ubicacion", e.target.value as UbicacionFiltro)
-              }
-              className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-            >
-              {UBICACIONES.map((u) => (
-                <option key={u.v} value={u.v}>
-                  {u.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <select
+            value={racha.filtro.tipoSaque ?? ""}
+            onChange={(e) =>
+              setFiltro(
+                "tipoSaque",
+                e.target.value === ""
+                  ? null
+                  : (e.target.value as "potencia" | "flotado")
+              )
+            }
+            className={selectCls}
+            title="Tipo saque"
+          >
+            {TIPOS_SAQUE.map((v) => (
+              <option key={String(v.v)} value={v.v ?? ""}>
+                {v.label === "Cualquiera" ? "Saque cualquiera" : v.label}
+              </option>
+            ))}
+          </select>
 
-          <div className="space-y-1">
-            <label className="text-[10px] text-slate-400">Zona jugador</label>
-            <select
-              value={String(racha.filtro.zonaJugador)}
-              onChange={(e) =>
-                setFiltro(
-                  "zonaJugador",
-                  e.target.value === "cualquiera"
-                    ? "cualquiera"
-                    : parseInt(e.target.value, 10)
-                )
-              }
-              className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-            >
-              {ZONAS_JUGADOR.map((z) => (
-                <option key={String(z.v)} value={String(z.v)}>
-                  {z.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <select
+            value={racha.filtro.relacionJugador}
+            onChange={(e) =>
+              setFiltro(
+                "relacionJugador",
+                e.target.value as RelacionJugador
+              )
+            }
+            className={selectCls}
+            title="Relación"
+          >
+            {RELACIONES.map((r) => (
+              <option key={r.v} value={r.v}>
+                {r.label}
+              </option>
+            ))}
+          </select>
 
-          <div className="space-y-1">
-            <label className="text-[10px] text-slate-400">Velocidad</label>
-            <select
-              value={
-                racha.filtro.velocidad === null
-                  ? ""
-                  : String(racha.filtro.velocidad)
-              }
-              onChange={(e) =>
-                setFiltro(
-                  "velocidad",
-                  e.target.value === "" ? null : parseFloat(e.target.value)
-                )
-              }
-              className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-            >
-              {VELOCIDADES.map((v) => (
-                <option
-                  key={String(v.v)}
-                  value={v.v === null ? "" : String(v.v)}
-                >
-                  {v.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[10px] text-slate-400">Tipo saque</label>
-            <select
-              value={racha.filtro.tipoSaque ?? ""}
-              onChange={(e) =>
-                setFiltro(
-                  "tipoSaque",
-                  e.target.value === ""
-                    ? null
-                    : (e.target.value as "potencia" | "flotado")
-                )
-              }
-              className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-            >
-              {TIPOS_SAQUE.map((v) => (
-                <option key={String(v.v)} value={v.v ?? ""}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[10px] text-slate-400">
-              Relación con trigger
-            </label>
-            <select
-              value={racha.filtro.relacionJugador}
-              onChange={(e) =>
-                setFiltro(
-                  "relacionJugador",
-                  e.target.value as RelacionJugador
-                )
-              }
-              className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-            >
-              {RELACIONES.map((r) => (
-                <option key={r.v} value={r.v}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[10px] text-slate-400">Cierra punto</label>
-            <select
-              value={racha.filtro.cierraPunto}
-              onChange={(e) =>
-                setFiltro(
-                  "cierraPunto",
-                  e.target.value as CierraPuntoFiltro
-                )
-              }
-              className="w-full bg-slate-900 text-white text-[11px] rounded px-2 py-1 border border-white/10"
-            >
-              {CIERRAS.map((c) => (
-                <option key={c.v} value={c.v}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <select
+            value={racha.filtro.cierraPunto}
+            onChange={(e) =>
+              setFiltro("cierraPunto", e.target.value as CierraPuntoFiltro)
+            }
+            className={`${selectCls} col-span-2`}
+            title="Cierra punto"
+          >
+            {CIERRAS.map((c) => (
+              <option key={c.v} value={c.v}>
+                {etiquetaCierraPunto(c.v)}
+              </option>
+            ))}
+          </select>
         </div>
-      )}
+      </details>
     </div>
   );
 }
 
 // ============================================================
-// SUBCOMPONENTE: DISTRIBUCIÓN
+// CONTEXTO SECTION
+// ============================================================
+
+function ContextoSection({
+  contexto,
+  setContexto,
+}: {
+  contexto: ContextoPartidoFiltro;
+  setContexto: (c: ContextoPartidoFiltro) => void;
+}) {
+  const activo = hayContextoPartidoActivo(contexto);
+
+  const setMarcador = (cambios: Partial<MarcadorFiltro>) => {
+    setContexto({ ...contexto, marcador: { ...contexto.marcador, ...cambios } });
+  };
+
+  return (
+    <details
+      className={`rounded-lg border ${
+        activo
+          ? "border-violet-500/40 bg-violet-500/[0.04]"
+          : "border-white/10 bg-white/[0.02]"
+      }`}
+    >
+      <summary className="px-2 py-1.5 cursor-pointer text-[11px] font-bold uppercase text-slate-300 flex items-center justify-between">
+        <span>
+          📊 Contexto del partido{" "}
+          {activo && <span className="text-violet-300">✓</span>}
+        </span>
+        <span className="text-slate-500 text-[10px]">▼</span>
+      </summary>
+      <div className="p-2 pt-0 space-y-2">
+        {/* Marcador */}
+        <div>
+          <p className="text-[9px] font-bold uppercase text-slate-500 mb-1">
+            Marcador
+          </p>
+          <div className="grid grid-cols-2 gap-1">
+            <select
+              value={contexto.marcador.estado}
+              onChange={(e) =>
+                setMarcador({
+                  estado: e.target.value as MarcadorFiltro["estado"],
+                })
+              }
+              className={selectCls}
+            >
+              {ESTADOS_MARCADOR.map((s) => (
+                <option key={s.v} value={s.v}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={contexto.marcador.diferencia}
+              onChange={(e) =>
+                setMarcador({
+                  diferencia: e.target.value as MarcadorFiltro["diferencia"],
+                })
+              }
+              className={selectCls}
+            >
+              {DIFERENCIAS_MARCADOR.map((d) => (
+                <option key={d.v} value={d.v}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={contexto.marcador.puntosParaCerrar}
+              onChange={(e) =>
+                setMarcador({
+                  puntosParaCerrar: e.target
+                    .value as MarcadorFiltro["puntosParaCerrar"],
+                })
+              }
+              className={selectCls}
+            >
+              {PUNTOS_CERRAR.map((p) => (
+                <option key={p.v} value={p.v}>
+                  {p.v === "cualquiera" ? "Sin filtro de cierre" : p.label}
+                </option>
+              ))}
+            </select>
+
+            <button
+              onClick={() =>
+                setMarcador({ soloCriticos: !contexto.marcador.soloCriticos })
+              }
+              className={`px-2 py-1 text-[10px] font-semibold rounded border transition ${
+                contexto.marcador.soloCriticos
+                  ? "bg-amber-500/20 text-amber-200 border-amber-500/50"
+                  : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10"
+              }`}
+            >
+              {contexto.marcador.soloCriticos ? "✓ Solo críticos" : "Solo críticos"}
+            </button>
+          </div>
+        </div>
+
+        {/* Rally */}
+        <div>
+          <p className="text-[9px] font-bold uppercase text-slate-500 mb-1">
+            Rally
+          </p>
+          <div className="grid grid-cols-2 gap-1">
+            <select
+              value={contexto.faseRally}
+              onChange={(e) =>
+                setContexto({
+                  ...contexto,
+                  faseRally: e.target
+                    .value as ContextoPartidoFiltro["faseRally"],
+                })
+              }
+              className={selectCls}
+            >
+              {FASES_RALLY.map((f) => (
+                <option key={f.v} value={f.v}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={contexto.inicioPunto}
+              onChange={(e) =>
+                setContexto({
+                  ...contexto,
+                  inicioPunto: e.target
+                    .value as ContextoPartidoFiltro["inicioPunto"],
+                })
+              }
+              className={selectCls}
+            >
+              {INICIOS_PUNTO.map((i) => (
+                <option key={i.v} value={i.v}>
+                  {i.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={contexto.esPrimerToque}
+              onChange={(e) =>
+                setContexto({
+                  ...contexto,
+                  esPrimerToque: e.target
+                    .value as ContextoPartidoFiltro["esPrimerToque"],
+                })
+              }
+              className={selectCls}
+            >
+              <option value="cualquiera">Primer toque: cualquiera</option>
+              <option value="si">Sí (primer toque)</option>
+              <option value="no">No (2° o 3er toque)</option>
+            </select>
+
+            <select
+              value={contexto.toquesMinimo ?? "cualquiera"}
+              onChange={(e) =>
+                setContexto({
+                  ...contexto,
+                  toquesMinimo:
+                    e.target.value === "cualquiera"
+                      ? null
+                      : parseInt(e.target.value, 10),
+                })
+              }
+              className={selectCls}
+            >
+              <option value="cualquiera">Toques mín: cualquiera</option>
+              <option value="2">≥ 2 toques</option>
+              <option value="3">≥ 3 toques</option>
+              <option value="4">≥ 4 toques</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Jugador */}
+        <div>
+          <p className="text-[9px] font-bold uppercase text-slate-500 mb-1">
+            Jugador
+          </p>
+          <div className="grid grid-cols-2 gap-1">
+            <select
+              value={contexto.ubicacionTrigger}
+              onChange={(e) =>
+                setContexto({
+                  ...contexto,
+                  ubicacionTrigger: e.target
+                    .value as ContextoPartidoFiltro["ubicacionTrigger"],
+                })
+              }
+              className={selectCls}
+            >
+              {UBICACIONES.map((u) => (
+                <option key={u.v} value={u.v}>
+                  {u.v === "cualquiera"
+                    ? "Cualquier ubicación"
+                    : u.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={contexto.rachaPuntos ?? "cualquiera"}
+              onChange={(e) =>
+                setContexto({
+                  ...contexto,
+                  rachaPuntos:
+                    e.target.value === "cualquiera"
+                      ? null
+                      : parseInt(e.target.value, 10),
+                })
+              }
+              className={selectCls}
+            >
+              <option value="cualquiera">Racha: cualquiera</option>
+              <option value="2">≥ 2 seguidos</option>
+              <option value="3">≥ 3 seguidos</option>
+              <option value="4">≥ 4 seguidos</option>
+              <option value="5">≥ 5 seguidos</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </details>
+  );
+}
+
+// ============================================================
+// COMPARADORES SECTION
+// ============================================================
+
+function ComparadoresSection({
+  coincidencias,
+  setCoincidencias,
+}: {
+  coincidencias: CoincidenciaFiltro;
+  setCoincidencias: (c: CoincidenciaFiltro) => void;
+}) {
+  const cantActivos = Object.values(coincidencias).filter(Boolean).length;
+
+  const toggle = (key: keyof CoincidenciaFiltro) => {
+    setCoincidencias({ ...coincidencias, [key]: !coincidencias[key] });
+  };
+
+  return (
+    <details
+      className={`rounded-lg border ${
+        cantActivos > 0
+          ? "border-violet-500/40 bg-violet-500/[0.04]"
+          : "border-white/10 bg-white/[0.02]"
+      }`}
+    >
+      <summary className="px-2 py-1.5 cursor-pointer text-[11px] font-bold uppercase text-slate-300 flex items-center justify-between">
+        <span>
+          🔗 Comparadores ({cantActivos})
+        </span>
+        <span className="text-slate-500 text-[10px]">▼</span>
+      </summary>
+      <div className="p-2 pt-0 flex flex-wrap gap-1">
+        {COMPARADORES.map((c) => {
+          const act = coincidencias[c.key];
+          return (
+            <button
+              key={c.key}
+              onClick={() => toggle(c.key)}
+              className={`px-2 py-1 text-[10px] font-semibold rounded border transition flex items-center gap-1 ${
+                act
+                  ? "bg-violet-500/30 border-violet-400/60 text-violet-200"
+                  : "bg-white/[0.02] border-white/10 text-slate-400 hover:text-white"
+              }`}
+            >
+              <span>{act ? "✓" : "+"}</span>
+              <span>{c.etiqueta}</span>
+            </button>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
+
+// ============================================================
+// COMPORTAMIENTO DEL TRIGGER
 // ============================================================
 
 function DistribucionLista({
@@ -1516,20 +1442,20 @@ function DistribucionLista({
   const maxPct = Math.max(...items.map((i) => i.pct), 1);
   return (
     <div>
-      <h6 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+      <h6 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
         {titulo}
       </h6>
-      <div className="space-y-1">
+      <div className="space-y-0.5">
         {items.map((it) => (
-          <div key={it.label} className="flex items-center gap-2 text-[11px]">
-            <span className="w-24 truncate text-slate-300">{it.label}</span>
-            <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+          <div key={it.label} className="flex items-center gap-2 text-[10px]">
+            <span className="w-20 truncate text-slate-300">{it.label}</span>
+            <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
               <div
                 className={`h-full ${color} rounded-full`}
                 style={{ width: `${(it.pct / maxPct) * 100}%` }}
               />
             </div>
-            <span className="w-16 text-right font-mono text-slate-300">
+            <span className="w-14 text-right font-mono text-slate-300">
               {it.count} ({it.pct}%)
             </span>
           </div>
@@ -1539,10 +1465,6 @@ function DistribucionLista({
   );
 }
 
-// ============================================================
-// SUBCOMPONENTE: COMPORTAMIENTO DEL TRIGGER
-// ============================================================
-
 function SeccionComportamiento({
   comportamiento,
   nombreDeJugador,
@@ -1551,19 +1473,19 @@ function SeccionComportamiento({
   nombreDeJugador: (id: string) => string;
 }) {
   return (
-    <div className="rounded-lg border border-white/10 overflow-hidden bg-slate-900/40">
-      <div className="px-4 py-2.5 border-b border-white/10 bg-white/[0.02]">
-        <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
-          Comportamiento del trigger
+    <details
+      open
+      className="rounded-lg border border-white/10 overflow-hidden bg-slate-900/40"
+    >
+      <summary className="px-3 py-2 cursor-pointer text-xs font-bold uppercase tracking-wider text-slate-200 bg-white/[0.02] flex items-center justify-between">
+        <span>📊 Comportamiento del trigger</span>
+        <span className="text-[10px] text-slate-400 font-normal">
+          {comportamiento.totalTriggers} triggers
         </span>
-        <p className="text-[10px] text-slate-400 mt-0.5">
-          Cómo actúa el jugador en los {comportamiento.totalTriggers} triggers
-        </p>
-      </div>
-
-      <div className="p-4 space-y-4">
+      </summary>
+      <div className="p-3 space-y-2 border-t border-white/10">
         <DistribucionLista
-          titulo="Por subtipo / resultado"
+          titulo="Por subtipo"
           items={comportamiento.porSubtipo.map((x) => ({
             label: x.subtipo,
             count: x.count,
@@ -1608,12 +1530,12 @@ function SeccionComportamiento({
           color="bg-rose-400"
         />
       </div>
-    </div>
+    </details>
   );
 }
 
 // ============================================================
-// SUBCOMPONENTE: CONSECUENCIA
+// CONSECUENCIA
 // ============================================================
 
 function SeccionConsecuencia({
@@ -1638,124 +1560,102 @@ function SeccionConsecuencia({
   const evalR = est.evaluacionResultado;
 
   return (
-    <>
-      <div className="rounded-lg border border-white/10 overflow-hidden bg-slate-900/40">
-        <div className="px-4 py-2.5 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white/[0.02]">
-          <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
-              Consecuencia:{" "}
-              <span className="capitalize text-white">
-                {tipoObservado === "cualquiera"
-                  ? "1ª acción siguiente"
-                  : `Siguiente ${tipoObservado}`}
-              </span>
-            </span>
-            {jugadorObservadoFiltro === "mismo" && (
-              <span className="ml-2 text-[11px] text-slate-400">
-                (mismo jugador que el trigger)
-              </span>
-            )}
-            {jugadorObservadoFiltro !== "mismo" &&
-              jugadorObservadoFiltro !== "cualquiera" && (
-                <span className="ml-2 text-[11px] text-slate-400">
-                  ({nombre(jugadorObservadoFiltro)})
-                </span>
-              )}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">Predominante:</span>
-            <span
-              className={`text-xs font-semibold px-2 py-0.5 rounded border ${
-                evalR.masFrecuente === "punto"
-                  ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
-                  : evalR.masFrecuente === "error"
-                  ? "bg-rose-500/10 text-rose-300 border-rose-500/30"
-                  : "bg-amber-500/10 text-amber-300 border-amber-500/30"
-              }`}
-            >
-              {evalR.masFrecuente === "punto"
-                ? "Punto directo"
-                : evalR.masFrecuente === "error"
-                ? "Error"
-                : "Neutro"}
-            </span>
-          </div>
-        </div>
+    <details
+      open
+      className="rounded-lg border border-white/10 overflow-hidden bg-slate-900/40"
+    >
+      <summary className="px-3 py-2 cursor-pointer text-xs font-bold uppercase tracking-wider text-slate-200 bg-white/[0.02] flex items-center justify-between">
+        <span>
+          🎯 Consecuencia:{" "}
+          {tipoObservado === "cualquiera"
+            ? "1ª acción siguiente"
+            : `sig. ${tipoObservado}`}
+        </span>
+        <span className="text-[10px] text-slate-400 font-normal">
+          {evalR.total} casos · {evalR.masFrecuente === "punto"
+            ? "predominante: punto"
+            : evalR.masFrecuente === "error"
+            ? "predominante: error"
+            : "predominante: neutro"}
+        </span>
+      </summary>
 
-        <div className="divide-y divide-white/5 text-xs">
-          <div className="px-4 py-2.5 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2 w-44 shrink-0">
+      <div className="p-3 space-y-3 border-t border-white/10">
+        {/* Balance */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[11px]">
+            <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span className="font-medium text-slate-200">Punto directo</span>
+              <span className="text-slate-300">Puntos</span>
             </div>
-            <div className="flex items-center gap-3 flex-1 max-w-sm">
-              <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
+            <div className="flex items-center gap-2 flex-1 max-w-xs ml-2">
+              <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
                 <div
                   className="h-full bg-emerald-500 rounded-full"
                   style={{ width: `${evalR.pctPuntos}%` }}
                 />
               </div>
-              <span className="font-mono text-emerald-300 font-semibold w-12 text-right">
+              <span className="font-mono text-emerald-300 font-semibold text-[10px] w-12 text-right">
                 {evalR.pctPuntos}%
               </span>
             </div>
-            <span className="font-mono text-slate-400 text-right w-24 shrink-0">
-              {evalR.puntos} de {evalR.total}
+            <span className="font-mono text-slate-500 text-[10px] w-14 text-right">
+              {evalR.puntos}/{evalR.total}
             </span>
           </div>
 
-          <div className="px-4 py-2.5 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2 w-44 shrink-0">
+          <div className="flex items-center justify-between text-[11px]">
+            <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-amber-400" />
-              <span className="font-medium text-slate-200">Neutro</span>
+              <span className="text-slate-300">Neutro</span>
             </div>
-            <div className="flex items-center gap-3 flex-1 max-w-sm">
-              <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
+            <div className="flex items-center gap-2 flex-1 max-w-xs ml-2">
+              <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
                 <div
                   className="h-full bg-amber-500 rounded-full"
                   style={{ width: `${evalR.pctNeutros}%` }}
                 />
               </div>
-              <span className="font-mono text-amber-300 font-semibold w-12 text-right">
+              <span className="font-mono text-amber-300 font-semibold text-[10px] w-12 text-right">
                 {evalR.pctNeutros}%
               </span>
             </div>
-            <span className="font-mono text-slate-400 text-right w-24 shrink-0">
-              {evalR.neutros} de {evalR.total}
+            <span className="font-mono text-slate-500 text-[10px] w-14 text-right">
+              {evalR.neutros}/{evalR.total}
             </span>
           </div>
 
-          <div className="px-4 py-2.5 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2 w-44 shrink-0">
+          <div className="flex items-center justify-between text-[11px]">
+            <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-rose-400" />
-              <span className="font-medium text-slate-200">Error</span>
+              <span className="text-slate-300">Error</span>
             </div>
-            <div className="flex items-center gap-3 flex-1 max-w-sm">
-              <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
+            <div className="flex items-center gap-2 flex-1 max-w-xs ml-2">
+              <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
                 <div
                   className="h-full bg-rose-500 rounded-full"
                   style={{ width: `${evalR.pctErrores}%` }}
                 />
               </div>
-              <span className="font-mono text-rose-300 font-semibold w-12 text-right">
+              <span className="font-mono text-rose-300 font-semibold text-[10px] w-12 text-right">
                 {evalR.pctErrores}%
               </span>
             </div>
-            <span className="font-mono text-slate-400 text-right w-24 shrink-0">
-              {evalR.errores} de {evalR.total}
+            <span className="font-mono text-slate-500 text-[10px] w-14 text-right">
+              {evalR.errores}/{evalR.total}
             </span>
           </div>
 
-          <div className="px-4 py-2.5 flex items-center justify-between bg-white/[0.01]">
+          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-white/5">
             <span className="text-slate-300 font-medium">
-              Efectividad neta (Puntos − Errores)
+              Efectividad neta
             </span>
             <span
-              className={`font-mono font-bold px-2.5 py-0.5 rounded text-xs ${
+              className={`font-mono font-bold px-2 py-0.5 rounded text-[10px] ${
                 evalR.efectividadNeta > 0
-                  ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+                  ? "bg-emerald-500/15 text-emerald-300"
                   : evalR.efectividadNeta < 0
-                  ? "bg-rose-500/15 text-rose-300 border border-rose-500/30"
+                  ? "bg-rose-500/15 text-rose-300"
                   : "bg-slate-700 text-slate-300"
               }`}
             >
@@ -1764,28 +1664,21 @@ function SeccionConsecuencia({
             </span>
           </div>
         </div>
-      </div>
 
-      <div className="rounded-lg border border-white/10 overflow-hidden bg-slate-900/40">
-        <div className="px-4 py-2.5 border-b border-white/10 bg-white/[0.02]">
-          <h5 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-            Indicadores
-          </h5>
-        </div>
-        <div className="divide-y divide-white/5 text-xs">
-          <div className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+        {/* Indicadores */}
+        <div className="pt-2 border-t border-white/5 space-y-1 text-[11px]">
+          <div className="flex justify-between gap-2">
             <span className="text-slate-400">Subtipo más frecuente:</span>
-            <span className="font-semibold text-white capitalize">
+            <span className="font-semibold text-white capitalize truncate">
               {est.subtipoMasFrecuente || "—"}
-              <span className="text-slate-400 font-normal ml-2">
-                ({est.subtiposRanking[0]?.pct ?? 0}% ·{" "}
-                {est.subtiposRanking[0]?.count ?? 0} casos)
+              <span className="text-slate-400 font-normal ml-1">
+                ({est.subtiposRanking[0]?.pct ?? 0}%)
               </span>
             </span>
           </div>
-          <div className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+          <div className="flex justify-between gap-2">
             <span className="text-slate-400">Distancia promedio:</span>
-            <span className="font-mono font-semibold text-white">
+            <span className="font-mono text-white">
               ~{est.promedioAccionesDistancia} toques ·{" "}
               {est.promedioPuntosDistancia === 0
                 ? "mismo punto"
@@ -1793,9 +1686,9 @@ function SeccionConsecuencia({
             </span>
           </div>
           {hayComparadoresActivos(coincidencias) && (
-            <div className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1 bg-white/[0.01]">
-              <span className="text-slate-400">Coincidencias espaciales:</span>
-              <span className="text-slate-300 font-medium">
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-400">Coincidencias:</span>
+              <span className="text-slate-300">
                 {COMPARADORES.filter((c) => coincidencias[c.key])
                   .map((c) => {
                     const val = resultado.coincidenciasGlobales[c.key] ?? 0;
@@ -1809,115 +1702,101 @@ function SeccionConsecuencia({
             </div>
           )}
         </div>
-      </div>
 
-      <div className="rounded-lg border border-white/10 overflow-hidden bg-slate-900/40">
-        <div className="px-4 py-2.5 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
-          <h5 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+        {/* Registro */}
+        <details className="pt-2 border-t border-white/5">
+          <summary className="text-[10px] font-bold uppercase text-slate-400 cursor-pointer">
             Registro ({resultado.ocurrencias.length})
-          </h5>
-        </div>
-        <div className="overflow-x-auto max-h-[340px] overflow-y-auto">
-          <table className="w-full text-xs min-w-[620px]">
-            <thead className="sticky top-0 bg-slate-950 border-b border-white/10 text-slate-400 text-left font-medium">
-              <tr>
-                <th className="py-2.5 px-3">Momento</th>
-                <th className="py-2.5 px-3">Trigger</th>
-                <th className="py-2.5 px-3">Observada</th>
-                <th className="py-2.5 px-3">Distancia</th>
-                <th className="py-2.5 px-3">Desenlace</th>
-                {onIrAPunto && (
-                  <th className="py-2.5 px-3 text-right">Punto</th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {resultado.ocurrencias.map((o) => {
-                const obs = o.accionObservada;
-                return (
-                  <tr
-                    key={`${o.set_numero}-${o.punto_numero}-${o.triggerId}`}
-                    className="hover:bg-white/[0.03] transition"
-                  >
-                    <td className="py-2 px-3 font-mono text-slate-400 whitespace-nowrap">
-                      S{o.set_numero} · P.{o.punto_numero}
-                    </td>
-                    <td className="py-2 px-3">
-                      <span className="font-semibold text-slate-100 capitalize">
-                        {o.triggerSubtipo ?? disparador.tipo}
-                      </span>
-                      <span className="text-[11px] text-slate-400 ml-1.5">
-                        ({nombre(o.triggerJugadorId)})
-                      </span>
-                    </td>
-                    <td className="py-2 px-3">
-                      {obs ? (
-                        <>
-                          <span className="font-semibold text-slate-100 capitalize">
-                            {obs.subtipo}
-                          </span>
-                          <span className="text-[11px] text-slate-400 ml-1.5">
-                            ({nombre(obs.accion.jugador_id)})
-                          </span>
-                          {obs.accion.zona_destino !== null && (
-                            <span className="text-[11px] text-slate-400 ml-1">
-                              → Z{obs.accion.zona_destino}
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-slate-500 italic">—</span>
-                      )}
-                    </td>
-                    <td className="py-2 px-3 font-mono text-slate-300 whitespace-nowrap">
-                      {obs
-                        ? `${obs.distanciaAcciones} toques (${
-                            obs.distanciaPuntos === 0
-                              ? "mismo rally"
-                              : `+${obs.distanciaPuntos} pts`
-                          })`
-                        : "—"}
-                    </td>
-                    <td className="py-2 px-3">
-                      {obs ? (
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${
-                            obs.categoriaResultado === "punto"
-                              ? "bg-emerald-500/15 text-emerald-300"
-                              : obs.categoriaResultado === "error"
-                              ? "bg-rose-500/15 text-rose-300"
-                              : "bg-amber-500/15 text-amber-300"
-                          }`}
-                        >
-                          {obs.categoriaResultado === "punto"
-                            ? "Punto"
-                            : obs.categoriaResultado === "error"
-                            ? "Error"
-                            : "Neutro"}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    {onIrAPunto && (
-                      <td className="py-2 px-3 text-right">
-                        <button
-                          onClick={() =>
-                            onIrAPunto(o.set_numero, o.punto_numero)
-                          }
-                          className="text-xs text-sky-400 hover:text-sky-300 underline font-medium"
-                        >
-                          Ver
-                        </button>
+          </summary>
+          <div className="mt-2 overflow-x-auto max-h-[340px] overflow-y-auto rounded border border-white/10">
+            <table className="w-full text-[10px] min-w-[600px]">
+              <thead className="sticky top-0 bg-slate-950 border-b border-white/10 text-slate-400 text-left">
+                <tr>
+                  <th className="py-1.5 px-2">Momento</th>
+                  <th className="py-1.5 px-2">Trigger</th>
+                  <th className="py-1.5 px-2">Observada</th>
+                  <th className="py-1.5 px-2">Dist.</th>
+                  <th className="py-1.5 px-2">Desenlace</th>
+                  {onIrAPunto && <th className="py-1.5 px-2" />}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {resultado.ocurrencias.map((o) => {
+                  const obs = o.accionObservada;
+                  return (
+                    <tr
+                      key={`${o.set_numero}-${o.punto_numero}-${o.triggerId}`}
+                      className="hover:bg-white/[0.03]"
+                    >
+                      <td className="py-1.5 px-2 font-mono text-slate-400 whitespace-nowrap">
+                        S{o.set_numero}·P{o.punto_numero}
                       </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      <td className="py-1.5 px-2">
+                        <span className="text-slate-100 capitalize">
+                          {o.triggerSubtipo ?? disparador.tipo}
+                        </span>
+                        <span className="text-slate-500 ml-1">
+                          ({nombre(o.triggerJugadorId)})
+                        </span>
+                      </td>
+                      <td className="py-1.5 px-2">
+                        {obs ? (
+                          <>
+                            <span className="text-slate-100 capitalize">
+                              {obs.subtipo}
+                            </span>
+                            <span className="text-slate-500 ml-1">
+                              ({nombre(obs.accion.jugador_id)})
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-slate-500 italic">—</span>
+                        )}
+                      </td>
+                      <td className="py-1.5 px-2 font-mono text-slate-400">
+                        {obs ? `${obs.distanciaAcciones}t` : "—"}
+                      </td>
+                      <td className="py-1.5 px-2">
+                        {obs ? (
+                          <span
+                            className={`px-1.5 py-0.5 rounded font-semibold ${
+                              obs.categoriaResultado === "punto"
+                                ? "bg-emerald-500/15 text-emerald-300"
+                                : obs.categoriaResultado === "error"
+                                ? "bg-rose-500/15 text-rose-300"
+                                : "bg-amber-500/15 text-amber-300"
+                            }`}
+                          >
+                            {obs.categoriaResultado === "punto"
+                              ? "Punto"
+                              : obs.categoriaResultado === "error"
+                              ? "Error"
+                              : "Neutro"}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      {onIrAPunto && (
+                        <td className="py-1.5 px-2 text-right">
+                          <button
+                            onClick={() =>
+                              onIrAPunto(o.set_numero, o.punto_numero)
+                            }
+                            className="text-sky-400 hover:text-sky-300 underline"
+                          >
+                            ver
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </details>
       </div>
-    </>
+    </details>
   );
 }
