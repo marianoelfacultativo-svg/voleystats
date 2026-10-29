@@ -1,17 +1,23 @@
 "use client";
 
 // ============================================================
-// PARTIDOS — GESTIÓN Y ANÁLISIS DE PARTIDOS
+// PARTIDOS — contenedor principal
 // ============================================================
-// Versión modular:
-//   - Carga delegada a usePartidosData
-//   - Cálculos agregados delegados a helpers.ts
-//   - Render delegado a HeaderPartido / ListaPartidos / Vistas
-//   - Hooks memoizados antes de early returns
+// Orquesta la lógica y delega el render a subcomponentes.
+// Todos los useMemo / useEffect / useState van ANTES de los
+// returns condicionales → sin errores de hooks condicionales.
+//
+// Carga dos datasets paralelos:
+//   1. `acciones`         → propias del equipo (cargarAccionesCompatibles)
+//                          para gráficos, tablas, rankings.
+//   2. `accionesVisuales` → propias + rivales, con flip resueltos
+//                          (cargarAccionesUnificadas) para el panel
+//                          de Consecuencias y el análisis de contexto.
 // ============================================================
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FileDown } from "lucide-react";
+import { CalendarDays, FileDown } from "lucide-react";
+import { descargarComoPDF } from "@/lib/exportarPDF";
 import {
   calcularEstadisticasEquipo,
   calcularPromedioPonderadoPorSet,
@@ -26,24 +32,28 @@ import {
   FILTROS_TACTICOS_VACIO,
   type FiltrosTacticos as FiltrosTacticosTipo,
 } from "@/lib/filtrosTacticos";
-import IconoVoley from "./IconoVoley";
-import { descargarComoPDF } from "@/lib/exportarPDF";
+import {
+  cargarAccionesUnificadas,
+  type AccionVisual,
+} from "./adaptadorUnificadoV2";
+
+import { usePartidosData } from "./partidos/usePartidosData";
 import HeaderPartido from "./partidos/HeaderPartido";
 import ListaPartidos from "./partidos/ListaPartidos";
 import VistaDetallePartido from "./partidos/VistaDetallePartido";
 import VistaCompararPartidos from "./partidos/VistaCompararPartidos";
 import VistaJugadorPorPartidos from "./partidos/VistaJugadorPorPartidos";
-import { usePartidosData } from "./partidos/usePartidosData";
 import {
   accionesDBaVisualParaTactico,
-  aplanarAccionesDePartidos,
-  aplanarAccionesDeJxP,
   calcularPartidosComparadosData,
   calcularPartidosJxPData,
-  datosRivalDePartido,
+  aplanarAccionesDePartidos,
+  aplanarAccionesDeJxP,
   seriesRecepcionDePartidos,
+  datosRivalDePartido,
 } from "./partidos/helpers";
 import {
+  cardBase,
   type ModoPrincipal,
   type Partido,
 } from "./partidos/types";
@@ -58,16 +68,7 @@ interface Props {
 }
 
 // ------------------------------------------------------------
-// HELPERS
-// ------------------------------------------------------------
-
-function scoreDe(p: Partido): string {
-  const sets = [p.set1, p.set2, p.set3, p.set4, p.set5].filter(Boolean);
-  return sets.length > 0 ? sets.join(" · ") : "Sin score";
-}
-
-// ------------------------------------------------------------
-// COMPONENTE PRINCIPAL
+// COMPONENTE
 // ------------------------------------------------------------
 
 export default function Partidos({ equipoId, nombreEquipo }: Props) {
@@ -95,9 +96,9 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
 
   const [modoPrincipal, setModoPrincipal] =
     useState<ModoPrincipal>("partido");
-  const [partidoSeleccionado, setPartidoSeleccionado] = useState<string | null>(
-    null
-  );
+  const [partidoSeleccionado, setPartidoSeleccionado] = useState<
+    string | null
+  >(null);
   const [partidosComparados, setPartidosComparados] = useState<string[]>([]);
 
   const [jugadorSeleccionadoJxP, setJugadorSeleccionadoJxP] = useState<
@@ -110,34 +111,65 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
 
   const refPDF = useRef<HTMLDivElement>(null);
 
+  // ---------- Dataset paralelo para el análisis de consecuencias ----------
+  // Se carga EAGER por cada partido activo (una sola query extra).
+  const [accionesVisuales, setAccionesVisuales] = useState<AccionVisual[]>([]);
+  const [cargandoVisuales, setCargandoVisuales] = useState(false);
+
   // ============ EFFECTS ============
   // Reset filtros tácticos al cambiar de partido activo.
   useEffect(() => {
     setFiltrosTacticos({ ...FILTROS_TACTICOS_VACIO });
   }, [partidoSeleccionado]);
 
+  // Cargar accionesVisuales del partido activo (todas: propias + rivales,
+  // con flip y es_ultima_del_punto resueltos).
+  useEffect(() => {
+    if (!partidoSeleccionado || !equipoId) {
+      setAccionesVisuales([]);
+      return;
+    }
+    let cancelled = false;
+    setCargandoVisuales(true);
+    cargarAccionesUnificadas(partidoSeleccionado, equipoId)
+      .then((res) => {
+        if (cancelled) return;
+        setAccionesVisuales(res.acciones);
+        setCargandoVisuales(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setCargandoVisuales(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [partidoSeleccionado, equipoId]);
+
   // ============ CÁLCULOS DERIVADOS (no hooks) ============
   const partidoDetalle = partidoSeleccionado
     ? partidos.find((p) => p.id === partidoSeleccionado) ?? null
     : null;
-
-  const idsJugadores = jugadores.map((j) => j.id);
-  const armadores = new Set(
-    jugadores.filter((j) => j.rol === "armador").map((j) => j.id)
-  );
 
   const jugadorJxP = jugadorSeleccionadoJxP
     ? jugadores.find((j) => j.id === jugadorSeleccionadoJxP) ?? null
     : null;
   const esArmadorJxP = jugadorJxP?.rol === "armador";
 
-  const nombresJugadoresMap: Record<string, string> = {};
-  for (const j of jugadores) {
-    nombresJugadoresMap[j.id] =
-      j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
-  }
-
   // ============ HOOKS MEMOIZADOS ============
+  const idsJugadores = useMemo(
+    () => jugadores.map((j) => j.id),
+    [jugadores]
+  );
+
+  const armadores = useMemo(
+    () =>
+      new Set(
+        jugadores.filter((j) => j.rol === "armador").map((j) => j.id)
+      ),
+    [jugadores]
+  );
+
   const partidosFiltrados = useMemo(
     () =>
       partidos.filter((p) => {
@@ -154,13 +186,16 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     [partidos, nombreRivalDe]
   );
 
+  const hayFiltrosTacticosActivos = filtrosTacticos
+    ? hayFiltrosTacticos(filtrosTacticos)
+    : false;
+
   const hayFiltrosActivos =
     filtroRival !== "" ||
     filtroFechaDesde !== "" ||
     filtroFechaHasta !== "" ||
-    (filtrosTacticos ? hayFiltrosTacticos(filtrosTacticos) : false);
+    hayFiltrosTacticosActivos;
 
-  // Acciones del partido base (filtro de set aplicado)
   const accionesDelPartidoBase = useMemo(() => {
     if (!partidoDetalle) return [];
     return acciones.filter((a) => {
@@ -171,7 +206,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     });
   }, [acciones, partidoDetalle, filtroSet]);
 
-  // Acciones del partido con tácticos aplicados
   const accionesDelPartido = useMemo(() => {
     if (!filtrosTacticos || !hayFiltrosTacticos(filtrosTacticos)) {
       return accionesDelPartidoBase;
@@ -201,20 +235,31 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     }
   }, [accionesDelPartidoBase, filtrosTacticos]);
 
-  // Acciones visuales para el tab Consecuencias
-  const accionesVisualesParaAnalisis = useMemo(
-    () => accionesDBaVisualParaTactico(accionesDelPartido),
-    [accionesDelPartido]
+  const statsPartido = useMemo(
+    () =>
+      partidoDetalle
+        ? calcularEstadisticasEquipo(
+            idsJugadores,
+            accionesDelPartido,
+            armadores
+          )
+        : null,
+    [partidoDetalle, idsJugadores, accionesDelPartido, armadores]
   );
 
-  // Stats del partido
-  const statsPartido = useMemo(() => {
-    if (!partidoDetalle) return null;
-    return calcularEstadisticasEquipo(idsJugadores, accionesDelPartido, armadores);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partidoDetalle, accionesDelPartido, jugadores]);
+  const datosRivalPartido = useMemo(
+    () => datosRivalDePartido(partidoDetalle?.id, datosRival),
+    [partidoDetalle, datosRival]
+  );
 
-  // Partidos comparados
+  const nombresJugadoresMap = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const j of jugadores) {
+      out[j.id] = j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
+    }
+    return out;
+  }, [jugadores]);
+
   const partidosComparadosData = useMemo(
     () =>
       calcularPartidosComparadosData(
@@ -225,8 +270,14 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         armadores,
         nombreRivalDe
       ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [partidosComparados, partidos, acciones, jugadores, nombreRivalDe]
+    [
+      partidosComparados,
+      partidos,
+      acciones,
+      idsJugadores,
+      armadores,
+      nombreRivalDe,
+    ]
   );
 
   const accionesPartidosComparados = useMemo(
@@ -246,16 +297,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   );
 
   const seriesRecepcionPartidos = useMemo(
-    () =>
-      seriesRecepcionDePartidos(
-        partidosComparadosData,
-        armadores
-      ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [partidosComparadosData, jugadores]
+    () => seriesRecepcionDePartidos(partidosComparadosData, armadores),
+    [partidosComparadosData, armadores]
   );
 
-  // JxP
   const partidosJxPData = useMemo(
     () =>
       calcularPartidosJxPData(
@@ -267,14 +312,13 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         idsJugadores,
         nombreRivalDe
       ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       jugadorSeleccionadoJxP,
       esArmadorJxP,
       partidosJxP,
       partidos,
       acciones,
-      jugadores,
+      idsJugadores,
       nombreRivalDe,
     ]
   );
@@ -311,8 +355,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
             ),
           }))
         : [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [partidosJxPData, jugadorSeleccionadoJxP, jugadores]
+    [jugadorSeleccionadoJxP, partidosJxPData, idsJugadores]
   );
 
   const seriesRecepcionJxP = useMemo(
@@ -331,8 +374,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
             ),
           }))
         : [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [partidosJxPData, jugadorSeleccionadoJxP, jugadores]
+    [jugadorSeleccionadoJxP, partidosJxPData, idsJugadores]
   );
 
   const seriesBloqueoJxP = useMemo(
@@ -351,8 +393,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
             ),
           }))
         : [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [partidosJxPData, jugadorSeleccionadoJxP, jugadores]
+    [jugadorSeleccionadoJxP, partidosJxPData, idsJugadores]
   );
 
   const seriesArmadosJxP = useMemo(
@@ -369,14 +410,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
             ),
           }))
         : [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [partidosJxPData, jugadorSeleccionadoJxP, jugadores]
-  );
-
-  // Datos de rival del partido
-  const datosRivalPartido = datosRivalDePartido(
-    partidoDetalle?.id,
-    datosRival
+    [jugadorSeleccionadoJxP, partidosJxPData, idsJugadores]
   );
 
   // ============ EARLY RETURNS (después de todos los hooks) ============
@@ -396,13 +430,13 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     return (
       <div
         className="rounded-2xl p-8 sm:p-12 text-center max-w-md mx-auto"
-        style={{
-          background: "var(--sx-surface-1)",
-          border: "1px solid var(--sx-border)",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-        }}
+        style={cardBase}
       >
-        <p className="text-3xl mb-3">📅</p>
+        <CalendarDays
+          size={36}
+          className="mx-auto mb-3"
+          style={{ color: "var(--sx-text-muted)" }}
+        />
         <h3 className="text-white font-bold text-base">
           Sin partidos cargados
         </h3>
@@ -460,6 +494,11 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     setPartidosJxP([...partidosJxP, id]);
   };
 
+  const scoreDe = (p: Partido): string => {
+    const sets = [p.set1, p.set2, p.set3, p.set4, p.set5].filter(Boolean);
+    return sets.length > 0 ? sets.join(" · ") : "Sin score";
+  };
+
   const handleDescargarPDF = async () => {
     if (!refPDF.current) return;
 
@@ -484,7 +523,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
 
     setDescargando(true);
 
-    // Activamos crudasEnPDF siempre que estemos en modo "partido".
     const agregarCrudas = modoPrincipal === "partido";
     if (agregarCrudas) {
       setCrudasEnPDF(true);
@@ -536,13 +574,14 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
           }}
         >
           <FileDown size={14} style={{ color: "var(--sx-teal)" }} />
-          <span>{descargando ? "Generando PDF..." : "Exportar Informe PDF"}</span>
+          <span>
+            {descargando ? "Generando PDF..." : "Exportar Informe PDF"}
+          </span>
         </button>
       </div>
 
       {/* ---------- CONTENIDO EXPORTABLE ---------- */}
       <div ref={refPDF} className="space-y-4">
-        {/* Header con título dinámico */}
         <HeaderPartido
           modoPrincipal={modoPrincipal}
           nombreEquipo={nombreEquipo}
@@ -551,7 +590,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
           nombreRivalDe={nombreRivalDe}
           nombreDe={nombreDe}
           filtroSet={filtroSet}
-          hayFiltrosTacticosActivos={hayFiltrosTacticos(filtrosTacticos)}
+          hayFiltrosTacticosActivos={hayFiltrosTacticosActivos}
         />
 
         {/* Barra de modos principales */}
@@ -564,11 +603,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
             }`}
           >
-            <IconoVoley
-              tipo="partido"
-              size={18}
-              className={modoPrincipal === "partido" ? "text-white" : "text-slate-400"}
-            />
             Ver partido
           </button>
           <button
@@ -579,15 +613,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
             }`}
           >
-            <IconoVoley
-              tipo="comparar"
-              size={18}
-              className={
-                modoPrincipal === "comparar-partidos"
-                  ? "text-white"
-                  : "text-slate-400"
-              }
-            />
             Comparar partidos ({partidosComparados.length}/3)
           </button>
           <button
@@ -598,22 +623,12 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
             }`}
           >
-            <IconoVoley
-              tipo="jugador"
-              size={18}
-              className={
-                modoPrincipal === "jugador-por-partidos"
-                  ? "text-white"
-                  : "text-slate-400"
-              }
-            />
             Jugador por partidos
           </button>
         </div>
 
         {/* Layout de 3 columnas */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-          {/* Columna izquierda: filtros + listas */}
           <ListaPartidos
             modoPrincipal={modoPrincipal}
             nombreEquipo={nombreEquipo}
@@ -651,11 +666,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                 {!partidoDetalle || !statsPartido ? (
                   <div
                     className="rounded-2xl p-8 sm:p-12 text-center h-full flex items-center justify-center"
-                    style={{
-                      background: "var(--sx-surface-1)",
-                      border: "1px solid var(--sx-border)",
-                      boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-                    }}
+                    style={cardBase}
                   >
                     <div>
                       <p className="text-4xl mb-3">👈</p>
@@ -667,12 +678,19 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                       </p>
                     </div>
                   </div>
+                ) : cargandoVisuales ? (
+                  <p
+                    className="text-center py-12"
+                    style={{ color: "var(--sx-text-secondary)" }}
+                  >
+                    Cargando datos del análisis...
+                  </p>
                 ) : (
                   <VistaDetallePartido
                     partidoDetalle={partidoDetalle}
                     statsPartido={statsPartido}
                     accionesDelPartido={accionesDelPartido}
-                    accionesVisualesParaAnalisis={accionesVisualesParaAnalisis}
+                    accionesVisualesParaAnalisis={accionesVisuales}
                     idsJugadores={idsJugadores}
                     armadores={armadores}
                     jugadores={jugadores}
@@ -682,9 +700,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     nombreEquipo={nombreEquipo}
                     nombreRivalDe={nombreRivalDe}
                     nombreDe={nombreDe}
-                    hayFiltrosTacticosActivos={hayFiltrosTacticos(
-                      filtrosTacticos
-                    )}
+                    hayFiltrosTacticosActivos={hayFiltrosTacticosActivos}
                     crudasEnPDF={crudasEnPDF}
                   />
                 )}

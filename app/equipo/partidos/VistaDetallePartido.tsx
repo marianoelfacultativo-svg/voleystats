@@ -37,9 +37,7 @@ import GraficoBarrasFundamentoPartidos from "../GraficoBarrasFundamentoPartidos"
 import TablaJugadoresPorSet from "../TablaJugadoresPorSet";
 import TablaEstadisticasCrudas from "../TablaEstadisticasCrudas";
 import IconoVoley from "../IconoVoley";
-import {
-  calcularPromediosRecepcionEquipo,
-} from "./helpers";
+import { calcularPromediosRecepcionEquipo } from "./helpers";
 import {
   COLORES_COMPARACION,
   FUNDAMENTOS,
@@ -64,6 +62,8 @@ interface Props {
     totales: EstadisticasJugador;
   };
   accionesDelPartido: AccionDB[];
+  /** Acciones unificadas (propias + rivales, con flip resueltos)
+   *  para el análisis de consecuencias. Ya vienen del padre. */
   accionesVisualesParaAnalisis: AccionVisual[];
   idsJugadores: string[];
   armadores: Set<string>;
@@ -137,7 +137,7 @@ export default function VistaDetallePartido({
     setJugadoresComparados([...jugadoresComparados, id]);
   };
 
-  // -------- Cálculos memo-por-render --------
+  // -------- Cálculos --------
   const promediosRecepcionEquipo = calcularPromediosRecepcionEquipo(
     accionesDelPartido,
     armadores
@@ -151,7 +151,8 @@ export default function VistaDetallePartido({
   }));
 
   const esComparacionArmador =
-    jugadoresComparadosData.length > 0 && armadores.has(jugadoresComparadosData[0].id);
+    jugadoresComparadosData.length > 0 &&
+    armadores.has(jugadoresComparadosData[0].id);
 
   const statsJugadoresComparados = jugadoresComparadosData
     .filter((s) => s.est)
@@ -214,6 +215,13 @@ export default function VistaDetallePartido({
     ),
   }));
 
+  // Lista de jugadores para el dropdown de "jugador específico"
+  // en el panel de consecuencias.
+  const jugadoresDisponibles = jugadores.map((j) => ({
+    id: j.id,
+    nombre: nombreDe(j.id),
+  }));
+
   return (
     <div className="space-y-4">
       {/* ---------- BARRA DE TABS ---------- */}
@@ -229,7 +237,9 @@ export default function VistaDetallePartido({
           <IconoVoley
             tipo="dashboard"
             size={14}
-            className={modoDetalle === "analisis" ? "text-white" : "text-slate-400"}
+            className={
+              modoDetalle === "analisis" ? "text-white" : "text-slate-400"
+            }
           />
           Análisis
         </button>
@@ -245,7 +255,9 @@ export default function VistaDetallePartido({
             tipo="comparar"
             size={14}
             className={
-              modoDetalle === "comparar-jugadores" ? "text-white" : "text-slate-400"
+              modoDetalle === "comparar-jugadores"
+                ? "text-white"
+                : "text-slate-400"
             }
           />
           Comparar jugadores ({jugadoresComparados.length}/3)
@@ -261,7 +273,9 @@ export default function VistaDetallePartido({
           <IconoVoley
             tipo="crudas"
             size={14}
-            className={modoDetalle === "crudas" ? "text-white" : "text-slate-400"}
+            className={
+              modoDetalle === "crudas" ? "text-white" : "text-slate-400"
+            }
           />
           Estadísticas crudas
         </button>
@@ -330,6 +344,7 @@ export default function VistaDetallePartido({
           <AnalisisConsecuencias
             acciones={accionesVisualesParaAnalisis}
             nombreDeJugador={(id) => (id ? nombreDe(id) : "—")}
+            jugadoresDisponibles={jugadoresDisponibles}
             onIrAPunto={onIrAPunto}
             titulo="Análisis de consecuencias del partido"
           />
@@ -339,7 +354,11 @@ export default function VistaDetallePartido({
       {/* ---------- TAB: COMPARAR JUGADORES ---------- */}
       {modoDetalle === "comparar-jugadores" && (
         <>
-          <div className="rounded-2xl p-3 sm:p-5" style={cardBase} data-pdf-ignorar>
+          <div
+            className="rounded-2xl p-3 sm:p-5"
+            style={cardBase}
+            data-pdf-ignorar
+          >
             <h4 className="font-semibold text-white mb-3">
               Elegí hasta 3 jugadores (mismo rol)
             </h4>
@@ -350,7 +369,8 @@ export default function VistaDetallePartido({
                 )
                 .map((j) => {
                   const idx = jugadoresComparados.indexOf(j.id);
-                  const colorComp = idx !== -1 ? COLORES_COMPARACION[idx] : null;
+                  const colorComp =
+                    idx !== -1 ? COLORES_COMPARACION[idx] : null;
 
                   let bloqueado = false;
                   if (jugadoresComparados.length > 0 && idx === -1) {
@@ -418,7 +438,9 @@ export default function VistaDetallePartido({
 
                 {!esComparacionArmador && (
                   <div className="rounded-2xl p-3 sm:p-4" style={cardBase}>
-                    <GraficoRecepcionPorSet series={seriesRecepcionJugadores} />
+                    <GraficoRecepcionPorSet
+                      series={seriesRecepcionJugadores}
+                    />
                   </div>
                 )}
 
@@ -459,7 +481,9 @@ export default function VistaDetallePartido({
                     {statsJugadoresComparados.map((s) => (
                       <tr
                         key={s.id}
-                        style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                        style={{
+                          borderBottom: "1px solid rgba(255,255,255,0.04)",
+                        }}
                       >
                         <td className="py-2 px-3 font-medium">
                           <span
@@ -496,9 +520,15 @@ export default function VistaDetallePartido({
               </div>
             </div>
           ) : (
-            <div className="rounded-2xl p-8 sm:p-12 text-center" style={cardBase}>
+            <div
+              className="rounded-2xl p-8 sm:p-12 text-center"
+              style={cardBase}
+            >
               <p className="text-4xl mb-3">👆</p>
-              <p className="font-medium" style={{ color: "var(--sx-text-primary)" }}>
+              <p
+                className="font-medium"
+                style={{ color: "var(--sx-text-primary)" }}
+              >
                 Elegí jugadores arriba para ver la comparación
               </p>
             </div>
@@ -526,9 +556,11 @@ export default function VistaDetallePartido({
       {/* ---------- TAB: ANALISIS ---------- */}
       {modoDetalle === "analisis" && (
         <>
-          {/* 3 stats principales */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
-            <div className="rounded-2xl p-3 sm:p-4 text-center" style={cardBase}>
+            <div
+              className="rounded-2xl p-3 sm:p-4 text-center"
+              style={cardBase}
+            >
               <p
                 className="text-xs uppercase tracking-wider font-semibold"
                 style={{ color: "var(--sx-text-secondary)" }}
@@ -575,7 +607,6 @@ export default function VistaDetallePartido({
             </div>
           </div>
 
-          {/* Radar equipo + 5 barras por fundamento */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
             <div className="rounded-2xl p-2 col-span-1" style={cardBase}>
               <RadarEquipo equipo={statsPartido.totales} />
@@ -589,10 +620,11 @@ export default function VistaDetallePartido({
             ))}
           </div>
 
-          {/* Recepción equipo + torta rival */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             <div className="rounded-2xl p-3 sm:p-5" style={cardBase}>
-              <GraficoRecepcionEquipoPorSet promedios={promediosRecepcionEquipo} />
+              <GraficoRecepcionEquipoPorSet
+                promedios={promediosRecepcionEquipo}
+              />
             </div>
             <div className="rounded-2xl p-3 sm:p-5" style={cardBase}>
               <GraficoTortaRival
@@ -602,7 +634,6 @@ export default function VistaDetallePartido({
             </div>
           </div>
 
-          {/* Tabla por jugador con detalle expandible */}
           <TablaJugadoresPorSet
             jugadoresIds={jugadores.map((j) => j.id)}
             nombresJugadores={Object.fromEntries(
@@ -613,7 +644,6 @@ export default function VistaDetallePartido({
             statsEquipoTotales={statsPartido.totales}
           />
 
-          {/* Tabla por fundamento */}
           <div
             className="rounded-2xl p-3 sm:p-5 overflow-x-auto"
             style={cardBase}
@@ -656,7 +686,9 @@ export default function VistaDetallePartido({
                   return (
                     <tr
                       key={f}
-                      style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                      style={{
+                        borderBottom: "1px solid rgba(255,255,255,0.04)",
+                      }}
                     >
                       <td className="py-2.5 px-3 font-bold text-white">
                         {NOMBRES[f]}
@@ -701,7 +733,6 @@ export default function VistaDetallePartido({
             </table>
           </div>
 
-          {/* Crudas extra para PDF */}
           {crudasEnPDF && (
             <div className="rounded-2xl p-3 sm:p-6" style={cardBase}>
               <TablaEstadisticasCrudas

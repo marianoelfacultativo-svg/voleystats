@@ -17,8 +17,10 @@ import {
   COLORES_NIVEL_CLASES,
   type EstadisticasJugador,
 } from "@/lib/estadisticas";
-import type { AccionVisual } from "./adaptadorUnificadoV2";
-import { zonaCrudaDeCelda } from "@/lib/mapeoV2";
+import {
+  cargarAccionesUnificadas,
+  type AccionVisual,
+} from "./adaptadorUnificadoV2";
 import RadarJugador from "./RadarJugador";
 import GraficoArmadosPorSet from "./GraficoArmadosPorSet";
 import GraficoRecepcionPorSet from "./GraficoRecepcionPorSet";
@@ -63,10 +65,7 @@ const FUNDAMENTOS_BARRAS = [
   "defensa",
 ] as const;
 
-const ORDEN_RANKINGS: {
-  id: string;
-  titulo: string;
-}[] = [
+const ORDEN_RANKINGS: { id: string; titulo: string }[] = [
   { id: "recepcion", titulo: "Recepción" },
   { id: "ataque", titulo: "Ataque" },
   { id: "bloqueo", titulo: "Bloqueo" },
@@ -78,8 +77,10 @@ const ORDEN_RANKINGS: {
 const COLORES_COMPARACION = ["#EF4444", "#8B5CF6", "#3B82F6"];
 
 function colorPodio(puesto: number): string {
-  if (puesto === 1) return "bg-amber-400/20 text-amber-300 border border-amber-400/50";
-  if (puesto === 2) return "bg-slate-300/20 text-slate-200 border border-slate-300/40";
+  if (puesto === 1)
+    return "bg-amber-400/20 text-amber-300 border border-amber-400/50";
+  if (puesto === 2)
+    return "bg-slate-300/20 text-slate-200 border border-slate-300/40";
   return "bg-amber-700/25 text-amber-200 border border-amber-700/40";
 }
 
@@ -113,7 +114,8 @@ function calcularBarrasPorFundamento(
       if (v === "punto") cat = "positivas";
       else if (v === "error") cat = "negativas";
     } else if (fund === "recepcion") {
-      if (v === "positiva" || v === "2x_positiva" || v === "perfecta") cat = "positivas";
+      if (v === "positiva" || v === "2x_positiva" || v === "perfecta")
+        cat = "positivas";
       else if (
         v === "negativa" ||
         v === "2x_negativa" ||
@@ -152,84 +154,6 @@ function calcularBarrasPorFundamento(
   return out;
 }
 
-// ============================================================
-// ADAPTER: AccionDB[] → AccionVisual[] (para análisis de consecuencias)
-// ============================================================
-//
-// `AccionDB` no trae zonas ni orden; las derivamos:
-//   - zona_origen/zona_destino: usando zonaCrudaDeCelda().
-//   - orden: contador incremental por punto.
-//
-// Solo se usa en MiEquipo para el panel de análisis. Todas las
-// acciones vienen del equipo propio (cargarAccionesCompatibles ya
-// filtra por equipo), así que es_rival siempre es false.
-// ============================================================
-
-function accionesDBaVisualParaAnalisis(
-  acciones: AccionDB[]
-): AccionVisual[] {
-  const contadorPorPunto = new Map<string, number>();
-  return acciones.map((a) => {
-    const k = `${a.set_numero}-${a.punto_numero ?? 0}`;
-    const orden = (contadorPorPunto.get(k) ?? 0) + 1;
-    contadorPorPunto.set(k, orden);
-
-    const tipo = a.fundamento === "armados" ? "armado" : a.fundamento;
-
-    const zonaOrigen =
-      a.origen_celda && /^F[1-3]-/.test(a.origen_celda)
-        ? zonaCrudaDeCelda(a.origen_celda)
-        : null;
-    const zonaDestino =
-      a.destino_celda && /^F[1-3]-/.test(a.destino_celda)
-        ? zonaCrudaDeCelda(a.destino_celda)
-        : null;
-
-    return {
-      id: `${a.jugador_id}|${a.set_numero}|${a.punto_numero ?? 0}|${orden}`,
-      partido_id: a.partido_id ?? "",
-      set_numero: a.set_numero,
-      punto_numero: a.punto_numero ?? 0,
-      orden,
-      tipo,
-      subtipo: a.subtipo_original ?? a.valoracion,
-      es_rival: false,
-      jugador_id: a.jugador_id,
-      lado: "propio",
-      equipo_id: null,
-      origen_celda: a.origen_celda ?? null,
-      origen_mini: a.origen_mini ?? null,
-      destino_celda: a.destino_celda ?? null,
-      destino_mini: a.destino_mini ?? null,
-      desvios: [],
-      variante: a.variante ?? null,
-      tipo_saque: a.tipo_saque ?? null,
-      velocidad: a.velocidad ?? null,
-      x2: false,
-      oculta: false,
-      posicion_inicial_celda: a.posicion_inicial_celda ?? null,
-      posicion_inicial_mini: a.posicion_inicial_mini ?? null,
-      es_error: false,
-      zona_origen: zonaOrigen,
-      zona_destino: zonaDestino,
-      rotacion_numero: null,
-      rol_jugador: null,
-      zona_jugador: null,
-      origen_x: null,
-      origen_y: null,
-      destino_x: null,
-      destino_y: null,
-      posicion_inicial_x: null,
-      posicion_inicial_y: null,
-      zona_origen_codigo: null,
-      zona_destino_codigo: null,
-      subtipo_real: null,
-      es_ultima_del_punto: false,
-      calidad_armado_previo: null,
-    };
-  });
-}
-
 export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
   const [acciones, setAcciones] = useState<AccionDB[]>([]);
@@ -240,6 +164,14 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
   const [comparados, setComparados] = useState<string[]>([]);
   const [cargando, setCargando] = useState(true);
   const [descargando, setDescargando] = useState(false);
+
+  // ---------- Dataset paralelo para el análisis de consecuencias ----------
+  // Se carga LAZY (solo cuando el usuario selecciona un jugador) y
+  // solo una vez por montaje (cacheado con `visualesCargadasRef`).
+  const [partidosIds, setPartidosIds] = useState<string[]>([]);
+  const [accionesVisuales, setAccionesVisuales] = useState<AccionVisual[]>([]);
+  const [cargandoVisuales, setCargandoVisuales] = useState(false);
+  const visualesCargadasRef = useRef(false);
 
   const refPDF = useRef<HTMLDivElement>(null);
 
@@ -276,6 +208,8 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
       }
 
       const idsPartidos = partRes.data.map((p) => p.id);
+      setPartidosIds(idsPartidos);
+
       if (idsPartidos.length === 0) {
         setJugadores(jugadoresData);
         setAcciones([]);
@@ -293,11 +227,36 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     });
   }, [equipoId]);
 
-  // ✅ FIX #310: este useMemo va ANTES del early return "if (cargando)".
-  // Universo: TODAS las acciones del equipo en todos sus partidos.
-  const accionesParaAnalisis: AccionVisual[] = useMemo(() => {
-    return accionesDBaVisualParaAnalisis(acciones);
-  }, [acciones]);
+  // ---------- Carga LAZY de accionesVisuales ----------
+  // Se dispara la primera vez que el usuario selecciona un jugador.
+  // Trae TODAS las acciones del partido (propias + rivales) con
+  // es_ultima_del_punto y flip resueltos por `cargarAccionesUnificadas`.
+  useEffect(() => {
+    if (!jugadorSeleccionado) return;
+    if (partidosIds.length === 0 || !equipoId) return;
+    if (visualesCargadasRef.current) return;
+
+    let cancelled = false;
+    setCargandoVisuales(true);
+
+    Promise.all(
+      partidosIds.map((pid) => cargarAccionesUnificadas(pid, equipoId))
+    )
+      .then((results) => {
+        if (cancelled) return;
+        setAccionesVisuales(results.flatMap((r) => r.acciones));
+        setCargandoVisuales(false);
+        visualesCargadasRef.current = true;
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setCargandoVisuales(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [jugadorSeleccionado, partidosIds, equipoId]);
 
   if (cargando) {
     return <p className="text-slate-500 text-center py-12">Cargando...</p>;
@@ -330,7 +289,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     ? calcularBarrasPorFundamento(acciones, jugadorSeleccionado)
     : null;
 
-  // Helper: nombre del jugador a partir de su id
   const nombreDeJugador = (id: string | null): string => {
     if (!id) return "—";
     const j = jugadores.find((x) => x.id === id);
@@ -466,12 +424,18 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     }
   };
 
+  const jugadoresDisponibles = jugadores.map((j) => ({
+    id: j.id,
+    nombre: nombreDeJugador(j.id),
+  }));
+
   if (jugadores.length === 0) {
     return (
       <div
         className="card p-8 sm:p-12 text-center max-w-lg mx-auto"
         style={{
-          background: "linear-gradient(145deg, rgba(15,29,53,0.9), rgba(10,22,40,0.95))",
+          background:
+            "linear-gradient(145deg, rgba(15,29,53,0.9), rgba(10,22,40,0.95))",
           borderColor: "var(--sx-border-bright)",
         }}
       >
@@ -488,8 +452,12 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
         <h3 className="text-lg font-bold text-white">
           Sin jugadores registrados
         </h3>
-        <p className="text-sm mt-1.5" style={{ color: "var(--sx-text-secondary)" }}>
-          <span className="text-white font-semibold">{nombreEquipo}</span> todavía no tiene jugadores cargados en la plantilla.
+        <p
+          className="text-sm mt-1.5"
+          style={{ color: "var(--sx-text-secondary)" }}
+        >
+          <span className="text-white font-semibold">{nombreEquipo}</span>{" "}
+          todavía no tiene jugadores cargados en la plantilla.
         </p>
       </div>
     );
@@ -507,7 +475,10 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                 : "text-slate-400 hover:text-white hover:bg-white/[0.05]"
             }`}
           >
-            <User size={13} className={modo === "individual" ? "text-white" : "text-slate-400"} />
+            <User
+              size={13}
+              className={modo === "individual" ? "text-white" : "text-slate-400"}
+            />
             <span>Ficha Individual</span>
           </button>
           <button
@@ -518,7 +489,10 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                 : "text-slate-400 hover:text-white hover:bg-white/[0.05]"
             }`}
           >
-            <GitCompare size={13} className={modo === "comparar" ? "text-white" : "text-slate-400"} />
+            <GitCompare
+              size={13}
+              className={modo === "comparar" ? "text-white" : "text-slate-400"}
+            />
             <span>Comparar ({comparados.length}/3)</span>
           </button>
         </div>
@@ -554,8 +528,12 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
             {modo === "individual" ? "Plantel" : "Elegí hasta 3 jugadores"}
           </h3>
           {modo === "comparar" && (
-            <p className="text-xs mb-3" style={{ color: "var(--sx-text-secondary)" }}>
-              Armadores con armadores, jugadores de cancha con jugadores de cancha.
+            <p
+              className="text-xs mb-3"
+              style={{ color: "var(--sx-text-secondary)" }}
+            >
+              Armadores con armadores, jugadores de cancha con jugadores de
+              cancha.
             </p>
           )}
           <div className="space-y-1.5">
@@ -695,8 +673,12 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   <p className="text-white font-bold text-base">
                     Elegí un jugador del plantel
                   </p>
-                  <p className="text-xs mt-1" style={{ color: "var(--sx-text-secondary)" }}>
-                    Seleccioná una ficha en la lista izquierda para visualizar su radar, mapa de calor y desglose estadístico.
+                  <p
+                    className="text-xs mt-1"
+                    style={{ color: "var(--sx-text-secondary)" }}
+                  >
+                    Seleccioná una ficha en la lista izquierda para visualizar
+                    su radar, mapa de calor y desglose estadístico.
                   </p>
                 </div>
               </div>
@@ -706,7 +688,8 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                 style={{
                   background: "var(--sx-surface-1)",
                   border: "1px solid var(--sx-border-bright)",
-                  boxShadow: "0 8px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)",
+                  boxShadow:
+                    "0 8px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)",
                 }}
               >
                 {/* Header de la ficha */}
@@ -750,7 +733,10 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                         </span>
                       )}
                     </div>
-                    <p className="text-xs mt-1 font-semibold" style={{ color: "var(--sx-text-secondary)" }}>
+                    <p
+                      className="text-xs mt-1 font-semibold"
+                      style={{ color: "var(--sx-text-secondary)" }}
+                    >
                       {nombreEquipo}
                     </p>
                   </div>
@@ -850,7 +836,9 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                             <p className="text-xs font-semibold text-slate-300">
                               {NOMBRES_FUNDAMENTO[fund] ?? fund}
                             </p>
-                            <p className={`text-lg font-black mt-0.5 ${col.text}`}>
+                            <p
+                              className={`text-lg font-black mt-0.5 ${col.text}`}
+                            >
                               {val > 0 ? "+" : ""}
                               {val.toFixed(2)}
                             </p>
@@ -882,8 +870,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     >
                       {ORDEN_RANKINGS.map((r) => {
                         const texto = textosRanking[r.id];
-                        const puesto =
-                          podios[jugadorActual.jugador_id]?.[r.id];
+                        const puesto = podios[jugadorActual.jugador_id]?.[r.id];
                         return (
                           <div
                             key={r.id}
@@ -1011,7 +998,9 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                   <div className="card p-3 rounded-xl text-center border border-white/10 shadow-sm">
-                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Saldo</p>
+                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                      Saldo
+                    </p>
                     <p
                       className={`text-xl sm:text-2xl font-bold tabular-nums ${
                         jugadorActual.saldoTotal > 0
@@ -1069,13 +1058,17 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                     </p>
                   </div>
                   <div className="p-3 bg-emerald-950/30 border border-emerald-500/30 rounded-xl text-center shadow-sm">
-                    <p className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">Puntos</p>
+                    <p className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">
+                      Puntos
+                    </p>
                     <p className="text-xl sm:text-2xl font-bold text-emerald-300 tabular-nums">
                       {jugadorActual.totalPuntos}
                     </p>
                   </div>
                   <div className="p-3 bg-rose-950/30 border border-rose-500/30 rounded-xl text-center shadow-sm">
-                    <p className="text-[11px] font-semibold text-rose-400 uppercase tracking-wider">Errores</p>
+                    <p className="text-[11px] font-semibold text-rose-400 uppercase tracking-wider">
+                      Errores
+                    </p>
                     <p className="text-xl sm:text-2xl font-bold text-rose-300 tabular-nums">
                       {jugadorActual.totalErrores}
                     </p>
@@ -1088,12 +1081,19 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
                   data-pdf-ignorar
                 >
-                  <AnalisisConsecuencias
-                    acciones={accionesParaAnalisis}
-                    jugadorId={jugadorSeleccionado ?? undefined}
-                    nombreDeJugador={nombreDeJugador}
-                    titulo={`Consecuencias tácticas · ${datosJugador.nombre}`}
-                  />
+                  {cargandoVisuales ? (
+                    <p className="text-xs text-slate-500 text-center py-3">
+                      Cargando datos para el análisis...
+                    </p>
+                  ) : (
+                    <AnalisisConsecuencias
+                      acciones={accionesVisuales}
+                      jugadorId={jugadorSeleccionado ?? undefined}
+                      nombreDeJugador={nombreDeJugador}
+                      jugadoresDisponibles={jugadoresDisponibles}
+                      titulo={`Consecuencias tácticas · ${datosJugador.nombre}`}
+                    />
+                  )}
                 </div>
               </div>
             )
@@ -1102,7 +1102,10 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
               {comparadosData.length === 0 ? (
                 <div className="p-8 sm:p-12 text-center h-full flex items-center justify-center">
                   <div>
-                    <GitCompare size={36} className="text-slate-400 mx-auto mb-3" />
+                    <GitCompare
+                      size={36}
+                      className="text-slate-400 mx-auto mb-3"
+                    />
                     <p className="text-slate-200 font-semibold text-sm">
                       Elegí hasta 3 jugadores del plantel para comparar
                     </p>
@@ -1180,7 +1183,9 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                           <th className="py-2.5 px-3 text-right">Puntos</th>
                           <th className="py-2.5 px-3 text-right">Errores</th>
                           <th className="py-2.5 px-3 text-right">Saldo</th>
-                          <th className="py-2.5 px-3 text-right">Val. Media</th>
+                          <th className="py-2.5 px-3 text-right">
+                            Val. Media
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1196,9 +1201,7 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                                   className="inline-block w-3 h-3 rounded-full mr-2 align-middle"
                                   style={{ backgroundColor: s.color }}
                                 />
-                                <span className="text-white">
-                                  {s.nombre}
-                                </span>
+                                <span className="text-white">{s.nombre}</span>
                               </td>
                               <td className="py-2.5 px-3 text-right text-slate-300 tabular-nums">
                                 {est.totalAcciones}

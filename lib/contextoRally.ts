@@ -15,7 +15,10 @@
 //
 // NO modifica las acciones. Devuelve un Map<accionId, ContextoRally>.
 //
-// Todo se calcula en memoria, sin tocar Supabase.
+// IMPORTANTE: la agrupación por punto usa `${partido_id}|${set}|${punto}`
+// para que funcione bien cuando se pasan acciones de varios partidos
+// juntos (caso "historial completo del equipo" en MiEquipo).
+// Antes era `${set}-${punto}` y mezclaba los marcadores entre partidos.
 // ============================================================
 
 import type { AccionVisual } from "../app/equipo/adaptadorUnificadoV2";
@@ -56,10 +59,10 @@ export interface ContextoRally {
   puntosRivales: number;
   estadoMarcador: EstadoMarcador;
   diferencia: DiferenciaMarcador;
-  esPuntoCritico: boolean; // ≤ 5 puntos para cerrar el set
+  esPuntoCritico: boolean;
   // --- Rachas ---
-  rachaGanadosActual: number; // racha de puntos ganados consecutivos
-  rachaPerdidosActual: number; // racha de puntos perdidos consecutivos
+  rachaGanadosActual: number;
+  rachaPerdidosActual: number;
 }
 
 // ------------------------------------------------------------
@@ -68,13 +71,10 @@ export interface ContextoRally {
 
 function baseSubtipo(a: AccionVisual): string {
   const s =
-    a.subtipo !== null && a.subtipo !== undefined
-      ? String(a.subtipo)
-      : "";
+    a.subtipo !== null && a.subtipo !== undefined ? String(a.subtipo) : "";
   return s.startsWith("toque:") ? s.slice(6) : s;
 }
 
-/** Determina la ubicación del jugador según zona_jugador. */
 function ubicacionPorZona(zona: number | null): UbicacionJugador {
   if (zona === null) return "otro";
   if (zona === 1 || zona === 5 || zona === 6) return "zaguero";
@@ -82,8 +82,10 @@ function ubicacionPorZona(zona: number | null): UbicacionJugador {
   return "otro";
 }
 
-/** Diferencia de marcador en tramos. */
-function tramoDiferencia(puntosPropios: number, puntosRivales: number): DiferenciaMarcador {
+function tramoDiferencia(
+  puntosPropios: number,
+  puntosRivales: number
+): DiferenciaMarcador {
   const diff = Math.abs(puntosPropios - puntosRivales);
   if (diff === 0) return "0";
   if (diff <= 2) return "1-2";
@@ -91,43 +93,34 @@ function tramoDiferencia(puntosPropios: number, puntosRivales: number): Diferenc
   return "6+";
 }
 
-/** ¿El set estaba en punto crítico? (≤ 5 para cerrar). */
 function esPuntoCritico(puntosPropios: number, puntosRivales: number): boolean {
   const max = Math.max(puntosPropios, puntosRivales);
-  // Un set normal va a 25. Punto crítico = 20+.
   return max >= 20;
 }
 
-/** ¿Cuántos puntos le faltan al que va ganando para cerrar? */
-function puntosParaCerrar(puntosPropios: number, puntosRivales: number): number {
-  const esPropioElQueVa = puntosPropios >= puntosRivales;
-  const propio = esPropioElQueVa ? puntosPropios : puntosRivales;
+function puntosParaCerrar(
+  puntosPropios: number,
+  puntosRivales: number
+): number {
+  const propio = Math.max(puntosPropios, puntosRivales);
   return Math.max(0, 25 - propio);
 }
 
-/**
- * Determina el "inicio del punto" mirando el saque inicial y la
- * primera recepción (si hubo).
- */
 function calcularInicioPunto(lineas: AccionVisual[]): InicioPunto {
   if (lineas.length === 0) return "otro";
 
-  // Buscar el primer saque.
   const saque = lineas.find((a) => a.tipo === "saque");
   if (!saque) return "otro";
 
   const saquePropio = !saque.es_rival;
   const subSaque = baseSubtipo(saque);
 
-  // ¿Hubo ace?
   if (subSaque === "ace") {
     return saquePropio ? "ace_propio" : "ace_rival";
   }
 
-  // Buscar la primera recepción.
   const recepcion = lineas.find((a) => a.tipo === "recepcion");
   if (!recepcion) {
-    // Sin recepción y sin ace → por lo general fue error directo de saque.
     if (subSaque === "negativo") {
       return saquePropio ? "error_directo" : "error_directo";
     }
@@ -142,10 +135,7 @@ function calcularInicioPunto(lineas: AccionVisual[]): InicioPunto {
   if (subRec === "intermedia") {
     return "recepcion_neutra";
   }
-  if (
-    subRec === "negativa" ||
-    subRec === "doble_negativa"
-  ) {
+  if (subRec === "negativa" || subRec === "doble_negativa") {
     return "recepcion_negativa";
   }
   if (subRec === "overpass") {
@@ -158,22 +148,7 @@ function calcularInicioPunto(lineas: AccionVisual[]): InicioPunto {
   return "otro";
 }
 
-/**
- * Determina la fase del rally para una acción dada, mirando hacia
- * atrás en la secuencia del punto.
- *
- * Reglas:
- *   - Si es la 1ra acción del punto → side-out (o recepción inicial).
- *   - Si la anterior fue una recepción → estamos en side-out.
- *   - Si la anterior fue libre rival → free-ball.
- *   - Si la anterior fue defensa/bloqueo propio → contraataque.
- *   - Si la anterior fue ataque rival defendido → contraataque.
- *   - Si la anterior fue bloqueo rival → contraataque.
- */
-function calcularFaseRally(
-  idx: number,
-  lineas: AccionVisual[]
-): FaseRally {
+function calcularFaseRally(idx: number, lineas: AccionVisual[]): FaseRally {
   if (idx === 0) return "side-out";
 
   const anterior = lineas[idx - 1];
@@ -181,25 +156,18 @@ function calcularFaseRally(
   if (anterior.tipo === "recepcion" && !anterior.es_rival) {
     return "side-out";
   }
-
   if (anterior.tipo === "libre" && anterior.es_rival) {
     return "free-ball";
   }
-
   if (
     (anterior.tipo === "defensa" && !anterior.es_rival) ||
     (anterior.tipo === "bloqueo" && !anterior.es_rival)
   ) {
     return "contraataque";
   }
-
-  // Si la anterior fue un ataque rival (aunque no haya defensa propia registrada),
-  // asumimos contraataque.
   if (anterior.tipo === "ataque" && anterior.es_rival) {
     return "contraataque";
   }
-
-  // Si la anterior fue libre propia → seguimos en la misma fase.
   if (anterior.tipo === "libre" && !anterior.es_rival) {
     return "side-out";
   }
@@ -211,66 +179,89 @@ function calcularFaseRally(
 // CÁLCULO PRINCIPAL
 // ------------------------------------------------------------
 
+interface GrupoPunto {
+  partidoId: string;
+  set: number;
+  punto: number;
+  lista: AccionVisual[];
+}
+
 /**
  * Devuelve un Map<accionId, ContextoRally> con todo el contexto
  * derivado de cada acción.
  *
- * @param acciones Universo completo del partido (o filtrado, pero
- *                 siempre DEBE incluir todos los puntos enteros para
- *                 que el cálculo del rally sea correcto).
+ * @param acciones Puede ser el universo de UN partido o de varios
+ *                 partidos juntos. Los puntos se identifican por
+ *                 `${partido_id}|${set}|${punto}` para no mezclar
+ *                 partidos entre sí.
  */
 export function calcularContextoRally(
   acciones: AccionVisual[]
 ): Map<string, ContextoRally> {
   const resultado = new Map<string, ContextoRally>();
 
-  // Agrupar por punto, ordenado por `orden`.
-  const porPunto = new Map<string, AccionVisual[]>();
+  // 1. Agrupar por (partido, set, punto).
+  const gruposMap = new Map<string, GrupoPunto>();
   for (const a of acciones) {
     if (a.oculta) continue;
-    const k = `${a.set_numero}-${a.punto_numero}`;
-    let lista = porPunto.get(k);
-    if (!lista) {
-      lista = [];
-      porPunto.set(k, lista);
+    const partidoId = a.partido_id || "sin-partido";
+    const k = `${partidoId}|${a.set_numero}|${a.punto_numero}`;
+    let g = gruposMap.get(k);
+    if (!g) {
+      g = {
+        partidoId,
+        set: a.set_numero,
+        punto: a.punto_numero,
+        lista: [],
+      };
+      gruposMap.set(k, g);
     }
-    lista.push(a);
-  }
-  for (const lista of porPunto.values()) {
-    lista.sort((x, y) => x.orden - y.orden);
+    g.lista.push(a);
   }
 
-  // Ordenar los puntos por set + punto para calcular el marcador.
-  const puntosOrdenados = Array.from(porPunto.entries())
-    .map(([k, lista]) => ({
-      key: k,
-      lista,
-      set: parseInt(k.split("-")[0], 10),
-      punto: parseInt(k.split("-")[1], 10),
-    }))
-    .sort((a, b) => {
-      if (a.set !== b.set) return a.set - b.set;
-      return a.punto - b.punto;
-    });
+  for (const g of gruposMap.values()) {
+    g.lista.sort((x, y) => x.orden - y.orden);
+  }
 
-  // Estado de marcador por set (acumulativo)
-  const marcadorPorSet = new Map<number, { propios: number; rivales: number }>();
+  // 2. Ordenar los puntos por (partido, set, punto).
+  const puntosOrdenados = Array.from(gruposMap.values()).sort((a, b) => {
+    if (a.partidoId !== b.partidoId) {
+      return a.partidoId.localeCompare(b.partidoId);
+    }
+    if (a.set !== b.set) return a.set - b.set;
+    return a.punto - b.punto;
+  });
+
+  // 3. Marcador por (partido, set) y rachas globales.
+  //    Las rachas se resetean al cambiar de partido o de set.
+  const marcadorPorSet = new Map<
+    string,
+    { propios: number; rivales: number }
+  >();
   let rachaGanados = 0;
   let rachaPerdidos = 0;
+  let ultimoPartido = "";
   let ultimoSet = -1;
 
   for (const grupo of puntosOrdenados) {
-    const { lista, set } = grupo;
+    const { lista, set, partidoId } = grupo;
 
-    // Reset al cambiar de set
-    if (set !== ultimoSet) {
-      marcadorPorSet.set(set, { propios: 0, rivales: 0 });
+    // Reset al cambiar de partido o de set.
+    if (partidoId !== ultimoPartido || set !== ultimoSet) {
+      const k = `${partidoId}|${set}`;
+      marcadorPorSet.set(k, { propios: 0, rivales: 0 });
       rachaGanados = 0;
       rachaPerdidos = 0;
+      ultimoPartido = partidoId;
       ultimoSet = set;
     }
 
-    const marcador = marcadorPorSet.get(set) ?? { propios: 0, rivales: 0 };
+    const setKey = `${partidoId}|${set}`;
+    const marcador = marcadorPorSet.get(setKey) ?? {
+      propios: 0,
+      rivales: 0,
+    };
+
     const inicioPunto = calcularInicioPunto(lista);
 
     // ¿Cómo terminó este punto? Para actualizar marcador y rachas.
@@ -281,7 +272,7 @@ export function calcularContextoRally(
       if (res === "punto" || res === "ace") {
         ganoPropio = !ultima.es_rival;
       } else if (res === "error_propio" || res === "error_rival") {
-        ganoPropio = ultima.es_rival; // si el rival erró, ganó propio
+        ganoPropio = ultima.es_rival;
       } else if (res === "ace_contra") {
         ganoPropio = ultima.es_rival;
       } else {
@@ -289,15 +280,13 @@ export function calcularContextoRally(
       }
     }
 
-    // Antes de actualizar marcador, asignar contexto a cada acción.
+    // Asignar contexto a cada acción del punto.
     for (let i = 0; i < lista.length; i++) {
       const a = lista[i];
 
-      // Primer toque del equipo en este punto (para el equipo propio)
       const primerToquePropio =
         !a.es_rival && lista.findIndex((x) => !x.es_rival) === i;
 
-      // Número de toques del equipo propio hasta este punto (inclusive)
       let toquesPropiosHasta = 0;
       for (let j = 0; j <= i; j++) {
         if (!lista[j].es_rival) toquesPropiosHasta++;
@@ -329,7 +318,7 @@ export function calcularContextoRally(
       });
     }
 
-    // Actualizar marcador y rachas para el próximo punto
+    // Actualizar marcador y rachas para el próximo punto.
     if (ganoPropio) {
       marcador.propios++;
       rachaGanados++;
@@ -339,13 +328,18 @@ export function calcularContextoRally(
       rachaPerdidos++;
       rachaGanados = 0;
     }
-    marcadorPorSet.set(set, marcador);
+    marcadorPorSet.set(setKey, marcador);
   }
 
   return resultado;
 }
 
-/** Clasificación rápida del resultado del punto (copiado del motor de análisis). */
+// ------------------------------------------------------------
+// CLASIFICACIÓN RÁPIDA DEL FIN DEL PUNTO
+// ------------------------------------------------------------
+// Duplicada chiquita para no importar el motor de consecuencias
+// (evita dependencias circulares). Solo se usa acá.
+
 function clasificarResultadoFin(a: AccionVisual): string {
   const sub = baseSubtipo(a);
   if (a.tipo === "saque") {
