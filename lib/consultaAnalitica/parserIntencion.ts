@@ -9,17 +9,16 @@
 // ni el CÓMO (eso lo hace FASE 3 con el motor de cálculo).
 // Solo detecta la INTENCIÓN de la consulta.
 //
-// Reutiliza:
-//   - ORDEN_EVALUACION      (qué tipo gana)
-//   - SINONIMOS_GROUPBY     (por X)
-//   - SINONIMOS_METRICA     (kill %, sideout %, etc.)
-//   - SINONIMOS_ULTIMOS, SINONIMOS_TEMPORADA, DIAS_SEMANA
-//   - SINONIMOS_UBICACION   (delantero / zaguero / líbero)
-//   - SINONIMOS_CAMBIO      (cambio / cambios / después de cambio)
-//   - SINONIMOS_CONDICION   (conectores de condición, informativos)
+// v1.1 (FASE 6 — Rondas 1.3 y 2):
+//   + `extraerCondicion` detecta `salidaRol` (Cat. 3) usando
+//     SINONIMOS_SALIDA_ROL.
+//   + `extraerCondicion` detecta `crucesMinimos` (Cat. 6) usando
+//     extraerCrucesDeTexto.
+//   + `extraerCondicion` usa el diccionario externo SINONIMOS_FASE
+//     (Cat. 5) en lugar del array local que tenía embebido.
 //
-// API pública:
-//   parsearIntencion(texto: string): IntencionQuery
+// v1.0:
+//   + Versión inicial del refactor: parser puro de intención.
 // ============================================================
 
 import {
@@ -37,6 +36,9 @@ import {
   type TiempoFiltro,
   type TiempoTipo,
 } from "./intenciones";
+import { SINONIMOS_FASE } from "./intenciones/fase";
+import { SINONIMOS_SALIDA_ROL } from "./intenciones/salida";
+import { extraerCrucesDeTexto } from "./intenciones/cruces";
 
 // ------------------------------------------------------------
 // HELPERS INTERNOS
@@ -282,7 +284,6 @@ function extraerTiempo(
   }
 
   // --- Partido específico (sin resolver el rival todavía) ---
-  // El motor de FASE 2 resuelve el rival con contexto.partidos.
   const partidoRe = /\b(?:en\s+el\s+partido|en\s+el\s+encuentro)\b/;
   const mPartido = texto.match(partidoRe);
   if (mPartido) {
@@ -298,6 +299,11 @@ function extraerTiempo(
 // ------------------------------------------------------------
 // 5) CONDICIÓN
 // ------------------------------------------------------------
+// v1.1:
+//   + Fase del rally usa SINONIMOS_FASE.
+//   + Detecta salidaRol (Cat. 3).
+//   + Detecta crucesMinimos (Cat. 6).
+// ------------------------------------------------------------
 
 function extraerCondicion(
   texto: string
@@ -311,8 +317,6 @@ function extraerCondicion(
   if (mMarc) {
     const a = parseInt(mMarc[1], 10);
     const b = parseInt(mMarc[2], 10);
-    // Filtramos falsos positivos muy bajos (ej "1 a 1" es ambiguo)
-    // pero igual los dejamos como marcador; el motor decide.
     cond.marcador = `${a}-${b}`;
     fragmentos.push(mMarc[0]);
   }
@@ -361,19 +365,19 @@ function extraerCondicion(
     }
   }
 
-  // --- Fase del rally ---
-  const fases: { patron: RegExp; fase: string }[] = [
-    { patron: /\b(?:side[-\s]?out|k1)\b/, fase: "side-out" },
-    { patron: /\bk\s*2\b/, fase: "k2" },
-    { patron: /\bk\s*3\b/, fase: "k3" },
-    { patron: /\b(?:free[-\s]?ball|freeball)\b/, fase: "free-ball" },
-    { patron: /\bcontraataque\b/, fase: "contraataque" },
-  ];
-  for (const { patron, fase } of fases) {
-    const m = texto.match(patron);
-    if (m) {
-      cond.fase = fase;
-      fragmentos.push(m[0]);
+  // --- Fase del rally (diccionario externo, Cat. 5) ---
+  for (const entrada of SINONIMOS_FASE) {
+    const patrones = ordenarPorLargoDesc(entrada.patrones);
+    let match: string | null = null;
+    for (const patron of patrones) {
+      if (texto.includes(patron)) {
+        match = patron;
+        break;
+      }
+    }
+    if (match) {
+      cond.fase = entrada.fase;
+      fragmentos.push(match);
       break;
     }
   }
@@ -437,8 +441,6 @@ function extraerCondicion(
   }
 
   // --- Zona del jugador (solo si NO es un "por zona") ---
-  // "en zona 4", "en Z4" → filtro.
-  // "por zona 4" → es groupBy, no filtro.
   const esPorZona = /\bpor\s+(?:zona|z)\s*[1-6]\b/.test(texto);
   if (!esPorZona) {
     const zonaRe = /\b(?:en\s+)?(?:zona|z)\s*([1-6])\b/;
@@ -450,8 +452,6 @@ function extraerCondicion(
   }
 
   // --- Cambio de jugador ---
-  // Buscamos el patrón más largo primero para no quedar con "cambio"
-  // cuando en realidad era "después de un cambio".
   const cambioOrdenados = ordenarPorLargoDesc(SINONIMOS_CAMBIO);
   for (const patron of cambioOrdenados) {
     if (!texto.includes(patron)) continue;
@@ -468,6 +468,33 @@ function extraerCondicion(
     }
     fragmentos.push(patron);
     break;
+  }
+
+  // --- NUEVO v1.1: Salida por rol (Cat. 3) ---
+  // Se matchea acá, después de la ubicación y antes de la zona
+  // específica. Los patrones son largos y específicos, así que
+  // no se pisan con "delantero" / "zaguero" suelto.
+  for (const entrada of SINONIMOS_SALIDA_ROL) {
+    const patrones = ordenarPorLargoDesc(entrada.patrones);
+    let match: string | null = null;
+    for (const patron of patrones) {
+      if (texto.includes(patron)) {
+        match = patron;
+        break;
+      }
+    }
+    if (match) {
+      cond.salidaRol = entrada.rol;
+      fragmentos.push(match);
+      break;
+    }
+  }
+
+  // --- NUEVO v1.1: Cruces mínimos de red (Cat. 6) ---
+  const cruces = extraerCrucesDeTexto(texto);
+  if (cruces) {
+    cond.crucesMinimos = cruces.crucesMinimos;
+    fragmentos.push(cruces.fragmento);
   }
 
   if (Object.keys(cond).length === 0) return null;
@@ -540,29 +567,6 @@ function extraerLimite(
 // API PÚBLICA
 // ------------------------------------------------------------
 
-/**
- * Parsea una frase en lenguaje natural y devuelve un IntencionQuery
- * listo para que el motor de FASE 3 lo ejecute.
- *
- * Ejemplos:
- *   "¿cuántos ataques erró Juan en los últimos 3 partidos?"
- *     → { tipo: "count", agregacion: "count",
- *         tiempo: { tipo: "ultimos_n_partidos", n: 3 }, ... }
- *
- *   "porcentaje de recepciones perfectas por set esta temporada"
- *     → { tipo: "percentage", agregacion: "percentage",
- *         groupBy: "set", tiempo: { tipo: "esta_temporada" }, ... }
- *
- *   "¿cuántos puntos por rotación cuando está 20-18?"
- *     → { tipo: "count", groupBy: "rotacion",
- *         condicion: { marcador: "20-18" }, ... }
- *
- *   "evolución de puntos por set de los delanteros tras un cambio"
- *     → { tipo: "trend", agregacion: "avg", groupBy: "set",
- *         condicion: { ubicacion: "delantero",
- *                      despuesDeCambio: true,
- *                      cambioEnPunto: true }, ... }
- */
 export function parsearIntencion(textoOriginal: string): IntencionQuery {
   const original = textoOriginal.trim();
   const resultado = intencionVacia();
@@ -608,7 +612,7 @@ export function parsearIntencion(textoOriginal: string): IntencionQuery {
     resultado.fragmentos.push(...tmp.fragmentos);
   }
 
-  // --- Condición (marcador, racha, ubicación, cambio, etc.) ---
+  // --- Condición (marcador, racha, ubicación, cambio, fase, salida, cruces) ---
   const cond = extraerCondicion(texto);
   if (cond) {
     resultado.condicion = cond.condicion;

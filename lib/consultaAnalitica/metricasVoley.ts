@@ -3,18 +3,22 @@
 // ============================================================
 // FASE 3 + FASE 6 del plan "Consultas Analíticas Libres".
 //
+// v1.3 (FASE 6 — Ronda 1.2):
+//   + `puntosPorDimension(puntos, groupBy, contexto)`: agrupa
+//     los rallies GANADOS por una dimensión (rotacion, zona_origen,
+//     ubicacion, rol, jugador) y devuelve [{key,label,count}]
+//     ordenado por count desc. Es lo que usa `respuesta.ts` para
+//     "¿qué rotación hace más puntos?".
+//
 // v1.2 (FASE 6 — bloque A.2):
 //   + `puntosGanadosPct(puntos)`: % de puntos propios sobre el
-//     total de puntos. Numerador = puntos ganados, denominador =
-//     total de rallies cerrados (propios + rival).
+//     total de rallies cerrados.
 //
 // v1.1 (FASE 6):
-//   + `puntosGanados(puntos)`: rallies cerrados con punto propio.
-//     Recibe puntos completos (PuntoConAcciones), no acciones.
-//   + `accionesPunto(acciones)`: acciones que terminaron en punto
-//     (saque ace, ataque punto, bloqueo punto).
+//   + `puntosGanados(puntos)` + `accionesPunto(acciones)`.
 //
-// El resto igual que v1.0.
+// v1.0:
+//   + Las 12 métricas originales (kill %, sideout %, etc.).
 // ============================================================
 
 import type {
@@ -22,8 +26,13 @@ import type {
   PuntoConAcciones,
 } from "../../app/equipo/adaptadorUnificadoV2";
 import type { ContextoRally } from "../contextoRally";
-import { baseSubtipo, clasificarResultado } from "../analisis/clasificacion";
+import {
+  baseSubtipo,
+  clasificarResultado,
+  ubicacionDeZona,
+} from "../analisis/clasificacion";
 import { redondear } from "./agregador";
+import type { GroupBy } from "./intenciones";
 
 // ------------------------------------------------------------
 // TIPO DE RESULTADO
@@ -306,7 +315,7 @@ export function digEfficiency(
 }
 
 // ------------------------------------------------------------
-// PUNTOS POR SET / ROTACIÓN
+// PUNTOS POR SET / ROTACIÓN (promedios)
 // ------------------------------------------------------------
 
 export function puntosPorSet(
@@ -372,16 +381,9 @@ export function puntosPorRotacion(
 }
 
 // ------------------------------------------------------------
-// PUNTOS GANADOS
+// PUNTOS GANADOS (conteo absoluto)
 // ------------------------------------------------------------
 
-/**
- * Puntos ganados: rallies cerrados con punto propio.
- *
- * A diferencia de `puntosPorSet`, devuelve un CONTEO ABSOLUTO,
- * no un promedio. Sirve para "cuántos puntos ganamos" o
- * "cuántos puntos ganó X" (si ya filtramos `puntos` por X antes).
- */
 export function puntosGanados(
   puntos: PuntoConAcciones[]
 ): MetricaResultado {
@@ -394,17 +396,10 @@ export function puntosGanados(
   return conteo(ganados, puntos.length, "puntos");
 }
 
-/**
- * % de puntos ganados: puntos propios / total de rallies cerrados.
- *
- * A diferencia de `puntosGanados` (conteo absoluto), devuelve un
- * porcentaje 0..100.
- *
- * Solo cuenta rallies con ganador determinado (propio o rival).
- * Los rallies "sin ganador" (sin última acción visible o neutra)
- * no se cuentan en el denominador — si no, el % quedaría
- * subestimado por puntos que en realidad no cerraron.
- */
+// ------------------------------------------------------------
+// % DE PUNTOS GANADOS
+// ------------------------------------------------------------
+
 export function puntosGanadosPct(
   puntos: PuntoConAcciones[]
 ): MetricaResultado {
@@ -414,7 +409,7 @@ export function puntosGanadosPct(
   let ganados = 0;
   for (const p of puntos) {
     const g = ganadorDelPunto(p.acciones);
-    if (g === null) continue; // sin ganador → no cuenta
+    if (g === null) continue;
     total += 1;
     if (g === "propio") ganados += 1;
   }
@@ -427,17 +422,6 @@ export function puntosGanadosPct(
 // ACCIONES EN PUNTO
 // ------------------------------------------------------------
 
-/**
- * Acciones en punto: cuántas acciones (saques, ataques, bloqueos)
- * terminaron en punto directo.
- *
- * - Saque con subtipo "ace" → cuenta.
- * - Ataque con subtipo "punto" → cuenta.
- * - Bloqueo con subtipo "punto" → cuenta.
- * - Resto → no cuenta.
- *
- * Es útil para "cuántos puntos hizo X atacando/bloqueando/sacando".
- */
 export function accionesPunto(
   acciones: AccionVisual[]
 ): MetricaResultado {
@@ -453,6 +437,118 @@ export function accionesPunto(
   }
 
   return conteo(cuenta, visibles.length, "acciones");
+}
+
+// ------------------------------------------------------------
+// PUNTOS POR DIMENSIÓN (FASE 6 — Ronda 1.2)
+// ------------------------------------------------------------
+// Agrupa los rallies GANADOS por una dimensión y devuelve
+// [{key, label, count}] ordenado por count desc.
+//
+// Dimensiones soportadas:
+//   - rotacion:     rotación del punto ganado
+//   - zona_origen:  zona de origen del ÚLTIMO ATAQUE propio
+//   - jugador:      quién hizo la última acción propia
+//   - ubicacion:    dónde estaba la última acción propia
+//   - rol:          rol del jugador de la última acción propia
+//
+// Dimensiones NO soportadas (devuelve []):
+//   cualquier otra (set, partido, subtipo, etc.)
+//
+// `contexto.nombreDeJugador` opcional para etiquetas legibles.
+// ------------------------------------------------------------
+
+export interface PuntoDimension {
+  key: string;
+  label: string;
+  count: number;
+}
+
+export function puntosPorDimension(
+  puntos: PuntoConAcciones[],
+  groupBy: GroupBy,
+  contexto?: {
+    nombreDeJugador?: (id: string) => string;
+  }
+): PuntoDimension[] {
+  if (puntos.length === 0) return [];
+
+  const mapa = new Map<string, PuntoDimension>();
+
+  for (const p of puntos) {
+    if (ganadorDelPunto(p.acciones) !== "propio") continue;
+
+    const propias = p.acciones
+      .filter((a) => !a.es_rival && !a.oculta)
+      .sort((a, b) => b.orden - a.orden);
+
+    if (propias.length === 0) continue;
+
+    let key: string | null = null;
+    let label: string | null = null;
+
+    switch (groupBy) {
+      case "rotacion": {
+        const conRot = propias.find((a) => a.rotacion_numero !== null);
+        if (!conRot || conRot.rotacion_numero === null) continue;
+        key = String(conRot.rotacion_numero);
+        label = `R${conRot.rotacion_numero}`;
+        break;
+      }
+      case "zona_origen": {
+        // "salida": usamos el último ATAQUE propio del punto,
+        // porque zona_origen de una defensa o un bloqueo no es
+        // una "salida" en el sentido de ataque.
+        const ataque = propias.find((a) => a.tipo === "ataque");
+        if (!ataque || ataque.zona_origen === null) continue;
+        key = String(ataque.zona_origen);
+        label = `Z${ataque.zona_origen} (origen)`;
+        break;
+      }
+      case "jugador": {
+        const ultima = propias[0];
+        if (!ultima.jugador_id) continue;
+        key = ultima.jugador_id;
+        label =
+          contexto?.nombreDeJugador?.(ultima.jugador_id) ??
+          ultima.jugador_id.slice(0, 8);
+        break;
+      }
+      case "ubicacion": {
+        const ultima = propias[0];
+        if (ultima.rol_jugador === "L") {
+          key = "libero";
+          label = "Líbero";
+        } else {
+          const ubi = ubicacionDeZona(ultima.zona_jugador);
+          if (ubi === "otro") continue;
+          key = ubi;
+          label = ubi === "delantero" ? "Delantero" : "Zaguero";
+        }
+        break;
+      }
+      case "rol": {
+        const ultima = propias[0];
+        if (!ultima.rol_jugador) continue;
+        key = ultima.rol_jugador;
+        label = ultima.rol_jugador;
+        break;
+      }
+      default:
+        return [];
+    }
+
+    if (key === null || label === null) continue;
+
+    let item = mapa.get(key);
+    if (!item) {
+      item = { key, label, count: 0 };
+      mapa.set(key, item);
+    }
+    item.count += 1;
+  }
+
+  return Array.from(mapa.values()).sort((a, b) => b.count - a.count);
 }
 
 // ------------------------------------------------------------

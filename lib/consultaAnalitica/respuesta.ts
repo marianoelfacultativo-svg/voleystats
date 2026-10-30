@@ -3,25 +3,26 @@
 // ============================================================
 // FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
 //
-// v1.3 (FASE 6 — bloque A.2):
-//   + `groupByEfectivo`: si la intención es `habit` y la frase
-//     habla de "cómo terminan los puntos/rallys", devuelve
-//     `"resultado_punto"` en vez de `"subtipo"`. Esto resuelve
-//     frases coloquiales del estilo "¿cómo terminan los puntos
-//     cuando saca Joaquín?" sin tener que tocar el parser.
-//   + Nueva métrica "puntos_ganados_pct": puntos propios / total
-//     puntos × 100. Cubre "¿qué porcentaje de puntos ganamos?".
+// v1.5 (FASE 6 — Rondas 1.2 + 1.3 + 2):
+//   + `aplicarCondicionesExtra(ctx)`: filtra acciones por
+//     `condicion.fase` (usando contextoRally) y `condicion.salidaRol`.
+//     Filtra puntos por `condicion.fase`.
+//   + `frasePidePuntos(original)`: detecta "puntos" sin "por".
+//   + `ejecutarMaxMin` / `ejecutarRanking` usan
+//     `puntosPorDimension` (rallies ganados) cuando el groupBy
+//     es dimensionable por puntos y la frase pide puntos.
+//     Antes "qué rotación hace más puntos" contaba ACCIONES.
 //
-// v1.2 (FASE 6):
-//   + Nuevas métricas: "puntos_ganados" (usa ctx.puntos) y
-//     "acciones_punto" (usa ctx.acciones).
-//   + `puntos_ganados` devuelve un NÚMERO absoluto, no %.
-//   + `acciones_punto` devuelve un NÚMERO absoluto, no %.
+// v1.4 (Ronda 1.1):
+//   + `agregacionEfectiva(ctx)`: max/min/ranking con "mejor"/"peor"
+//     usan "avg" (calidad) en vez de "count" (cantidad).
 //
-// v1.1:
-//   + habit / distribution sin groupBy → subtipo.
-//   + ranking / max / min sin groupBy → jugador.
-//   + mensajes más claros.
+// v1.3 (bloque A.2):
+//   + habit "cómo terminan los puntos/rallys" → resultado_punto.
+//   + puntos_ganados_pct.
+//
+// v1.2 (bloque A.1):
+//   + puntos_ganados + acciones_punto.
 // ============================================================
 
 import type {
@@ -33,7 +34,7 @@ import {
   type ContextoRally,
 } from "../contextoRally";
 import { puntajeDeAccion } from "../analisis/clasificacion";
-import type { GroupBy, IntencionQuery } from "./intenciones";
+import type { AggFn, GroupBy, IntencionQuery } from "./intenciones";
 import {
   porcentaje,
   promedio,
@@ -59,13 +60,16 @@ import {
   killPct,
   puntosGanados,
   puntosGanadosPct,
+  puntosPorDimension,
   puntosPorRotacion,
   puntosPorSet,
   receptionPct,
   serveErrorPct,
   sideoutPct,
   type MetricaResultado,
+  type PuntoDimension,
 } from "./metricasVoley";
+import { matcheaSalidaRol } from "./intenciones/salida";
 import {
   analizarTendencia,
   describirTendencia,
@@ -106,6 +110,134 @@ export interface ContextoRespuesta {
 }
 
 // ------------------------------------------------------------
+// NORMALIZACIÓN
+// ------------------------------------------------------------
+
+function normalizarTexto(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+// ------------------------------------------------------------
+// AGREGACIÓN EFECTIVA
+// ------------------------------------------------------------
+// Si la pregunta es por calidad ("mejor"/"peor"), el motor
+// promedia puntajes (avg) en lugar de contar acciones (count).
+// ------------------------------------------------------------
+
+function agregacionEfectiva(ctx: ContextoRespuesta): AggFn {
+  const intencion = ctx.intencion;
+  const esMaxMinRanking =
+    intencion.tipo === "max" ||
+    intencion.tipo === "min" ||
+    intencion.tipo === "ranking";
+  if (!esMaxMinRanking) return intencion.agregacion;
+  if (intencion.agregacion !== "count") return intencion.agregacion;
+
+  const original = normalizarTexto(intencion.original || "");
+  const hablaDeCalidad =
+    /\bmejor(es|a|as)?\b/.test(original) ||
+    /\bpeor(es|a|as)?\b/.test(original);
+  if (!hablaDeCalidad) return intencion.agregacion;
+  return "avg";
+}
+
+// ------------------------------------------------------------
+// ¿LA FRASE PIDE PUNTOS?
+// ------------------------------------------------------------
+// Detecta "puntos" pero NO "puntos por X" (eso es un promedio,
+// va por la métrica puntos_por_*).
+//
+// Ejemplos:
+//   "¿qué rotación hace más puntos?"     → true
+//   "¿qué rotación gana más puntos?"     → true
+//   "¿cuántos puntos por rotación?"      → false (métrica de promedio)
+//   "¿qué rotación tiene más ataques?"   → false
+//   "¿quién anotó más puntos?"           → true
+// ------------------------------------------------------------
+
+function frasePidePuntos(original: string): boolean {
+  const n = normalizarTexto(original);
+  if (!/\bpuntos?\b/.test(n)) return false;
+  if (/\bpuntos?\s+por\b/.test(n)) return false;
+  if (/\bporcentaje\s+de\s+puntos\b/.test(n)) return false;
+  if (/\bpromedio\s+de\s+puntos\b/.test(n)) return false;
+  return true;
+}
+
+// ------------------------------------------------------------
+// APLICAR CONDICIONES EXTRA
+// ------------------------------------------------------------
+// Filtra ctx.acciones por:
+//   - condicion.fase       (Cat. 5)
+//   - condicion.salidaRol  (Cat. 3)
+//
+// Filtra ctx.puntos por:
+//   - condicion.fase (usa la fase de la última acción visible)
+//
+// Se llama UNA sola vez al principio de construirRespuesta.
+// ------------------------------------------------------------
+
+function aplicarCondicionesExtra(
+  ctx: ContextoRespuesta
+): ContextoRespuesta {
+  const cond = ctx.intencion.condicion;
+  if (!cond) return ctx;
+
+  const tieneFase = !!cond.fase;
+  const tieneSalida = !!cond.salidaRol;
+  if (!tieneFase && !tieneSalida) return ctx;
+
+  // Contexto de rally: lo necesito para fase.
+  let mapaRally: Map<string, ContextoRally> | null = null;
+  if (tieneFase) {
+    mapaRally = ctx.contextoRally ?? calcularContextoRally(ctx.acciones);
+  }
+
+  // --- Filtro de acciones ---
+  let acciones = ctx.acciones;
+
+  if (tieneFase && mapaRally) {
+    const faseBuscada = cond.fase!;
+    acciones = acciones.filter((a) => {
+      const c = mapaRally!.get(a.id);
+      return c?.fase === faseBuscada;
+    });
+  }
+
+  if (tieneSalida) {
+    const rol = cond.salidaRol!;
+    acciones = acciones.filter((a) =>
+      matcheaSalidaRol(a.rol_jugador, a.zona_origen, rol)
+    );
+  }
+
+  // --- Filtro de puntos (solo fase) ---
+  let puntos = ctx.puntos;
+  if (tieneFase && mapaRally && puntos && puntos.length > 0) {
+    const faseBuscada = cond.fase!;
+    puntos = puntos.filter((p) => {
+      const vis = p.acciones
+        .filter((a) => !a.oculta)
+        .sort((a, b) => a.orden - b.orden);
+      const ultima = vis[vis.length - 1];
+      if (!ultima) return false;
+      const c = mapaRally!.get(ultima.id);
+      return c?.fase === faseBuscada;
+    });
+  }
+
+  return {
+    ...ctx,
+    acciones,
+    puntos,
+    contextoRally: mapaRally ?? ctx.contextoRally,
+  };
+}
+
+// ------------------------------------------------------------
 // HELPERS
 // ------------------------------------------------------------
 
@@ -116,7 +248,7 @@ function meta(
   return {
     original: ctx.intencion.original,
     intencion: ctx.intencion.tipo,
-    agregacion: ctx.intencion.agregacion,
+    agregacion: agregacionEfectiva(ctx),
     groupBy: ctx.intencion.groupBy,
     metrica: ctx.intencion.metrica,
     totalAcciones,
@@ -128,18 +260,10 @@ function resolverJugadorPorNombre(
   nombre: string,
   jugadores: { id: string; nombre: string }[]
 ): string | null {
-  const norm = nombre
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim();
+  const norm = normalizarTexto(nombre).trim();
   if (!norm) return null;
   for (const j of jugadores) {
-    const nNorm = j.nombre
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .trim();
+    const nNorm = normalizarTexto(j.nombre).trim();
     if (nNorm === norm || nNorm.includes(norm) || norm.includes(nNorm)) {
       return j.id;
     }
@@ -176,6 +300,45 @@ function metricaANumero(
 }
 
 // ------------------------------------------------------------
+// CONVERSIÓN PuntoDimension → FilaTabla
+// ------------------------------------------------------------
+
+function puntosDimensionAFilas(dist: PuntoDimension[]): FilaTabla[] {
+  const total = dist.reduce((s, d) => s + d.count, 0);
+  return dist.map((d) => ({
+    key: d.key,
+    label: d.label,
+    count: d.count,
+    base: total > 0 ? total : null,
+    valor: d.count,
+    porcentaje: total > 0 ? redondear((d.count / total) * 100, 1) : 0,
+    extra: null,
+  }));
+}
+
+// ------------------------------------------------------------
+// DIMENSIONES QUE SE PUEDEN CONTAR POR PUNTOS
+// ------------------------------------------------------------
+
+const DIMENSIONES_POR_PUNTOS: GroupBy[] = [
+  "rotacion",
+  "zona_origen",
+  "jugador",
+  "ubicacion",
+  "rol",
+];
+
+function puedeContarPuntosPorDimension(
+  ctx: ContextoRespuesta,
+  gb: GroupBy | null
+): boolean {
+  if (!gb) return false;
+  if (!DIMENSIONES_POR_PUNTOS.includes(gb)) return false;
+  if (!ctx.puntos || ctx.puntos.length === 0) return false;
+  return frasePidePuntos(ctx.intencion.original);
+}
+
+// ------------------------------------------------------------
 // MÉTRICAS DE VÓLEY
 // ------------------------------------------------------------
 
@@ -185,7 +348,6 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
 
   const acciones = ctx.acciones;
 
-  // ---- Métricas que necesitan puntos completos (PuntoConAcciones) ----
   if (metrica === "puntos_ganados") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
       return respuestaVacia(
@@ -206,7 +368,6 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
     return metricaAPorcentaje(m);
   }
 
-  // ---- Métricas que necesitan acciones (AccionVisual) ----
   if (contarVisibles(acciones) === 0) {
     return respuestaVacia("Sin datos para calcular esta métrica.");
   }
@@ -270,7 +431,7 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
 }
 
 // ------------------------------------------------------------
-// GROUPBY EFECTIVO (con defaults inteligentes)
+// GROUPBY EFECTIVO
 // ------------------------------------------------------------
 
 function groupByEfectivo(ctx: ContextoRespuesta): GroupBy | null {
@@ -287,20 +448,6 @@ function groupByEfectivo(ctx: ContextoRespuesta): GroupBy | null {
     return "cambio";
   }
 
-  // ----------------------------------------------------------
-  // FASE 6 — bloque A.2:
-  // habit sobre "cómo terminan los puntos/rallys" → resultado_punto.
-  //
-  // Cubre:
-  //   - "cómo terminan los puntos cuando saca Joaquín"
-  //   - "cómo terminan los rallys"
-  //   - "cómo suelen terminar los puntos"
-  //   - "cómo terminan los puntos en el quinto set"
-  //   - "cómo terminan los puntos después de un cambio"
-  //
-  // No exige que la frase diga "por resultado_punto". Si el usuario
-  // usa esa frase, ya entra por el `if (intencion.groupBy)` de arriba.
-  // ----------------------------------------------------------
   if (intencion.tipo === "habit") {
     const original = (intencion.original || "").toLowerCase();
     const hablaDeTerminar = /termin|acab|finaliz|sal(e|en)\b/.test(original);
@@ -482,12 +629,28 @@ function ejecutarMaxMin(
     );
   }
 
-  const filas = construirTabla(
-    ctx.acciones,
-    gb,
-    ctx.intencion.agregacion,
-    ctx.contextoAgrupacion
-  );
+  const usarPuntos = puedeContarPuntosPorDimension(ctx, gb);
+
+  let filas: FilaTabla[];
+  let notaModo = "";
+
+  if (usarPuntos) {
+    const dist = puntosPorDimension(ctx.puntos!, gb, {
+      nombreDeJugador: ctx.contextoAgrupacion?.nombreDeJugador,
+    });
+    if (dist.length === 0) {
+      return respuestaVacia(
+        "No hay rallies ganados con esa dimensión (faltan datos)."
+      );
+    }
+    filas = puntosDimensionAFilas(dist);
+    notaModo = "contando rallies ganados";
+  } else {
+    const agg = agregacionEfectiva(ctx);
+    filas = construirTabla(ctx.acciones, gb, agg, ctx.contextoAgrupacion);
+    notaModo = `agregación "${agg}" sobre acciones`;
+  }
+
   if (filas.length === 0) {
     return respuestaVacia("Sin filas para comparar.");
   }
@@ -501,7 +664,8 @@ function ejecutarMaxMin(
   return respuestaMaxMin(
     tipo,
     mejor,
-    `${mejor.label}: ${mejor.valor} (${mejor.count} acciones).`
+    `${mejor.label}: ${redondear(mejor.valor, 2)} ` +
+      `(${notaModo}, ${mejor.count} casos).`
   );
 }
 
@@ -516,20 +680,41 @@ function ejecutarRanking(ctx: ContextoRespuesta): RespuestaConsulta {
   const orden = ctx.intencion.ordenamiento ?? "desc";
   const limite = ctx.intencion.limite ?? null;
 
-  const filas = construirRanking(
-    ctx.acciones,
-    gb,
-    ctx.intencion.agregacion,
-    orden,
-    limite,
-    ctx.contextoAgrupacion
-  );
+  const usarPuntos = puedeContarPuntosPorDimension(ctx, gb);
+
+  let filas: FilaTabla[];
+  let agg: AggFn;
+  let notaModo = "";
+
+  if (usarPuntos) {
+    const dist = puntosPorDimension(ctx.puntos!, gb, {
+      nombreDeJugador: ctx.contextoAgrupacion?.nombreDeJugador,
+    });
+    filas = puntosDimensionAFilas(dist);
+    filas.sort((a, b) =>
+      orden === "desc" ? b.valor - a.valor : a.valor - b.valor
+    );
+    if (limite !== null && limite > 0) filas = filas.slice(0, limite);
+    agg = "count";
+    notaModo = "contando rallies ganados";
+  } else {
+    agg = agregacionEfectiva(ctx);
+    filas = construirRanking(
+      ctx.acciones,
+      gb,
+      agg,
+      orden,
+      limite,
+      ctx.contextoAgrupacion
+    );
+    notaModo = `agregación "${agg}" sobre acciones`;
+  }
 
   return respuestaRanking(
     filas,
-    ctx.intencion.agregacion,
+    agg,
     orden,
-    `Top ${filas.length} por ${gb}.`
+    `Top ${filas.length} por ${gb} (${notaModo}).`
   );
 }
 
@@ -662,8 +847,11 @@ function ejecutarHabit(ctx: ContextoRespuesta): RespuestaConsulta {
 // ------------------------------------------------------------
 
 export function construirRespuesta(
-  ctx: ContextoRespuesta
+  ctxOriginal: ContextoRespuesta
 ): ResultadoConsulta {
+  // Pre-filtro de condiciones extra (fase + salidaRol).
+  const ctx = aplicarCondicionesExtra(ctxOriginal);
+
   const totalAcciones = ctx.acciones.filter((a) => !a.oculta).length;
   const fragmentos: string[] = [...ctx.intencion.fragmentos];
   const noReconocidas: string[] = [];

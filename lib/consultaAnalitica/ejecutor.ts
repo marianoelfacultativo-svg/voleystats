@@ -3,28 +3,20 @@
 // ============================================================
 // FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
 //
-// v1.2 (FASE 6 — bloque A):
-//   + `resultadosPunto` se calcula sobre el universo COMPLETO y
-//     se pasa al `contextoAgrupacion` para que `groupBy.ts` pueda
-//     agrupar por `"resultado_punto"`.
-//   + Se calcula UNA sola vez por consulta (no por acción), así
-//     que no afecta el rendimiento.
-//   + Sin este cambio, "cómo terminan los puntos cuando saca
-//     Joaquín" contaba el ganador mirando solo los saques de
-//     Joaquín → el ganador del punto quedaba "sin ganador".
+// v1.3 (FASE 6 — Rondas 1.3 + 2):
+//   + `calcularCrucesPorPunto(acciones)`: cuenta cambios de lado
+//     entre acciones consecutivas de cada punto (excluyendo ocultas).
+//   + `ejecutarConsulta`: si `intencion.condicion.crucesMinimos`
+//     está seteado, filtra ACCIONES y PUNTOS por ese valor.
+//   + `filtroFinal` vuelca también `salidaRol` y `crucesMinimos`
+//     al BloqueTriggerFiltro.
+//
+// v1.2 (FASE 6 — bloque A.1):
+//   + `resultadosPunto` calculado sobre el universo completo
+//     (groupBy resultado_punto).
 //
 // v1.1 (FASE 6):
-//   + `filtrarPorTiempo` ahora también filtra los PUNTOS, no solo
-//     las acciones. Antes `puntos` se pasaba sin filtrar y
-//     "cuántos puntos ganamos en los últimos 3 partidos" contaba
-//     todos los puntos del universo.
-//   + Nueva función `filtrarPuntosPorTiempo`, análoga a
-//     `filtrarPorTiempo` pero recibe PuntoConAcciones.
-//   + Si el filtro no se puede aplicar (falta info de fecha), no
-//     se corta ni acciones ni puntos.
-//
-// API pública:
-//   ejecutarConsulta(texto, contexto) → ResultadoConsultaExtendido
+//   + Filtro de tiempo también sobre puntos.
 // ============================================================
 
 import type {
@@ -68,8 +60,6 @@ export interface ResultadoConsultaExtendido extends ResultadoConsulta {
 
 // ------------------------------------------------------------
 // FILTRO DE TIEMPO (acciones)
-// ------------------------------------------------------------
-// Idéntico a v1.0, sin cambios funcionales.
 // ------------------------------------------------------------
 
 function filtrarPorTiempo(
@@ -194,14 +184,7 @@ function filtrarPorTiempo(
 }
 
 // ------------------------------------------------------------
-// FILTRO DE TIEMPO (puntos) — NUEVO en FASE 6
-// ------------------------------------------------------------
-// Aplica el mismo filtro de tiempo a los PuntoConAcciones.
-// Necesario para que "cuántos puntos ganamos en los últimos 3
-// partidos" sea coherente.
-//
-// PuntoConAcciones tiene `set_numero` y `punto_numero` directos,
-// y `acciones[0].partido_id` como id del partido.
+// FILTRO DE TIEMPO (puntos)
 // ------------------------------------------------------------
 
 function filtrarPuntosPorTiempo(
@@ -219,8 +202,6 @@ function filtrarPuntosPorTiempo(
     return puntos.filter((p) => p.punto_numero === t.punto);
   }
 
-  // Para el resto de los filtros temporales, el partido_id se saca
-  // de la primera acción del punto.
   const partidoIdDePunto = (p: PuntoConAcciones): string | null => {
     for (const a of p.acciones) {
       if (a.partido_id) return a.partido_id;
@@ -463,7 +444,52 @@ function esFiltroVacio(f: BloqueTriggerFiltro): boolean {
   if (f.direccionAtaqueInferida.length > 0) return false;
   if (f.sectoresAtaque.length > 0) return false;
   if (f.zonasDefensaRival.length > 0) return false;
+  if (f.crucesMinimos !== undefined && f.crucesMinimos !== null) return false;
   return true;
+}
+
+// ------------------------------------------------------------
+// CRUCES DE RED POR PUNTO
+// ------------------------------------------------------------
+// Un "cruce" es cada cambio de lado entre acciones consecutivas
+// del punto (excluyendo acciones ocultas).
+//
+// Ejemplo (rally normal):
+//   saque (propio) → recepción (rival): 1 cambio, 1 cruce
+//   recepción → armado: no cambia
+//   armado → ataque (rival): no cambia
+//   ataque → defensa (propio): 2do cambio, 2 cruces
+//   ...
+//
+// Un ace tiene 1 sola acción → 0 cruces. Es correcto:
+// "más de 3 cruces" no debe matchear un ace.
+// ------------------------------------------------------------
+
+function calcularCrucesPorPunto(
+  acciones: AccionVisual[]
+): Map<string, number> {
+  const porPunto = new Map<string, AccionVisual[]>();
+  for (const a of acciones) {
+    if (a.oculta) continue;
+    const k = `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`;
+    let arr = porPunto.get(k);
+    if (!arr) {
+      arr = [];
+      porPunto.set(k, arr);
+    }
+    arr.push(a);
+  }
+
+  const out = new Map<string, number>();
+  for (const [k, lista] of porPunto) {
+    const ordenada = [...lista].sort((a, b) => a.orden - b.orden);
+    let cruces = 0;
+    for (let i = 1; i < ordenada.length; i++) {
+      if (ordenada[i].lado !== ordenada[i - 1].lado) cruces += 1;
+    }
+    out.set(k, cruces);
+  }
+  return out;
 }
 
 // ------------------------------------------------------------
@@ -488,38 +514,47 @@ export function ejecutarConsulta(
   const parsed = parsearBusqueda(texto, contextoParser);
 
   // 2) Time filter (acciones + puntos).
-  const accionesConTiempo = filtrarPorTiempo(
+  let accionesConTiempo = filtrarPorTiempo(
     universo,
     parsed.intencion,
     contexto.partidos
   );
-  const puntosConTiempo = filtrarPuntosPorTiempo(
+  let puntosConTiempo = filtrarPuntosPorTiempo(
     universoPuntos,
     parsed.intencion,
     contexto.partidos
   );
 
-  // 3) Filtro por BloqueTriggerFiltro (solo acciones).
+  // 3) Cruces mínimos (Cat. 6) — filtro duro sobre acciones Y puntos.
+  const crucesMinimos = parsed.intencion.condicion?.crucesMinimos;
+  if (crucesMinimos !== undefined && crucesMinimos !== null) {
+    const crucesPorPunto = calcularCrucesPorPunto(universo);
+    const puntosPermitidos = new Set<string>();
+    for (const [k, n] of crucesPorPunto) {
+      if (n >= crucesMinimos) puntosPermitidos.add(k);
+    }
+
+    accionesConTiempo = accionesConTiempo.filter((a) => {
+      const k = `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`;
+      return puntosPermitidos.has(k);
+    });
+    puntosConTiempo = puntosConTiempo.filter((p) => {
+      const pid = p.acciones.find((a) => a.partido_id)?.partido_id ?? "";
+      const k = `${pid}|${p.set_numero}|${p.punto_numero}`;
+      return puntosPermitidos.has(k);
+    });
+  }
+
+  // 4) Filtro por BloqueTriggerFiltro (solo acciones).
   const accionesFiltradas = aplicarFiltro(
     accionesConTiempo,
     parsed.filtro
   );
 
-  // 4) Resultado del punto — sobre el UNIVERSO COMPLETO.
-  //    Se calcula una sola vez por consulta (una pasada O(n)) y se
-  //    reutiliza en el contexto de agrupación para `resultado_punto`.
-  //    Importante: usar `universo` (sin filtro de tiempo ni de
-  //    bloqueTrigger) para que el ganador del punto no se vea
-  //    afectado por los filtros del usuario.
+  // 5) Resultado del punto — sobre el UNIVERSO COMPLETO.
   const resultadosPunto = calcularResultadosPunto(universo);
 
-  // 5) Construir respuesta.
-  //    - Si la intención es de acciones (métrica, count, etc.),
-  //      `ctx.acciones` = acciones filtradas.
-  //    - Si la intención es "puntos_ganados", `ctx.puntos` =
-  //      puntos filtrados por tiempo.
-  //    - Si la intención necesita ambos (ej. puntos_por_rotacion),
-  //      los dos vienen filtrados.
+  // 6) Construir respuesta.
   const ctxRespuesta: ContextoRespuesta = {
     acciones: accionesFiltradas,
     puntos: puntosConTiempo,
@@ -553,13 +588,29 @@ export function ejecutarConsulta(
 
   const resultado = construirRespuesta(ctxRespuesta);
 
-  // 6) Extender con info del parser y contadores.
+  // 7) Volcar salidaRol y crucesMinimos al filtro final, para
+  //    consistencia con cumpleBloqueTrigger (archivos 14/15).
+  let filtroFinal: BloqueTriggerFiltro = parsed.filtro;
+  if (parsed.intencion.condicion?.salidaRol !== undefined) {
+    filtroFinal = {
+      ...filtroFinal,
+      salidaRol: parsed.intencion.condicion.salidaRol,
+    };
+  }
+  if (crucesMinimos !== undefined && crucesMinimos !== null) {
+    filtroFinal = {
+      ...filtroFinal,
+      crucesMinimos,
+    };
+  }
+
+  // 8) Extender con info del parser y contadores.
   return {
     ...resultado,
     parserInfo: {
       aplicado: parsed.aplicado,
       sugerencias: parsed.sugerencias,
-      filtro: parsed.filtro,
+      filtro: filtroFinal,
       intencion: parsed.intencion,
     },
     accionesFiltradas: accionesFiltradas.filter((a) => !a.oculta).length,

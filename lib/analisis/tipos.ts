@@ -5,14 +5,18 @@
 // Solo tipos e interfaces + constantes iniciales.
 // Sin lógica, sin imports de motor.
 //
+// v1.2 (FASE 6 — Rondas 1.3 + 2):
+//   + BloqueTriggerFiltro.salidaRol: RolSalida | null  (Cat. 3)
+//   + BloqueTriggerFiltro.crucesMinimos: number | null (Cat. 6)
+//   + BLOQUE_TRIGGER_VACIO los inicializa con null.
+//
 // v1.1 (FASE 2):
 //   + BloqueTriggerFiltro.ubicacion: UbicacionFiltro
 //   + BloqueTriggerFiltro.cambioEnPunto: boolean | null
-//   + BLOQUE_TRIGGER_VACIO.ubicacion = "cualquiera"
-//   + BLOQUE_TRIGGER_VACIO.cambioEnPunto = null
 // ============================================================
 
 import type { FaseRally, InicioPunto, EstadoMarcador, DiferenciaMarcador } from "../contextoRally";
+import type { RolSalida } from "../consultaAnalitica/intenciones/salida";
 
 // ------------------------------------------------------------
 // TIPOS BASE
@@ -201,6 +205,10 @@ export const COINCIDENCIA_VACIA: CoincidenciaFiltro = {
 // ------------------------------------------------------------
 // FILTRO COMPLETO DE UN BLOQUE TRIGGER
 // ------------------------------------------------------------
+// v1.2:
+//   + salidaRol: filtra el rol de la "salida" (Cat. 3).
+//   + crucesMinimos: mínimo de cruces de red del rally (Cat. 6).
+// ------------------------------------------------------------
 
 export interface BloqueTriggerFiltro {
   tipo: TipoDisparador;
@@ -215,6 +223,10 @@ export interface BloqueTriggerFiltro {
   ubicacion: UbicacionFiltro;
   /** FASE 2: ¿el punto tuvo cambios? null = cualquiera. */
   cambioEnPunto: boolean | null;
+  /** FASE 6 (Cat. 3): rol de la "salida" (zona de origen del ataque). */
+  salidaRol: RolSalida | null;
+  /** FASE 6 (Cat. 6): mínimo de cruces de red del rally. */
+  crucesMinimos: number | null;
   rotaciones: number[];
   rachas: RachaHistorica[];
   accionPreviaDirecta: FiltroAccionHistorica | null;
@@ -241,6 +253,8 @@ export const BLOQUE_TRIGGER_VACIO: BloqueTriggerFiltro = {
   zonasJugador: [],
   ubicacion: "cualquiera",
   cambioEnPunto: null,
+  salidaRol: null,
+  crucesMinimos: null,
   rotaciones: [],
   rachas: [],
   accionPreviaDirecta: null,
