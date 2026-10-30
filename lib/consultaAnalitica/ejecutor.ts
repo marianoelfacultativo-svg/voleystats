@@ -3,17 +3,19 @@
 // ============================================================
 // FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
 //
+// v1.4 (FASE 6 — Opción A, familia cruces):
+//   + `crucesPorPunto` se calcula sobre el universo COMPLETO y
+//     se pasa al contextoAgrupacion (para groupBy cruces /
+//     duracion_rally).
+//   + Filtros nuevos: crucesMaximos, crucesExactos, crucesRango.
+//   + Se usa `calcularCrucesPorPunto` exportada desde groupBy.ts
+//     (antes era una copia local).
+//
 // v1.3 (FASE 6 — Rondas 1.3 + 2):
-//   + `calcularCrucesPorPunto(acciones)`: cuenta cambios de lado
-//     entre acciones consecutivas de cada punto (excluyendo ocultas).
-//   + `ejecutarConsulta`: si `intencion.condicion.crucesMinimos`
-//     está seteado, filtra ACCIONES y PUNTOS por ese valor.
-//   + `filtroFinal` vuelca también `salidaRol` y `crucesMinimos`
-//     al BloqueTriggerFiltro.
+//   + crucesMinimos + salidaRol volcados al filtro final.
 //
 // v1.2 (FASE 6 — bloque A.1):
-//   + `resultadosPunto` calculado sobre el universo completo
-//     (groupBy resultado_punto).
+//   + resultadosPunto sobre el universo completo.
 //
 // v1.1 (FASE 6):
 //   + Filtro de tiempo también sobre puntos.
@@ -33,7 +35,10 @@ import { parsearBusqueda } from "../parserBusqueda";
 import type { ContextoParser } from "../parserBusqueda";
 import type { IntencionQuery } from "./intenciones";
 import { construirRespuesta, type ContextoRespuesta } from "./respuesta";
-import { calcularResultadosPunto } from "./groupBy";
+import {
+  calcularCrucesPorPunto,
+  calcularResultadosPunto,
+} from "./groupBy";
 import type { ResultadoConsulta } from "./tipos";
 
 // ------------------------------------------------------------
@@ -431,6 +436,11 @@ function esFiltroVacio(f: BloqueTriggerFiltro): boolean {
   if (f.zonasJugador.length > 0) return false;
   if (f.ubicacion !== "cualquiera") return false;
   if (f.cambioEnPunto !== null) return false;
+  if (f.salidaRol !== null) return false;
+  if (f.crucesMinimos !== null) return false;
+  if (f.crucesMaximos !== null) return false;
+  if (f.crucesExactos !== null) return false;
+  if (f.crucesRango !== null) return false;
   if (f.rotaciones.length > 0) return false;
   if (f.rachas.length > 0) return false;
   if (f.accionPreviaDirecta !== null) return false;
@@ -444,52 +454,53 @@ function esFiltroVacio(f: BloqueTriggerFiltro): boolean {
   if (f.direccionAtaqueInferida.length > 0) return false;
   if (f.sectoresAtaque.length > 0) return false;
   if (f.zonasDefensaRival.length > 0) return false;
-  if (f.crucesMinimos !== undefined && f.crucesMinimos !== null) return false;
   return true;
 }
 
 // ------------------------------------------------------------
-// CRUCES DE RED POR PUNTO
+// FILTRO POR CRUCES (aplica los 4 campos)
 // ------------------------------------------------------------
-// Un "cruce" es cada cambio de lado entre acciones consecutivas
-// del punto (excluyendo acciones ocultas).
+// Recibe el mapa crucesPorPunto calculado sobre el universo
+// completo y devuelve el set de puntos que pasan el filtro.
 //
-// Ejemplo (rally normal):
-//   saque (propio) → recepción (rival): 1 cambio, 1 cruce
-//   recepción → armado: no cambia
-//   armado → ataque (rival): no cambia
-//   ataque → defensa (propio): 2do cambio, 2 cruces
-//   ...
+// - crucesMinimos:  cruces >= N
+// - crucesMaximos:  cruces <= N
+// - crucesExactos:  cruces === N
+// - crucesRango:    N <= cruces <= M
 //
-// Un ace tiene 1 sola acción → 0 cruces. Es correcto:
-// "más de 3 cruces" no debe matchear un ace.
+// Si no hay ningún filtro activo, devuelve null (para indicar
+// "no filtrar").
 // ------------------------------------------------------------
 
-function calcularCrucesPorPunto(
-  acciones: AccionVisual[]
-): Map<string, number> {
-  const porPunto = new Map<string, AccionVisual[]>();
-  for (const a of acciones) {
-    if (a.oculta) continue;
-    const k = `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`;
-    let arr = porPunto.get(k);
-    if (!arr) {
-      arr = [];
-      porPunto.set(k, arr);
-    }
-    arr.push(a);
-  }
+function filtrarPuntosPorCruces(
+  acciones: AccionVisual[],
+  crucesPorPunto: Map<string, number>,
+  intencion: IntencionQuery
+): Set<string> | null {
+  const cond = intencion.condicion;
+  if (!cond) return null;
+  const tieneMin = cond.crucesMinimos !== undefined && cond.crucesMinimos !== null;
+  const tieneMax = cond.crucesMaximos !== undefined && cond.crucesMaximos !== null;
+  const tieneExacto = cond.crucesExactos !== undefined && cond.crucesExactos !== null;
+  const tieneRango = cond.crucesRango !== undefined && cond.crucesRango !== null;
+  if (!tieneMin && !tieneMax && !tieneExacto && !tieneRango) return null;
 
-  const out = new Map<string, number>();
-  for (const [k, lista] of porPunto) {
-    const ordenada = [...lista].sort((a, b) => a.orden - b.orden);
-    let cruces = 0;
-    for (let i = 1; i < ordenada.length; i++) {
-      if (ordenada[i].lado !== ordenada[i - 1].lado) cruces += 1;
+  // Si el usuario no pasó el mapa, calcularlo ahora.
+  const mapa = crucesPorPunto.size > 0 ? crucesPorPunto : calcularCrucesPorPunto(acciones);
+
+  const permitidos = new Set<string>();
+  for (const [k, n] of mapa) {
+    let ok = true;
+    if (tieneMin && n < cond.crucesMinimos!) ok = false;
+    if (tieneMax && n > cond.crucesMaximos!) ok = false;
+    if (tieneExacto && n !== cond.crucesExactos!) ok = false;
+    if (tieneRango) {
+      const [lo, hi] = cond.crucesRango!;
+      if (n < lo || n > hi) ok = false;
     }
-    out.set(k, cruces);
+    if (ok) permitidos.add(k);
   }
-  return out;
+  return permitidos;
 }
 
 // ------------------------------------------------------------
@@ -525,23 +536,27 @@ export function ejecutarConsulta(
     contexto.partidos
   );
 
-  // 3) Cruces mínimos (Cat. 6) — filtro duro sobre acciones Y puntos.
-  const crucesMinimos = parsed.intencion.condicion?.crucesMinimos;
-  if (crucesMinimos !== undefined && crucesMinimos !== null) {
-    const crucesPorPunto = calcularCrucesPorPunto(universo);
-    const puntosPermitidos = new Set<string>();
-    for (const [k, n] of crucesPorPunto) {
-      if (n >= crucesMinimos) puntosPermitidos.add(k);
-    }
+  // 3) Cruces de red — sobre el UNIVERSO COMPLETO.
+  //    Se calcula una sola vez y se reutiliza para:
+  //      - filtrar acciones/puntos (crucesMinimos/Maximos/Exactos/Rango)
+  //      - pasar al contextoAgrupacion (para groupBy cruces/duracion_rally)
+  const crucesPorPunto = calcularCrucesPorPunto(universo);
 
+  const puntosPermitidosPorCruces = filtrarPuntosPorCruces(
+    universo,
+    crucesPorPunto,
+    parsed.intencion
+  );
+
+  if (puntosPermitidosPorCruces) {
     accionesConTiempo = accionesConTiempo.filter((a) => {
       const k = `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`;
-      return puntosPermitidos.has(k);
+      return puntosPermitidosPorCruces.has(k);
     });
     puntosConTiempo = puntosConTiempo.filter((p) => {
       const pid = p.acciones.find((a) => a.partido_id)?.partido_id ?? "";
       const k = `${pid}|${p.set_numero}|${p.punto_numero}`;
-      return puntosPermitidos.has(k);
+      return puntosPermitidosPorCruces.has(k);
     });
   }
 
@@ -579,6 +594,7 @@ export function ejecutarConsulta(
           }
         : undefined,
       resultadosPunto,
+      crucesPorPunto,
     },
     contextoRally: undefined,
     jugadores: contexto.jugadores,
@@ -588,8 +604,7 @@ export function ejecutarConsulta(
 
   const resultado = construirRespuesta(ctxRespuesta);
 
-  // 7) Volcar salidaRol y crucesMinimos al filtro final, para
-  //    consistencia con cumpleBloqueTrigger (archivos 14/15).
+  // 7) Volcar filtros extra al filtro final.
   let filtroFinal: BloqueTriggerFiltro = parsed.filtro;
   if (parsed.intencion.condicion?.salidaRol !== undefined) {
     filtroFinal = {
@@ -597,10 +612,28 @@ export function ejecutarConsulta(
       salidaRol: parsed.intencion.condicion.salidaRol,
     };
   }
-  if (crucesMinimos !== undefined && crucesMinimos !== null) {
+  if (parsed.intencion.condicion?.crucesMinimos !== undefined) {
     filtroFinal = {
       ...filtroFinal,
-      crucesMinimos,
+      crucesMinimos: parsed.intencion.condicion.crucesMinimos,
+    };
+  }
+  if (parsed.intencion.condicion?.crucesMaximos !== undefined) {
+    filtroFinal = {
+      ...filtroFinal,
+      crucesMaximos: parsed.intencion.condicion.crucesMaximos,
+    };
+  }
+  if (parsed.intencion.condicion?.crucesExactos !== undefined) {
+    filtroFinal = {
+      ...filtroFinal,
+      crucesExactos: parsed.intencion.condicion.crucesExactos,
+    };
+  }
+  if (parsed.intencion.condicion?.crucesRango !== undefined) {
+    filtroFinal = {
+      ...filtroFinal,
+      crucesRango: parsed.intencion.condicion.crucesRango,
     };
   }
 

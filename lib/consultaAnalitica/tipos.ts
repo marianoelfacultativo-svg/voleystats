@@ -262,8 +262,6 @@ export function respuestaFrecuencia(
   base: number,
   detalle: string | null = null
 ): RespuestaFrecuencia {
-  // "Cada cuántas acciones ocurre el evento".
-  // Si count = 10 y base = 100 → cada 10.
   const valor = count > 0 ? base / count : 0;
   return { tipo: "frecuencia", valor, base, count, detalle };
 }

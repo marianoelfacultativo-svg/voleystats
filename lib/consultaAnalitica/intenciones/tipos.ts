@@ -4,9 +4,16 @@
 // Extraído de intenciones.ts (v1.9). Solo tipos + intencionVacia.
 // Sin diccionarios, sin lógica.
 //
-// v1.1 (FASE 6 — Ronda 1.1 + 1.3 + 2):
-//   + CondicionFiltro.salidaRol (Cat. 3)
-//   + CondicionFiltro.crucesMinimos (Cat. 6)
+// v1.2 (FASE 6 — Opción A completa):
+//   + CondicionFiltro.crucesMaximos: number  (rallys con ≤ N cruces)
+//   + CondicionFiltro.crucesExactos: number  (rallys con N cruces exactos)
+//   + CondicionFiltro.crucesRango: [number, number] (entre N y M)
+//   + GroupBy "cruces"         (agrupa por cantidad exacta de cruces)
+//   + GroupBy "duracion_rally" (agrupa por bucket corto/medio/largo)
+//
+// v1.1 (FASE 6 — Rondas 1.3 + 2):
+//   + CondicionFiltro.salidaRol
+//   + CondicionFiltro.crucesMinimos
 // ============================================================
 
 // ------------------------------------------------------------
@@ -63,7 +70,9 @@ export type GroupBy =
   | "velocidad"
   | "tipo_saque"
   | "variante"
-  | "cambio";
+  | "cambio"
+  | "cruces"          // ← NUEVO
+  | "duracion_rally"; // ← NUEVO
 
 export type TiempoTipo =
   | "ultimos_n_partidos"
@@ -106,8 +115,6 @@ export interface TiempoFiltro {
 // ------------------------------------------------------------
 // FILTRO DE CONDICIÓN
 // ------------------------------------------------------------
-// v1.1: agrega salidaRol (Cat. 3) y crucesMinimos (Cat. 6).
-// ------------------------------------------------------------
 
 export interface CondicionFiltro {
   marcador?: string;
@@ -125,8 +132,14 @@ export interface CondicionFiltro {
   despuesDeCambio?: boolean;
   /** Rol cuyo "salida" (zona de origen del ataque) se filtra. */
   salidaRol?: "opuesto" | "central" | "punta" | "armador";
-  /** Cantidad mínima de cruces de red del rally (Cat. 6). */
+  /** Cantidad mínima de cruces de red del rally. */
   crucesMinimos?: number;
+  /** Cantidad máxima de cruces de red del rally. */
+  crucesMaximos?: number;
+  /** Cantidad exacta de cruces de red del rally. */
+  crucesExactos?: number;
+  /** Rango [min, max] de cruces de red del rally. */
+  crucesRango?: [number, number];
 }
 
 // ------------------------------------------------------------

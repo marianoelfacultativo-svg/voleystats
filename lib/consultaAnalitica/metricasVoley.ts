@@ -3,19 +3,23 @@
 // ============================================================
 // FASE 3 + FASE 6 del plan "Consultas Analíticas Libres".
 //
+// v1.4 (FASE 6 — Opción A, familia cruces de red):
+//   + calcularCrucesDePunto(lista): helper local.
+//   + crucesPromedio(puntos): promedio de cruces por rally.
+//   + crucesTotal(puntos): total de cruces del universo.
+//   + crucesMax(puntos): máximo de cruces en un rally.
+//   + rallysLargos(puntos): rallys con >= CRUCES_DEFAULT_LARGO.
+//   + rallysCortos(puntos): rallys con <= CRUCES_DEFAULT_CORTO.
+//   + rallysMedios(puntos): rallys con exactamente 3 cruces.
+//
 // v1.3 (FASE 6 — Ronda 1.2):
-//   + `puntosPorDimension(puntos, groupBy, contexto)`: agrupa
-//     los rallies GANADOS por una dimensión (rotacion, zona_origen,
-//     ubicacion, rol, jugador) y devuelve [{key,label,count}]
-//     ordenado por count desc. Es lo que usa `respuesta.ts` para
-//     "¿qué rotación hace más puntos?".
+//   + puntosPorDimension(puntos, groupBy, contexto).
 //
 // v1.2 (FASE 6 — bloque A.2):
-//   + `puntosGanadosPct(puntos)`: % de puntos propios sobre el
-//     total de rallies cerrados.
+//   + puntosGanadosPct(puntos).
 //
 // v1.1 (FASE 6):
-//   + `puntosGanados(puntos)` + `accionesPunto(acciones)`.
+//   + puntosGanados(puntos) + accionesPunto(acciones).
 //
 // v1.0:
 //   + Las 12 métricas originales (kill %, sideout %, etc.).
@@ -33,6 +37,10 @@ import {
 } from "../analisis/clasificacion";
 import { redondear } from "./agregador";
 import type { GroupBy } from "./intenciones";
+import {
+  CRUCES_DEFAULT_CORTO,
+  CRUCES_DEFAULT_LARGO,
+} from "./intenciones/cruces";
 
 // ------------------------------------------------------------
 // TIPO DE RESULTADO
@@ -123,6 +131,24 @@ function ganadorDelPunto(acciones: AccionVisual[]): "propio" | "rival" | null {
   if (cat === "punto") return ultima.es_rival ? "rival" : "propio";
   if (cat === "error") return ultima.es_rival ? "propio" : "rival";
   return null;
+}
+
+// ------------------------------------------------------------
+// CRUCES DE RED POR PUNTO
+// ------------------------------------------------------------
+// Un "cruce" es cada cambio de lado entre acciones consecutivas
+// visibles. Un overpass también cuenta (la pelota cruzó la red).
+// ------------------------------------------------------------
+
+function calcularCrucesDePunto(lista: AccionVisual[]): number {
+  const visibles = lista
+    .filter((x) => !x.oculta)
+    .sort((x, y) => x.orden - y.orden);
+  let cruces = 0;
+  for (let i = 1; i < visibles.length; i++) {
+    if (visibles[i].lado !== visibles[i - 1].lado) cruces += 1;
+  }
+  return cruces;
 }
 
 // ------------------------------------------------------------
@@ -440,22 +466,120 @@ export function accionesPunto(
 }
 
 // ------------------------------------------------------------
-// PUNTOS POR DIMENSIÓN (FASE 6 — Ronda 1.2)
+// CRUCES DE RED — MÉTRICAS AGREGADAS (Opción A)
 // ------------------------------------------------------------
-// Agrupa los rallies GANADOS por una dimensión y devuelve
-// [{key, label, count}] ordenado por count desc.
-//
-// Dimensiones soportadas:
-//   - rotacion:     rotación del punto ganado
-//   - zona_origen:  zona de origen del ÚLTIMO ATAQUE propio
-//   - jugador:      quién hizo la última acción propia
-//   - ubicacion:    dónde estaba la última acción propia
-//   - rol:          rol del jugador de la última acción propia
-//
-// Dimensiones NO soportadas (devuelve []):
-//   cualquier otra (set, partido, subtipo, etc.)
-//
-// `contexto.nombreDeJugador` opcional para etiquetas legibles.
+
+/**
+ * Promedio de cruces de red por rally.
+ *
+ * Cuenta cambios de lado por punto (incluye overpass) y divide
+ * por la cantidad de rallies con al menos 1 acción visible.
+ *
+ * Si la pregunta original dice "por punto" o "por rally", esta
+ * es la métrica. El motor la devuelve como número decimal.
+ */
+export function crucesPromedio(
+  puntos: PuntoConAcciones[]
+): MetricaResultado {
+  let totalPuntos = 0;
+  let sumaCruces = 0;
+
+  for (const p of puntos) {
+    const visibles = p.acciones.filter((a) => !a.oculta);
+    if (visibles.length === 0) continue;
+    sumaCruces += calcularCrucesDePunto(p.acciones);
+    totalPuntos += 1;
+  }
+
+  if (totalPuntos === 0) return vacio();
+
+  const promedio = sumaCruces / totalPuntos;
+  return {
+    valor: redondear(promedio, 2),
+    numerador: sumaCruces,
+    denominador: totalPuntos,
+    descripcion:
+      `${sumaCruces} cruces en ${totalPuntos} rallies ` +
+      `(${redondear(promedio, 2)} cruces/rally)`,
+  };
+}
+
+/**
+ * Total de cruces de red en el universo.
+ */
+export function crucesTotal(
+  puntos: PuntoConAcciones[]
+): MetricaResultado {
+  let total = 0;
+  for (const p of puntos) {
+    total += calcularCrucesDePunto(p.acciones);
+  }
+  return conteo(total, puntos.length, "cruces");
+}
+
+/**
+ * Máximo de cruces en un solo rally.
+ */
+export function crucesMax(
+  puntos: PuntoConAcciones[]
+): MetricaResultado {
+  let max = 0;
+  for (const p of puntos) {
+    const c = calcularCrucesDePunto(p.acciones);
+    if (c > max) max = c;
+  }
+  return conteo(max, puntos.length, "cruces (máximo)");
+}
+
+/**
+ * Cantidad de rallies largos (≥ CRUCES_DEFAULT_LARGO cruces).
+ */
+export function rallysLargos(
+  puntos: PuntoConAcciones[]
+): MetricaResultado {
+  let cuenta = 0;
+  for (const p of puntos) {
+    if (calcularCrucesDePunto(p.acciones) >= CRUCES_DEFAULT_LARGO) {
+      cuenta += 1;
+    }
+  }
+  return conteo(cuenta, puntos.length, "rallys largos");
+}
+
+/**
+ * Cantidad de rallies cortos (≤ CRUCES_DEFAULT_CORTO cruces).
+ */
+export function rallysCortos(
+  puntos: PuntoConAcciones[]
+): MetricaResultado {
+  let cuenta = 0;
+  for (const p of puntos) {
+    if (calcularCrucesDePunto(p.acciones) <= CRUCES_DEFAULT_CORTO) {
+      cuenta += 1;
+    }
+  }
+  return conteo(cuenta, puntos.length, "rallys cortos");
+}
+
+/**
+ * Cantidad de rallies "medios": exactamente 3 cruces.
+ *
+ * Nota: con los cortes actuales (corto ≤ 2, largo ≥ 3), "medio"
+ * es el primer valor de "largo". Es un atajo útil para "rallies
+ * que llegaron a 3 cruces exactos".
+ */
+export function rallysMedios(
+  puntos: PuntoConAcciones[]
+): MetricaResultado {
+  let cuenta = 0;
+  for (const p of puntos) {
+    if (calcularCrucesDePunto(p.acciones) === 3) cuenta += 1;
+  }
+  return conteo(cuenta, puntos.length, "rallys de 3 cruces");
+}
+
+// ------------------------------------------------------------
+// PUNTOS POR DIMENSIÓN (FASE 6 — Ronda 1.2)
 // ------------------------------------------------------------
 
 export interface PuntoDimension {
@@ -496,9 +620,6 @@ export function puntosPorDimension(
         break;
       }
       case "zona_origen": {
-        // "salida": usamos el último ATAQUE propio del punto,
-        // porque zona_origen de una defensa o un bloqueo no es
-        // una "salida" en el sentido de ataque.
         const ataque = propias.find((a) => a.tipo === "ataque");
         if (!ataque || ataque.zona_origen === null) continue;
         key = String(ataque.zona_origen);

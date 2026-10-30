@@ -2,14 +2,21 @@
 // INTENCIONES · DIMENSIONES
 // ============================================================
 // Agrupa los diccionarios "no-intención":
-//   - SINONIMOS_GROUPBY    (por X)
-//   - SINONIMOS_METRICA    (kill %, sideout %, puntos ganados, …)
-//   - SINONIMOS_UBICACION  (delantero / zaguero / líbero)
-//   - SINONIMOS_CAMBIO     (cambio de jugador)
+//   - SINONIMOS_GROUPBY
+//   - SINONIMOS_METRICA
+//   - SINONIMOS_UBICACION
+//   - SINONIMOS_CAMBIO
 //   - DIAS_SEMANA + SINONIMOS_ULTIMOS / TEMPORADA / ESPECIFICOS
-//   - SINONIMOS_CONDICION  (marcador, racha, fase, etc.)
+//   - SINONIMOS_CONDICION
 //
-// Extraído de intenciones.ts (v1.9). Sin cambios funcionales.
+// v1.1 (FASE 6 — Opción A, familia cruces):
+//   + Métricas nuevas en SINONIMOS_METRICA:
+//       cruces_promedio, cruces_total, cruces_max,
+//       rallys_largos, rallys_cortos, rallys_medios.
+//     Van al PRINCIPIO del array (el parser las matchea primero).
+//   + GroupBy nuevos: cruces, duracion_rally.
+//
+// v1.0: versión inicial del refactor.
 // ============================================================
 
 import type { GroupBy, UbicacionQuery, DiaSemana } from "./tipos";
@@ -52,7 +59,6 @@ export const SINONIMOS_GROUPBY: { patrones: string[]; groupBy: GroupBy }[] = [
     ],
     groupBy: "jugador",
   },
-  // salida → zona_origen
   {
     patrones: [
       "por zona origen", "por zona de origen", "por origen",
@@ -91,7 +97,6 @@ export const SINONIMOS_GROUPBY: { patrones: string[]; groupBy: GroupBy }[] = [
       "por rotación", "por cada rotación", "rotación a rotación",
       "agrupado por rotacion", "agrupados por rotacion",
       "separado por rotacion", "separados por rotacion",
-      // formas de pregunta directas (v1.9)
       "en que rotacion", "en qué rotación",
       "en cual rotacion", "en cuál rotación",
       "que rotacion", "qué rotación",
@@ -235,13 +240,233 @@ export const SINONIMOS_GROUPBY: { patrones: string[]; groupBy: GroupBy }[] = [
     ],
     groupBy: "cambio",
   },
+
+  // ------------------------------------------------------------
+  // NUEVOS (Opción A — familia cruces)
+  // ------------------------------------------------------------
+
+  {
+    patrones: [
+      "por cantidad de cruces",
+      "por cantidad de cruces de red",
+      "por numero de cruces",
+      "por número de cruces",
+      "por cada cantidad de cruces",
+      "por cada numero de cruces",
+      "por cada número de cruces",
+      "por cruces",
+      "por cruces de red",
+      "por cuantos cruces",
+      "por cuántos cruces",
+      "por cantidad de pelotazos",
+      "por cantidad de intercambios",
+    ],
+    groupBy: "cruces",
+  },
+  {
+    patrones: [
+      "por duracion del rally",
+      "por duración del rally",
+      "por duracion de rally",
+      "por duración de rally",
+      "por duracion de los rallys",
+      "por duración de los rallys",
+      "por duracion de los rallies",
+      "por duración de los rallies",
+      "por largo del rally",
+      "por largo de los rallys",
+      "por largo de los rallies",
+      "por duracion (corto/medio/largo)",
+      "por duracion corto medio largo",
+      "por duración corto medio largo",
+      "por si son largos o cortos",
+      "por si son cortos o largos",
+    ],
+    groupBy: "duracion_rally",
+  },
 ];
 
 // ------------------------------------------------------------
 // MÉTRICAS DE VÓLEY
 // ------------------------------------------------------------
+// v1.1: las 6 métricas de cruces van al PRINCIPIO del array.
+// Los patrones son largos y específicos, así que no se pisan
+// con el resto.
+// ------------------------------------------------------------
 
 export const SINONIMOS_METRICA: { patrones: string[]; metrica: string }[] = [
+  // ============================================================
+  // FAMILIA CRUCES (Opción A)
+  // ============================================================
+
+  // ---- cruces_promedio ----
+  {
+    patrones: [
+      "cuantas veces pasa al otro lado la pelota en promedio",
+      "cuantas veces pasa al otro lado la pelota por punto",
+      "cuantas veces pasa al otro lado la pelota por rally",
+      "cuantas veces pasa al otro lado en promedio",
+      "cuantas veces pasa la pelota al otro lado en promedio",
+      "cuantas veces cruza la red en promedio",
+      "cuantas veces cruza la red por rally",
+      "cuantas veces cruza la red por punto",
+      "cuantas veces cruzo la red en promedio",
+      "promedio de cruces por punto",
+      "promedio de cruces por rally",
+      "promedio de cruces de red",
+      "promedio de cruces de red por punto",
+      "promedio de cruces de red por rally",
+      "promedio de pelotazos por punto",
+      "promedio de pelotazos por rally",
+      "promedio de intercambios por rally",
+      "promedio de intercambios por punto",
+      "media de cruces",
+      "media de cruces de red",
+      "media de cruces por rally",
+      "media de cruces por punto",
+      "cuanto dura un rally en promedio",
+      "cuanto dura un punto en promedio",
+      "cuanto dura un rally promedio",
+      "cuanto dura un punto promedio",
+      "duracion promedio de rally",
+      "duracion promedio de punto",
+      "duracion promedio de los rallies",
+      "duracion promedio de los rallys",
+      "duracion promedio del punto",
+      "duracion promedio del rally",
+      "cuantos cruces en promedio",
+      "cuantos cruces promedio",
+      "cuantos cruces por rally en promedio",
+      "cuantos cruces por punto en promedio",
+      "cuantos cruces de red en promedio",
+      "cuantos pelotazos por rally",
+      "cuantos pelotazos por punto",
+      "cuantos intercambios por rally",
+      "cuantos intercambios por punto",
+      "que tan largo es un rally",
+      "que tan largo es un punto",
+    ],
+    metrica: "cruces_promedio",
+  },
+
+  // ---- cruces_total ----
+  {
+    patrones: [
+      "cuantos cruces hay",
+      "cuantos cruces hubo",
+      "cuantos cruces en total",
+      "cuantos cruces de red hay",
+      "cuantos cruces de red hubo",
+      "cuantos cruces de red en total",
+      "cuantos pelotazos hay",
+      "cuantos pelotazos hubo",
+      "cuantos pelotazos en total",
+      "cuantos intercambios hay",
+      "cuantos intercambios hubo",
+      "cuantos intercambios en total",
+      "total de cruces",
+      "total de cruces de red",
+      "total de pelotazos",
+      "total de intercambios",
+    ],
+    metrica: "cruces_total",
+  },
+
+  // ---- cruces_max ----
+  {
+    patrones: [
+      "maximo de cruces",
+      "maximo de cruces en un rally",
+      "maximo de cruces de red",
+      "maximo de pelotazos",
+      "maximo de intercambios",
+      "cuantos cruces tiene el rally mas largo",
+      "cuantos cruces tuvo el rally mas largo",
+      "cuantos cruces tiene el punto mas largo",
+      "cuantos cruces tuvo el punto mas largo",
+      "el rally mas largo tuvo cuantos cruces",
+      "el rally mas largo tiene cuantos cruces",
+      "el punto mas largo tuvo cuantos cruces",
+      "el punto mas largo tiene cuantos cruces",
+      "rally mas largo",
+      "punto mas largo",
+      "el rally mas largo",
+      "el punto mas largo",
+      "los rallies mas largos",
+      "los puntos mas largos",
+    ],
+    metrica: "cruces_max",
+  },
+
+  // ---- rallys_largos ----
+  {
+    patrones: [
+      "cuantos rallys largos hay",
+      "cuantos rallies largos hay",
+      "cuantos rallys largos hubo",
+      "cuantos rallies largos hubo",
+      "cuantos rallys largos",
+      "cuantos rallies largos",
+      "cantidad de rallys largos",
+      "cantidad de rallies largos",
+      "cantidad de puntos largos",
+      "cuantos puntos largos hay",
+      "cuantos puntos largos hubo",
+      "cuantos puntos largos",
+      "numero de rallys largos",
+      "numero de rallies largos",
+      "que porcentaje de rallys son largos",
+      "que porcentaje de rallies son largos",
+      "que porcentaje de rallys largos hay",
+    ],
+    metrica: "rallys_largos",
+  },
+
+  // ---- rallys_cortos ----
+  {
+    patrones: [
+      "cuantos rallys cortos hay",
+      "cuantos rallies cortos hay",
+      "cuantos rallys cortos hubo",
+      "cuantos rallies cortos hubo",
+      "cuantos rallys cortos",
+      "cuantos rallies cortos",
+      "cantidad de rallys cortos",
+      "cantidad de rallies cortos",
+      "cantidad de puntos cortos",
+      "cuantos puntos cortos hay",
+      "cuantos puntos cortos hubo",
+      "cuantos puntos cortos",
+      "numero de rallys cortos",
+      "numero de rallies cortos",
+      "que porcentaje de rallys son cortos",
+      "que porcentaje de rallies son cortos",
+      "que porcentaje de rallys cortos hay",
+    ],
+    metrica: "rallys_cortos",
+  },
+
+  // ---- rallys_medios ----
+  {
+    patrones: [
+      "cuantos rallys de 3 cruces",
+      "cuantos rallies de 3 cruces",
+      "cuantos rallys de 3 cruces hay",
+      "cuantos rallies de 3 cruces hay",
+      "cuantos rallys medios",
+      "cuantos rallies medios",
+      "cuantos rallys medios hay",
+      "cuantos rallies medios hay",
+      "cantidad de rallys medios",
+      "cantidad de rallies medios",
+    ],
+    metrica: "rallys_medios",
+  },
+
+  // ============================================================
+  // Resto de métricas (idénticas a v1.0)
+  // ============================================================
+
   // ---- % de puntos ganados (bloque A.2) ----
   {
     patrones: [

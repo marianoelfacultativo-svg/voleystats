@@ -2,12 +2,18 @@
 // INTENCIONES — barrel
 // ============================================================
 // Este archivo reexporta todo lo de lib/consultaAnalitica/intenciones/*.
-// La API pública es idéntica a v1.9 (más los arrays nuevos para
-// Cat. 3, Cat. 5 y Cat. 6).
+// La API pública es idéntica a v2.1 (con ajustes en el re-export
+// de cruces.ts).
 //
-// v2.1 (fix build): corrige el re-export de cruces.ts
-//   (SINONIMOS_CRUCES_MINIMOS no existía; ahora se re-exporta
-//   extraerCrucesDeTexto y las constantes/regex de cruces).
+// v2.2 (Opción A, familia cruces):
+//   + Re-export actualizado de cruces.ts:
+//       CRUCES_DEFAULT_LARGO, CRUCES_DEFAULT_CORTO,
+//       extraerCrucesDeTexto, parsearNumeroCruces, ResultadoCruces.
+//   + Se quitaron REGEX_MAS_DE_CRUCES, REGEX_N_O_MAS_CRUCES,
+//     REGEX_CRUCES_SUELTO, REGEX_RALLY_LARGO (ahora son
+//     constantes locales dentro de cruces.ts).
+//
+// v2.1 (fix build): corrige re-export de cruces.ts.
 // ============================================================
 
 // --- Tipos y helpers base ---
@@ -73,10 +79,7 @@ export {
 // --- Cat. 6: cruces de red (rallys con N+ cruces) ---
 export {
   CRUCES_DEFAULT_LARGO,
-  REGEX_MAS_DE_CRUCES,
-  REGEX_N_O_MAS_CRUCES,
-  REGEX_CRUCES_SUELTO,
-  REGEX_RALLY_LARGO,
+  CRUCES_DEFAULT_CORTO,
   extraerCrucesDeTexto,
   parsearNumeroCruces,
   type ResultadoCruces,

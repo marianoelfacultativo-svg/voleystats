@@ -3,26 +3,23 @@
 // ============================================================
 // FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
 //
-// v1.5 (FASE 6 — Rondas 1.2 + 1.3 + 2):
-//   + `aplicarCondicionesExtra(ctx)`: filtra acciones por
-//     `condicion.fase` (usando contextoRally) y `condicion.salidaRol`.
-//     Filtra puntos por `condicion.fase`.
-//   + `frasePidePuntos(original)`: detecta "puntos" sin "por".
-//   + `ejecutarMaxMin` / `ejecutarRanking` usan
-//     `puntosPorDimension` (rallies ganados) cuando el groupBy
-//     es dimensionable por puntos y la frase pide puntos.
-//     Antes "qué rotación hace más puntos" contaba ACCIONES.
+// v1.6 (FASE 6 — Opción A, familia cruces):
+//   + 6 métricas nuevas: cruces_promedio, cruces_total,
+//     cruces_max, rallys_largos, rallys_cortos, rallys_medios.
+//   + Aviso de ambigüedad: si la frase pidió cruces sin N
+//     ("rally largo", "rally corto", "cruces de red"), se
+//     agrega al detalle el default asumido.
+//
+// v1.5 (Rondas 1.2 + 1.3 + 2):
+//   + aplicarCondicionesExtra (fase + salidaRol).
+//   + frasePidePuntos + puntosPorDimension para max/min/ranking.
 //
 // v1.4 (Ronda 1.1):
-//   + `agregacionEfectiva(ctx)`: max/min/ranking con "mejor"/"peor"
-//     usan "avg" (calidad) en vez de "count" (cantidad).
+//   + agregacionEfectiva (mejor/peor → avg).
 //
 // v1.3 (bloque A.2):
-//   + habit "cómo terminan los puntos/rallys" → resultado_punto.
+//   + habit "cómo terminan" → resultado_punto.
 //   + puntos_ganados_pct.
-//
-// v1.2 (bloque A.1):
-//   + puntos_ganados + acciones_punto.
 // ============================================================
 
 import type {
@@ -55,6 +52,9 @@ import {
   attackEfficiency,
   blockEfficiency,
   breakPointPct,
+  crucesMax,
+  crucesPromedio,
+  crucesTotal,
   digEfficiency,
   hittingPct,
   killPct,
@@ -63,6 +63,9 @@ import {
   puntosPorDimension,
   puntosPorRotacion,
   puntosPorSet,
+  rallysCortos,
+  rallysLargos,
+  rallysMedios,
   receptionPct,
   serveErrorPct,
   sideoutPct,
@@ -70,6 +73,10 @@ import {
   type PuntoDimension,
 } from "./metricasVoley";
 import { matcheaSalidaRol } from "./intenciones/salida";
+import {
+  CRUCES_DEFAULT_CORTO,
+  CRUCES_DEFAULT_LARGO,
+} from "./intenciones/cruces";
 import {
   analizarTendencia,
   describirTendencia,
@@ -123,9 +130,6 @@ function normalizarTexto(s: string): string {
 // ------------------------------------------------------------
 // AGREGACIÓN EFECTIVA
 // ------------------------------------------------------------
-// Si la pregunta es por calidad ("mejor"/"peor"), el motor
-// promedia puntajes (avg) en lugar de contar acciones (count).
-// ------------------------------------------------------------
 
 function agregacionEfectiva(ctx: ContextoRespuesta): AggFn {
   const intencion = ctx.intencion;
@@ -147,16 +151,6 @@ function agregacionEfectiva(ctx: ContextoRespuesta): AggFn {
 // ------------------------------------------------------------
 // ¿LA FRASE PIDE PUNTOS?
 // ------------------------------------------------------------
-// Detecta "puntos" pero NO "puntos por X" (eso es un promedio,
-// va por la métrica puntos_por_*).
-//
-// Ejemplos:
-//   "¿qué rotación hace más puntos?"     → true
-//   "¿qué rotación gana más puntos?"     → true
-//   "¿cuántos puntos por rotación?"      → false (métrica de promedio)
-//   "¿qué rotación tiene más ataques?"   → false
-//   "¿quién anotó más puntos?"           → true
-// ------------------------------------------------------------
 
 function frasePidePuntos(original: string): boolean {
   const n = normalizarTexto(original);
@@ -168,16 +162,68 @@ function frasePidePuntos(original: string): boolean {
 }
 
 // ------------------------------------------------------------
-// APLICAR CONDICIONES EXTRA
+// AMBIGÜEDAD DE CRUCES
 // ------------------------------------------------------------
-// Filtra ctx.acciones por:
-//   - condicion.fase       (Cat. 5)
-//   - condicion.salidaRol  (Cat. 3)
+// El usuario pidió cruces sin dar un N explícito (ej: "rally
+// largo", "rally corto", "cruces de red"). El parser ya asumió
+// un default y lo dejó en condicion.crucesMinimos/Maximos.
+// Acá mostramos el aviso al usuario.
 //
-// Filtra ctx.puntos por:
-//   - condicion.fase (usa la fase de la última acción visible)
-//
-// Se llama UNA sola vez al principio de construirRespuesta.
+// Reglas:
+//   - Si la frase tiene un número explícito de cruces → no ambiguo.
+//   - Si la frase dice "rally largo/corto", "cruces", "pelotazos",
+//     "intercambios" sin N → ambiguo.
+//   - Si la frase no trata de cruces → no ambiguo.
+// ------------------------------------------------------------
+
+function esAmbiguedadCruces(intencion: IntencionQuery): boolean {
+  const original = normalizarTexto(intencion.original || "");
+
+  // Números explícitos de cruces → no ambiguo.
+  if (/\b(?:mas|más)\s+de\s+\d+\s+cruces?\b/.test(original)) return false;
+  if (/\bmenos\s+de\s+\d+\s+cruces?\b/.test(original)) return false;
+  if (/\bhasta\s+\d+\s+cruces?\b/.test(original)) return false;
+  if (/\bentre\s+\d+\s+y\s+\d+\s+cruces?\b/.test(original)) return false;
+  if (/\bexactamente\s+\d+\s+cruces?\b/.test(original)) return false;
+  if (/\b\d+\s+cruces?\b/.test(original)) return false;
+  if (/\b\d+\s+pelotazos?\b/.test(original)) return false;
+  if (/\b\d+\s+intercambios?\b/.test(original)) return false;
+
+  // Palabras ambiguas sin número → ambiguo.
+  if (/\brallys?\s+larg/.test(original)) return true;
+  if (/\brallys?\s+cort/.test(original)) return true;
+  if (/\bcruces?\b/.test(original)) return true;
+  if (/\bpelotazos?\b/.test(original)) return true;
+  if (/\bintercambios?\b/.test(original)) return true;
+
+  return false;
+}
+
+function agregarAvisoAmbiguedad(
+  respuesta: RespuestaConsulta,
+  intencion: IntencionQuery
+): RespuestaConsulta {
+  if (!esAmbiguedadCruces(intencion)) return respuesta;
+  if (respuesta.tipo === "vacio") return respuesta;
+
+  const aviso =
+    `(Asumí "rally largo" = ≥${CRUCES_DEFAULT_LARGO} cruces, ` +
+    `"rally corto" = ≤${CRUCES_DEFAULT_CORTO} cruces. ` +
+    `Especificá un número para cambiar el umbral, ` +
+    `ej: "más de 4 cruces".)`;
+
+  if ("detalle" in respuesta) {
+    const detalle = respuesta.detalle;
+    return {
+      ...respuesta,
+      detalle: detalle ? `${detalle} ${aviso}` : aviso,
+    };
+  }
+  return respuesta;
+}
+
+// ------------------------------------------------------------
+// APLICAR CONDICIONES EXTRA
 // ------------------------------------------------------------
 
 function aplicarCondicionesExtra(
@@ -190,13 +236,11 @@ function aplicarCondicionesExtra(
   const tieneSalida = !!cond.salidaRol;
   if (!tieneFase && !tieneSalida) return ctx;
 
-  // Contexto de rally: lo necesito para fase.
   let mapaRally: Map<string, ContextoRally> | null = null;
   if (tieneFase) {
     mapaRally = ctx.contextoRally ?? calcularContextoRally(ctx.acciones);
   }
 
-  // --- Filtro de acciones ---
   let acciones = ctx.acciones;
 
   if (tieneFase && mapaRally) {
@@ -214,7 +258,6 @@ function aplicarCondicionesExtra(
     );
   }
 
-  // --- Filtro de puntos (solo fase) ---
   let puntos = ctx.puntos;
   if (tieneFase && mapaRally && puntos && puntos.length > 0) {
     const faseBuscada = cond.fase!;
@@ -348,6 +391,61 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
 
   const acciones = ctx.acciones;
 
+  // ============================================================
+  // FAMILIA CRUCES (Opción A)
+  // ============================================================
+  if (metrica === "cruces_promedio") {
+    if (!ctx.puntos || ctx.puntos.length === 0) {
+      return respuestaVacia(
+        "Sin puntos cargados para calcular cruces de red."
+      );
+    }
+    return metricaAPromedio(crucesPromedio(ctx.puntos));
+  }
+  if (metrica === "cruces_total") {
+    if (!ctx.puntos || ctx.puntos.length === 0) {
+      return respuestaVacia(
+        "Sin puntos cargados para calcular cruces de red."
+      );
+    }
+    return metricaANumero(crucesTotal(ctx.puntos), "cruces");
+  }
+  if (metrica === "cruces_max") {
+    if (!ctx.puntos || ctx.puntos.length === 0) {
+      return respuestaVacia(
+        "Sin puntos cargados para calcular cruces de red."
+      );
+    }
+    return metricaANumero(crucesMax(ctx.puntos), "cruces");
+  }
+  if (metrica === "rallys_largos") {
+    if (!ctx.puntos || ctx.puntos.length === 0) {
+      return respuestaVacia(
+        "Sin puntos cargados para calcular rallys largos."
+      );
+    }
+    return metricaANumero(rallysLargos(ctx.puntos), "rallys largos");
+  }
+  if (metrica === "rallys_cortos") {
+    if (!ctx.puntos || ctx.puntos.length === 0) {
+      return respuestaVacia(
+        "Sin puntos cargados para calcular rallys cortos."
+      );
+    }
+    return metricaANumero(rallysCortos(ctx.puntos), "rallys cortos");
+  }
+  if (metrica === "rallys_medios") {
+    if (!ctx.puntos || ctx.puntos.length === 0) {
+      return respuestaVacia(
+        "Sin puntos cargados para calcular rallys medios."
+      );
+    }
+    return metricaANumero(rallysMedios(ctx.puntos), "rallys medios");
+  }
+
+  // ============================================================
+  // RESTO DE MÉTRICAS (idénticas a v1.5)
+  // ============================================================
   if (metrica === "puntos_ganados") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
       return respuestaVacia(
@@ -419,13 +517,7 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
     }
     default:
       return respuestaVacia(
-        `Métrica "${metrica}" no implementada todavía. ` +
-          `Disponibles: kill %, eficiencia de ataque, hitting %, ` +
-          `side-out %, break point %, recepción %, ace %, ` +
-          `error de saque %, eficiencia de bloqueo, ` +
-          `eficiencia de defensa, puntos por set, ` +
-          `puntos por rotación, puntos ganados, ` +
-          `% de puntos ganados, acciones en punto.`
+        `Métrica "${metrica}" no implementada todavía.`
       );
   }
 }
@@ -849,7 +941,6 @@ function ejecutarHabit(ctx: ContextoRespuesta): RespuestaConsulta {
 export function construirRespuesta(
   ctxOriginal: ContextoRespuesta
 ): ResultadoConsulta {
-  // Pre-filtro de condiciones extra (fase + salidaRol).
   const ctx = aplicarCondicionesExtra(ctxOriginal);
 
   const totalAcciones = ctx.acciones.filter((a) => !a.oculta).length;
@@ -859,7 +950,12 @@ export function construirRespuesta(
 
   if (ctx.intencion.metrica) {
     const resp = ejecutarMetrica(ctx);
-    return { respuesta: resp, meta: metaFinal, fragmentos, noReconocidas };
+    return {
+      respuesta: agregarAvisoAmbiguedad(resp, ctx.intencion),
+      meta: metaFinal,
+      fragmentos,
+      noReconocidas,
+    };
   }
 
   let resp: RespuestaConsulta;
@@ -903,9 +999,14 @@ export function construirRespuesta(
         "No pude entender qué cálculo querés hacer. Probá con " +
           '"cuántos", "porcentaje", "promedio", "cada cuánto", ' +
           '"mejor", "peor", "distribución", "evolución", "suele", ' +
-          '"cómo terminan", "puntos ganados".'
+          '"cómo terminan", "puntos ganados", "cruces".'
       );
   }
 
-  return { respuesta: resp, meta: metaFinal, fragmentos, noReconocidas };
+  return {
+    respuesta: agregarAvisoAmbiguedad(resp, ctx.intencion),
+    meta: metaFinal,
+    fragmentos,
+    noReconocidas,
+  };
 }

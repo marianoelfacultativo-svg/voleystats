@@ -3,10 +3,18 @@
 // ============================================================
 // Extraído de lib/analisisConsecuencias.ts (v9).
 //
+// v1.3 (FASE 6 — Opción A, familia cruces):
+//   + evalúa crucesMinimos / crucesMaximos / crucesExactos /
+//     crucesRango del rally (Cat. 6).
+//   + agrega los 3 campos nuevos a hayFiltrosAvanzadosEnBloque.
+//
+// v1.2 (Rondas 1.3 + 2):
+//   + evalúa bloque.salidaRol (Cat. 3).
+//   + evalúa bloque.crucesMinimos (Cat. 6).
+//
 // v1.1 (FASE 2):
-//   + evalúa bloque.ubicacion (delantero / zaguero / líbero / otro)
-//   + evalúa bloque.cambioEnPunto (boolean | null)
-//   + agrega ubicacion y cambioEnPunto a hayFiltrosAvanzadosEnBloque
+//   + evalúa bloque.ubicacion.
+//   + evalúa bloque.cambioEnPunto.
 // ============================================================
 
 import type { AccionVisual } from "../../app/equipo/adaptadorUnificadoV2";
@@ -26,6 +34,43 @@ import {
 import { calificarSectorAtaque } from "./sectores";
 import type { BloqueTriggerFiltro, FiltrosAnalisis } from "./tipos";
 import { zonaDefensaRival } from "./zonas";
+import { matcheaSalidaRol } from "../consultaAnalitica/intenciones/salida";
+
+// ------------------------------------------------------------
+// HELPER LOCAL: cruces de red de un punto
+// ------------------------------------------------------------
+
+function calcularCrucesDePunto(lista: AccionVisual[]): number {
+  const visibles = lista
+    .filter((x) => !x.oculta)
+    .sort((x, y) => x.orden - y.orden);
+  let cruces = 0;
+  for (let i = 1; i < visibles.length; i++) {
+    if (visibles[i].lado !== visibles[i - 1].lado) cruces += 1;
+  }
+  return cruces;
+}
+
+// ------------------------------------------------------------
+// HELPER LOCAL: evaluación conjunta de los 4 filtros de cruces
+// ------------------------------------------------------------
+// Devuelve true si el punto (con `cruces` dado) pasa TODOS los
+// filtros activos (los null se ignoran).
+// ------------------------------------------------------------
+
+function cumpleFiltrosCruces(
+  cruces: number,
+  f: BloqueTriggerFiltro
+): boolean {
+  if (f.crucesMinimos !== null && cruces < f.crucesMinimos) return false;
+  if (f.crucesMaximos !== null && cruces > f.crucesMaximos) return false;
+  if (f.crucesExactos !== null && cruces !== f.crucesExactos) return false;
+  if (f.crucesRango !== null) {
+    const [lo, hi] = f.crucesRango;
+    if (cruces < lo || cruces > hi) return false;
+  }
+  return true;
+}
 
 export function cumpleBloqueTrigger(
   a: AccionVisual,
@@ -64,7 +109,7 @@ export function cumpleBloqueTrigger(
   )
     return false;
 
-  // FASE 2: ubicación del jugador (delantero / zaguero / líbero / otro)
+  // FASE 2: ubicación del jugador
   if (bloque.ubicacion !== "cualquiera") {
     if (bloque.ubicacion === "libero") {
       if (a.rol_jugador !== "L") return false;
@@ -78,6 +123,28 @@ export function cumpleBloqueTrigger(
   if (bloque.cambioEnPunto !== null) {
     const tuvoCambio = a.cambioEnPunto ?? false;
     if (tuvoCambio !== bloque.cambioEnPunto) return false;
+  }
+
+  // FASE 6 (Cat. 3): salida por rol
+  if (bloque.salidaRol !== null) {
+    if (!matcheaSalidaRol(a.rol_jugador, a.zona_origen, bloque.salidaRol)) {
+      return false;
+    }
+  }
+
+  // FASE 6 (Cat. 6): cruces de red del rally (4 filtros combinados)
+  const tieneFiltrosCruces =
+    bloque.crucesMinimos !== null ||
+    bloque.crucesMaximos !== null ||
+    bloque.crucesExactos !== null ||
+    bloque.crucesRango !== null;
+  if (tieneFiltrosCruces) {
+    const listaPunto =
+      porPunto.get(
+        `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`
+      ) ?? [];
+    const cruces = calcularCrucesDePunto(listaPunto);
+    if (!cumpleFiltrosCruces(cruces, bloque)) return false;
   }
 
   if (
@@ -198,6 +265,11 @@ export function hayFiltrosAvanzadosEnBloque(f: BloqueTriggerFiltro): boolean {
     f.zonasJugador.length > 0 ||
     f.ubicacion !== "cualquiera" ||
     f.cambioEnPunto !== null ||
+    f.salidaRol !== null ||
+    f.crucesMinimos !== null ||
+    f.crucesMaximos !== null ||
+    f.crucesExactos !== null ||
+    f.crucesRango !== null ||
     f.rotaciones.length > 0 ||
     f.rachas.length > 0 ||
     f.accionPreviaDirecta ||

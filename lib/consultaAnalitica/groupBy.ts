@@ -3,34 +3,18 @@
 // ============================================================
 // FASE 3 del plan "Consultas Analíticas Libres".
 //
-// Dado un GroupBy (set, jugador, rotacion, ubicacion, cambio, …)
-// y un conjunto de acciones YA FILTRADAS por el motor, produce:
-//   - FilaTabla[]           (para RespuestaTabla / Ranking)
-//   - ItemDistribucion[]    (para RespuestaDistribucion / Habit)
-//   - PuntoSerie[]          (para RespuestaSerie / Trend)
-//
-// No sabe nada de UI. No sabe nada de intención. Solo agrupa.
-//
-// Necesita contexto externo para algunas dimensiones:
-//   - fase         → necesita `contextoRally`
-//   - rival        → necesita `rivalDePartido`
-//   - resultado_partido → necesita `resultadoDePartido`
-//   - jugador      → necesita `nombreDeJugador`
-//   - partido      → necesita `nombreDePartido`
-//   - resultado_punto → necesita `resultadosPunto` (o lo calcula
-//                       sobre las acciones recibidas como fallback)
-//
-// Si falta el contexto, la fila se etiqueta con el id crudo.
+// v1.3 (FASE 6 — Opción A, familia cruces):
+//   + groupBy "cruces" (cantidad exacta de cruces del rally).
+//   + groupBy "duracion_rally" (bucket corto / medio / largo).
+//   + ContextoAgrupacion.crucesPorPunto.
+//   + Fallback: si el groupBy es cruces/duracion_rally y no
+//     viene el mapa, se calcula sobre las acciones recibidas.
 //
 // v1.2 (FASE 6 — bloque A):
-//   + groupBy "resultado_punto" (punto propio / punto rival /
-//     sin ganador).
-//   + `calcularResultadosPunto` exportada.
-//   + `ContextoAgrupacion.resultadosPunto` opcional.
+//   + groupBy "resultado_punto" + calcularResultadosPunto.
 //
 // v1.1 (fix build):
-//   + `construirComparacion` normaliza `base` a `number` (0 si null)
-//     para que el tipo de retorno sea compatible con `FilaTabla`.
+//   + construirComparacion normaliza base a number.
 // ============================================================
 
 import type { AccionVisual } from "../../app/equipo/adaptadorUnificadoV2";
@@ -49,6 +33,10 @@ import {
   sumar,
 } from "./agregador";
 import type { AggFn, GroupBy } from "./intenciones";
+import {
+  CRUCES_DEFAULT_CORTO,
+  CRUCES_DEFAULT_LARGO,
+} from "./intenciones/cruces";
 import type {
   FilaTabla,
   ItemDistribucion,
@@ -72,29 +60,20 @@ export interface ContextoAgrupacion {
   contextoRally?: Map<string, ContextoRally>;
   /**
    * Resultado (ganador) de cada punto. Debe calcularse sobre el
-   * UNIVERSO COMPLETO (no sobre el subset filtrado), si no los
-   * filtros van a falsear el ganador.
-   *
-   * Necesario para groupBy "resultado_punto". Si no se provee, se
-   * calcula a partir de las acciones recibidas en `agruparAcciones`
-   * (fallback — usar solo cuando no hay filtros previos).
+   * UNIVERSO COMPLETO (no sobre el subset filtrado).
+   * Necesario para groupBy "resultado_punto".
    */
   resultadosPunto?: Map<string, "propio" | "rival" | null>;
+  /**
+   * Cantidad de cruces de red de cada punto (clave "partido|set|punto").
+   * Necesario para groupBy "cruces" y "duracion_rally".
+   * Si no se provee, se calcula como fallback sobre las acciones.
+   */
+  crucesPorPunto?: Map<string, number>;
 }
 
 // ------------------------------------------------------------
 // RESULTADO DEL PUNTO — helper compartido
-// ------------------------------------------------------------
-//
-// Clave: `${partido_id}|${set_numero}|${punto_numero}`
-// Valor: "propio" (ganamos nosotros), "rival" (ganaron ellos) o
-//        null (no se puede determinar / punto sin cerrar / neutro).
-//
-// El ganador se determina mirando la ÚLTIMA acción visible del
-// punto y clasificándola:
-//   - categoría "punto" → gana el lado que ejecutó la acción.
-//   - categoría "error" → gana el lado contrario al ejecutor.
-//   - categoría "neutro" → sin ganador.
 // ------------------------------------------------------------
 
 export function calcularResultadosPunto(
@@ -133,13 +112,61 @@ export function calcularResultadosPunto(
 }
 
 // ------------------------------------------------------------
+// CRUCES DE RED — helper local
+// ------------------------------------------------------------
+// Mismo algoritmo que metricasVoley.ts (no lo importamos para
+// evitar dependencia circular con groupBy).
+// ------------------------------------------------------------
+
+function calcularCrucesDePunto(lista: AccionVisual[]): number {
+  const visibles = lista
+    .filter((x) => !x.oculta)
+    .sort((x, y) => x.orden - y.orden);
+  let cruces = 0;
+  for (let i = 1; i < visibles.length; i++) {
+    if (visibles[i].lado !== visibles[i - 1].lado) cruces += 1;
+  }
+  return cruces;
+}
+
+/**
+ * Calcula la cantidad de cruces de red de cada punto.
+ * Clave: `partido|set|punto`. Valor: cantidad de cruces.
+ *
+ * Exportado por si el ejecutor o los tests lo necesitan.
+ */
+export function calcularCrucesPorPunto(
+  acciones: AccionVisual[]
+): Map<string, number> {
+  const porPunto = new Map<string, AccionVisual[]>();
+  for (const a of acciones) {
+    if (a.oculta) continue;
+    const k = `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`;
+    let arr = porPunto.get(k);
+    if (!arr) {
+      arr = [];
+      porPunto.set(k, arr);
+    }
+    arr.push(a);
+  }
+
+  const out = new Map<string, number>();
+  for (const [k, lista] of porPunto) {
+    out.set(k, calcularCrucesDePunto(lista));
+  }
+  return out;
+}
+
+function bucketDuracion(cruces: number): "corto" | "medio" | "largo" {
+  if (cruces <= CRUCES_DEFAULT_CORTO) return "corto";
+  if (cruces < CRUCES_DEFAULT_LARGO) return "medio";
+  return "largo";
+}
+
+// ------------------------------------------------------------
 // CLAVE Y ETIQUETA POR TIPO DE ACCIÓN
 // ------------------------------------------------------------
 
-/**
- * Devuelve la clave de agrupación de una acción según `groupBy`.
- * `null` = la acción no tiene esa dimensión (se ignora).
- */
 export function claveDeGrupo(
   a: AccionVisual,
   groupBy: GroupBy,
@@ -184,6 +211,18 @@ export function claveDeGrupo(
       if (g === "rival") return "punto_rival";
       return "sin_ganador";
     }
+    case "cruces": {
+      const k = `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`;
+      const n = _ctx.crucesPorPunto?.get(k);
+      if (n === undefined) return null;
+      return String(n);
+    }
+    case "duracion_rally": {
+      const k = `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`;
+      const n = _ctx.crucesPorPunto?.get(k);
+      if (n === undefined) return null;
+      return bucketDuracion(n);
+    }
     case "tipo":
       return a.tipo;
     case "subtipo": {
@@ -207,9 +246,6 @@ export function claveDeGrupo(
   }
 }
 
-/**
- * Devuelve la etiqueta visible de una clave de grupo.
- */
 export function etiquetaDeGrupo(
   groupBy: GroupBy,
   key: string,
@@ -257,6 +293,22 @@ export function etiquetaDeGrupo(
       if (key === "punto_rival") return "Punto rival";
       if (key === "sin_ganador") return "Sin ganador";
       return key;
+    case "cruces": {
+      const n = parseInt(key, 10);
+      if (isNaN(n)) return key;
+      return n === 1 ? "1 cruce" : `${n} cruces`;
+    }
+    case "duracion_rally":
+      if (key === "corto") {
+        return `Corto (≤${CRUCES_DEFAULT_CORTO} cruces)`;
+      }
+      if (key === "medio") {
+        return `Medio (${CRUCES_DEFAULT_CORTO + 1} cruces)`;
+      }
+      if (key === "largo") {
+        return `Largo (≥${CRUCES_DEFAULT_LARGO} cruces)`;
+      }
+      return key;
     case "tipo":
       return capitalizar(key);
     case "subtipo":
@@ -287,23 +339,32 @@ function capitalizar(s: string): string {
 // AGRUPACIÓN
 // ------------------------------------------------------------
 
-/**
- * Agrupa `acciones` por la dimensión `groupBy`.
- * Las acciones sin esa dimensión se ignoran (no van a ningún grupo).
- *
- * Si `groupBy === "resultado_punto"` y el contexto no trae
- * `resultadosPunto` ya calculados, los calcula automáticamente
- * sobre las acciones recibidas (fallback).
- */
 export function agruparAcciones(
   acciones: AccionVisual[],
   groupBy: GroupBy,
   ctx: ContextoAgrupacion = {}
 ): Map<string, AccionVisual[]> {
-  const ctxFinal =
-    groupBy === "resultado_punto" && !ctx.resultadosPunto
-      ? { ...ctx, resultadosPunto: calcularResultadosPunto(acciones) }
-      : ctx;
+  let ctxFinal: ContextoAgrupacion = ctx;
+
+  // Fallback resultado_punto
+  if (groupBy === "resultado_punto" && !ctx.resultadosPunto) {
+    ctxFinal = {
+      ...ctxFinal,
+      resultadosPunto: calcularResultadosPunto(acciones),
+    };
+  }
+
+  // Fallback cruces / duracion_rally
+  if (
+    (groupBy === "cruces" || groupBy === "duracion_rally") &&
+    !ctxFinal.crucesPorPunto
+  ) {
+    ctxFinal = {
+      ...ctxFinal,
+      crucesPorPunto: calcularCrucesPorPunto(acciones),
+    };
+  }
+
   return agrupar(
     acciones.filter((a) => !a.oculta),
     (a) => claveDeGrupo(a, groupBy, ctxFinal)
@@ -316,8 +377,6 @@ export function agruparAcciones(
 
 function selectorPara(agg: AggFn): (a: AccionVisual) => number | null {
   if (agg === "count") return () => 1;
-  // Para avg / median / sum / max / min, usamos el puntaje de la
-  // acción (0..10). Es el mismo puntaje que usa top% y vsPromedio.
   return (a) => puntajeDeAccion(a);
 }
 
@@ -325,13 +384,6 @@ function selectorPara(agg: AggFn): (a: AccionVisual) => number | null {
 // TABLA
 // ------------------------------------------------------------
 
-/**
- * Construye las filas de una tabla agrupada por `groupBy`, con la
- * agregación `agg` para el valor de cada fila.
- *
- * `porcentaje` es siempre count/grupo ÷ count_total × 100, sin
- * importar la agregación (es la columna "% del total").
- */
 export function construirTabla(
   acciones: AccionVisual[],
   groupBy: GroupBy,
@@ -371,11 +423,6 @@ export function construirTabla(
 // DISTRIBUCIÓN
 // ------------------------------------------------------------
 
-/**
- * Construye una distribución (lista de items con % sobre el total).
- *
- * Si `groupBy` es null, devuelve un solo item con todo (100%).
- */
 export function construirDistribucion(
   acciones: AccionVisual[],
   groupBy: GroupBy | null,
@@ -408,7 +455,6 @@ export function construirDistribucion(
     });
   }
 
-  // Ordenar de mayor a menor count.
   items.sort((a, b) => b.count - a.count);
   return items;
 }
@@ -417,19 +463,6 @@ export function construirDistribucion(
 // SERIE
 // ------------------------------------------------------------
 
-/**
- * Construye una serie temporal / ordinal.
- *
- * El eje puede ser:
- *   - "set"       → x = 1..N
- *   - "partido"   → x = id del partido
- *   - "rotacion"  → x = 1..6
- *
- * Para cada punto del eje calcula:
- *   - y = agregación (count / avg / percentage / …)
- *   - base = count del grupo
- *   - porcentaje = base / total × 100
- */
 export function construirSerie(
   acciones: AccionVisual[],
   eje: "set" | "partido" | "rotacion",
@@ -439,7 +472,6 @@ export function construirSerie(
   const visibles = acciones.filter((a) => !a.oculta);
   const total = visibles.length;
 
-  // Clave del eje por acción.
   const keyFn = (a: AccionVisual): string | null => {
     if (eje === "set") return String(a.set_numero);
     if (eje === "partido") return a.partido_id || null;
@@ -463,7 +495,6 @@ export function construirSerie(
       valor = agregar(items, selector, agg);
     }
 
-    // x según eje
     let x: string | number;
     if (eje === "set" || eje === "rotacion") {
       x = parseInt(key, 10);
@@ -471,7 +502,6 @@ export function construirSerie(
       x = key;
     }
 
-    // label según eje
     let label: string;
     if (eje === "set") {
       label = `Set ${key}`;
@@ -490,7 +520,6 @@ export function construirSerie(
     });
   }
 
-  // Ordenar por x si es numérico.
   if (eje === "set" || eje === "rotacion") {
     puntos.sort((a, b) => Number(a.x) - Number(b.x));
   }
@@ -499,15 +528,9 @@ export function construirSerie(
 }
 
 // ------------------------------------------------------------
-// HABIT (valor más frecuente)
+// HABIT
 // ------------------------------------------------------------
 
-/**
- * Devuelve el valor más frecuente de `groupBy` y su distribución.
- * Pensado para "¿qué suele hacer cuando…?".
- *
- * Si no hay acciones, devuelve valor = null, items = [].
- */
 export function construirHabit(
   acciones: AccionVisual[],
   groupBy: GroupBy,
@@ -533,12 +556,6 @@ export function construirHabit(
 // RANKING
 // ------------------------------------------------------------
 
-/**
- * Construye un ranking: agrupa por `groupBy`, calcula la
- * agregación `agg` para cada fila, y ordena por `valor`.
- *
- * Si `limite` no es null, corta las primeras N filas.
- */
 export function construirRanking(
   acciones: AccionVisual[],
   groupBy: GroupBy,
@@ -559,15 +576,6 @@ export function construirRanking(
 // HELPERS DE COMPARACIÓN
 // ------------------------------------------------------------
 
-/**
- * Para una comparación "A vs B", agrupa por jugador y devuelve
- * dos filas (una por cada id recibido), con count / base / valor.
- *
- * No decide qué es "A" ni "B": eso lo resuelve el motor (FASE 3).
- *
- * `base` siempre se normaliza a `number` (0 si era null) para
- * que coincida con el tipo de retorno esperado.
- */
 export function construirComparacion(
   acciones: AccionVisual[],
   groupBy: GroupBy,
@@ -616,12 +624,10 @@ export function construirComparacion(
 // HELPERS DE UTILIDAD
 // ------------------------------------------------------------
 
-/** Total de acciones visibles (sin ocultas). */
 export function contarVisibles(acciones: AccionVisual[]): number {
   return acciones.filter((a) => !a.oculta).length;
 }
 
-/** Suma de puntajes de las acciones (para promedios simples). */
 export function sumaDePuntajes(acciones: AccionVisual[]): number {
   const puntajes: number[] = [];
   for (const a of acciones) {
@@ -631,7 +637,6 @@ export function sumaDePuntajes(acciones: AccionVisual[]): number {
   return sumar(puntajes);
 }
 
-/** Promedio de puntajes (0..10). */
 export function promedioDePuntajes(acciones: AccionVisual[]): number {
   const puntajes: number[] = [];
   for (const a of acciones) {

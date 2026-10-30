@@ -1,18 +1,19 @@
 // ============================================================
 // TIPOS Y CONSTANTES VACÍAS — Análisis de consecuencias
 // ============================================================
-// Extraído de lib/analisisConsecuencias.ts (v9).
-// Solo tipos e interfaces + constantes iniciales.
-// Sin lógica, sin imports de motor.
-//
-// v1.2 (FASE 6 — Rondas 1.3 + 2):
-//   + BloqueTriggerFiltro.salidaRol: RolSalida | null  (Cat. 3)
-//   + BloqueTriggerFiltro.crucesMinimos: number | null (Cat. 6)
+// v1.3 (FASE 6 — Opción A, familia cruces):
+//   + BloqueTriggerFiltro.crucesMaximos: number | null
+//   + BloqueTriggerFiltro.crucesExactos: number | null
+//   + BloqueTriggerFiltro.crucesRango: [number, number] | null
 //   + BLOQUE_TRIGGER_VACIO los inicializa con null.
 //
+// v1.2 (Rondas 1.3 + 2):
+//   + BloqueTriggerFiltro.salidaRol
+//   + BloqueTriggerFiltro.crucesMinimos
+//
 // v1.1 (FASE 2):
-//   + BloqueTriggerFiltro.ubicacion: UbicacionFiltro
-//   + BloqueTriggerFiltro.cambioEnPunto: boolean | null
+//   + BloqueTriggerFiltro.ubicacion
+//   + BloqueTriggerFiltro.cambioEnPunto
 // ============================================================
 
 import type { FaseRally, InicioPunto, EstadoMarcador, DiferenciaMarcador } from "../contextoRally";
@@ -205,9 +206,7 @@ export const COINCIDENCIA_VACIA: CoincidenciaFiltro = {
 // ------------------------------------------------------------
 // FILTRO COMPLETO DE UN BLOQUE TRIGGER
 // ------------------------------------------------------------
-// v1.2:
-//   + salidaRol: filtra el rol de la "salida" (Cat. 3).
-//   + crucesMinimos: mínimo de cruces de red del rally (Cat. 6).
+// v1.3: familia completa de cruces (min/max/exacto/rango).
 // ------------------------------------------------------------
 
 export interface BloqueTriggerFiltro {
@@ -219,14 +218,17 @@ export interface BloqueTriggerFiltro {
   partidos: string[];
   roles: string[];
   zonasJugador: number[];
-  /** FASE 2: delantero / zaguero / líbero / otro. */
   ubicacion: UbicacionFiltro;
-  /** FASE 2: ¿el punto tuvo cambios? null = cualquiera. */
   cambioEnPunto: boolean | null;
-  /** FASE 6 (Cat. 3): rol de la "salida" (zona de origen del ataque). */
   salidaRol: RolSalida | null;
-  /** FASE 6 (Cat. 6): mínimo de cruces de red del rally. */
+  /** Mínimo de cruces de red del rally (≥ N). */
   crucesMinimos: number | null;
+  /** Máximo de cruces de red del rally (≤ N). */
+  crucesMaximos: number | null;
+  /** Cantidad exacta de cruces de red del rally. */
+  crucesExactos: number | null;
+  /** Rango [min, max] de cruces de red del rally. */
+  crucesRango: [number, number] | null;
   rotaciones: number[];
   rachas: RachaHistorica[];
   accionPreviaDirecta: FiltroAccionHistorica | null;
@@ -255,6 +257,9 @@ export const BLOQUE_TRIGGER_VACIO: BloqueTriggerFiltro = {
   cambioEnPunto: null,
   salidaRol: null,
   crucesMinimos: null,
+  crucesMaximos: null,
+  crucesExactos: null,
+  crucesRango: null,
   rotaciones: [],
   rachas: [],
   accionPreviaDirecta: null,
