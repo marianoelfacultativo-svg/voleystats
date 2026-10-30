@@ -1,33 +1,19 @@
 // ============================================================
 // RESPUESTA — response builder
 // ============================================================
-// FASE 4 del plan "Consultas Analíticas Libres".
+// FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
 //
 // Toma la intención detectada (IntencionQuery), las acciones YA
-// FILTRADAS por el motor de consulta, y el contexto externo
-// (jugadores, partidos, contexto rally), y arma un
+// FILTRADAS por el motor, y el contexto externo, y arma un
 // ResultadoConsulta con la respuesta correcta según el tipo.
 //
-// API pública:
-//   construirRespuesta(ctx) → ResultadoConsulta
-//
-// Dispatcher principal:
-//   - si la intención tiene `metrica` (kill_pct, sideout_pct, …)
-//     → ejecuta la métrica de vóley correspondiente.
-//   - si no, dispatch por `intencion.tipo`:
-//       count         → número (o tabla si hay groupBy)
-//       percentage    → porcentaje (o tabla por grupo)
-//       average       → promedio (o tabla por grupo)
-//       frequency     → cada cuánto
-//       max / min     → mejor / peor fila (requiere groupBy)
-//       ranking       → tabla ordenada
-//       comparison    → A vs B (necesita resolver jugadores)
-//       distribution  → distribución
-//       trend         → serie + análisis de tendencia
-//       habit         → valor más frecuente
-//       unknown       → respuesta vacía con mensaje
-//
-// No sabe nada de UI. Devuelve estructuras tipadas.
+// v1.1 (FASE 6):
+//   + `habit` sin groupBy asume "subtipo".
+//   + `distribution` sin groupBy asume "subtipo".
+//   + `distribution` con cambio en condicion → groupBy "cambio".
+//   + `ranking` / `max` / `min` sin groupBy → groupBy "jugador".
+//   + `frequency` sin universo → mensaje claro.
+//   + Métrica desconocida → mensaje con las soportadas.
 // ============================================================
 
 import type {
@@ -39,7 +25,7 @@ import {
   type ContextoRally,
 } from "../contextoRally";
 import { puntajeDeAccion } from "../analisis/clasificacion";
-import type { IntencionQuery } from "./intenciones";
+import type { GroupBy, IntencionQuery } from "./intenciones";
 import {
   porcentaje,
   promedio,
@@ -99,21 +85,13 @@ import {
 // ------------------------------------------------------------
 
 export interface ContextoRespuesta {
-  /** Acciones ya filtradas por el motor de consulta. */
   acciones: AccionVisual[];
-  /** Puntos completos (con acciones). Solo para puntos_por_set. */
   puntos?: PuntoConAcciones[];
-  /** Intención detectada. */
   intencion: IntencionQuery;
-  /** Para etiquetar jugador / partido / rival / etc. */
   contextoAgrupacion?: ContextoAgrupacion;
-  /** Si no viene, se calcula internamente cuando hace falta. */
   contextoRally?: Map<string, ContextoRally>;
-  /** Lista de jugadores { id, nombre } para resolver comparaciones. */
   jugadores?: { id: string; nombre: string }[];
-  /** Lista de partidos { id, nombre } para resolver comparaciones. */
   partidos?: { id: string; nombre: string }[];
-  /** Universo total (sin filtro). Si no se pasa, se usa `acciones`. */
   totalUniverso?: number;
 }
 
@@ -190,7 +168,6 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
     return respuestaVacia("Sin datos para calcular esta métrica.");
   }
 
-  // ---- Métricas que no necesitan contexto adicional ----
   switch (metrica) {
     case "kill_pct":
       return metricaAPorcentaje(killPct(acciones));
@@ -236,24 +213,70 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
     }
     default:
       return respuestaVacia(
-        `Métrica "${metrica}" no implementada todavía.`
+        `Métrica "${metrica}" no implementada todavía. ` +
+          `Disponibles: kill %, eficiencia de ataque, hitting %, ` +
+          `side-out %, break point %, recepción %, ace %, ` +
+          `error de saque %, eficiencia de bloqueo, ` +
+          `eficiencia de defensa, puntos por set, ` +
+          `puntos por rotación.`
       );
   }
 }
 
 // ------------------------------------------------------------
-// DISPATCHERS POR TIPO DE INTENCIÓN
+// GROUPBY EFECTIVO (con defaults inteligentes)
+// ------------------------------------------------------------
+
+function groupByEfectivo(ctx: ContextoRespuesta): GroupBy | null {
+  const intencion = ctx.intencion;
+
+  if (intencion.groupBy) return intencion.groupBy;
+
+  const cond = intencion.condicion;
+
+  // Distribución de "cambio" → agrupamos por cambio.
+  if (
+    intencion.tipo === "distribution" &&
+    cond?.cambioEnPunto !== undefined
+  ) {
+    return "cambio";
+  }
+
+  // Distribución / habit sin groupBy → subtipo (resultado de la acción).
+  if (
+    (intencion.tipo === "habit" || intencion.tipo === "distribution") &&
+    !intencion.groupBy
+  ) {
+    return "subtipo";
+  }
+
+  // Ranking / max / min sin groupBy → jugador.
+  if (
+    (intencion.tipo === "ranking" ||
+      intencion.tipo === "max" ||
+      intencion.tipo === "min") &&
+    !intencion.groupBy
+  ) {
+    return "jugador";
+  }
+
+  return null;
+}
+
+// ------------------------------------------------------------
+// DISPATCHERS
 // ------------------------------------------------------------
 
 function ejecutarCount(ctx: ContextoRespuesta): RespuestaConsulta {
   const acciones = ctx.acciones;
   const visibles = acciones.filter((a) => !a.oculta);
   const total = visibles.length;
+  const gb = groupByEfectivo(ctx);
 
-  if (ctx.intencion.groupBy) {
+  if (gb) {
     const filas = construirTabla(
       acciones,
-      ctx.intencion.groupBy,
+      gb,
       "count",
       ctx.contextoAgrupacion
     );
@@ -268,7 +291,7 @@ function ejecutarCount(ctx: ContextoRespuesta): RespuestaConsulta {
     };
     return respuestaTabla(
       filas,
-      ctx.intencion.groupBy,
+      gb,
       "count",
       totalFila,
       `${total} acciones en total.`
@@ -286,17 +309,18 @@ function ejecutarPercentage(ctx: ContextoRespuesta): RespuestaConsulta {
     ctx.totalUniverso !== undefined && ctx.totalUniverso > 0
       ? ctx.totalUniverso
       : count;
+  const gb = groupByEfectivo(ctx);
 
-  if (ctx.intencion.groupBy) {
+  if (gb) {
     const filas = construirTabla(
       acciones,
-      ctx.intencion.groupBy,
+      gb,
       "percentage",
       ctx.contextoAgrupacion
     );
     return respuestaTabla(
       filas,
-      ctx.intencion.groupBy,
+      gb,
       "percentage",
       null,
       `${count} de ${base} acciones (${redondear(
@@ -318,17 +342,18 @@ function ejecutarPercentage(ctx: ContextoRespuesta): RespuestaConsulta {
 
 function ejecutarAverage(ctx: ContextoRespuesta): RespuestaConsulta {
   const acciones = ctx.acciones.filter((a) => !a.oculta);
+  const gb = groupByEfectivo(ctx);
 
-  if (ctx.intencion.groupBy) {
+  if (gb) {
     const filas = construirTabla(
       ctx.acciones,
-      ctx.intencion.groupBy,
+      gb,
       "avg",
       ctx.contextoAgrupacion
     );
     return respuestaTabla(
       filas,
-      ctx.intencion.groupBy,
+      gb,
       "avg",
       null,
       "Promedio de puntaje (0..10) por grupo."
@@ -364,14 +389,12 @@ function ejecutarFrequency(ctx: ContextoRespuesta): RespuestaConsulta {
   }
   if (base === count) {
     return respuestaVacia(
-      "No tengo el universo total para calcular la frecuencia. " +
-        "Pasá `totalUniverso` en el contexto."
+      "Para calcular la frecuencia necesito el universo total. " +
+        'Reformulá la consulta: "cada cuántos ataques erra" ' +
+        '(no "cuántos errores").'
     );
   }
 
-  const res = calcularFrecuencia(acciones, () => true, "acciones");
-  // `calcularFrecuencia` cuenta eventos = acciones filtradas.
-  // Sobrescribimos base con `base` real (universo total).
   const valor = base / count;
   return respuestaFrecuencia(
     count,
@@ -384,16 +407,16 @@ function ejecutarMaxMin(
   ctx: ContextoRespuesta,
   tipo: "max" | "min"
 ): RespuestaConsulta {
-  if (!ctx.intencion.groupBy) {
+  const gb = groupByEfectivo(ctx);
+  if (!gb) {
     return respuestaVacia(
-      `Para "${tipo}" necesito una agrupación (groupBy). ` +
-        `Ej: "el jugador que más puntos hizo".`
+      `Para "${tipo}" necesito una agrupación (por jugador, por set, etc.).`
     );
   }
 
   const filas = construirTabla(
     ctx.acciones,
-    ctx.intencion.groupBy,
+    gb,
     ctx.intencion.agregacion,
     ctx.contextoAgrupacion
   );
@@ -415,7 +438,8 @@ function ejecutarMaxMin(
 }
 
 function ejecutarRanking(ctx: ContextoRespuesta): RespuestaConsulta {
-  if (!ctx.intencion.groupBy) {
+  const gb = groupByEfectivo(ctx);
+  if (!gb) {
     return respuestaVacia(
       "Para hacer un ranking necesito una agrupación (groupBy)."
     );
@@ -426,7 +450,7 @@ function ejecutarRanking(ctx: ContextoRespuesta): RespuestaConsulta {
 
   const filas = construirRanking(
     ctx.acciones,
-    ctx.intencion.groupBy,
+    gb,
     ctx.intencion.agregacion,
     orden,
     limite,
@@ -437,7 +461,7 @@ function ejecutarRanking(ctx: ContextoRespuesta): RespuestaConsulta {
     filas,
     ctx.intencion.agregacion,
     orden,
-    `Top ${filas.length} por ${ctx.intencion.groupBy}.`
+    `Top ${filas.length} por ${gb}.`
   );
 }
 
@@ -461,10 +485,10 @@ function ejecutarComparison(ctx: ContextoRespuesta): RespuestaConsulta {
     );
   }
 
-  const groupBy = ctx.intencion.groupBy ?? "jugador";
+  const gb = groupByEfectivo(ctx) ?? "jugador";
   const filas = construirTabla(
     ctx.acciones,
-    groupBy,
+    gb,
     ctx.intencion.agregacion,
     ctx.contextoAgrupacion
   );
@@ -489,15 +513,15 @@ function ejecutarComparison(ctx: ContextoRespuesta): RespuestaConsulta {
 }
 
 function ejecutarDistribution(ctx: ContextoRespuesta): RespuestaConsulta {
-  const groupBy = ctx.intencion.groupBy;
-  if (!groupBy) {
+  const gb = groupByEfectivo(ctx);
+  if (!gb) {
     return respuestaVacia(
-      "Para una distribución necesito una agrupación (groupBy)."
+      "Para una distribución necesito una agrupación (por set, por zona, etc.)."
     );
   }
   const items = construirDistribucion(
     ctx.acciones,
-    groupBy,
+    gb,
     ctx.contextoAgrupacion
   );
   if (items.length === 0) {
@@ -505,17 +529,17 @@ function ejecutarDistribution(ctx: ContextoRespuesta): RespuestaConsulta {
   }
   return respuestaDistribucion(
     items,
-    groupBy,
-    `Distribución por ${groupBy}.`
+    gb,
+    `Distribución por ${gb}.`
   );
 }
 
 function ejecutarTrend(ctx: ContextoRespuesta): RespuestaConsulta {
-  const groupBy = ctx.intencion.groupBy;
+  const gb = groupByEfectivo(ctx);
   let eje: "set" | "partido" | "rotacion";
 
-  if (groupBy === "partido") eje = "partido";
-  else if (groupBy === "rotacion") eje = "rotacion";
+  if (gb === "partido") eje = "partido";
+  else if (gb === "rotacion") eje = "rotacion";
   else eje = "set"; // default
 
   const puntos = construirSerie(
@@ -539,17 +563,17 @@ function ejecutarTrend(ctx: ContextoRespuesta): RespuestaConsulta {
 }
 
 function ejecutarHabit(ctx: ContextoRespuesta): RespuestaConsulta {
-  const groupBy = ctx.intencion.groupBy;
-  if (!groupBy) {
+  const gb = groupByEfectivo(ctx);
+  if (!gb) {
     return respuestaVacia(
-      'Para "suele" necesito una agrupación. Ej: "qué suele hacer cuando está 20-18" ' +
-        "requiere un groupBy de subtipo o zona destino."
+      'Para "suele" necesito una agrupación. Ej: "cómo terminan sus saques" ' +
+        'se agrupa automáticamente por subtipo (ace, positivo, negativo, error).'
     );
   }
 
   const habit = construirHabit(
     ctx.acciones,
-    groupBy,
+    gb,
     ctx.contextoAgrupacion
   );
   if (habit.items.length === 0) {
@@ -577,13 +601,11 @@ export function construirRespuesta(
   const noReconocidas: string[] = [];
   const metaFinal = meta(ctx, totalAcciones);
 
-  // 1) Si hay métrica, tiene prioridad.
   if (ctx.intencion.metrica) {
     const resp = ejecutarMetrica(ctx);
     return { respuesta: resp, meta: metaFinal, fragmentos, noReconocidas };
   }
 
-  // 2) Dispatcher por tipo.
   let resp: RespuestaConsulta;
   switch (ctx.intencion.tipo) {
     case "count":
@@ -624,7 +646,8 @@ export function construirRespuesta(
       resp = respuestaVacia(
         "No pude entender qué cálculo querés hacer. Probá con " +
           '"cuántos", "porcentaje", "promedio", "cada cuánto", ' +
-          '"mejor", "peor", "distribución", "evolución", "suele".'
+          '"mejor", "peor", "distribución", "evolución", "suele", ' +
+          '"cómo terminan".'
       );
   }
 
