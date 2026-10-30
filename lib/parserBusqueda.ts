@@ -1,8 +1,20 @@
 // ============================================================
-// PARSER DE BÚSQUEDA — v3.4
+// PARSER DE BÚSQUEDA — v3.6
 // Fix: "R" suelto = remate de segunda. Detección de R#, R+,
 // R!, R-, R--, R/, R= sobre el texto ORIGINAL (antes de
 // normalizar, porque normalizar() borra los símbolos).
+//
+// Cambios v3.6:
+//   + STOPWORDS / conectores / verbos genéricos / imperativos /
+//     interrogativos: se consumen silenciosamente y NO aparecen
+//     en `noReconocidas`. Ej: "mostrame los ataques de Juan"
+//     queda limpio.
+//   + Conjugaciones COMPLETAS en cada tipo (presente, pasado,
+//     futuro, condicional, gerundio, participio).
+//   + Variantes en plural de resultados ("negativas", "aces",
+//     "errores", "gorros", "remates").
+//   + Matching ordenado por LARGO DESCENDENTE (fix del "ataques"
+//     vs "ataque" y equivalentes en el resto de diccionarios).
 // ============================================================
 
 import {
@@ -82,15 +94,18 @@ function contiene(texto: string, ...claves: string[]): boolean {
   return claves.some((c) => texto.includes(c));
 }
 
+/**
+ * Ordena un array de sinónimos por largo descendente. Es la clave
+ * del fix de plurales: "ataques" (7) se matchea antes que "ataque"
+ * (6), así el token completo se consume.
+ */
+function ordenarPorLargoDesc(arr: string[]): string[] {
+  return [...arr].sort((a, b) => b.length - a.length);
+}
+
 // ------------------------------------------------------------
 // DETECCIÓN DE SÍMBOLOS DE RECEPCIÓN (texto original)
 // ------------------------------------------------------------
-//
-// Va sobre textoOriginal (con símbolos intactos). Si normalizamos
-// antes, "R!" queda en "r" y perdemos la distinción.
-//
-// Orden: primero los símbolos más largos (R--) para no comerse
-// "R-" antes de tiempo.
 
 interface RecepcionSimbolo {
   valor: string;
@@ -102,19 +117,12 @@ function detectarSimboloRecepcion(
 ): RecepcionSimbolo | null {
   const t = textoOriginal;
 
-  // R doble negativa (R--)
   if (/R\s*--/.test(t)) return { valor: "doble_negativa", fragmento: "R--" };
-  // R# perfecta
   if (/R\s*#/.test(t)) return { valor: "perfecta", fragmento: "R#" };
-  // R+ positiva
   if (/R\s*\+/.test(t)) return { valor: "positiva", fragmento: "R+" };
-  // R! exclamativa
   if (/R\s*!/.test(t)) return { valor: "intermedia", fragmento: "R!" };
-  // R/ overpass
   if (/R\s*\//.test(t)) return { valor: "overpass", fragmento: "R/" };
-  // R= error directo
   if (/R\s*=/.test(t)) return { valor: "error_directo", fragmento: "R=" };
-  // R- negativa (después de R--)
   if (/R\s*-(?!-)/.test(t)) return { valor: "negativa", fragmento: "R-" };
 
   return null;
@@ -123,135 +131,363 @@ function detectarSimboloRecepcion(
 // ------------------------------------------------------------
 // DETECCIÓN DE "R" SUELTO = REMATE DE SEGUNDA
 // ------------------------------------------------------------
-//
-// "R" con límites de palabra, pero sin símbolo pegado detrás.
-// Ejemplos que SÍ:
-//   "r", "r de juan", "juan r", "r en cierre"
-// Ejemplos que NO:
-//   "r!" (lo captura detectarSimboloRecepcion primero)
-//   "remate" (r pegada a letra)
-//   "R1" (r pegada a número → rotación)
 
 function detectarRSuelto(textoOriginal: string): boolean {
-  // Word boundary manual: "r" entre no-alfanuméricos o en los extremos.
-  // Excluye casos donde "r" tiene un símbolo pegado (R#, R!, etc.).
   const t = textoOriginal;
   return /(^|[^A-Za-z0-9])R(?![#+\-!=/A-Za-z0-9])/i.test(t);
 }
 
 // ------------------------------------------------------------
-// DICCIONARIOS (mantengo la expansión de jerga)
+// DICCIONARIOS — TIPO (v3.6, conjugaciones completas)
 // ------------------------------------------------------------
 
 const SINONIMOS_TIPO: Record<TipoDisparador, string[]> = {
   saque: [
-    "saque", "saques", "sacar", "saca", "servicio", "servir",
-    "saque de tenis", "saque chino", "gancho", "gancho flotante",
-    "saque flotante", "saque flotado", "flotado", "flotante",
-    "salto flotante", "salto potencia", "en suspension",
-    "mano baja", "seguridad", "saque de seguridad", "batida",
-    "saque de abajo", "saque por encima", "saque en salto",
-    "saque bomba", "bomba",
+    // infinitivo / sustantivo / conjugaciones
+    "saque", "saques", "sacada", "sacadas", "sacado", "sacados",
+    "sacar", "saca", "sacan", "sacamos", "sacaron", "sacando", "saquen",
+    "saco", "sacó", "sacaste", "sacaba", "sacabamos", "sacábamos",
+    "sacaran", "sacarán", "sacaria", "sacaría", "sacarias", "sacarías",
+    "sacaremos", "sacare", "sacaré", "sacaba", "sacaban",
+    "servicio", "servicios", "servir", "sirve", "sirven", "sirviendo",
+    // tipos de saque
+    "saque de tenis", "saques de tenis",
+    "saque chino", "saques chinos",
+    "gancho", "ganchos", "gancho flotante", "ganchos flotantes",
+    "saque flotante", "saques flotantes",
+    "saque flotado", "saques flotados",
+    "flotado", "flotados", "flotante", "flotantes",
+    "salto flotante", "salto potencia",
+    "en suspension", "en suspensión",
+    "mano baja", "manos bajas",
+    "seguridad", "saque de seguridad", "saques de seguridad", "saque seguro",
+    "batida", "batidas",
+    "saque de abajo", "saques de abajo",
+    "saque por encima", "saques por encima",
+    "saque en salto", "saques en salto",
+    "saque bomba", "saques bomba", "bomba", "bombas",
+    "saque potente", "saque fuerte", "saques fuertes", "saque duro",
+    "saque picado", "saque corto", "saque profundo",
+    "primer saque", "segundo saque",
   ],
   recepcion: [
-    "recepcion", "recepciones", "recibir", "recibe", "recibo",
-    "pase de recepcion", "bagre", "plataforma", "antebrazos",
-    "shank", "costura", "stack", "mancheta", "pala",
-    "golpe de abajo", "golpe de antebrazos", "toque de antebrazos",
-    "voleo bajo", "pase de antebrazos", "golpe de manos bajas",
-    "recepcion alta", "recepcion media", "recepcion baja",
-    "recepcion al bigote", "bigote",
+    // base + conjugaciones
+    "recepcion", "recepciones", "recepcionar", "recepciona",
+    "recepcionan", "recepcionamos", "recepcionaron", "recepcionando",
+    "recibir", "recibe", "reciben", "recibimos", "recibieron",
+    "recibiendo", "reciban", "recibida", "recibidas", "recibido", "recibidos",
+    "recibi", "recibí", "recibiste", "recibio", "recibió",
+    "recibia", "recibía", "recibiamos", "recibíamos",
+    "recibian", "recibían", "recibire", "recibiré",
+    "recibira", "recibirá", "recibiria", "recibiría",
+    "pase de recepcion", "pases de recepcion", "pases de recepción",
+    // jerga
+    "bagre", "bagres", "plataforma", "plataformas",
+    "antebrazos", "antebrazo",
+    "shank", "shanks", "costura", "costuras", "stack", "stacks",
+    "mancheta", "manchetas", "pala", "palas",
+    // técnica
+    "golpe de abajo", "golpes de abajo",
+    "golpe de antebrazos", "golpes de antebrazos",
+    "toque de antebrazos", "toques de antebrazos",
+    "voleo bajo", "voleos bajos",
+    "pase de antebrazos", "pases de antebrazos",
+    "golpe de manos bajas", "golpes de manos bajas",
+    // por zona / calidad
+    "recepcion alta", "recepciones altas",
+    "recepcion media", "recepciones medias",
+    "recepcion baja", "recepciones bajas",
+    "recepcion al bigote", "recepciones al bigote",
+    "bigote", "bigotes",
+    "recepcion corta", "recepcion larga",
+    "recepcion fuerte", "recepcion facil",
+    "primera linea", "segunda linea",
   ],
   armado: [
-    "armado", "armados", "armar", "arma", "set", "pase",
-    "toque de dedos", "voleo", "colocacion", "colocada",
-    "levantada", "levantamiento", "golpe de arriba",
-    "toque de dedos (yema)", "voleo alto", "golpe de manos altas",
-    "pase-colocacion", "colocacion en salto", "armado en suspension",
-    "toque de dedos en salto", "dirigir la orquesta", "llevar la batuta",
-    "cpu del equipo",
+    // base + conjugaciones
+    "armado", "armados", "armada", "armadas",
+    "armar", "arma", "arman", "armamos", "armaron", "armando", "armen",
+    "arme", "armé", "armaste", "armo", "armó",
+    "armaba", "armabamos", "armábamos",
+    "armare", "armaré", "armara", "armará", "armaria", "armaría",
+    "set", "sets", "pase", "pases",
+    // técnica
+    "toque de dedos", "toques de dedos",
+    "toque de dedos (yema)", "toque de yema",
+    "voleo", "voleos", "voleo alto", "voleos altos",
+    "colocacion", "colocaciones", "colocada", "colocadas",
+    "colocacion en salto", "colocaciones en salto",
+    "levantada", "levantadas", "levantamiento", "levantamientos",
+    "levantando", "levantar", "levanta", "levantan", "levantamos",
+    "golpe de arriba", "golpes de arriba",
+    "golpe de manos altas", "golpes de manos altas",
+    "pase-colocacion", "pase-colocaciones",
+    "armado en suspension", "armados en suspension",
+    "toque de dedos en salto",
+    // jerga
+    "dirigir la orquesta", "llevar la batuta", "cpu del equipo",
+    "asistencia", "asistencias",
+    "distribuir", "distribuyendo", "distribucion", "distribuciones",
   ],
   ataque: [
-    "ataque", "ataques", "atacar", "ataca", "remate", "remates",
-    "spike", "kill", "clavar", "smash", "downball", "matar",
-    "bombear", "finta", "dejada", "toque suave", "tipping",
-    "avion", "iberia", "remate de segunda", "toque de segunda",
-    "roll shot", "ataque de segunda", "remate de segundo tiempo",
-    "paralela", "diagonal", "cruzado", "en linea", "tendido",
-    "ataque por 4", "ataque por 2", "ataque por 6", "pipe",
-    "mate", "galleta", "misil", "castaña", "palomo", "palomazo",
-    "bombazo", "cañonazo",
+    // base + conjugaciones
+    "ataque", "ataques", "atacada", "atacadas", "atacado", "atacados",
+    "atacar", "ataca", "atacan", "atacamos", "atacaron", "atacando", "ataquen",
+    "ataque", "atacaste", "atacaba", "atacabamos", "atacábamos",
+    "atacare", "atacaré", "atacara", "atacará", "atacaria", "atacaría",
+    "remate", "remates", "rematada", "rematadas", "rematado", "rematados",
+    "rematar", "remata", "rematan", "rematamos", "remataron",
+    "rematando", "rematen",
+    "remate", "remataste", "remataba", "rematabamos", "rematábamos",
+    "rematare", "remataré", "rematara", "rematará", "remataria", "remataría",
+    "spike", "spikes", "spikear", "spikeando", "spikee", "spikeó",
+    "kill", "kills", "killar", "killeando",
+    "clavar", "clava", "clavan", "clavamos", "clavaron", "clavando", "claven",
+    "clave", "clavé", "clavaste", "clavo", "clavó",
+    "smash", "smashes",
+    "downball", "downballs",
+    "matar", "mata", "matan", "matamos", "mataron", "matando", "maten",
+    "mate", "maté", "mataste", "mato", "mató",
+    "bombear", "bombea", "bombean", "bombeando",
+    "bombee", "bombeé", "bombeaste", "bombeo", "bombeó",
+    // tipos
+    "finta", "fintas", "dejada", "dejadas",
+    "toque suave", "toques suaves",
+    "tipping", "tips", "tipper",
+    "avion", "aviones", "iberia", "iberias",
+    "remate de segunda", "remates de segunda",
+    "toque de segunda", "toques de segunda",
+    "ataque de segunda", "ataques de segunda",
+    "remate de segundo tiempo",
+    "roll shot", "roll shots",
+    // direcciones
+    "paralela", "paralelas", "diagonal", "diagonales",
+    "cruzado", "cruzados", "cruzada", "cruzadas",
+    "en linea", "en línea", "en lineas", "en líneas",
+    "tendido", "tendidos",
+    "ataque por 4", "ataque por 2", "ataque por 6",
+    "pipe", "pipes",
+    // jerga
+    "mate", "mates", "galleta", "galletas",
+    "misil", "misiles", "castaña", "castañas",
+    "palomo", "palomos", "palomazo", "palomazos",
+    "bombazo", "bombazos", "cañonazo", "cañonazos",
   ],
   bloqueo: [
-    "bloqueo", "bloqueos", "bloquear", "bloquea", "muro",
-    "pantalla", "cortina", "pared", "muralla", "tapon", "cerrar",
-    "bloqueo doble", "bloqueo triple", "toque de bloqueo",
-    "bloqueo ofensivo", "bloqueo defensivo", "bloqueo activo",
-    "bloqueo pasivo", "gorro", "chapa", "pincho", "techar",
-    "gorrear", "bloqueo a fuego",
+    // base + conjugaciones
+    "bloqueo", "bloqueos", "bloqueada", "bloqueadas",
+    "bloqueado", "bloqueados",
+    "bloquear", "bloquea", "bloquean", "bloqueamos", "bloquearon",
+    "bloqueando", "bloqueen",
+    "bloquee", "bloqueé", "bloqueaste", "bloqueo", "bloqueó",
+    "bloqueaba", "bloqueabamos", "bloqueábamos",
+    "bloqueare", "bloquearé", "bloqueara", "bloqueará",
+    "bloquearia", "bloquearía",
+    "muro", "muros", "pantalla", "pantallas",
+    "cortina", "cortinas", "pared", "paredes",
+    "muralla", "murallas", "tapon", "tapones",
+    "cerrar", "cierra", "cierran", "cerramos", "cerraron",
+    "cerrando", "cierren",
+    // tipos
+    "bloqueo doble", "bloqueos dobles",
+    "bloqueo triple", "bloqueos triples",
+    "toque de bloqueo", "toques de bloqueo",
+    "bloqueo ofensivo", "bloqueos ofensivos",
+    "bloqueo defensivo", "bloqueos defensivos",
+    "bloqueo activo", "bloqueo pasivo",
+    "bloqueo a fuego",
+    // jerga
+    "gorro", "gorros", "chapa", "chapas",
+    "pincho", "pinchos", "techar", "techando",
+    "gorrear", "gorreando",
+    "tapada", "tapadas", "tapado", "tapados",
   ],
   defensa: [
-    "defensa", "defensas", "defender", "defiende", "dig",
-    "plancha", "pancake", "salvada", "atajada", "secante",
-    "caida", "palomita", "rastrillada", "cavar", "pescar",
-    "defensa de segunda linea", "defensa de campo",
-    "defensa positiva", "defensa negativa", "defensa de bloqueo",
-    "cobertura", "apoyo",
+    // base + conjugaciones
+    "defensa", "defensas", "defendida", "defendidas",
+    "defendido", "defendidos",
+    "defender", "defiende", "defienden", "defendemos",
+    "defendieron", "defendiendo", "defiendan",
+    "defendi", "defendí", "defendiste", "defendio", "defendió",
+    "defendia", "defendía", "defendiamos", "defendíamos",
+    "defendere", "defenderé", "defendera", "defenderá",
+    "defenderia", "defendería",
+    "dig", "digs",
+    "plancha", "planchas", "pancake", "pancakes",
+    "salvada", "salvadas", "salvar", "salva", "salvan",
+    "salvamos", "salvaron", "salvando",
+    "atajada", "atajadas",
+    "secante", "secantes", "caida", "caidas",
+    "palomita", "palomitas", "rastrillada", "rastrilladas",
+    "cavar", "cava", "cavan", "cavamos", "cavaron", "cavando",
+    "pescar", "pesca", "pescan", "pescamos", "pescaron", "pescando",
+    // tipos
+    "defensa de segunda linea", "defensas de segunda linea",
+    "defensa de campo", "defensas de campo",
+    "defensa positiva", "defensas positivas",
+    "defensa negativa", "defensas negativas",
+    "defensa de bloqueo", "defensas de bloqueo",
+    "cobertura", "coberturas", "apoyo", "apoyos",
+    "levantar", "levanta", "levantan", "levantamos", "levantaron",
+    "sacar la pelota", "sacarla",
   ],
   libre: [
-    "libre", "libres", "pelota libre", "pelotas libres",
-    "free ball", "freeball", "entrega",
+    "libre", "libres",
+    "pelota libre", "pelotas libres",
+    "bola libre", "bolas libres",
+    "balon libre", "balones libres",
+    "free ball", "freeball", "free-ball",
+    "entrega", "entregas", "entregan", "entregaron", "entregando",
+    "entrego", "entregué", "entregaste", "entrego", "entregó",
+    "entregaba", "entregabamos", "entregábamos",
+    "entregare", "entregaré", "entregara", "entregará",
+    "entregaria", "entregaría",
+    "pelota facil", "pelotas faciles",
+    "pelota entregada", "pelotas entregadas",
+    "bola entregada", "bolas entregadas",
   ],
   "roce-red": [
-    "roce red", "roce de red", "roce-red", "rocen la red",
-    "toca la red", "invasion", "invasión", "pasarse de la red",
+    "roce red", "roce de red", "roce-red",
+    "roces de red", "roce en la red", "roces en la red",
+    "rocen la red", "rosar la red", "rosando la red",
+    "toca la red", "tocan la red", "tocamos la red",
+    "tocaron la red", "tocando la red",
+    "invasion", "invasión", "invasiones", "invadir",
+    "invadimos", "invadieron", "invadiendo", "invadan",
+    "invadio", "invadió", "invadia", "invadía",
+    "pasarse de la red",
+    "pisar la red", "pisamos la red", "pisaron la red",
+    "cruzo la linea", "cruzó la línea",
+    "cruzaron la línea", "cruzando la línea",
   ],
 };
 
+// ------------------------------------------------------------
+// DICCIONARIOS — RESULTADO (v3.6 ampliado)
+// ------------------------------------------------------------
+
 const SINONIMOS_RESULTADO: Record<TipoDisparador, Record<string, string[]>> = {
   saque: {
-    ace: ["ace", "aces", "punto directo de saque", "as", "servicio directo"],
-    positivo_mas: ["positivo+", "positivo mas", "pos+", "pos mas"],
-    positivo: ["positivo", "pos"],
-    neutro: ["neutro"],
-    negativo: ["negativo", "neg", "error", "error de saque", "errar el saque", "afuera el saque", "palomo"],
+    ace: [
+      "ace", "aces", "as",
+      "punto directo de saque", "servicio directo",
+      "punto directo", "directo de saque",
+      "winner de saque", "ace de saque", "aces de saque",
+    ],
+    positivo_mas: [
+      "positivo+", "positivo mas", "positivo más",
+      "pos+", "pos mas", "pos más",
+    ],
+    positivo: ["positivo", "pos", "positiva"],
+    neutro: ["neutro", "neutra"],
+    negativo: [
+      "negativo", "negativa", "neg",
+      "error", "error de saque", "error de saques",
+      "errores de saque", "errores de saques",
+      "errar el saque", "afuera el saque", "palomo",
+      "sacó afuera", "sacó a la red",
+      "mal saque", "saque errado", "saque fallado",
+      "erró el saque", "se fue el saque",
+    ],
   },
   recepcion: {
     perfecta: [
-      "perfecta", "r#", "r perfecta", "doble positiva",
-      "2x positiva", "2x_positiva", "mancheta perfecta",
+      "perfecta", "perfectas", "r#", "r perfecta",
+      "doble positiva", "2x positiva", "2x_positiva",
+      "mancheta perfecta",
       "recepcion al bigote", "bigote",
+      "recepcion perfecta", "recepciones perfectas",
     ],
-    positiva: ["positiva", "r+", "r positiva", "buena recepcion", "mancheta limpia"],
+    positiva: [
+      "positiva", "positivas", "r+", "r positiva",
+      "buena recepcion", "mancheta limpia",
+      "recepcion positiva", "recepciones positivas",
+    ],
     intermedia: [
-      "intermedia", "exclamativa", "exclamacion", "r!", "r exclamativa",
-      "r intermedia", "!", "mancheta intermedia",
+      "intermedia", "intermedias", "exclamativa", "exclamativas",
+      "exclamacion", "exclamaciones",
+      "r!", "r exclamativa", "r intermedia", "!",
+      "mancheta intermedia", "recepcion intermedia",
     ],
-    negativa: ["negativa", "r-", "r negativa", "mala recepcion", "mancheta sucia"],
-    doble_negativa: ["doble negativa", "r--", "r doble negativa", "2x negativa", "2x_negativa"],
-    overpass: ["overpass", "r/", "pasa al rival", "se le fue para el otro lado"],
-    error_directo: ["error directo", "r=", "ace en contra", "ace_contra", "no la toco"],
+    negativa: [
+      "negativa", "negativas", "r-", "r negativa",
+      "mala recepcion", "mancheta sucia",
+      "recepcion negativa", "recepciones negativas",
+    ],
+    doble_negativa: [
+      "doble negativa", "dobles negativas", "r--", "r doble negativa",
+      "2x negativa", "2x_negativa",
+      "recepcion doble negativa",
+    ],
+    overpass: [
+      "overpass", "overpasses", "r/",
+      "pasa al rival", "se le fue para el otro lado",
+      "recepcion que paso la red",
+    ],
+    error_directo: [
+      "error directo", "errores directos", "r=", "ace en contra",
+      "ace_contra", "no la toco", "no la tocó",
+      "recepcion errada",
+    ],
   },
   armado: {
-    "1": ["1", "horrible", "malo", "desastre"],
-    "2": ["2", "flojo", "impreciso"],
+    "1": ["1", "horrible", "malo", "desastre", "pesimo", "pésimo"],
+    "2": ["2", "flojo", "impreciso", "malo"],
     "3": ["3", "regular", "aceptable"],
     "4": ["4", "correcto", "bueno"],
     "5": ["5", "perfecto", "excelente"],
-    "6": ["6", "genial", "impecable"],
-    R: ["rechazo", "no puede armar", "error de armado"],
+    "6": ["6", "genial", "impecable", "espectacular"],
+    R: [
+      "rechazo", "no puede armar", "error de armado",
+      "rechazo de armado",
+    ],
   },
   ataque: {
-    punto: ["punto", "punto directo", "kill", "termino en punto", "mato", "clavo", "bombeo", "mate"],
-    neutro: ["neutro", "no termino", "siguio el rally", "defendido"],
-    error: ["error", "errar", "erró", "erro", "afuera", "a la red", "gorro", "avion", "iberia", "desviado", "palomo", "galleta"],
-    error_afuera_ataque: ["error afuera", "afuera", "se fue largo", "se fue ancho", "palomo", "palomazo"],
-    error_red_ataque: ["error red", "a la red", "red", "toco la red"],
-    gorro_ataque: ["gorro", "gorro_ataque", "tapada", "tapado", "chapa", "pincho"],
-    use_rival_ataque: ["use rival", "block out", "block-out", "usa el bloqueo"],
-    finta: ["finta", "dejada", "toque suave", "roll shot"],
+    punto: [
+      "punto", "puntos", "punto directo",
+      "kill", "kills",
+      "termino en punto", "mato", "clavo",
+      "bombeo", "mate",
+      "atacó al piso", "ataco al piso",
+    ],
+    neutro: [
+      "neutro", "neutros", "no termino", "siguio el rally",
+      "defendido", "no termino el rally",
+    ],
+    error: [
+      "error", "errores", "errar", "erró", "erro",
+      "afuera", "a la red", "gorro", "gorros",
+      "avion", "iberia", "desviado",
+      "palomo", "galleta",
+      "ataque errado", "ataque fallado",
+    ],
+    error_afuera_ataque: [
+      "error afuera", "afuera",
+      "se fue largo", "se fue ancho",
+      "palomo", "palomazo",
+      "atacó afuera", "ataco afuera",
+    ],
+    error_red_ataque: [
+      "error red", "a la red", "red",
+      "toco la red", "tocó la red",
+      "atacó a la red", "ataco a la red",
+    ],
+    gorro_ataque: [
+      "gorro", "gorros", "gorro_ataque", "tapada", "tapado",
+      "chapa", "pincho",
+      "taparon", "lo taparon",
+    ],
+    use_rival_ataque: [
+      "use rival", "block out", "block-out",
+      "usa el bloqueo", "usó el bloqueo",
+      "uso el bloqueo",
+    ],
+    finta: [
+      "finta", "fintas", "dejada", "dejadas",
+      "toque suave", "roll shot",
+    ],
     toque: [
-      "toque",
+      "toque", "toques",
       "remate de toque",
       "toque de segunda",
       "remate de segunda",
@@ -260,53 +496,145 @@ const SINONIMOS_RESULTADO: Record<TipoDisparador, Record<string, string[]>> = {
     ],
   },
   bloqueo: {
-    punto: ["punto", "punto directo", "tapon", "tapada", "gorro", "chapa", "pincho"],
-    positivo_mas: ["positivo+", "pos+", "bloqueo positivo+"],
+    punto: [
+      "punto", "puntos", "punto directo", "tapon", "tapones",
+      "tapada", "gorro", "gorros", "chapa", "pincho",
+      "bloqueo punto",
+    ],
+    positivo_mas: [
+      "positivo+", "pos+", "bloqueo positivo+",
+    ],
     positivo: ["positivo", "pos", "bloqueo positivo"],
     neutro: ["neutro", "bloqueo neutro"],
-    use_rival: ["use rival", "usa el bloqueo", "desviado afuera"],
-    red: ["red", "a la red", "toco la red"],
-    filtrada: ["filtrada", "filtro", "filtrada por el bloqueo"],
+    use_rival: [
+      "use rival", "usa el bloqueo",
+      "desviado afuera", "desvió afuera",
+    ],
+    red: ["red", "a la red", "toco la red", "tocó la red"],
+    filtrada: [
+      "filtrada", "filtradas", "filtro",
+      "filtrada por el bloqueo",
+    ],
   },
   defensa: {
-    toque_positiva: ["toque positiva", "toque+", "defensa positiva"],
-    toque_negativa: ["toque negativa", "toque-", "defensa negativa"],
-    gran_def: ["gran defensa", "gran def", "gran-defensa", "defenson", "atijada", "salvada"],
-    error_def: ["error defensa", "error def", "error_def", "no la levanto"],
-    mala_libre: ["mala libre", "mala_libre", "libre malo"],
-    cobertura_positiva: ["cobertura positiva", "cob+", "cobertura+"],
-    cobertura_negativa: ["cobertura negativa", "cob-", "cobertura-"],
-    errores_graves: ["error grave", "errores graves", "error grosero"],
+    toque_positiva: [
+      "toque positiva", "toques positivas", "toque+",
+      "defensa positiva", "defensas positivas",
+    ],
+    toque_negativa: [
+      "toque negativa", "toques negativas", "toque-",
+      "defensa negativa", "defensas negativas",
+    ],
+    gran_def: [
+      "gran defensa", "grandes defensas",
+      "gran def", "gran-defensa",
+      "defenson", "defensón", "atijada", "atijadas",
+      "salvada", "salvadas",
+      "defensorazo", "defensorazos",
+    ],
+    error_def: [
+      "error defensa", "errores de defensa",
+      "error def", "error_def",
+      "no la levanto", "no la levantó",
+      "no la pudo levantar",
+    ],
+    mala_libre: [
+      "mala libre", "malas libres", "mala_libre", "libre malo",
+    ],
+    cobertura_positiva: [
+      "cobertura positiva", "coberturas positivas",
+      "cob+", "cobertura+",
+    ],
+    cobertura_negativa: [
+      "cobertura negativa", "coberturas negativas",
+      "cob-", "cobertura-",
+    ],
+    errores_graves: [
+      "error grave", "errores graves", "error grosero",
+      "errores groseros",
+    ],
     neutro: ["neutro", "defensa neutra"],
   },
   libre: {
-    toque: ["toque", "toque libre"],
-    libre: ["libre"],
+    toque: ["toque", "toques", "toque libre"],
+    libre: ["libre", "libres"],
   },
   "roce-red": {
     "ofensivo-propio": ["ofensivo propio", "roce ofensivo"],
-    "invasion-zaguero": ["invasion zaguero", "invadio el zaguero"],
-    "invasion-delantero": ["invasion delantero", "invadio el delantero"],
+    "invasion-zaguero": [
+      "invasion zaguero", "invadió el zaguero",
+      "invadio el zaguero",
+    ],
+    "invasion-delantero": [
+      "invasion delantero", "invadió el delantero",
+      "invadio el delantero",
+    ],
     "roce-red-rival": ["roce rival", "roce red rival"],
   },
 };
 
+// ------------------------------------------------------------
+// DICCIONARIOS — ROL
+// ------------------------------------------------------------
+
 const SINONIMOS_ROL: Record<string, string[]> = {
-  A: ["armador", "levantador", "colocador", "setter", "pasador", "armadora"],
-  O: ["opuesto", "opuesta"],
-  C1: ["central 1", "central1", "c1"],
-  C2: ["central 2", "central2", "c2"],
-  P1: ["punta 1", "punta1", "p1"],
-  P2: ["punta 2", "punta2", "p2"],
-  L: ["libero", "líbero", "libera"],
+  A: [
+    "armador", "armadores", "armadora", "armadoras",
+    "levantador", "levantadores", "levantadora",
+    "colocador", "colocadores", "colocadora",
+    "setter", "setters",
+    "pasador", "pasadores", "pasadora",
+  ],
+  O: [
+    "opuesto", "opuestos", "opuesta", "opuestas",
+    "diagonal", "diagonales",
+  ],
+  C1: [
+    "central 1", "central1", "c1",
+    "central uno", "primer central",
+  ],
+  C2: [
+    "central 2", "central2", "c2",
+    "central dos", "segundo central",
+  ],
+  P1: [
+    "punta 1", "punta1", "p1",
+    "punta uno", "primer punta",
+  ],
+  P2: [
+    "punta 2", "punta2", "p2",
+    "punta dos", "segundo punta",
+  ],
+  L: [
+    "libero", "liberos", "líbero", "líberos",
+    "libera", "libero defensivo",
+  ],
 };
 
 const ROLES_GENERICOS: Record<string, string[]> = {
-  central: ["central", "centrales", "bloqueador central"],
-  punta: ["punta", "puntero", "ala", "punta receptor", "receptor-atacante"],
-  zaguero: ["zaguero", "zaguera", "back row", "fondo"],
-  delantero: ["delantero", "delantera", "front row", "red"],
+  central: [
+    "central", "centrales",
+    "bloqueador central", "bloqueadores centrales",
+  ],
+  punta: [
+    "punta", "puntas", "puntero", "punteros",
+    "ala", "alas",
+    "punta receptor", "puntas receptores",
+    "receptor-atacante", "receptores-atacantes",
+  ],
+  zaguero: [
+    "zaguero", "zagueros", "zaguera", "zagueras",
+    "back row", "fondo",
+  ],
+  delantero: [
+    "delantero", "delanteros", "delantera", "delanteras",
+    "front row", "red",
+  ],
 };
+
+// ------------------------------------------------------------
+// LLAMADAS DEL ARMADO
+// ------------------------------------------------------------
 
 interface LlamadaDef {
   nombre: string;
@@ -316,66 +644,312 @@ interface LlamadaDef {
 }
 
 const LLAMADAS: LlamadaDef[] = [
-  { nombre: "hatu", sinonimos: ["hatu", "jatu", "hut", "go"], velocidad: 1, descripcion: "Primer tiempo con el central" },
-  { nombre: "corta atras", sinonimos: ["corta atras", "corta atrás", "hanati", "hanatí", "hanati corta"], velocidad: 1, descripcion: "Primer tiempo atrás del central" },
-  { nombre: "shoot", sinonimos: ["shoot", "flecha", "seven", "siete", "odka", "blue"], velocidad: 1, descripcion: "Primer tiempo por 4 o 2" },
-  { nombre: "superfast", sinonimos: ["superfast", "super fast", "super rapida"], velocidad: 1, descripcion: "Rápida a 4" },
-  { nombre: "v", sinonimos: [" v ", "uve", "bola v", "pelota v"], velocidad: 1, descripcion: "Rápida en V por 2" },
-  { nombre: "bic", sinonimos: ["bic", "pipe rapida", "pipe rápida", "bick"], velocidad: 1, descripcion: "Pipe rápida" },
-  { nombre: "pipe", sinonimos: ["pipe", "paip"], velocidad: 1.5, descripcion: "Semi por 6 con el punta zaguero" },
-  { nombre: "pipe semi", sinonimos: ["pipe semi", "pipe lenta", "pipe alto"], velocidad: 1.5, descripcion: "Pipe semi" },
-  { nombre: "hanati volada", sinonimos: ["hanati volada", "hanatí volada", "volada"], velocidad: 1.5, descripcion: "Semi con el central por atrás" },
-  { nombre: "slide", sinonimos: ["slide", "vti", "veti", "salida en v"], velocidad: 1.5, descripcion: "Salida en V por atrás con central" },
-  { nombre: "quick", sinonimos: ["quick", "rapida", "rápida"], velocidad: 1, descripcion: "Rápida genérica" },
-  { nombre: "alta", sinonimos: ["alta", "bola alta", "pelota alta"], velocidad: 5, descripcion: "Pelota alta a la punta" },
-  { nombre: "v con c", sinonimos: ["v con c", "v y c", "combinacion v c"], velocidad: 1, descripcion: "Combinación V + C" },
-  { nombre: "doble v", sinonimos: ["doble v", "doble uve"], velocidad: 1, descripcion: "Combinación doble V" },
+  {
+    nombre: "hatu",
+    sinonimos: ["hatu", "jatu", "hut", "go"],
+    velocidad: 1,
+    descripcion: "Primer tiempo con el central",
+  },
+  {
+    nombre: "corta atras",
+    sinonimos: ["corta atras", "corta atrás", "hanati", "hanatí", "hanati corta"],
+    velocidad: 1,
+    descripcion: "Primer tiempo atrás del central",
+  },
+  {
+    nombre: "shoot",
+    sinonimos: ["shoot", "flecha", "seven", "siete", "odka", "blue"],
+    velocidad: 1,
+    descripcion: "Primer tiempo por 4 o 2",
+  },
+  {
+    nombre: "superfast",
+    sinonimos: ["superfast", "super fast", "super rapida", "super rápida"],
+    velocidad: 1,
+    descripcion: "Rápida a 4",
+  },
+  {
+    nombre: "v",
+    sinonimos: [" v ", "uve", "bola v", "pelota v"],
+    velocidad: 1,
+    descripcion: "Rápida en V por 2",
+  },
+  {
+    nombre: "bic",
+    sinonimos: ["bic", "pipe rapida", "pipe rápida", "bick"],
+    velocidad: 1,
+    descripcion: "Pipe rápida",
+  },
+  {
+    nombre: "pipe",
+    sinonimos: ["pipe", "paip", "pipes"],
+    velocidad: 1.5,
+    descripcion: "Semi por 6 con el punta zaguero",
+  },
+  {
+    nombre: "pipe semi",
+    sinonimos: ["pipe semi", "pipe lenta", "pipe alto"],
+    velocidad: 1.5,
+    descripcion: "Pipe semi",
+  },
+  {
+    nombre: "hanati volada",
+    sinonimos: ["hanati volada", "hanatí volada", "volada"],
+    velocidad: 1.5,
+    descripcion: "Semi con el central por atrás",
+  },
+  {
+    nombre: "slide",
+    sinonimos: ["slide", "vti", "veti", "salida en v"],
+    velocidad: 1.5,
+    descripcion: "Salida en V por atrás con central",
+  },
+  {
+    nombre: "quick",
+    sinonimos: ["quick", "rapida", "rápida"],
+    velocidad: 1,
+    descripcion: "Rápida genérica",
+  },
+  {
+    nombre: "alta",
+    sinonimos: ["alta", "bola alta", "pelota alta"],
+    velocidad: 5,
+    descripcion: "Pelota alta a la punta",
+  },
+  {
+    nombre: "v con c",
+    sinonimos: ["v con c", "v y c", "combinacion v c"],
+    velocidad: 1,
+    descripcion: "Combinación V + C",
+  },
+  {
+    nombre: "doble v",
+    sinonimos: ["doble v", "doble uve"],
+    velocidad: 1,
+    descripcion: "Combinación doble V",
+  },
 ];
+
+// ------------------------------------------------------------
+// DICCIONARIOS — VELOCIDAD
+// ------------------------------------------------------------
 
 const SINONIMOS_VELOCIDAD: { patrones: string[]; valor: number }[] = [
   { patrones: ["muy alta", "alta lejana", "bola muy alta"], valor: 5 },
   { patrones: ["rapida", "rápida", "primer tiempo", "quick"], valor: 1 },
   { patrones: ["semi", "semi rapida", "semi rápida"], valor: 1.5 },
   { patrones: ["alta", "bola alta", "pelota alta"], valor: 2 },
-  { patrones: ["segundo tiempo", "segunda linea"], valor: 2 },
+  { patrones: ["segundo tiempo", "segunda linea", "segunda línea"], valor: 2 },
   { patrones: ["tercer tiempo"], valor: 3 },
 ];
 
+// ------------------------------------------------------------
+// DICCIONARIOS — FASE RALLY
+// ------------------------------------------------------------
+
 const SINONIMOS_FASE_RALLY: Record<string, string[]> = {
-  "side-out": ["side-out", "side out", "k1", "ki", "lado saque", "complejo 1"],
-  "free-ball": ["free ball", "freeball", "free-ball", "entrega"],
+  "side-out": [
+    "side-out", "side out", "k1", "ki",
+    "lado saque", "complejo 1",
+  ],
+  "free-ball": [
+    "free ball", "freeball", "free-ball",
+    "entrega", "pelota libre",
+  ],
 };
 
 const SINONIMOS_INICIO_PUNTO: Record<string, string[]> = {
-  ace_propio: ["ace propio", "ace nuestro", "ace de mi equipo"],
-  ace_rival: ["ace rival", "ace del rival", "ace en contra"],
-  recepcion_positiva: ["recepcion positiva al inicio", "inicio con recepcion positiva"],
-  recepcion_neutra: ["recepcion neutra al inicio"],
-  recepcion_negativa: ["recepcion negativa al inicio"],
-  overpass: ["overpass al inicio", "inicio con overpass"],
-  error_directo: ["error directo al inicio"],
+  ace_propio: [
+    "ace propio", "ace nuestro",
+    "ace de mi equipo", "ace de nuestro equipo",
+  ],
+  ace_rival: [
+    "ace rival", "ace del rival", "ace en contra",
+  ],
+  recepcion_positiva: [
+    "recepcion positiva al inicio",
+    "inicio con recepcion positiva",
+  ],
+  recepcion_neutra: [
+    "recepcion neutra al inicio",
+    "recepcion intermedia al inicio",
+  ],
+  recepcion_negativa: [
+    "recepcion negativa al inicio",
+    "recepcion doble negativa al inicio",
+  ],
+  overpass: [
+    "overpass al inicio", "inicio con overpass",
+  ],
+  error_directo: [
+    "error directo al inicio",
+    "inicio con error directo",
+  ],
 };
 
 const SINONIMOS_K2K3: Record<string, string[]> = {
-  k2: ["k2", "k 2", "contraataque desde defensa", "contraataque de defensa", "break point", "break-point"],
-  k3: ["k3", "k 3", "contraataque desde cobertura", "contraataque de cobertura", "complejo 3"],
+  k2: [
+    "k2", "k 2",
+    "contraataque desde defensa",
+    "contraataque de defensa",
+    "break point", "break-point",
+  ],
+  k3: [
+    "k3", "k 3",
+    "contraataque desde cobertura",
+    "contraataque de cobertura",
+    "complejo 3",
+  ],
 };
 
 const SINONIMOS_CONTEXTO = {
   cierre: [
-    { texto: ["cierre de set", "cierre del set", "puntos para cerrar", "para cerrar el set"], valor: "<=3" as const },
-    { texto: ["match point", "punto de partido", "matchpoint", "punto de set"], valor: "<=1" as const },
-    { texto: ["puntos para cerrar el partido"], valor: "<=3" as const },
+    {
+      texto: [
+        "cierre de set", "cierre del set",
+        "puntos para cerrar", "para cerrar el set",
+      ],
+      valor: "<=3" as const,
+    },
+    {
+      texto: [
+        "match point", "punto de partido",
+        "matchpoint", "punto de set",
+      ],
+      valor: "<=1" as const,
+    },
+    {
+      texto: ["puntos para cerrar el partido"],
+      valor: "<=3" as const,
+    },
   ],
-  criticos: ["punto critico", "puntos criticos", "critico", "criticos"],
+  criticos: [
+    "punto critico", "puntos criticos",
+    "critico", "criticos",
+  ],
   estado: [
-    { texto: ["empatado", "empatados", "empatar"], valor: "empatado" as const },
-    { texto: ["ganando", "arriba en el marcador"], valor: "ganando" as const },
-    { texto: ["perdiendo", "abajo en el marcador"], valor: "perdiendo" as const },
+    {
+      texto: ["empatado", "empatados", "empatar"],
+      valor: "empatado" as const,
+    },
+    {
+      texto: ["ganando", "arriba en el marcador"],
+      valor: "ganando" as const,
+    },
+    {
+      texto: ["perdiendo", "abajo en el marcador"],
+      valor: "perdiendo" as const,
+    },
   ],
-  primerPunto: ["primer punto", "primer punto del set", "primer rally"],
-  ultimoPunto: ["ultimo punto", "último punto", "ultimo punto del set", "cierre del set"],
+  primerPunto: [
+    "primer punto", "primer punto del set",
+    "primer rally",
+  ],
+  ultimoPunto: [
+    "ultimo punto", "último punto",
+    "ultimo punto del set", "cierre del set",
+  ],
 };
+
+// ------------------------------------------------------------
+// STOPWORDS / CONECTORES / VERBOS GENÉRICOS / IMPERATIVOS /
+// INTERROGATIVOS
+// ------------------------------------------------------------
+// Se consumen silenciosamente (no aparecen en `noReconocidas`).
+// NO incluir palabras que también sean sinónimos significativos
+// (ej: "saca", "mate", "red", "bomba") — esas viven en los
+// diccionarios semánticos.
+// ------------------------------------------------------------
+
+const STOPWORDS: string[] = [
+  // === ARTÍCULOS Y PREPOSICIONES (>= 3 chars, los de 1-2 ya
+  // se filtran solos por length >= 3) ===
+  "del", "los", "las", "una", "unos", "unas",
+  "por", "para", "con", "sin", "entre", "hacia",
+  "desde", "hasta", "sobre", "bajo", "segun", "según",
+  "tras", "ante", "contra", "durante",
+
+  // === CONJUNCIONES Y CONECTORES ===
+  "pero", "sino", "aunque", "mientras", "porque", "pues",
+  "entonces", "tambien", "también", "ademas", "además",
+  "incluso", "salvo", "excepto", "luego", "asi", "así",
+  "mientras", "entretanto", "mientras tanto",
+
+  // === ADVERBIOS Y CUANTIFICADORES ===
+  "solo", "solamente", "unicamente", "únicamente",
+  "muy", "mas", "más", "menos", "mucho", "mucha",
+  "muchos", "muchas", "poco", "poca", "pocos", "pocas",
+  "tanto", "tanta", "tantos", "tantas",
+  "todo", "toda", "todos", "todas",
+  "algun", "algún", "alguna", "algunos", "algunas",
+  "ningun", "ningún", "ninguna", "ninguno", "ningunos", "ningunas",
+  "otro", "otra", "otros", "otras",
+  "mismo", "misma", "mismos", "mismas",
+  "ambos", "ambas", "cada",
+  "aca", "acá", "ahi", "ahí", "alli", "allí",
+  "aqui", "aquí", "ahora", "antes", "despues", "después",
+  "siempre", "nunca", "jamas", "jamás", "casi",
+  "aun", "aún", "quiza", "quizás", "tal", "vez", "veces",
+
+  // === INTERROGATIVOS ===
+  "que", "qué", "cual", "cuál", "cuales", "cuáles",
+  "cuanto", "cuánto", "cuanta", "cuánta",
+  "cuantos", "cuántos", "cuantas", "cuántas",
+  "quien", "quién", "quienes", "quiénes",
+  "donde", "dónde", "cuando", "cuándo",
+  "como", "cómo",
+
+  // === DEMOSTRATIVOS ===
+  "este", "esta", "estos", "estas",
+  "ese", "esa", "esos", "esas",
+  "aquel", "aquella", "aquellos", "aquellas",
+  "esto", "eso", "aquello",
+
+  // === IMPERATIVOS Y COMANDOS ===
+  "mostrame", "mostranos", "mostrar", "muestra", "muestrame",
+  "muestranos", "muestro", "muestren", "muestrenme",
+  "dame", "danos", "darme", "dar", "da", "doy",
+  "busca", "buscame", "buscanos", "buscar", "busco",
+  "buscamos", "busquen", "busquenme",
+  "quiero", "queria", "quería", "quieres", "quiere",
+  "queremos", "quieren", "queria ver", "quería ver",
+  "ver", "veo", "veamos", "vemos", "vernos",
+  "filtra", "filtrame", "filtrar", "filtro",
+  "decime", "decirme", "decir", "dime", "digo",
+  "contame", "contarme", "contar", "conta", "cuento",
+  "listame", "listar", "listo", "lista",
+  "revisa", "revisame", "revisar", "reviso",
+  "traeme", "traer", "trae", "traigo",
+  "sabes", "saber", "sabemos", "sepa",
+
+  // === VERBOS COPULATIVOS Y GENÉRICOS ===
+  "es", "son", "era", "eran", "fue", "fueron",
+  "ser", "estar", "esta", "estan", "están",
+  "estuvo", "estuvieron", "estaba", "estaban",
+  "hay", "hubo", "habia", "había", "haber",
+  "tiene", "tienen", "tenia", "tenía",
+  "tuvo", "tuvieron", "tener", "tenemos",
+  "hacer", "hace", "hacen", "hizo", "hicieron",
+  "hice", "hacemos", "haciendo",
+  "jugo", "jugó", "juega", "juegan",
+  "jugando", "jugaron", "jugar",
+  "paso", "pasó", "pasa", "pasan", "pasando",
+  "ocurre", "ocurrió", "ocurrio", "ocurren", "ocurriendo",
+  "termina", "termino", "terminó", "terminaron",
+  "terminando", "acaba", "acabo", "acabó",
+  "empezo", "empezó", "empezar", "empieza", "empiezan",
+  "siguio", "siguió", "sigue", "siguen", "siguiendo",
+  "anduvo", "anduvieron", "anda", "andan",
+  "quedo", "quedó", "queda", "quedan",
+  "llego", "llegó", "llega", "llegan",
+  "salio", "salió", "sale", "salen",
+  "entro", "entró", "entra", "entran",
+  "fue por", "fue de",
+
+  // === MULETILLAS ===
+  "bueno", "entonces", "listo", "dale", "vamos",
+  "va", "ok", "bien", "che",
+];
 
 // ------------------------------------------------------------
 // EXTRACTORES
@@ -404,13 +978,16 @@ function extraerJugador(
   jugadores: { id: string; nombre: string }[] | undefined
 ): string | null {
   if (!jugadores || jugadores.length === 0) return null;
-  const ordenados = [...jugadores].sort((a, b) => b.nombre.length - a.nombre.length);
+  const ordenados = [...jugadores].sort(
+    (a, b) => b.nombre.length - a.nombre.length
+  );
   for (const j of ordenados) {
     const nNorm = normalizar(j.nombre);
     if (!nNorm) continue;
     if (st.texto.includes(nNorm)) {
       agregarMatch(st, "jugador", j.nombre, "jugador", nNorm);
-      for (const t of nNorm.split(" ")) if (t.length >= 3) st.tokensConsumidos.add(t);
+      for (const t of nNorm.split(" "))
+        if (t.length >= 3) st.tokensConsumidos.add(t);
       return j.id;
     }
   }
@@ -419,11 +996,16 @@ function extraerJugador(
 
 function extraerTipo(st: ExtractionState): TipoDisparador | null {
   const texto = st.texto;
-  for (const [tipo, sinonimos] of Object.entries(SINONIMOS_TIPO) as [TipoDisparador, string[]][]) {
-    for (const s of sinonimos) {
+  for (const [tipo, sinonimos] of Object.entries(SINONIMOS_TIPO) as [
+    TipoDisparador,
+    string[]
+  ][]) {
+    const ordenados = ordenarPorLargoDesc(sinonimos);
+    for (const s of ordenados) {
       if (texto.includes(s)) {
         agregarMatch(st, "tipo", tipo, "tipo", s);
-        for (const t of s.split(" ")) if (t.length >= 3) st.tokensConsumidos.add(t);
+        for (const t of s.split(" "))
+          if (t.length >= 3) st.tokensConsumidos.add(t);
         return tipo;
       }
     }
@@ -431,15 +1013,20 @@ function extraerTipo(st: ExtractionState): TipoDisparador | null {
   return null;
 }
 
-function extraerResultado(st: ExtractionState, tipo: TipoDisparador | null): string | null {
+function extraerResultado(
+  st: ExtractionState,
+  tipo: TipoDisparador | null
+): string | null {
   if (!tipo) return null;
   const mapa = SINONIMOS_RESULTADO[tipo];
   if (!mapa) return null;
   for (const [valor, sinonimos] of Object.entries(mapa)) {
-    for (const s of sinonimos) {
+    const ordenados = ordenarPorLargoDesc(sinonimos);
+    for (const s of ordenados) {
       if (st.texto.includes(s)) {
         agregarMatch(st, "resultado", valor, "resultado", s);
-        for (const t of s.split(" ")) if (t.length >= 3) st.tokensConsumidos.add(t);
+        for (const t of s.split(" "))
+          if (t.length >= 3) st.tokensConsumidos.add(t);
         return valor;
       }
     }
@@ -451,23 +1038,28 @@ function extraerRol(st: ExtractionState): string[] {
   const roles: string[] = [];
   const texto = st.texto;
   for (const [grupo, sinonimos] of Object.entries(ROLES_GENERICOS)) {
-    for (const s of sinonimos) {
+    const ordenados = ordenarPorLargoDesc(sinonimos);
+    for (const s of ordenados) {
       if (texto.includes(s)) {
         agregarMatch(st, "rol", grupo, "rol", s);
-        for (const t of s.split(" ")) if (t.length >= 3) st.tokensConsumidos.add(t);
+        for (const t of s.split(" "))
+          if (t.length >= 3) st.tokensConsumidos.add(t);
         if (grupo === "central") roles.push("C1", "C2");
         else if (grupo === "punta") roles.push("P1", "P2");
         else if (grupo === "zaguero") roles.push("P1", "P2", "L", "C1", "C2");
-        else if (grupo === "delantero") roles.push("A", "O", "P1", "P2", "C1", "C2");
+        else if (grupo === "delantero")
+          roles.push("A", "O", "P1", "P2", "C1", "C2");
       }
     }
   }
   for (const [rol, sinonimos] of Object.entries(SINONIMOS_ROL)) {
-    for (const s of sinonimos) {
+    const ordenados = ordenarPorLargoDesc(sinonimos);
+    for (const s of ordenados) {
       if (texto.includes(s)) {
         if (!roles.includes(rol)) roles.push(rol);
         agregarMatch(st, "rol", rol, "rol", s);
-        for (const t of s.split(" ")) if (t.length >= 3) st.tokensConsumidos.add(t);
+        for (const t of s.split(" "))
+          if (t.length >= 3) st.tokensConsumidos.add(t);
       }
     }
   }
@@ -518,14 +1110,17 @@ function extraerPartidos(
 ): string[] {
   if (!partidos || partidos.length === 0) return [];
   const out: string[] = [];
-  const ordenados = [...partidos].sort((a, b) => b.nombre.length - a.nombre.length);
+  const ordenados = [...partidos].sort(
+    (a, b) => b.nombre.length - a.nombre.length
+  );
   for (const p of ordenados) {
     const nNorm = normalizar(p.nombre);
     if (!nNorm) continue;
     if (st.texto.includes(nNorm)) {
       if (!out.includes(p.id)) out.push(p.id);
       agregarMatch(st, "partido", p.nombre, "partido", nNorm);
-      for (const t of nNorm.split(" ")) if (t.length >= 3) st.tokensConsumidos.add(t);
+      for (const t of nNorm.split(" "))
+        if (t.length >= 3) st.tokensConsumidos.add(t);
     }
   }
   return out;
@@ -562,10 +1157,12 @@ function extraerRotaciones(st: ExtractionState): number[] {
 
 function extraerVelocidad(st: ExtractionState): number | null {
   for (const { patrones, valor } of SINONIMOS_VELOCIDAD) {
-    for (const p of patrones) {
+    const ordenados = ordenarPorLargoDesc(patrones);
+    for (const p of ordenados) {
       if (st.texto.includes(p)) {
         agregarMatch(st, "velocidad", String(valor), "velocidad", p);
-        for (const t of p.split(" ")) if (t.length >= 3) st.tokensConsumidos.add(t);
+        for (const t of p.split(" "))
+          if (t.length >= 3) st.tokensConsumidos.add(t);
         return valor;
       }
     }
@@ -573,22 +1170,44 @@ function extraerVelocidad(st: ExtractionState): number | null {
   return null;
 }
 
-function extraerTipoSaque(st: ExtractionState): "potencia" | "flotado" | null {
+function extraerTipoSaque(
+  st: ExtractionState
+): "potencia" | "flotado" | null {
   const texto = st.texto;
-  if (contiene(texto, "potencia", "de potencia", "saque potente", "saque fuerte", "saltado", "salto", "saque de tenis", "salto potencia", "saque en salto", "saque bomba", "bomba")) {
+  if (
+    contiene(
+      texto,
+      "potencia", "de potencia", "saque potente", "saque fuerte",
+      "saltado", "salto", "saque de tenis",
+      "salto potencia", "saque en salto", "saque bomba", "bomba"
+    )
+  ) {
     agregarMatch(st, "tipo-saque", "potencia", "tipo-saque", "potencia");
     return "potencia";
   }
-  if (contiene(texto, "flotado", "flotante", "saque flotante", "saque flotado", "mano baja", "seguridad", "salto flotante", "gancho flotante", "batida", "saque de abajo")) {
+  if (
+    contiene(
+      texto,
+      "flotado", "flotante", "saque flotante", "saque flotado",
+      "mano baja", "seguridad",
+      "salto flotante", "gancho flotante", "batida", "saque de abajo"
+    )
+  ) {
     agregarMatch(st, "tipo-saque", "flotado", "tipo-saque", "flotado");
     return "flotado";
   }
   return null;
 }
 
-function extraerPrevia(st: ExtractionState, tipoDetectado: TipoDisparador | null): FiltroAccionHistorica | null {
+function extraerPrevia(
+  st: ExtractionState,
+  tipoDetectado: TipoDisparador | null
+): FiltroAccionHistorica | null {
   const texto = st.texto;
-  const triggers = ["despues de", "después de", "tras ", "luego de", "viene de", "venia de", "que viene de", "que venia de"];
+  const triggers = [
+    "despues de", "después de", "tras ", "luego de",
+    "viene de", "venia de", "que viene de", "que venia de",
+  ];
   let encontrado = false;
   for (const t of triggers) {
     if (texto.includes(t)) {
@@ -603,7 +1222,10 @@ function extraerPrevia(st: ExtractionState, tipoDetectado: TipoDisparador | null
 
   let previaTipo: TipoDisparador | null = null;
   let mejorIdx = Infinity;
-  for (const [tipo, sinonimos] of Object.entries(SINONIMOS_TIPO) as [TipoDisparador, string[]][]) {
+  for (const [tipo, sinonimos] of Object.entries(SINONIMOS_TIPO) as [
+    TipoDisparador,
+    string[]
+  ][]) {
     for (const s of sinonimos) {
       const i = texto.indexOf(s);
       if (i >= 0 && i < mejorIdx && tipo !== tipoDetectado) {
@@ -614,10 +1236,12 @@ function extraerPrevia(st: ExtractionState, tipoDetectado: TipoDisparador | null
   }
 
   if (!previaTipo) {
-    if (contiene(texto, "errar", "error", "erró", "erro")) {
+    if (contiene(texto, "errar", "error", "erró", "erro", "errores")) {
       previaTipo = tipoDetectado ?? "ataque";
       agregarMatch(st, "previa", "error", "previa", "error/errar");
-    } else if (contiene(texto, "acierto", "punto", "positiva", "perfecta")) {
+    } else if (
+      contiene(texto, "acierto", "punto", "positiva", "perfecta")
+    ) {
       previaTipo = tipoDetectado ?? "ataque";
       agregarMatch(st, "previa", "punto", "previa", "acierto/punto");
     } else {
@@ -640,7 +1264,13 @@ function extraerPrevia(st: ExtractionState, tipoDetectado: TipoDisparador | null
   }
 
   if (previaTipo) {
-    agregarMatch(st, "previa", `${previaTipo}${previaResultado ? `·${previaResultado}` : ""}`, "previa", `${previaTipo} previo`);
+    agregarMatch(
+      st,
+      "previa",
+      `${previaTipo}${previaResultado ? `·${previaResultado}` : ""}`,
+      "previa",
+      `${previaTipo} previo`
+    );
   }
 
   return {
@@ -651,24 +1281,48 @@ function extraerPrevia(st: ExtractionState, tipoDetectado: TipoDisparador | null
   };
 }
 
-function extraerRachaJugador(st: ExtractionState): RachaJugadorFiltro | null {
+function extraerRachaJugador(
+  st: ExtractionState
+): RachaJugadorFiltro | null {
   const texto = st.texto;
-  const m = texto.match(/(?:despues de|después de|tras|luego de)\s+(\d+|un|una|dos|tres|cuatro|cinco)\s+([a-z]+(?:\s+[a-z]+)?)/);
+  const m = texto.match(
+    /(?:despues de|después de|tras|luego de)\s+(\d+|un|una|dos|tres|cuatro|cinco)\s+([a-z]+(?:\s+[a-z]+)?)/
+  );
   if (!m) return null;
   const numStr = m[1];
-  const num = numStr === "un" || numStr === "una" ? 1 : numStr === "dos" ? 2 : numStr === "tres" ? 3 : numStr === "cuatro" ? 4 : numStr === "cinco" ? 5 : parseInt(numStr, 10);
+  const num =
+    numStr === "un" || numStr === "una"
+      ? 1
+      : numStr === "dos"
+      ? 2
+      : numStr === "tres"
+      ? 3
+      : numStr === "cuatro"
+      ? 4
+      : numStr === "cinco"
+      ? 5
+      : parseInt(numStr, 10);
   const que = m[2];
 
   let tipo: TipoRachaJugador | null = null;
-  if (que.includes("error") || que.includes("errar")) tipo = "errores_seguidos";
-  else if (que.includes("punto") && que.includes("perdid")) tipo = "puntos_perdidos";
-  else if (que.includes("punto") && que.includes("ganad")) tipo = "puntos_ganados";
-  else if (que.includes("acierto") || que.includes("positiv")) tipo = "aciertos_seguidos";
+  if (que.includes("error") || que.includes("errar"))
+    tipo = "errores_seguidos";
+  else if (que.includes("punto") && que.includes("perdid"))
+    tipo = "puntos_perdidos";
+  else if (que.includes("punto") && que.includes("ganad"))
+    tipo = "puntos_ganados";
+  else if (que.includes("acierto") || que.includes("positiv"))
+    tipo = "aciertos_seguidos";
   if (!tipo) return null;
 
   agregarMatch(st, "racha-jugador", `${num} ${tipo}`, "racha-jugador", m[0]);
 
-  return { jugadorId: null, tipo, minimo: num, ambito: "puntos_del_set" };
+  return {
+    jugadorId: null,
+    tipo,
+    minimo: num,
+    ambito: "puntos_del_set",
+  };
 }
 
 function extraerTop(st: ExtractionState): number | null {
@@ -681,20 +1335,44 @@ function extraerTop(st: ExtractionState): number | null {
       return n;
     }
   }
-  if (contiene(texto, "mejores", "mejor", "los mejores", "el mejor")) {
+  if (
+    contiene(texto, "mejores", "mejor", "los mejores", "el mejor")
+  ) {
     agregarMatch(st, "top", "top 20%", "top", "mejores");
     return 20;
   }
   return null;
 }
 
-function extraerVsPromedio(st: ExtractionState): "por_encima" | "por_debajo" | null {
+function extraerVsPromedio(
+  st: ExtractionState
+): "por_encima" | "por_debajo" | null {
   const texto = st.texto;
-  if (contiene(texto, "por encima del promedio", "sobre el promedio", "arriba del promedio", "mejor que el promedio", "por encima", "buenos")) {
+  if (
+    contiene(
+      texto,
+      "por encima del promedio",
+      "sobre el promedio",
+      "arriba del promedio",
+      "mejor que el promedio",
+      "por encima",
+      "buenos"
+    )
+  ) {
     agregarMatch(st, "vs-promedio", "por_encima", "vs-promedio", "por encima");
     return "por_encima";
   }
-  if (contiene(texto, "por debajo del promedio", "bajo el promedio", "abajo del promedio", "peor que el promedio", "por debajo", "peores")) {
+  if (
+    contiene(
+      texto,
+      "por debajo del promedio",
+      "bajo el promedio",
+      "abajo del promedio",
+      "peor que el promedio",
+      "por debajo",
+      "peores"
+    )
+  ) {
     agregarMatch(st, "vs-promedio", "por_debajo", "vs-promedio", "por debajo");
     return "por_debajo";
   }
@@ -753,11 +1431,23 @@ function extraerContexto(st: ExtractionState): ContextoExtraido {
 
   if (SINONIMOS_CONTEXTO.primerPunto.some((t) => texto.includes(t))) {
     ctx.primerPunto = true;
-    agregarMatch(st, "contexto.posicion", "primero", "posicion-set", "primer punto");
+    agregarMatch(
+      st,
+      "contexto.posicion",
+      "primero",
+      "posicion-set",
+      "primer punto"
+    );
   }
   if (SINONIMOS_CONTEXTO.ultimoPunto.some((t) => texto.includes(t))) {
     ctx.ultimoPunto = true;
-    agregarMatch(st, "contexto.posicion", "ultimo", "posicion-set", "último punto");
+    agregarMatch(
+      st,
+      "contexto.posicion",
+      "ultimo",
+      "posicion-set",
+      "último punto"
+    );
   }
 
   const mRacha = texto.match(/racha\s*(?:de\s*)?(\d+)?/);
@@ -796,7 +1486,10 @@ function extraerContexto(st: ExtractionState): ContextoExtraido {
   return ctx;
 }
 
-function extraerLlamadas(st: ExtractionState): { llamadas: LlamadaDef[]; velocidad: number | null } {
+function extraerLlamadas(st: ExtractionState): {
+  llamadas: LlamadaDef[];
+  velocidad: number | null;
+} {
   const llamadas: LlamadaDef[] = [];
   let velocidad: number | null = null;
   for (const l of LLAMADAS) {
@@ -806,8 +1499,10 @@ function extraerLlamadas(st: ExtractionState): { llamadas: LlamadaDef[]; velocid
         if (!llamadas.some((x) => x.nombre === l.nombre)) {
           llamadas.push(l);
           agregarMatch(st, "llamada", l.nombre, "resultado", s);
-          if (velocidad === null && l.velocidad !== undefined) velocidad = l.velocidad;
-          for (const t of s.split(" ")) if (t.length >= 3) st.tokensConsumidos.add(t);
+          if (velocidad === null && l.velocidad !== undefined)
+            velocidad = l.velocidad;
+          for (const t of s.split(" "))
+            if (t.length >= 3) st.tokensConsumidos.add(t);
         }
         break;
       }
@@ -836,7 +1531,8 @@ function extraerToqueDeSegunda(
     "remate de 2da"
   );
   const detectado = detectadoPorTexto || viaRSuelto;
-  if (!detectado) return { detectado: false, jugadorId: null, excluirArmador: false };
+  if (!detectado)
+    return { detectado: false, jugadorId: null, excluirArmador: false };
 
   const excluirArmador = contiene(
     texto,
@@ -848,7 +1544,9 @@ function extraerToqueDeSegunda(
 
   let jugadorId: string | null = null;
   if (!excluirArmador && jugadores) {
-    const ordenados = [...jugadores].sort((a, b) => b.nombre.length - a.nombre.length);
+    const ordenados = [...jugadores].sort(
+      (a, b) => b.nombre.length - a.nombre.length
+    );
     for (const j of ordenados) {
       const nNorm = normalizar(j.nombre);
       if (nNorm && texto.includes(nNorm)) {
@@ -877,30 +1575,92 @@ function extraerRecepcionZona(st: ExtractionState): {
   atras: boolean;
 } {
   const texto = st.texto;
-  const r = { destino: null as number | null, origen: null as number | null, adelante: false, atras: false };
+  const r = {
+    destino: null as number | null,
+    origen: null as number | null,
+    adelante: false,
+    atras: false,
+  };
 
   const mDestino = texto.match(/recepcion\s+en\s+([234])/);
   if (mDestino) {
     r.destino = parseInt(mDestino[1], 10);
-    agregarMatch(st, "recepcion.zonaDestino", String(r.destino), "zona", mDestino[0]);
+    agregarMatch(
+      st,
+      "recepcion.zonaDestino",
+      String(r.destino),
+      "zona",
+      mDestino[0]
+    );
   }
 
   const mOrigen = texto.match(/recepcion\s+en\s+([561])/);
   if (mOrigen) {
     r.origen = parseInt(mOrigen[1], 10);
-    agregarMatch(st, "recepcion.zonaOrigen", String(r.origen), "zona", mOrigen[0]);
+    agregarMatch(
+      st,
+      "recepcion.zonaOrigen",
+      String(r.origen),
+      "zona",
+      mOrigen[0]
+    );
   }
 
-  if (contiene(texto, "recepcion de adelante", "recepcion adelante", "de adelante")) {
+  if (
+    contiene(
+      texto,
+      "recepcion de adelante",
+      "recepcion adelante",
+      "de adelante"
+    )
+  ) {
     r.adelante = true;
-    agregarMatch(st, "recepcion.columna", "adelante", "zona", "de adelante");
+    agregarMatch(
+      st,
+      "recepcion.columna",
+      "adelante",
+      "zona",
+      "de adelante"
+    );
   }
-  if (contiene(texto, "recepcion de atras", "recepcion de atrás", "recepcion atras", "de atras", "de atrás")) {
+  if (
+    contiene(
+      texto,
+      "recepcion de atras",
+      "recepcion de atrás",
+      "recepcion atras",
+      "de atras",
+      "de atrás"
+    )
+  ) {
     r.atras = true;
     agregarMatch(st, "recepcion.columna", "atras", "zona", "de atrás");
   }
 
   return r;
+}
+
+// ------------------------------------------------------------
+// LIMPIEZA DE STOPWORDS
+// ------------------------------------------------------------
+// Consume silenciosamente los tokens que son ruido lingüístico
+// (artículos, preposiciones, conectores, verbos genéricos,
+// imperativos, interrogativos, muletillas).
+//
+// IMPORTANTE: se llama DESPUÉS de todos los extractores, para
+// que estos ya hayan consumido los tokens significativos. Nunca
+// sobreescribe un token consumido por un extractor.
+// ------------------------------------------------------------
+
+function limpiarStopwords(st: ExtractionState) {
+  for (const sw of STOPWORDS) {
+    for (const t of sw.split(" ")) {
+      if (t.length < 3) continue;
+      if (!st.tokensConsumidos.has(t)) {
+        st.tokensConsumidos.add(t);
+      }
+    }
+  }
 }
 
 // ------------------------------------------------------------
@@ -925,51 +1685,62 @@ interface Piezas {
   vsPromedio: "por_encima" | "por_debajo" | null;
   contexto: ContextoExtraido;
   toqueSegunda: ToqueSegunda;
-  recepcionZona: { destino: number | null; origen: number | null; adelante: boolean; atras: boolean };
+  recepcionZona: {
+    destino: number | null;
+    origen: number | null;
+    adelante: boolean;
+    atras: boolean;
+  };
   recepcionSimbolo: RecepcionSimbolo | null;
 }
 
 function construirFiltro(p: Piezas): BloqueTriggerFiltro {
   const base: BloqueTriggerFiltro = { ...BLOQUE_TRIGGER_VACIO };
 
-  // --- Tipo ---
   let tipoFinal: TipoDisparador = p.tipo ?? "ataque";
   if (!p.tipo && p.toqueSegunda.detectado) tipoFinal = "ataque";
-  if (!p.tipo && (p.recepcionZona.adelante || p.recepcionZona.atras)) tipoFinal = "recepcion";
+  if (
+    !p.tipo &&
+    (p.recepcionZona.adelante || p.recepcionZona.atras)
+  )
+    tipoFinal = "recepcion";
   if (p.recepcionSimbolo !== null) tipoFinal = "recepcion";
 
-  // --- Resultado ---
-  let resultadoFinal: string | "cualquiera" = p.resultado ?? "cualquiera";
+  let resultadoFinal: string | "cualquiera" =
+    p.resultado ?? "cualquiera";
   if (p.recepcionSimbolo !== null) {
     resultadoFinal = p.recepcionSimbolo.valor;
   }
-  // Validar contra el catálogo del motor
   const resultadosValidos = resultadosPorTipoAnalisis(tipoFinal);
-  if (resultadoFinal !== "cualquiera" && !resultadosValidos.includes(resultadoFinal)) {
+  if (
+    resultadoFinal !== "cualquiera" &&
+    !resultadosValidos.includes(resultadoFinal)
+  ) {
     resultadoFinal = "cualquiera";
   }
 
-  // --- Jugador ---
   let jugadorId: string | null = p.jugadorId;
-  if (p.toqueSegunda.detectado && p.toqueSegunda.jugadorId) jugadorId = p.toqueSegunda.jugadorId;
+  if (p.toqueSegunda.detectado && p.toqueSegunda.jugadorId)
+    jugadorId = p.toqueSegunda.jugadorId;
 
-  // --- Roles (per A2 del PDF) ---
   const roles = [...p.roles];
   if (p.toqueSegunda.detectado) {
     if (p.toqueSegunda.excluirArmador) {
-      for (const r of ["O", "C1", "C2", "P1", "P2", "L"]) if (!roles.includes(r)) roles.push(r);
+      for (const r of ["O", "C1", "C2", "P1", "P2", "L"])
+        if (!roles.includes(r)) roles.push(r);
     } else if (!jugadorId) {
       if (!roles.includes("A")) roles.push("A");
     }
   }
 
-  // --- Zonas jugador ---
   const zonasJugador = [...p.zonas];
-  if (p.recepcionZona.origen !== null && !zonasJugador.includes(p.recepcionZona.origen)) {
+  if (
+    p.recepcionZona.origen !== null &&
+    !zonasJugador.includes(p.recepcionZona.origen)
+  ) {
     zonasJugador.push(p.recepcionZona.origen);
   }
 
-  // --- Contexto del partido ---
   let contextoPartido: BloqueTriggerFiltro["contextoPartido"] = null;
   const ctx = p.contexto;
   const hayContexto =
@@ -986,12 +1757,16 @@ function construirFiltro(p: Piezas): BloqueTriggerFiltro {
 
   if (hayContexto) {
     const cp = { ...CONTEXTO_PARTIDO_VACIO };
-    if (ctx.cierre !== undefined) cp.marcador = { ...cp.marcador, puntosParaCerrar: ctx.cierre };
-    if (ctx.criticos) cp.marcador = { ...cp.marcador, soloCriticos: true };
-    if (ctx.estado !== undefined) cp.marcador = { ...cp.marcador, estado: ctx.estado };
+    if (ctx.cierre !== undefined)
+      cp.marcador = { ...cp.marcador, puntosParaCerrar: ctx.cierre };
+    if (ctx.criticos)
+      cp.marcador = { ...cp.marcador, soloCriticos: true };
+    if (ctx.estado !== undefined)
+      cp.marcador = { ...cp.marcador, estado: ctx.estado };
     if (ctx.rachaPuntos !== null) cp.rachaPuntos = ctx.rachaPuntos;
     if (ctx.fase !== null) cp.faseRally = ctx.fase;
-    if (ctx.inicioPunto !== null) cp.inicioPunto = ctx.inicioPunto as typeof cp.inicioPunto;
+    if (ctx.inicioPunto !== null)
+      cp.inicioPunto = ctx.inicioPunto as typeof cp.inicioPunto;
     if (ctx.primerPunto) cp.posicionEnSet = "primero";
     else if (ctx.ultimoPunto) cp.posicionEnSet = "ultimo";
     contextoPartido = cp;
@@ -1037,7 +1812,9 @@ function generarSugerencias(
     return sug;
   }
   if (!tipoDetectado) {
-    sug.push("aclará el tipo (saque, recepción, armado, ataque, bloqueo, defensa)");
+    sug.push(
+      "aclará el tipo (saque, recepción, armado, ataque, bloqueo, defensa)"
+    );
     sug.push("ataque después de recepción negativa");
     sug.push("recepción en cierre de set");
   }
@@ -1074,7 +1851,6 @@ export function parsearBusqueda(
     };
   }
 
-  // 1. Símbolos de recepción (R#, R+, R!, R-, R--, R/, R=) sobre texto original
   const recepcionSimbolo = detectarSimboloRecepcion(textoOriginal);
   if (recepcionSimbolo) {
     agregarMatch(
@@ -1086,7 +1862,6 @@ export function parsearBusqueda(
     );
   }
 
-  // 2. Extracción estándar
   const jugadorId = extraerJugador(st, contexto.jugadores);
   const tipo = extraerTipo(st);
   const resultadoPorTexto = extraerResultado(st, tipo);
@@ -1105,11 +1880,9 @@ export function parsearBusqueda(
   const ctx = extraerContexto(st);
   const { velocidad: velLlamada } = extraerLlamadas(st);
 
-  // 3. ¿R suelto? Solo si no hay tipo ya detectado y no hay símbolo R pegado
   const viaRSuelto =
     !tipo && !recepcionSimbolo && detectarRSuelto(textoOriginal);
 
-  // 4. Toque de segunda (por texto o por R suelto)
   const toqueSegunda = extraerToqueDeSegunda(
     st,
     contexto.jugadores,
@@ -1117,11 +1890,16 @@ export function parsearBusqueda(
   );
   const recepcionZona = extraerRecepcionZona(st);
 
+  // v3.6: limpiar stopwords ANTES de calcular noReconocidas.
+  limpiarStopwords(st);
+
   const velocidadFinal = velocidad ?? velLlamada ?? null;
 
   const filtro = construirFiltro({
     tipo,
-    resultado: recepcionSimbolo ? recepcionSimbolo.valor : resultadoPorTexto,
+    resultado: recepcionSimbolo
+      ? recepcionSimbolo.valor
+      : resultadoPorTexto,
     jugadorId,
     sets,
     puntos,
@@ -1141,7 +1919,6 @@ export function parsearBusqueda(
     recepcionSimbolo,
   });
 
-  // 5. Palabras no reconocidas
   const tokens = st.texto.split(/\s+/).filter((t) => t.length >= 3);
   const vistas = new Set<string>();
   for (const t of tokens) {
@@ -1185,7 +1962,11 @@ export function parsearBusqueda(
     recepcionZona.origen !== null ||
     viaRSuelto;
 
-  const sugerencias = generarSugerencias(st, tipo, st.matches.length > 0);
+  const sugerencias = generarSugerencias(
+    st,
+    tipo,
+    st.matches.length > 0
+  );
 
   return {
     filtro,
