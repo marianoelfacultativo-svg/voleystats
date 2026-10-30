@@ -23,8 +23,14 @@ import {
   rankingConsistencia,
   type RankingCompletoItem,
 } from "@/lib/estadisticas";
+import {
+  cargarAccionesUnificadas,
+  type AccionVisual,
+  type PuntoConAcciones,
+} from "./adaptadorUnificadoV2";
 import TablaEstadisticasCrudas from "./TablaEstadisticasCrudas";
 import IconoVoley from "./IconoVoley";
+import ConsultaPanel from "./analisisConsecuencias/ConsultaPanel";
 import { descargarComoPDF } from "@/lib/exportarPDF";
 
 interface Partido {
@@ -90,6 +96,10 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
   const [acciones, setAcciones] = useState<AccionDB[]>([]);
   const [cargando, setCargando] = useState(true);
 
+  // ---- Dataset extendido para el ConsultaPanel ----
+  const [accionesVisuales, setAccionesVisuales] = useState<AccionVisual[]>([]);
+  const [puntosCompletos, setPuntosCompletos] = useState<PuntoConAcciones[]>([]);
+
   const [rankingsAbiertos, setRankingsAbiertos] = useState<Set<RankingTipo>>(
     new Set()
   );
@@ -126,15 +136,23 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
       const ids = partRes.data.map((p) => p.id);
       if (ids.length === 0) {
         setAcciones([]);
+        setAccionesVisuales([]);
+        setPuntosCompletos([]);
         setCargando(false);
         return;
       }
 
-      const resultados = await Promise.all(
-        ids.map((pid) => cargarAccionesCompatibles(pid, equipoId))
-      );
+      // Carga en paralelo:
+      //   - AccionDB (para los gráficos / rankings / stats del dashboard)
+      //   - AccionVisual + PuntoConAcciones (para el ConsultaPanel)
+      const [compatibles, unificadas] = await Promise.all([
+        Promise.all(ids.map((pid) => cargarAccionesCompatibles(pid, equipoId))),
+        Promise.all(ids.map((pid) => cargarAccionesUnificadas(pid, equipoId))),
+      ]);
 
-      setAcciones(resultados.flat());
+      setAcciones(compatibles.flat());
+      setAccionesVisuales(unificadas.flatMap((r) => r.acciones));
+      setPuntosCompletos(unificadas.flatMap((r) => r.puntos));
       setCargando(false);
     });
   }, [equipoId]);
@@ -240,6 +258,17 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
       j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
   }
 
+  const jugadoresParaConsulta = jugadores.map((j) => ({
+    id: j.id,
+    nombre: j.nombre + (j.numero !== null ? ` #${j.numero}` : ""),
+  }));
+
+  const partidosParaConsulta = partidos.map((p) => ({
+    id: p.id,
+    nombre: `vs ${nombreRivalDe(p)} (${p.fecha})`,
+    fecha: p.fecha,
+  }));
+
   if (partidos.length === 0) {
     return (
       <div
@@ -271,6 +300,26 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* ============ CONSULTAS ANALÍTICAS (arriba, fuera del PDF) ============ */}
+      <section
+        data-pdf-ignorar
+        className="rounded-2xl p-4 sm:p-5"
+        style={{
+          background: "linear-gradient(135deg, rgba(8,24,40,0.95) 0%, rgba(15,29,53,0.92) 100%)",
+          border: "1px solid rgba(14,165,201,0.3)",
+          boxShadow:
+            "0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(14,165,201,0.15)",
+        }}
+      >
+        <ConsultaPanel
+          acciones={accionesVisuales}
+          puntos={puntosCompletos}
+          jugadores={jugadoresParaConsulta}
+          partidos={partidosParaConsulta}
+          nombreDeJugador={nombreDe}
+        />
+      </section>
+
       {/* Botón de exportación */}
       <div className="flex justify-end" data-pdf-ignorar>
         <button

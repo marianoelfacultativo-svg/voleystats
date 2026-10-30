@@ -13,6 +13,10 @@
 //   2. `accionesVisuales` → propias + rivales, con flip resueltos
 //                          (cargarAccionesUnificadas) para el panel
 //                          de Consecuencias y el análisis de contexto.
+//
+// FASE 5: agrega `ConsultaPanel` arriba del detalle cuando el modo
+// es "partido" (un solo partido seleccionado). El panel responde
+// consultas libres usando SOLO las acciones de ese partido.
 // ============================================================
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -35,7 +39,9 @@ import {
 import {
   cargarAccionesUnificadas,
   type AccionVisual,
+  type PuntoConAcciones,
 } from "./adaptadorUnificadoV2";
+import ConsultaPanel from "./analisisConsecuencias/ConsultaPanel";
 
 import { usePartidosData } from "./partidos/usePartidosData";
 import HeaderPartido from "./partidos/HeaderPartido";
@@ -114,6 +120,9 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   // ---------- Dataset paralelo para el análisis de consecuencias ----------
   // Se carga EAGER por cada partido activo (una sola query extra).
   const [accionesVisuales, setAccionesVisuales] = useState<AccionVisual[]>([]);
+  const [puntosCompletosPartido, setPuntosCompletosPartido] = useState<
+    PuntoConAcciones[]
+  >([]);
   const [cargandoVisuales, setCargandoVisuales] = useState(false);
 
   // ============ EFFECTS ============
@@ -122,11 +131,12 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     setFiltrosTacticos({ ...FILTROS_TACTICOS_VACIO });
   }, [partidoSeleccionado]);
 
-  // Cargar accionesVisuales del partido activo (todas: propias + rivales,
-  // con flip y es_ultima_del_punto resueltos).
+  // Cargar accionesVisuales + puntos del partido activo (todas:
+  // propias + rivales, con flip y es_ultima_del_punto resueltos).
   useEffect(() => {
     if (!partidoSeleccionado || !equipoId) {
       setAccionesVisuales([]);
+      setPuntosCompletosPartido([]);
       return;
     }
     let cancelled = false;
@@ -135,6 +145,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       .then((res) => {
         if (cancelled) return;
         setAccionesVisuales(res.acciones);
+        setPuntosCompletosPartido(res.puntos);
         setCargandoVisuales(false);
       })
       .catch(() => {
@@ -413,6 +424,27 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
     [jugadorSeleccionadoJxP, partidosJxPData, idsJugadores]
   );
 
+  // ---- Jugadores y partidos para el ConsultaPanel (modo partido) ----
+  const jugadoresParaConsulta = useMemo(
+    () =>
+      jugadores.map((j) => ({
+        id: j.id,
+        nombre: j.nombre + (j.numero !== null ? ` #${j.numero}` : ""),
+      })),
+    [jugadores]
+  );
+
+  const partidosParaConsulta = useMemo(() => {
+    if (!partidoDetalle) return [];
+    return [
+      {
+        id: partidoDetalle.id,
+        nombre: `vs ${nombreRivalDe(partidoDetalle)} (${partidoDetalle.fecha})`,
+        fecha: partidoDetalle.fecha,
+      },
+    ];
+  }, [partidoDetalle, nombreRivalDe]);
+
   // ============ EARLY RETURNS (después de todos los hooks) ============
 
   if (cargando) {
@@ -686,23 +718,47 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                     Cargando datos del análisis...
                   </p>
                 ) : (
-                  <VistaDetallePartido
-                    partidoDetalle={partidoDetalle}
-                    statsPartido={statsPartido}
-                    accionesDelPartido={accionesDelPartido}
-                    accionesVisualesParaAnalisis={accionesVisuales}
-                    idsJugadores={idsJugadores}
-                    armadores={armadores}
-                    jugadores={jugadores}
-                    nombresJugadoresMap={nombresJugadoresMap}
-                    datosRivalPartido={datosRivalPartido}
-                    filtroSet={filtroSet}
-                    nombreEquipo={nombreEquipo}
-                    nombreRivalDe={nombreRivalDe}
-                    nombreDe={nombreDe}
-                    hayFiltrosTacticosActivos={hayFiltrosTacticosActivos}
-                    crudasEnPDF={crudasEnPDF}
-                  />
+                  <div className="space-y-4">
+                    {/* ============ CONSULTAS ANALÍTICAS (solo este partido) ============ */}
+                    <section
+                      data-pdf-ignorar
+                      className="rounded-2xl p-3 sm:p-4"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, rgba(8,24,40,0.95) 0%, rgba(15,29,53,0.92) 100%)",
+                        border: "1px solid rgba(14,165,201,0.3)",
+                        boxShadow:
+                          "0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(14,165,201,0.15)",
+                      }}
+                    >
+                      <ConsultaPanel
+                        acciones={accionesVisuales}
+                        puntos={puntosCompletosPartido}
+                        jugadores={jugadoresParaConsulta}
+                        partidos={partidosParaConsulta}
+                        nombreDeJugador={nombreDe}
+                      />
+                    </section>
+
+                    {/* ============ DETALLE DEL PARTIDO ============ */}
+                    <VistaDetallePartido
+                      partidoDetalle={partidoDetalle}
+                      statsPartido={statsPartido}
+                      accionesDelPartido={accionesDelPartido}
+                      accionesVisualesParaAnalisis={accionesVisuales}
+                      idsJugadores={idsJugadores}
+                      armadores={armadores}
+                      jugadores={jugadores}
+                      nombresJugadoresMap={nombresJugadoresMap}
+                      datosRivalPartido={datosRivalPartido}
+                      filtroSet={filtroSet}
+                      nombreEquipo={nombreEquipo}
+                      nombreRivalDe={nombreRivalDe}
+                      nombreDe={nombreDe}
+                      hayFiltrosTacticosActivos={hayFiltrosTacticosActivos}
+                      crudasEnPDF={crudasEnPDF}
+                    />
+                  </div>
                 )}
               </>
             )}

@@ -11,6 +11,12 @@
 //
 // El estado de configuración de cada panel vive acá. Los hijos
 // son presentacionales.
+//
+// v5.1 (FASE 5):
+//   + Reexporta como exports nombrados `ConsultaPanel` y
+//     `ConsultaResultado` para que se puedan importar así:
+//       import { ConsultaPanel } from "@/app/equipo/analisisConsecuencias";
+//   + No cambia nada del componente principal.
 // ============================================================
 
 import { useMemo, useState } from "react";
@@ -268,3 +274,13 @@ export default function AnalisisConsecuencias({
     </div>
   );
 }
+
+// ------------------------------------------------------------
+// FASE 5: reexports de los paneles de consulta analítica
+// ------------------------------------------------------------
+// Para que se puedan importar así desde cualquier lado:
+//   import { ConsultaPanel, ConsultaResultado } from "@/app/equipo/analisisConsecuencias";
+// ------------------------------------------------------------
+
+export { default as ConsultaPanel } from "./ConsultaPanel";
+export { default as ConsultaResultado } from "./ConsultaResultado";
