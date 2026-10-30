@@ -17,8 +17,16 @@
 //   - resultado_partido → necesita `resultadoDePartido`
 //   - jugador      → necesita `nombreDeJugador`
 //   - partido      → necesita `nombreDePartido`
+//   - resultado_punto → necesita `resultadosPunto` (o lo calcula
+//                       sobre las acciones recibidas como fallback)
 //
 // Si falta el contexto, la fila se etiqueta con el id crudo.
+//
+// v1.2 (FASE 6 — bloque A):
+//   + groupBy "resultado_punto" (punto propio / punto rival /
+//     sin ganador).
+//   + `calcularResultadosPunto` exportada.
+//   + `ContextoAgrupacion.resultadosPunto` opcional.
 //
 // v1.1 (fix build):
 //   + `construirComparacion` normaliza `base` a `number` (0 si null)
@@ -27,7 +35,11 @@
 
 import type { AccionVisual } from "../../app/equipo/adaptadorUnificadoV2";
 import type { ContextoRally } from "../contextoRally";
-import { ubicacionDeZona, puntajeDeAccion } from "../analisis/clasificacion";
+import {
+  ubicacionDeZona,
+  puntajeDeAccion,
+  clasificarResultado,
+} from "../analisis/clasificacion";
 import {
   agregar,
   agrupar,
@@ -58,6 +70,66 @@ export interface ContextoAgrupacion {
   resultadoDePartido?: (id: string) => string;
   /** Para groupBy "fase". */
   contextoRally?: Map<string, ContextoRally>;
+  /**
+   * Resultado (ganador) de cada punto. Debe calcularse sobre el
+   * UNIVERSO COMPLETO (no sobre el subset filtrado), si no los
+   * filtros van a falsear el ganador.
+   *
+   * Necesario para groupBy "resultado_punto". Si no se provee, se
+   * calcula a partir de las acciones recibidas en `agruparAcciones`
+   * (fallback — usar solo cuando no hay filtros previos).
+   */
+  resultadosPunto?: Map<string, "propio" | "rival" | null>;
+}
+
+// ------------------------------------------------------------
+// RESULTADO DEL PUNTO — helper compartido
+// ------------------------------------------------------------
+//
+// Clave: `${partido_id}|${set_numero}|${punto_numero}`
+// Valor: "propio" (ganamos nosotros), "rival" (ganaron ellos) o
+//        null (no se puede determinar / punto sin cerrar / neutro).
+//
+// El ganador se determina mirando la ÚLTIMA acción visible del
+// punto y clasificándola:
+//   - categoría "punto" → gana el lado que ejecutó la acción.
+//   - categoría "error" → gana el lado contrario al ejecutor.
+//   - categoría "neutro" → sin ganador.
+// ------------------------------------------------------------
+
+export function calcularResultadosPunto(
+  acciones: AccionVisual[]
+): Map<string, "propio" | "rival" | null> {
+  const porPunto = new Map<string, AccionVisual[]>();
+  for (const a of acciones) {
+    if (a.oculta) continue;
+    const k = `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`;
+    let arr = porPunto.get(k);
+    if (!arr) {
+      arr = [];
+      porPunto.set(k, arr);
+    }
+    arr.push(a);
+  }
+
+  const out = new Map<string, "propio" | "rival" | null>();
+  for (const [k, lista] of porPunto) {
+    const ordenada = [...lista].sort((a, b) => a.orden - b.orden);
+    const ultima = ordenada[ordenada.length - 1];
+    if (!ultima) {
+      out.set(k, null);
+      continue;
+    }
+    const cat = clasificarResultado(ultima);
+    if (cat === "punto") {
+      out.set(k, ultima.es_rival ? "rival" : "propio");
+    } else if (cat === "error") {
+      out.set(k, ultima.es_rival ? "propio" : "rival");
+    } else {
+      out.set(k, null);
+    }
+  }
+  return out;
 }
 
 // ------------------------------------------------------------
@@ -105,6 +177,13 @@ export function claveDeGrupo(
       return a.partido_id || null;
     case "resultado_partido":
       return a.partido_id || null;
+    case "resultado_punto": {
+      const k = `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`;
+      const g = _ctx.resultadosPunto?.get(k) ?? null;
+      if (g === "propio") return "punto_propio";
+      if (g === "rival") return "punto_rival";
+      return "sin_ganador";
+    }
     case "tipo":
       return a.tipo;
     case "subtipo": {
@@ -173,6 +252,11 @@ export function etiquetaDeGrupo(
       return ctx.resultadoDePartido
         ? ctx.resultadoDePartido(key)
         : key.slice(0, 8);
+    case "resultado_punto":
+      if (key === "punto_propio") return "Punto propio";
+      if (key === "punto_rival") return "Punto rival";
+      if (key === "sin_ganador") return "Sin ganador";
+      return key;
     case "tipo":
       return capitalizar(key);
     case "subtipo":
@@ -206,15 +290,23 @@ function capitalizar(s: string): string {
 /**
  * Agrupa `acciones` por la dimensión `groupBy`.
  * Las acciones sin esa dimensión se ignoran (no van a ningún grupo).
+ *
+ * Si `groupBy === "resultado_punto"` y el contexto no trae
+ * `resultadosPunto` ya calculados, los calcula automáticamente
+ * sobre las acciones recibidas (fallback).
  */
 export function agruparAcciones(
   acciones: AccionVisual[],
   groupBy: GroupBy,
   ctx: ContextoAgrupacion = {}
 ): Map<string, AccionVisual[]> {
+  const ctxFinal =
+    groupBy === "resultado_punto" && !ctx.resultadosPunto
+      ? { ...ctx, resultadosPunto: calcularResultadosPunto(acciones) }
+      : ctx;
   return agrupar(
     acciones.filter((a) => !a.oculta),
-    (a) => claveDeGrupo(a, groupBy, ctx)
+    (a) => claveDeGrupo(a, groupBy, ctxFinal)
   );
 }
 

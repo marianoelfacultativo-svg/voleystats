@@ -1,14 +1,18 @@
 // ============================================================
 // INTENCIONES — Diccionarios + tipos del parser de intención
 // ============================================================
-// v1.4 (FASE 6 — diccionarios multiplados):
-//   + Cada diccionario de sinónimos ampliado ~6x con variantes
-//     formales, de España, México, Colombia, Chile, Perú,
-//     Venezuela, Ecuador, y tratamientos usted/ustedes/vosotros.
-//   + Sustantivos alternativos (conteo, recuento, tope, cima,
-//     valle, cotejo, desagregación, cadencia, etc.).
-//   + Frases de cortesía ("quisiera saber", "me interesa",
-//     "podría indicarme", "le agradecería", etc.).
+// v1.8 (FASE 6 — bloque A.2):
+//   + Nueva métrica "puntos_ganados_pct" con sinónimos
+//     ("porcentaje de puntos ganados", "% de puntos a favor", etc.).
+//   + Refuerzo de SINONIMOS_HABIT con frases específicas de
+//     "cómo terminan los puntos / los rallys / cada punto".
+//
+// v1.7 (FASE 6 — Ronda 1 + Ronda 2):
+//   + GroupBy "resultado_punto" (v1.5)
+//   + max / min con agregación "count" (v1.6)
+//   + Métricas nuevas: "puntos_ganados" y "acciones_punto"
+//   + "salida" / "salidas" → groupBy "zona_origen"
+//   + "resultado del punto" → groupBy "resultado_punto"
 // ============================================================
 
 // ------------------------------------------------------------
@@ -59,6 +63,7 @@ export type GroupBy =
   | "fase"
   | "rival"
   | "resultado_partido"
+  | "resultado_punto"
   | "tipo"
   | "subtipo"
   | "velocidad"
@@ -151,7 +156,6 @@ export function intencionVacia(): IntencionQuery {
 // ------------------------------------------------------------
 
 export const SINONIMOS_COUNT: string[] = [
-  // ---- Neutros / formales ----
   "cuantos", "cuantas", "cuanto", "cuanta",
   "cantidad", "cantidades",
   "total", "totales",
@@ -162,7 +166,6 @@ export const SINONIMOS_COUNT: string[] = [
   "cuenta", "cuentas",
   "valor absoluto", "valores absolutos",
   "magnitud", "magnitudes",
-  // ---- Preguntas neutras ----
   "cuantas veces", "cuantos hubo", "cuantos fueron", "cuantos hizo",
   "cuantas hizo", "cuantas hay", "cuantos hay", "cuantas hubo",
   "cuantos hubieron", "cuantos tenemos", "cuantas tenemos",
@@ -174,7 +177,6 @@ export const SINONIMOS_COUNT: string[] = [
   "cual es el conteo", "cual es el recuento",
   "que cantidad", "que cantidad de", "que numero",
   "que total", "que total de",
-  // ---- Tú (España / neutro) ----
   "dime cuantos", "dime cuantas", "dime cuanto", "dime cuanta",
   "dime la cantidad", "dime el total", "dime el numero",
   "dime el conteo", "dime el recuento",
@@ -186,7 +188,6 @@ export const SINONIMOS_COUNT: string[] = [
   "indicame la cantidad", "indicame el total",
   "informame cuantos", "informame cuantas",
   "informame la cantidad", "informame el total",
-  // ---- Vos (Argentina / Uruguay) ----
   "decime cuantos", "decime cuantas", "decime cuanto", "decime cuanta",
   "decime la cantidad", "decime el total",
   "mostrame cuantos", "mostrame cuantas", "mostrame cuanto",
@@ -195,7 +196,6 @@ export const SINONIMOS_COUNT: string[] = [
   "contame la cantidad", "contame el total",
   "pasame cuantos", "pasame cuantas", "pasame la cantidad",
   "tira cuantos", "tira cuantas", "tira el total",
-  // ---- Usted / formal ----
   "digame cuantos", "digame cuantas", "digame cuanto", "digame cuanta",
   "digame la cantidad", "digame el total", "digame el numero",
   "digame el conteo", "digame el recuento",
@@ -209,19 +209,16 @@ export const SINONIMOS_COUNT: string[] = [
   "informeme la cantidad", "informeme el total",
   "digame por favor cuantos", "digame por favor cuantas",
   "indiqueme por favor cuantos", "indiqueme por favor cuantas",
-  // ---- Ustedes ----
   "diganme cuantos", "diganme cuantas", "diganme cuanto",
   "diganme la cantidad", "diganme el total",
   "muestrenme cuantos", "muestrenme cuantas",
   "muestrenme la cantidad", "muestrenme el total",
   "cuentenme cuantos", "cuentenme cuantas",
   "indiquenme cuantos", "indiquenme cuantas",
-  // ---- Vosotros (España) ----
   "decidme cuantos", "decidme cuantas", "decidme cuanto",
   "mostradme cuantos", "mostradme cuantas", "mostradme cuanto",
   "contadme cuantos", "contadme cuantas", "contadme cuanto",
   "indicadme cuantos", "indicadme cuantas",
-  // ---- Cortesía / escrito formal ----
   "quisiera saber cuantos", "quisiera saber cuantas",
   "quisiera saber cuanto", "quisiera saber cuanta",
   "quisiera saber la cantidad", "quisiera saber el total",
@@ -252,13 +249,11 @@ export const SINONIMOS_COUNT: string[] = [
   "queria consultar cuantos", "queria consultar cuantas",
   "queria saber cuantos", "queria saber cuantas",
   "vengo a preguntar cuantos", "vengo a preguntar cuantas",
-  // ---- Imperativos plural ----
   "listame cuantos", "listame cuantas",
   "listennos cuantos", "listennos cuantas",
   "haganme una lista de cuantos", "haganme una lista de cuantas",
   "enumere cuantos", "enumere cuantas",
   "enumeren cuantos", "enumeren cuantas",
-  // ---- Coloquial / regional ----
   "cuantos casos", "cuantos casos hay", "cuantos casos hubo",
   "cuantas cosas", "cuantas cosas hizo",
   "cuantas jugadas", "cuantos eventos", "cuantos eventos hubo",
@@ -271,7 +266,6 @@ export const SINONIMOS_COUNT: string[] = [
 ];
 
 export const SINONIMOS_PERCENTAGE: string[] = [
-  // ---- Neutros / formales ----
   "porcentaje", "porcentajes",
   "por ciento", "porciento", "porcientos",
   "%", "porcentual", "porcentuales",
@@ -283,7 +277,6 @@ export const SINONIMOS_PERCENTAGE: string[] = [
   "indice", "índice", "indices", "índices",
   "coeficiente", "coeficientes",
   "cuota", "cuotas",
-  // ---- Preguntas neutras ----
   "que porcentaje", "que %", "que tanto por ciento",
   "que proporcion", "que proporción",
   "que fraccion", "que fracción",
@@ -299,7 +292,6 @@ export const SINONIMOS_PERCENTAGE: string[] = [
   "cuanto por ciento", "cuanto porciento",
   "cuanto es el porcentaje", "cuanto es el %",
   "cuanto representa", "cuanto representa en porcentaje",
-  // ---- Tú ----
   "dime el porcentaje", "dime el %",
   "dime que porcentaje", "dime que %",
   "dime la proporcion", "dime la proporción",
@@ -311,7 +303,6 @@ export const SINONIMOS_PERCENTAGE: string[] = [
   "cuentame que porcentaje", "cuentame la proporcion",
   "indicame el porcentaje", "indicame el %",
   "indicame que porcentaje", "indicame la proporcion",
-  // ---- Vos ----
   "decime el porcentaje", "decime el %",
   "decime que porcentaje", "decime que %",
   "decime la proporcion", "decime la fraccion",
@@ -320,7 +311,6 @@ export const SINONIMOS_PERCENTAGE: string[] = [
   "contame el porcentaje", "contame que porcentaje",
   "pasame el porcentaje", "pasame el %",
   "tira el porcentaje", "tira el %",
-  // ---- Usted ----
   "digame el porcentaje", "digame el %",
   "digame que porcentaje", "digame que %",
   "digame la proporcion", "digame la proporción",
@@ -331,15 +321,12 @@ export const SINONIMOS_PERCENTAGE: string[] = [
   "indiqueme el porcentaje", "indiqueme el %",
   "indiqueme que porcentaje",
   "informeme el porcentaje", "informeme el %",
-  // ---- Ustedes ----
   "diganme el porcentaje", "diganme el %",
   "diganme que porcentaje",
   "muestrenme el porcentaje", "muestrenme el %",
   "indiquenme el porcentaje", "indiquenme el %",
-  // ---- Vosotros ----
   "decidme el porcentaje", "decidme el %",
   "mostradme el porcentaje", "mostradme el %",
-  // ---- Cortesía / formal escrito ----
   "quisiera saber el porcentaje", "quisiera saber el %",
   "quisiera saber que porcentaje",
   "me interesa saber el porcentaje", "me interesa saber el %",
@@ -355,7 +342,6 @@ export const SINONIMOS_PERCENTAGE: string[] = [
   "le agradeceria que me indique el porcentaje",
   "me podria indicar el porcentaje", "me podria decir el porcentaje",
   "me puede indicar el porcentaje", "me puede decir el porcentaje",
-  // ---- Regional / coloquial ----
   "que tan seguido", "que tan comun", "que tan común",
   "que tan frecuente", "que tan habitual",
   "a ver que porcentaje", "veamos que porcentaje",
@@ -363,7 +349,6 @@ export const SINONIMOS_PERCENTAGE: string[] = [
 ];
 
 export const SINONIMOS_AVERAGE: string[] = [
-  // ---- Neutros / formales ----
   "promedio", "promedios",
   "media", "medias",
   "media aritmetica", "media aritmética",
@@ -375,7 +360,6 @@ export const SINONIMOS_AVERAGE: string[] = [
   "nivel medio", "niveles medios",
   "por accion", "por acción", "por acciones",
   "por unidad", "por unidades",
-  // ---- Preguntas neutras ----
   "en promedio", "promedio de", "media de",
   "por set", "por partido", "por jugador", "por rotacion", "por punto",
   "por sets", "por partidos", "por jugadores",
@@ -398,7 +382,6 @@ export const SINONIMOS_AVERAGE: string[] = [
   "cuantas por partido", "cuantos por partido",
   "cuantas por set", "cuantos por set",
   "cuantas por jugada", "cuantos por jugada",
-  // ---- Tú ----
   "dime el promedio", "dime la media",
   "dime cuanto promedia", "dime cuanto promedian",
   "dime el valor medio",
@@ -407,7 +390,6 @@ export const SINONIMOS_AVERAGE: string[] = [
   "cuentame el promedio", "cuentame la media",
   "indicame el promedio", "indicame la media",
   "indicame cuanto promedia",
-  // ---- Vos ----
   "decime el promedio", "decime la media",
   "decime cuanto promedia", "decime cuanto promedian",
   "mostrame el promedio", "mostrame la media",
@@ -415,20 +397,16 @@ export const SINONIMOS_AVERAGE: string[] = [
   "contame el promedio", "contame la media",
   "pasame el promedio", "pasame la media",
   "tira el promedio", "tira la media",
-  // ---- Usted ----
   "digame el promedio", "digame la media",
   "digame cuanto promedia", "digame cuanto promedian",
   "muestreme el promedio", "muestreme la media",
   "cuenteme el promedio", "cuenteme la media",
   "indiqueme el promedio", "indiqueme la media",
   "informeme el promedio", "informeme la media",
-  // ---- Ustedes ----
   "diganme el promedio", "diganme la media",
   "muestrenme el promedio", "muestrenme la media",
-  // ---- Vosotros ----
   "decidme el promedio", "decidme la media",
   "mostradme el promedio", "mostradme la media",
-  // ---- Cortesía / formal escrito ----
   "quisiera saber el promedio", "quisiera saber la media",
   "quisiera saber cuanto promedia",
   "me interesa saber el promedio", "me interesa saber la media",
@@ -444,14 +422,12 @@ export const SINONIMOS_AVERAGE: string[] = [
   "le agradeceria que me indique el promedio",
   "me podria indicar el promedio", "me podria decir el promedio",
   "me puede indicar el promedio", "me puede decir el promedio",
-  // ---- Regional / coloquial ----
   "que promedio mete", "que promedio clava",
   "a ver el promedio", "veamos el promedio",
   "vamos a ver el promedio",
 ];
 
 export const SINONIMOS_FREQUENCY: string[] = [
-  // ---- Neutros / formales ----
   "frecuencia", "frecuencias",
   "periodicidad", "periodicidades",
   "regularidad", "regularidades",
@@ -472,7 +448,6 @@ export const SINONIMOS_FREQUENCY: string[] = [
   "cada cuantas jugadas", "cada cuantos toques",
   "cada cuantas recepciones", "cada cuantos saques",
   "cada cuantos puntos", "cada cuantos rallies",
-  // ---- Tú ----
   "dime cada cuanto", "dime la frecuencia",
   "dime la periodicidad", "dime la cadencia",
   "dime con que frecuencia",
@@ -481,13 +456,11 @@ export const SINONIMOS_FREQUENCY: string[] = [
   "cuentame cada cuanto", "cuentame la frecuencia",
   "indicame cada cuanto", "indicame la frecuencia",
   "indicame la periodicidad",
-  // ---- Vos ----
   "decime cada cuanto", "decime la frecuencia",
   "decime la periodicidad", "decime la cadencia",
   "mostrame cada cuanto", "mostrame la frecuencia",
   "contame cada cuanto", "contame la frecuencia",
   "pasame la frecuencia", "pasame la cadencia",
-  // ---- Usted ----
   "digame cada cuanto", "digame la frecuencia",
   "digame la periodicidad", "digame la cadencia",
   "digame con que frecuencia",
@@ -495,13 +468,10 @@ export const SINONIMOS_FREQUENCY: string[] = [
   "cuenteme cada cuanto", "cuenteme la frecuencia",
   "indiqueme cada cuanto", "indiqueme la frecuencia",
   "informeme la frecuencia", "informeme la cadencia",
-  // ---- Ustedes ----
   "diganme cada cuanto", "diganme la frecuencia",
   "muestrenme la frecuencia", "muestrenme la cadencia",
-  // ---- Vosotros ----
   "decidme cada cuanto", "decidme la frecuencia",
   "mostradme la frecuencia", "mostradme la cadencia",
-  // ---- Cortesía / formal escrito ----
   "quisiera saber la frecuencia", "quisiera saber cada cuanto",
   "quisiera conocer la frecuencia",
   "me interesa saber la frecuencia", "me interesa saber cada cuanto",
@@ -517,7 +487,6 @@ export const SINONIMOS_FREQUENCY: string[] = [
   "le agradeceria que me indique la frecuencia",
   "me podria indicar la frecuencia", "me podria decir la frecuencia",
   "me puede indicar la frecuencia", "me puede decir la frecuencia",
-  // ---- Coloquial / regional ----
   "cada cuanto pasa", "cada cuanto ocurre",
   "cada cuanto le pasa", "cada cuanto le ocurre",
   "cada cuanto comete", "cada cuanto hace",
@@ -538,7 +507,6 @@ export const SINONIMOS_FREQUENCY: string[] = [
 ];
 
 export const SINONIMOS_MAX: string[] = [
-  // ---- Neutros / formales ----
   "maximo", "maximos", "maxima", "maximas",
   "máximo", "máximos", "máxima", "máximas",
   "tope", "topes", "pico", "picos",
@@ -552,7 +520,6 @@ export const SINONIMOS_MAX: string[] = [
   "el mejor", "la mejor", "los mejores", "las mejores",
   "mayor", "mayores", "maximo valor", "valor maximo",
   "el lider", "la lider", "los lideres", "las lideres",
-  // ---- Preguntas neutras ----
   "cual fue el mejor", "cual fue el maximo", "cual es el mejor",
   "cual fue el mayor", "cual es el mayor",
   "cual es el valor maximo", "cual fue el valor maximo",
@@ -565,7 +532,8 @@ export const SINONIMOS_MAX: string[] = [
   "quien acumulo mas", "quien registro mas",
   "quien obtuvo mas", "quien alcanzo mas",
   "quien llego a mas", "quien llego al maximo",
-  // ---- Tú ----
+  "quien hace mas", "quien hacen mas",
+  "quien hace la mayor cantidad",
   "dime el mejor", "dime el maximo", "dime el que mas",
   "dime el mayor", "dime el lider",
   "dime cual es el mejor", "dime cual es el maximo",
@@ -575,14 +543,12 @@ export const SINONIMOS_MAX: string[] = [
   "indicame el mejor", "indicame el maximo",
   "indicame el que mas", "indicame el mayor",
   "informame el mejor", "informame el maximo",
-  // ---- Vos ----
   "decime el mejor", "decime el maximo", "decime el que mas",
   "decime el mayor", "decime el lider",
   "mostrame el mejor", "mostrame el maximo", "mostrame el que mas",
   "contame el mejor", "contame el que mas",
   "pasame el mejor", "pasame el maximo", "pasame el que mas",
   "tira el mejor", "tira el maximo",
-  // ---- Usted ----
   "digame el mejor", "digame el maximo", "digame el que mas",
   "digame el mayor", "digame el lider",
   "digame cual es el mejor", "digame cual es el maximo",
@@ -591,15 +557,12 @@ export const SINONIMOS_MAX: string[] = [
   "indiqueme el mejor", "indiqueme el maximo",
   "indiqueme el que mas", "indiqueme el mayor",
   "informeme el mejor", "informeme el maximo",
-  // ---- Ustedes ----
   "diganme el mejor", "diganme el maximo",
   "diganme el que mas", "diganme el mayor",
   "muestrenme el mejor", "muestrenme el maximo",
   "indiquenme el mejor", "indiquenme el maximo",
-  // ---- Vosotros ----
   "decidme el mejor", "decidme el maximo",
   "mostradme el mejor", "mostradme el maximo",
-  // ---- Cortesía / formal escrito ----
   "quisiera saber el mejor", "quisiera saber el maximo",
   "quisiera saber cual es el mejor",
   "quisiera saber cual es el maximo",
@@ -616,7 +579,6 @@ export const SINONIMOS_MAX: string[] = [
   "le agradeceria que me indique el mejor",
   "me podria indicar el mejor", "me podria decir el mejor",
   "me puede indicar el mejor", "me puede decir el mejor",
-  // ---- Coloquial / regional ----
   "el que la rompio", "la que la rompio",
   "el que la rompió", "la que la rompió",
   "el que mas la rompio", "la que mas la rompio",
@@ -631,7 +593,6 @@ export const SINONIMOS_MAX: string[] = [
 ];
 
 export const SINONIMOS_MIN: string[] = [
-  // ---- Neutros / formales ----
   "minimo", "minimos", "minima", "minimas",
   "mínimo", "mínimos", "mínima", "mínimas",
   "piso", "pisos", "valle", "valles",
@@ -643,7 +604,6 @@ export const SINONIMOS_MIN: string[] = [
   "el peor", "la peor", "los peores", "las peores",
   "menor", "menores", "minimo valor", "valor minimo",
   "el ultimo", "la ultima", "los ultimos", "las ultimas",
-  // ---- Preguntas neutras ----
   "cual fue el peor", "cual fue el minimo", "cual es el peor",
   "cual fue el menor", "cual es el menor",
   "cual es el valor minimo", "cual fue el valor minimo",
@@ -656,7 +616,7 @@ export const SINONIMOS_MIN: string[] = [
   "quien acumulo menos", "quien registro menos",
   "quien obtuvo menos", "quien alcanzo menos",
   "quien llego a menos", "quien llego al minimo",
-  // ---- Tú ----
+  "quien hace menos", "quien hacen menos",
   "dime el peor", "dime el minimo", "dime el que menos",
   "dime el menor",
   "dime cual es el peor", "dime cual es el minimo",
@@ -666,14 +626,12 @@ export const SINONIMOS_MIN: string[] = [
   "indicame el peor", "indicame el minimo",
   "indicame el que menos", "indicame el menor",
   "informame el peor", "informame el minimo",
-  // ---- Vos ----
   "decime el peor", "decime el minimo", "decime el que menos",
   "decime el menor",
   "mostrame el peor", "mostrame el minimo", "mostrame el que menos",
   "contame el peor", "contame el que menos",
   "pasame el peor", "pasame el minimo", "pasame el que menos",
   "tira el peor", "tira el minimo",
-  // ---- Usted ----
   "digame el peor", "digame el minimo", "digame el que menos",
   "digame el menor",
   "digame cual es el peor", "digame cual es el minimo",
@@ -682,15 +640,12 @@ export const SINONIMOS_MIN: string[] = [
   "indiqueme el peor", "indiqueme el minimo",
   "indiqueme el que menos", "indiqueme el menor",
   "informeme el peor", "informeme el minimo",
-  // ---- Ustedes ----
   "diganme el peor", "diganme el minimo",
   "diganme el que menos", "diganme el menor",
   "muestrenme el peor", "muestrenme el minimo",
   "indiquenme el peor", "indiquenme el minimo",
-  // ---- Vosotros ----
   "decidme el peor", "decidme el minimo",
   "mostradme el peor", "mostradme el minimo",
-  // ---- Cortesía / formal escrito ----
   "quisiera saber el peor", "quisiera saber el minimo",
   "quisiera saber cual es el peor",
   "quisiera saber cual es el minimo",
@@ -707,7 +662,6 @@ export const SINONIMOS_MIN: string[] = [
   "le agradeceria que me indique el peor",
   "me podria indicar el peor", "me podria decir el peor",
   "me puede indicar el peor", "me puede decir el peor",
-  // ---- Coloquial / regional ----
   "el mas flojo", "la mas floja", "los mas flojos", "las mas flojas",
   "el que menos rinde", "la que menos rinde",
   "el que peor rinde", "la que peor rinde",
@@ -719,7 +673,6 @@ export const SINONIMOS_MIN: string[] = [
 ];
 
 export const SINONIMOS_RANKING: string[] = [
-  // ---- Neutros / formales ----
   "ranking", "rankings",
   "clasificacion", "clasificación", "clasificaciones",
   "tabla", "tablas", "tabla de posiciones",
@@ -739,7 +692,6 @@ export const SINONIMOS_RANKING: string[] = [
   "primeros puestos", "ultimos puestos", "últimos puestos",
   "cual es el primero", "cual es el ultimo",
   "cual es el primero", "cual es el último",
-  // ---- Tú ----
   "dime el ranking", "dime la clasificacion",
   "dime la tabla", "dime el orden",
   "dime el podio", "dime el top",
@@ -752,7 +704,6 @@ export const SINONIMOS_RANKING: string[] = [
   "informame el ranking", "informame el top",
   "hazme un ranking", "hazme un top",
   "hazme una lista ordenada", "hazme una tabla",
-  // ---- Vos ----
   "decime el ranking", "decime la clasificacion",
   "decime la tabla", "decime el top",
   "mostrame el ranking", "mostrame la clasificacion",
@@ -764,7 +715,6 @@ export const SINONIMOS_RANKING: string[] = [
   "tira el ranking", "tira el top",
   "ordenalos", "ordenalas", "ordena de mayor a menor",
   "ordena de menor a mayor",
-  // ---- Usted ----
   "digame el ranking", "digame la clasificacion",
   "digame la tabla", "digame el top",
   "digame el podio",
@@ -775,16 +725,13 @@ export const SINONIMOS_RANKING: string[] = [
   "informeme el ranking", "informeme el top",
   "hagame un ranking", "hagame un top",
   "ordene de mayor a menor", "ordene de menor a mayor",
-  // ---- Ustedes ----
   "diganme el ranking", "diganme el top",
   "muestrenme el ranking", "muestrenme el top",
   "indiquenme el ranking", "indiquenme el top",
   "ordenen de mayor a menor", "ordenen de menor a mayor",
-  // ---- Vosotros ----
   "decidme el ranking", "decidme el top",
   "mostradme el ranking", "mostradme el top",
   "ordenad de mayor a menor", "ordenad de menor a mayor",
-  // ---- Cortesía / formal escrito ----
   "quisiera saber el ranking", "quisiera saber el top",
   "quisiera conocer el ranking", "quisiera conocer el top",
   "me interesa saber el ranking", "me interesa saber el top",
@@ -800,7 +747,6 @@ export const SINONIMOS_RANKING: string[] = [
   "le agradeceria que me indique el ranking",
   "me podria indicar el ranking", "me podria decir el ranking",
   "me puede indicar el ranking", "me puede decir el ranking",
-  // ---- Coloquial / regional ----
   "del mejor al peor", "del peor al mejor",
   "de arriba a abajo", "de abajo a arriba",
   "los mejores primeros", "los peores primeros",
@@ -817,7 +763,6 @@ export const SINONIMOS_RANKING: string[] = [
 ];
 
 export const SINONIMOS_COMPARISON: string[] = [
-  // ---- Neutros / formales ----
   " vs ", " versus ", " contra ", " frente a ",
   "comparado con", "comparado a",
   "comparacion", "comparación", "comparaciones",
@@ -833,23 +778,18 @@ export const SINONIMOS_COMPARISON: string[] = [
   "mejor que", "peor que",
   "mas que", "menos que",
   "más que", "menos que",
-  // ---- Tú ----
-  "compara", "compara a", "compara con",
   "dime la diferencia entre", "dime cual es mejor",
   "dime quien es mejor", "dime quien rinde mas",
   "muestrame la diferencia entre", "muestrame quien es mejor",
   "cuentame la diferencia entre", "cuentame quien es mejor",
   "indicame la diferencia entre", "indicame quien es mejor",
   "informame la diferencia entre",
-  // ---- Vos ----
-  "compara", "compará", "compará a", "compará con",
   "decime la diferencia entre", "decime cual es mejor",
   "decime quien es mejor", "decime quien rinde mas",
   "mostrame la diferencia entre", "mostrame quien es mejor",
   "contame la diferencia entre", "contame quien es mejor",
   "pasame la diferencia entre",
   "comparame", "comparame a", "comparame con",
-  // ---- Usted ----
   "compare", "compare a", "compare con",
   "digame la diferencia entre", "digame cual es mejor",
   "digame quien es mejor", "digame quien rinde mas",
@@ -858,16 +798,13 @@ export const SINONIMOS_COMPARISON: string[] = [
   "indiqueme la diferencia entre", "indiqueme quien es mejor",
   "informeme la diferencia entre",
   "compareme", "compareme a", "compareme con",
-  // ---- Ustedes ----
   "comparen", "comparen a", "comparen con",
   "diganme la diferencia entre", "diganme quien es mejor",
   "muestrenme la diferencia entre",
   "indiquenme la diferencia entre",
-  // ---- Vosotros ----
   "comparar", "comparar a", "comparar con",
   "decidme la diferencia entre", "decidme quien es mejor",
   "mostradme la diferencia entre",
-  // ---- Cortesía / formal escrito ----
   "quisiera comparar", "quisiera saber la diferencia entre",
   "quisiera saber quien es mejor",
   "me interesa comparar", "me interesa saber la diferencia entre",
@@ -881,7 +818,6 @@ export const SINONIMOS_COMPARISON: string[] = [
   "me podria decir la diferencia entre",
   "me puede indicar la diferencia entre",
   "me puede decir la diferencia entre",
-  // ---- Coloquial / regional ----
   "quien es mejor", "quien es peor",
   "quien juega mejor", "quien juega peor",
   "quien rinde mas", "quien rinde menos",
@@ -899,7 +835,6 @@ export const SINONIMOS_COMPARISON: string[] = [
 ];
 
 export const SINONIMOS_DISTRIBUTION: string[] = [
-  // ---- Neutros / formales ----
   "distribucion", "distribución", "distribuciones",
   "desglose", "desgloses",
   "desagregacion", "desagregación", "desagregaciones",
@@ -930,7 +865,6 @@ export const SINONIMOS_DISTRIBUTION: string[] = [
   "desagregado por", "desagregado en",
   "cuantos por", "que porcentaje por", "cuanto por",
   "cuantos por cada", "que cantidad por",
-  // ---- Tú ----
   "dime la distribucion", "dime el desglose",
   "dime el reparto", "dime la division",
   "dime la desagregacion",
@@ -942,17 +876,12 @@ export const SINONIMOS_DISTRIBUTION: string[] = [
   "desglosame", "desglosame por", "desglosame en",
   "separame por", "separame en", "agrupame por",
   "dividime por", "dividime en",
-  // ---- Vos ----
   "decime la distribucion", "decime el desglose",
   "decime el reparto",
   "mostrame la distribucion", "mostrame el desglose",
   "mostrame el reparto",
   "contame la distribucion", "contame el desglose",
   "pasame la distribucion", "pasame el desglose",
-  "desglosame", "desglosame por", "desglosame en",
-  "separame por", "separame en", "agrupame por",
-  "dividime por", "dividime en",
-  // ---- Usted ----
   "digame la distribucion", "digame el desglose",
   "digame el reparto", "digame la division",
   "muestreme la distribucion", "muestreme el desglose",
@@ -963,17 +892,14 @@ export const SINONIMOS_DISTRIBUTION: string[] = [
   "desgloseme", "desgloseme por", "desgloseme en",
   "separeme por", "separeme en", "agrupeme por",
   "dividame por", "dividame en",
-  // ---- Ustedes ----
   "diganme la distribucion", "diganme el desglose",
   "muestrenme la distribucion", "muestrenme el desglose",
   "indiquenme la distribucion",
   "desglosenme", "desglosenme por",
   "separenme por", "agrupenme por", "dividanme por",
-  // ---- Vosotros ----
   "decidme la distribucion", "decidme el desglose",
   "mostradme la distribucion", "mostradme el desglose",
   "desglosadme por", "separadmin por", "agrupadmin por",
-  // ---- Cortesía / formal escrito ----
   "quisiera saber la distribucion", "quisiera ver la distribucion",
   "quisiera ver el desglose", "quisiera ver el reparto",
   "me interesa saber la distribucion",
@@ -994,7 +920,6 @@ export const SINONIMOS_DISTRIBUTION: string[] = [
   "me podria mostrar la distribucion",
   "me puede indicar la distribucion",
   "me puede mostrar la distribucion",
-  // ---- Coloquial / regional ----
   "como se reparten", "como se reparte",
   "como se distribuyen", "como se distribuye",
   "como se dividen", "como se divide",
@@ -1014,7 +939,6 @@ export const SINONIMOS_DISTRIBUTION: string[] = [
 ];
 
 export const SINONIMOS_TREND: string[] = [
-  // ---- Neutros / formales ----
   "evolucion", "evolución", "evoluciones",
   "tendencia", "tendencias",
   "progresion", "progresión", "progresiones",
@@ -1045,7 +969,6 @@ export const SINONIMOS_TREND: string[] = [
   "como ha evolucionado", "como han evolucionado",
   "como viene evolucionando", "como viene rindiendo",
   "como ha venido evolucionando", "como ha venido rindiendo",
-  // ---- Tú ----
   "dime la evolucion", "dime la tendencia",
   "dime como viene", "dime como fue",
   "dime como ha sido", "dime como ha venido",
@@ -1058,7 +981,6 @@ export const SINONIMOS_TREND: string[] = [
   "informame la evolucion", "informame la tendencia",
   "graficame la evolucion", "graficame la tendencia",
   "graficame como viene", "graficame como fue",
-  // ---- Vos ----
   "decime la evolucion", "decime la tendencia",
   "decime como viene", "decime como fue",
   "mostrame la evolucion", "mostrame la tendencia",
@@ -1066,8 +988,6 @@ export const SINONIMOS_TREND: string[] = [
   "contame la evolucion", "contame la tendencia",
   "contame como viene", "contame como fue",
   "pasame la evolucion", "pasame la tendencia",
-  "graficame la evolucion", "graficame la tendencia",
-  // ---- Usted ----
   "digame la evolucion", "digame la tendencia",
   "digame como viene", "digame como fue",
   "digame como ha sido", "digame como ha venido",
@@ -1076,15 +996,11 @@ export const SINONIMOS_TREND: string[] = [
   "cuenteme la evolucion", "cuenteme la tendencia",
   "indiqueme la evolucion", "indiqueme la tendencia",
   "informeme la evolucion", "informeme la tendencia",
-  "graficame la evolucion", "graficame la tendencia",
-  // ---- Ustedes ----
   "diganme la evolucion", "diganme la tendencia",
   "muestrenme la evolucion", "muestrenme la tendencia",
   "indiquenme la evolucion", "indiquenme la tendencia",
-  // ---- Vosotros ----
   "decidme la evolucion", "decidme la tendencia",
   "mostradme la evolucion", "mostradme la tendencia",
-  // ---- Cortesía / formal escrito ----
   "quisiera saber la evolucion", "quisiera ver la evolucion",
   "quisiera saber la tendencia", "quisiera ver la tendencia",
   "me interesa saber la evolucion", "me interesa ver la evolucion",
@@ -1101,7 +1017,6 @@ export const SINONIMOS_TREND: string[] = [
   "me podria mostrar la evolucion",
   "me puede indicar la evolucion",
   "me puede mostrar la evolucion",
-  // ---- Coloquial / regional ----
   "como viene la mano", "como viene la cosa",
   "como viene rindiendo", "como viene jugando",
   "como viene apareciendo",
@@ -1125,7 +1040,37 @@ export const SINONIMOS_TREND: string[] = [
 ];
 
 export const SINONIMOS_HABIT: string[] = [
-  // ---- Neutros / formales ----
+  // -----------------------------------------------------------
+  // FASE 6 — bloque A.2: frases específicas de "cómo terminan
+  // los puntos / los rallys / cada punto". Se matchean antes que
+  // las genéricas "como termina" / "como terminan" porque el
+  // parser ordena por largo descendente dentro de la misma entrada.
+  // -----------------------------------------------------------
+  "cómo terminan los puntos", "como terminan los puntos",
+  "cómo termina el punto", "como termina el punto",
+  "cómo terminan los rallys", "como terminan los rallys",
+  "cómo termina el rally", "como termina el rally",
+  "cómo terminan los rallies", "como terminan los rallies",
+  "cómo suelen terminar los puntos", "como suelen terminar los puntos",
+  "cómo suelen terminar los rallys", "como suelen terminar los rallys",
+  "cómo suelen terminar los rallies", "como suelen terminar los rallies",
+  "cómo acaban los puntos", "como acaban los puntos",
+  "cómo acaban los rallys", "como acaban los rallys",
+  "cómo finalizan los puntos", "como finalizan los puntos",
+  "cómo finalizan los rallys", "como finalizan los rallys",
+  "cómo salen los puntos", "como salen los puntos",
+  "cómo salen los rallys", "como salen los rallys",
+  "cómo termina cada punto", "como termina cada punto",
+  "cómo termina cada rally", "como termina cada rally",
+  "cómo terminan cada punto", "como terminan cada punto",
+  "cómo terminan cada rally", "como terminan cada rally",
+  "cómo suelen acabar los puntos", "como suelen acabar los puntos",
+  "cómo suelen acabar los rallys", "como suelen acabar los rallys",
+  "cómo terminan los puntos cuando", "como terminan los puntos cuando",
+
+  // -----------------------------------------------------------
+  // Habit genérico (v1.0+)
+  // -----------------------------------------------------------
   "habito", "hábito", "habitos", "hábitos",
   "costumbre", "costumbres",
   "patron", "patrón", "patrones",
@@ -1155,11 +1100,10 @@ export const SINONIMOS_HABIT: string[] = [
   "lo que tiende", "lo que tienden",
   "que hace habitualmente", "que hace normalmente",
   "que hace generalmente", "que hace tipicamente",
-  "que hace tipicamente", "que hace comúnmente",
+  "que hace comúnmente",
   "que acostumbra", "que acostumbran",
   "que suele hacer", "que suelen hacer",
   "que tiende a hacer", "que tienden a hacer",
-  // ---- "Cómo terminan / acaban / finalizan" ----
   "como termina", "como terminan", "como termino", "como terminaron",
   "como acaba", "como acaban", "como acabo", "como acabaron",
   "como finaliza", "como finalizan", "como finalizo", "como finalizaron",
@@ -1169,7 +1113,6 @@ export const SINONIMOS_HABIT: string[] = [
   "como ha terminado", "como han terminado",
   "como ha acabado", "como han acabado",
   "como ha resultado", "como han resultado",
-  // ---- Tú ----
   "dime que suele", "dime que suele hacer",
   "dime que hace normalmente", "dime que hace habitualmente",
   "dime como termina", "dime como terminan",
@@ -1187,7 +1130,6 @@ export const SINONIMOS_HABIT: string[] = [
   "indicame que suele", "indicame como termina",
   "indicame el habito", "indicame el patron",
   "informame que suele", "informame como termina",
-  // ---- Vos ----
   "decime que suele", "decime que suele hacer",
   "decime que hace normalmente", "decime que hace habitualmente",
   "decime como termina", "decime como terminan",
@@ -1201,7 +1143,6 @@ export const SINONIMOS_HABIT: string[] = [
   "contame como termina", "contame como terminan",
   "pasame que suele", "pasame el habito",
   "tira que suele", "tira el habito",
-  // ---- Usted ----
   "digame que suele", "digame que suele hacer",
   "digame que hace normalmente", "digame que hace habitualmente",
   "digame como termina", "digame como terminan",
@@ -1219,17 +1160,14 @@ export const SINONIMOS_HABIT: string[] = [
   "indiqueme el habito", "indiqueme el patron",
   "informeme que suele", "informeme como termina",
   "informeme el habito", "informeme el patron",
-  // ---- Ustedes ----
   "diganme que suele", "diganme que suele hacer",
   "diganme como termina", "diganme como terminan",
   "diganme el habito", "diganme el patron",
   "muestrenme que suele", "muestrenme como termina",
   "muestrenme el habito",
   "indiquenme que suele", "indiquenme como termina",
-  // ---- Vosotros ----
   "decidme que suele", "decidme como termina",
   "mostradme que suele", "mostradme como termina",
-  // ---- Cortesía / formal escrito ----
   "quisiera saber que suele", "quisiera saber que suele hacer",
   "quisiera saber como termina", "quisiera saber como terminan",
   "quisiera conocer el habito", "quisiera conocer el patron",
@@ -1249,7 +1187,6 @@ export const SINONIMOS_HABIT: string[] = [
   "me podria decir que suele", "me podria decir como termina",
   "me puede indicar que suele", "me puede indicar como termina",
   "me puede decir que suele", "me puede decir como termina",
-  // ---- Coloquial / regional ----
   "que hace cuando", "que hace si",
   "que suele hacer cuando", "que suele hacer si",
   "que hace normalmente cuando", "que hace habitualmente cuando",
@@ -1324,7 +1261,6 @@ export const SINONIMOS_UBICACION: {
 // ------------------------------------------------------------
 
 export const SINONIMOS_CAMBIO: string[] = [
-  // ---- Neutros / formales ----
   "cambio", "cambios", "cambió", "cambio_",
   "cambian", "cambia", "cambiamos", "cambiaron", "cambiando",
   "sustitucion", "sustitución", "sustituciones",
@@ -1335,7 +1271,6 @@ export const SINONIMOS_CAMBIO: string[] = [
   "cambio de jugadores", "cambios de jugadores",
   "entrada", "entradas", "salida", "salidas",
   "ingreso", "ingresos", "egreso", "egresos",
-  // ---- Frases neutras ----
   "despues de un cambio", "después de un cambio",
   "tras un cambio", "luego de un cambio",
   "despues del cambio", "después del cambio",
@@ -1355,7 +1290,6 @@ export const SINONIMOS_CAMBIO: string[] = [
   "que entraron", "que salieron",
   "quien entro", "quien salio",
   "quienes entraron", "quienes salieron",
-  // ---- Tú ----
   "dime los cambios", "dime donde hubo cambios",
   "dime cuando hubo cambios",
   "muestrame los cambios", "muestrame donde hubo cambios",
@@ -1365,27 +1299,22 @@ export const SINONIMOS_CAMBIO: string[] = [
   "informame los cambios",
   "cuantos cambios", "cuantos cambios hubo",
   "cuantos cambios tuvo", "cuantos cambios hubo en",
-  // ---- Vos ----
   "decime los cambios", "decime donde hubo cambios",
   "mostrame los cambios", "mostrame donde hubo cambios",
   "contame los cambios", "contame donde hubo cambios",
   "pasame los cambios", "pasame donde hubo cambios",
   "tira los cambios",
-  // ---- Usted ----
   "digame los cambios", "digame donde hubo cambios",
   "digame cuando hubo cambios",
   "muestreme los cambios", "muestreme donde hubo cambios",
   "cuenteme los cambios", "cuenteme donde hubo cambios",
   "indiqueme los cambios", "indiqueme donde hubo cambios",
   "informeme los cambios",
-  // ---- Ustedes ----
   "diganme los cambios", "diganme donde hubo cambios",
   "muestrenme los cambios", "muestrenme donde hubo cambios",
   "indiquenme los cambios",
-  // ---- Vosotros ----
   "decidme los cambios", "decidme donde hubo cambios",
   "mostradme los cambios",
-  // ---- Cortesía / formal escrito ----
   "quisiera saber los cambios", "quisiera ver los cambios",
   "quisiera saber donde hubo cambios",
   "me interesa saber los cambios", "me interesa ver los cambios",
@@ -1397,7 +1326,6 @@ export const SINONIMOS_CAMBIO: string[] = [
   "le agradeceria que me indique los cambios",
   "me podria indicar los cambios", "me podria mostrar los cambios",
   "me puede indicar los cambios", "me puede mostrar los cambios",
-  // ---- Coloquial / regional ----
   "quien entro por quien", "quien salio por quien",
   "quien reemplazo a quien", "quien sustituyo a quien",
   "a ver los cambios", "veamos los cambios",
@@ -1467,7 +1395,6 @@ export const SINONIMOS_ESPECIFICOS: string[] = [
 // ------------------------------------------------------------
 
 export const SINONIMOS_CONDICION: string[] = [
-  // ---- Conectores ----
   "cuando", "si", "en los casos en que", "siempre que",
   "cada vez que", "despues de", "después de",
   "antes de", "tras", "luego de",
@@ -1479,7 +1406,6 @@ export const SINONIMOS_CONDICION: string[] = [
   "en k2", "en k3", "en free ball", "en freeball",
   "con armado de", "con calidad de",
   "con error previo", "con acierto previo",
-  // ---- Ubicación ----
   "como delantero", "como delanteros", "de delantero", "de delanteros",
   "como zaguero", "como zagueros", "de zaguero", "de zagueros",
   "como libero", "como liberos", "de libero", "de liberos",
@@ -1488,7 +1414,6 @@ export const SINONIMOS_CONDICION: string[] = [
   "jugando de líbero",
   "estando de delantero", "estando de zaguero",
   "estando de libero", "estando de líbero",
-  // ---- Cambio ----
   "despues de un cambio", "después de un cambio",
   "tras un cambio", "luego de un cambio",
   "despues del cambio", "después del cambio",
@@ -1497,7 +1422,6 @@ export const SINONIMOS_CONDICION: string[] = [
   "tras cambios", "luego de cambios",
   "con cambio previo", "con cambios previos",
   "sin cambio previo", "sin cambios previos",
-  // ---- Marcador ----
   "cuando esta", "cuando estan",
   "cuando está", "cuando están",
   "cuando va", "cuando van",
@@ -1512,7 +1436,6 @@ export const SINONIMOS_CONDICION: string[] = [
   "con el marcador a favor", "con el marcador en contra",
   "ganando por", "perdiendo por",
   "arriba por", "abajo por",
-  // ---- Racha ----
   "en racha", "en racha de",
   "viene de", "vienen de", "venia de", "venian de",
   "viene de", "vienen de", "venía de", "venían de",
@@ -1523,7 +1446,6 @@ export const SINONIMOS_CONDICION: string[] = [
   "con X victorias seguidas", "con X derrotas seguidas",
   "con X triunfos seguidos", "con X caidas seguidas",
   "con X caídas seguidas",
-  // ---- Condiciones específicas ----
   "en el quinto set", "en el cuarto set",
   "en el tercer set", "en el segundo set", "en el primer set",
   "en tie break", "en tie-break", "en tiebreak",
@@ -1573,11 +1495,17 @@ export const SINONIMOS_GROUPBY: { patrones: string[]; groupBy: GroupBy }[] = [
     ],
     groupBy: "jugador",
   },
+  // salida → zona_origen
   {
     patrones: [
       "por zona origen", "por zona de origen", "por origen",
       "por zonas de origen", "por zona de origen",
       "por la zona de origen", "por la zona origen",
+      "por salida", "por salidas",
+      "por cada salida", "por la salida",
+      "agrupado por salida", "agrupados por salida",
+      "separado por salida", "separados por salida",
+      "desglosado por salida", "desglosados por salida",
     ],
     groupBy: "zona_origen",
   },
@@ -1656,9 +1584,32 @@ export const SINONIMOS_GROUPBY: { patrones: string[]; groupBy: GroupBy }[] = [
     patrones: [
       "por resultado del partido", "por resultado de partido",
       "por resultado de los partidos",
-      "por resultado", "por resultados",
     ],
     groupBy: "resultado_partido",
+  },
+  {
+    patrones: [
+      "por resultado del punto",
+      "por resultado de punto",
+      "por resultado de los puntos",
+      "por como terminan los puntos",
+      "por cómo terminan los puntos",
+      "por como termino el punto",
+      "por cómo terminó el punto",
+      "por como acaban los puntos",
+      "por cómo acaban los puntos",
+      "por como acaba el punto",
+      "por cómo acaba el punto",
+      "por como salen los puntos",
+      "por cómo salen los puntos",
+      "por quien gano el punto",
+      "por quién ganó el punto",
+      "por quien gana el punto",
+      "por quién gana el punto",
+      "por ganador del punto",
+      "por el ganador del punto",
+    ],
+    groupBy: "resultado_punto",
   },
   {
     patrones: [
@@ -1723,8 +1674,100 @@ export const SINONIMOS_GROUPBY: { patrones: string[]; groupBy: GroupBy }[] = [
 // ------------------------------------------------------------
 // MÉTRICAS DE VÓLEY
 // ------------------------------------------------------------
+// Incluye las 12 de v1.4, las 2 de FASE 6 (puntos_ganados,
+// acciones_punto) y la nueva de FASE 6 bloque A.2
+// (puntos_ganados_pct).
+//
+// IMPORTANTE: "puntos_ganados_pct" va ANTES de "puntos_ganados"
+// en el array. Como `parsearIntencion` recorre las entradas en
+// orden y dentro de cada una prueba los patrones más largos
+// primero, esto garantiza que "porcentaje de puntos ganados"
+// matchee con la métrica de %, no con el conteo absoluto.
+// ------------------------------------------------------------
 
 export const SINONIMOS_METRICA: { patrones: string[]; metrica: string }[] = [
+  // ---- Nuevas (bloque A.2): % de puntos ganados ----
+  {
+    patrones: [
+      "porcentaje de puntos ganados",
+      "porcentaje de puntos a favor",
+      "porcentaje de puntos propios",
+      "porcentaje de puntos que ganamos",
+      "porcentaje de puntos que ganaron",
+      "porcentaje de puntos que gano",
+      "porcentaje de puntos que ganó",
+      "porcentaje de puntos que conseguimos",
+      "porcentaje de puntos conseguidos",
+      "porcentaje de puntos a nuestro favor",
+      "porcentaje de rallies ganados",
+      "porcentaje de rallys ganados",
+      "porcentaje de rallies que ganamos",
+      "% de puntos ganados",
+      "% de puntos a favor",
+      "% de puntos propios",
+      "% de rallies ganados",
+      "% de rallys ganados",
+      "que porcentaje de puntos ganamos",
+      "que porcentaje de puntos ganaron",
+      "que porcentaje de puntos gano",
+      "que porcentaje de puntos ganó",
+      "que porcentaje de puntos son nuestros",
+      "que porcentaje de puntos son propios",
+      "que porcentaje de puntos son a favor",
+      "que porcentaje de rallies ganamos",
+      "que porcentaje de rallys ganamos",
+      "que % de puntos ganamos",
+      "que % de puntos son nuestros",
+      "que % de rallies ganamos",
+      "cuanto por ciento de puntos ganamos",
+      "cuanto por ciento de puntos son nuestros",
+      "cuanto por ciento de rallies ganamos",
+    ],
+    metrica: "puntos_ganados_pct",
+  },
+
+  // ---- Nuevas: puntos ganados (conteo) ----
+  {
+    patrones: [
+      "puntos ganados", "puntos ganados por",
+      "puntos a favor", "puntos conseguidos",
+      "puntos que consiguio", "puntos que consiguió",
+      "puntos que sumo", "puntos que sumó",
+      "puntos que anoto", "puntos que anotó",
+      "puntos que hizo", "puntos que hizo el equipo",
+      "puntos que gano", "puntos que ganó",
+      "cuantos puntos ganamos", "cuantos puntos ganaron",
+      "cuantos puntos gano", "cuantos puntos ganó",
+      "cuantos puntos sumamos", "cuantos puntos sumaron",
+      "cuantos puntos sumo", "cuantos puntos sumó",
+      "cuantos puntos anotamos", "cuantos puntos anotaron",
+      "cuantos puntos anoto", "cuantos puntos anotó",
+      "cuantos puntos hicimos", "cuantos puntos hicieron",
+      "cuantos puntos hizo", "cuantos puntos hizo el equipo",
+      "cuantos puntos conseguimos", "cuantos puntos consiguieron",
+      "cuantos puntos obtuvo", "cuantos puntos obtuvieron",
+      "cuantos puntos alcanzo", "cuantos puntos alcanzaron",
+    ],
+    metrica: "puntos_ganados",
+  },
+
+  // ---- Nuevas: acciones en punto ----
+  {
+    patrones: [
+      "acciones en punto", "acciones que terminaron en punto",
+      "acciones que terminan en punto", "acciones exitosas",
+      "acciones ganadoras", "acciones que sumaron",
+      "acciones que suman",
+      "puntos directos de ataque", "puntos de ataque",
+      "ataques punto", "ataques que fueron punto",
+      "ataques que terminaron en punto",
+      "saques que fueron ace", "saques que fueron punto",
+      "bloqueos que fueron punto",
+    ],
+    metrica: "acciones_punto",
+  },
+
+  // ---- v1.4 (las 12 originales) ----
   {
     patrones: [
       "kill", "kill %", "kill porcentaje", "porcentaje de kill",
@@ -1837,6 +1880,10 @@ export const SINONIMOS_METRICA: { patrones: string[]; metrica: string }[] = [
 // ------------------------------------------------------------
 // ORDEN DE EVALUACIÓN
 // ------------------------------------------------------------
+// Cambios v1.6:
+//   - max y min usan agregacion: "count" (para "quién hace más X"
+//     contamos acciones, no tomamos el puntaje máximo).
+// ------------------------------------------------------------
 
 export const ORDEN_EVALUACION: {
   tipo: TipoIntencion;
@@ -1871,12 +1918,12 @@ export const ORDEN_EVALUACION: {
   {
     tipo: "max",
     sinonimos: SINONIMOS_MAX,
-    agregacion: "max",
+    agregacion: "count",
   },
   {
     tipo: "min",
     sinonimos: SINONIMOS_MIN,
-    agregacion: "min",
+    agregacion: "count",
   },
   {
     tipo: "distribution",

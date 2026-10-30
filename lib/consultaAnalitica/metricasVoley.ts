@@ -1,37 +1,20 @@
 // ============================================================
 // MÉTRICAS DE VÓLEY — cálculos estándar
 // ============================================================
-// FASE 3 del plan "Consultas Analíticas Libres".
+// FASE 3 + FASE 6 del plan "Consultas Analíticas Libres".
 //
-// Funciones que reciben acciones (ya filtradas por el motor de
-// consulta) y devuelven la métrica estándar de vóley.
+// v1.2 (FASE 6 — bloque A.2):
+//   + `puntosGanadosPct(puntos)`: % de puntos propios sobre el
+//     total de puntos. Numerador = puntos ganados, denominador =
+//     total de rallies cerrados (propios + rival).
 //
-// Cada función devuelve un `MetricaResultado` con:
-//   - valor:       el número principal
-//   - numerador:   lo que cuenta como "evento"
-//   - denominador: el total sobre el que se calcula
-//   - descripcion: string formateado para mostrar en UI
+// v1.1 (FASE 6):
+//   + `puntosGanados(puntos)`: rallies cerrados con punto propio.
+//     Recibe puntos completos (PuntoConAcciones), no acciones.
+//   + `accionesPunto(acciones)`: acciones que terminaron en punto
+//     (saque ace, ataque punto, bloqueo punto).
 //
-// Métricas implementadas:
-//   - killPct               (kills / intentos de ataque)
-//   - attackEfficiency      ((kills − errores) / intentos)
-//   - hittingPct            ((kills − errores) / total)
-//   - sideoutPct            (puntos en K1 / rallys en K1)
-//   - breakPointPct         (puntos en K2/K3 / rallys en K2/K3)
-//   - receptionPct          ((perfectas+positivas) / total recepciones)
-//   - acePct                (aces / total saques)
-//   - serveErrorPct         (errores saque / total saques)
-//   - blockEfficiency       ((puntos + positivos − errores) / total bloqueos)
-//   - digEfficiency         (defensas positivas / total defensas)
-//   - puntosPorSet          (puntos ganados / sets jugados)
-//   - puntosPorRotacion     (puntos ganados / rotación 1..6)
-//
-// Notas:
-//   - Todos los % se devuelven en escala 0..100.
-//   - Las eficiencias se devuelven en escala 0..100 también
-//     (para que "30" signifique "30% de eficiencia").
-//   - Si no hay datos, todas devuelven valor = 0 y descripcion
-//     "Sin datos".
+// El resto igual que v1.0.
 // ============================================================
 
 import type {
@@ -47,13 +30,9 @@ import { redondear } from "./agregador";
 // ------------------------------------------------------------
 
 export interface MetricaResultado {
-  /** Número principal (0..100 para %, o el valor crudo para conteos). */
   valor: number;
-  /** Cuántos eventos cumplieron la condición. */
   numerador: number;
-  /** Denominador base (total sobre el que se calcula). */
   denominador: number;
-  /** String formateado para mostrar en UI. */
   descripcion: string;
 }
 
@@ -78,7 +57,6 @@ function pct(num: number, den: number): MetricaResultado {
 }
 
 function eff(num: number, den: number): MetricaResultado {
-  // Eficiencias: (a − b) / n × 100. Puede dar negativo.
   if (den === 0) return vacio();
   const valor = (num / den) * 100;
   const signo = valor > 0 ? "+" : "";
@@ -87,6 +65,16 @@ function eff(num: number, den: number): MetricaResultado {
     numerador: num,
     denominador: den,
     descripcion: `${signo}${redondear(valor, 1)}% (${den} intentos)`,
+  };
+}
+
+function conteo(num: number, den: number, unidad = "acciones"): MetricaResultado {
+  if (den === 0) return vacio();
+  return {
+    valor: num,
+    numerador: num,
+    denominador: den,
+    descripcion: `${num} de ${den} ${unidad}.`,
   };
 }
 
@@ -118,10 +106,6 @@ function sub(a: AccionVisual): string {
   return baseSubtipo(a);
 }
 
-/**
- * Determina el ganador del punto a partir de la última acción
- * visible. Devuelve "propio" | "rival" | null (null si neutro).
- */
 function ganadorDelPunto(acciones: AccionVisual[]): "propio" | "rival" | null {
   const visibles = acciones.filter((a) => !a.oculta);
   if (visibles.length === 0) return null;
@@ -136,10 +120,6 @@ function ganadorDelPunto(acciones: AccionVisual[]): "propio" | "rival" | null {
 // ATAQUE
 // ------------------------------------------------------------
 
-/**
- * Kill %: kills / intentos de ataque.
- * Kills = ataques propios con subtipo "punto".
- */
 export function killPct(acciones: AccionVisual[]): MetricaResultado {
   const ataques = acciones.filter(esAtaque);
   if (ataques.length === 0) return vacio();
@@ -147,10 +127,6 @@ export function killPct(acciones: AccionVisual[]): MetricaResultado {
   return pct(kills, ataques.length);
 }
 
-/**
- * Attack Efficiency: (kills − errores) / intentos.
- * Errores = subtipos de error_* + gorro_ataque.
- */
 export function attackEfficiency(
   acciones: AccionVisual[]
 ): MetricaResultado {
@@ -173,12 +149,6 @@ export function attackEfficiency(
   return eff(kills - errores, ataques.length);
 }
 
-/**
- * Hitting %: (kills − errores) / total de acciones de ataque.
- * Prácticamente igual que Attack Efficiency, pero la convención
- * de vóley USA distingue: Hitting % incluye errores forzados,
- * Attack Efficiency a veces no. Acá los tratamos igual.
- */
 export function hittingPct(acciones: AccionVisual[]): MetricaResultado {
   return attackEfficiency(acciones);
 }
@@ -187,18 +157,10 @@ export function hittingPct(acciones: AccionVisual[]): MetricaResultado {
 // SIDE-OUT / BREAK-POINT
 // ------------------------------------------------------------
 
-/**
- * Side-out %: % de rallys en K1 (recepción) que terminaron en
- * punto para el equipo.
- *
- * Requiere el `contextoRally` (calculado con calcularContextoRally)
- * porque necesita saber la fase del rally.
- */
 export function sideoutPct(
   acciones: AccionVisual[],
   contextoRally: Map<string, ContextoRally>
 ): MetricaResultado {
-  // Agrupar por punto.
   const porPunto = new Map<string, AccionVisual[]>();
   for (const a of acciones) {
     if (a.oculta) continue;
@@ -215,7 +177,6 @@ export function sideoutPct(
   let ganados = 0;
 
   for (const lista of porPunto.values()) {
-    // La fase del rally se toma de la última acción visible.
     const ordenada = [...lista].sort((a, b) => a.orden - b.orden);
     const ultima = ordenada[ordenada.length - 1];
     const ctx = contextoRally.get(ultima.id);
@@ -229,12 +190,6 @@ export function sideoutPct(
   return pct(ganados, totales);
 }
 
-/**
- * Break-point %: % de rallys en K2 o K3 (contraataque desde
- * defensa o cobertura) que terminaron en punto para el equipo.
- *
- * Requiere `contextoRally`.
- */
 export function breakPointPct(
   acciones: AccionVisual[],
   contextoRally: Map<string, ContextoRally>
@@ -276,9 +231,6 @@ export function breakPointPct(
 // RECEPCIÓN
 // ------------------------------------------------------------
 
-/**
- * Reception %: (perfectas + positivas) / total recepciones.
- */
 export function receptionPct(
   acciones: AccionVisual[]
 ): MetricaResultado {
@@ -296,9 +248,6 @@ export function receptionPct(
 // SAQUE
 // ------------------------------------------------------------
 
-/**
- * Ace %: aces / total saques.
- */
 export function acePct(acciones: AccionVisual[]): MetricaResultado {
   const saques = acciones.filter(esSaque);
   if (saques.length === 0) return vacio();
@@ -306,9 +255,6 @@ export function acePct(acciones: AccionVisual[]): MetricaResultado {
   return pct(aces, saques.length);
 }
 
-/**
- * Serve Error %: errores de saque / total saques.
- */
 export function serveErrorPct(
   acciones: AccionVisual[]
 ): MetricaResultado {
@@ -322,11 +268,6 @@ export function serveErrorPct(
 // BLOQUEO / DEFENSA
 // ------------------------------------------------------------
 
-/**
- * Block Efficiency: (puntos + positivos − errores) / total bloqueos.
- * Puntos: punto, positivo_mas, positivo.
- * Errores: red, use_rival, filtrada.
- */
 export function blockEfficiency(
   acciones: AccionVisual[]
 ): MetricaResultado {
@@ -345,10 +286,6 @@ export function blockEfficiency(
   return eff(puntos - errores, bloqueos.length);
 }
 
-/**
- * Dig Efficiency: defensas positivas / total defensas.
- * Positivas: toque_positiva, gran_def, cobertura_positiva.
- */
 export function digEfficiency(
   acciones: AccionVisual[]
 ): MetricaResultado {
@@ -372,11 +309,6 @@ export function digEfficiency(
 // PUNTOS POR SET / ROTACIÓN
 // ------------------------------------------------------------
 
-/**
- * Puntos por set: promedio de puntos ganados por el equipo por set.
- * Recibe los puntos completos (con sus acciones). Solo cuenta
- * puntos donde el ganador fue "propio".
- */
 export function puntosPorSet(
   puntos: PuntoConAcciones[]
 ): MetricaResultado {
@@ -403,12 +335,6 @@ export function puntosPorSet(
   };
 }
 
-/**
- * Puntos por rotación: promedio de puntos ganados por rotación.
- * Recibe los puntos completos. Para cada punto ganado, busca la
- * última acción propia con `rotacion_numero` para saber en qué
- * rotación se ganó.
- */
 export function puntosPorRotacion(
   puntos: PuntoConAcciones[]
 ): MetricaResultado {
@@ -420,7 +346,6 @@ export function puntosPorRotacion(
   for (const p of puntos) {
     if (ganadorDelPunto(p.acciones) !== "propio") continue;
 
-    // Buscar la última acción propia con rotacion_numero no nulo.
     const propias = p.acciones
       .filter((a) => !a.es_rival && !a.oculta && a.rotacion_numero !== null)
       .sort((a, b) => b.orden - a.orden);
@@ -447,15 +372,93 @@ export function puntosPorRotacion(
 }
 
 // ------------------------------------------------------------
-// DISPATCHER POR NOMBRE DE MÉTRICA
+// PUNTOS GANADOS
 // ------------------------------------------------------------
 
 /**
- * Dado un `metrica` de los diccionarios (kill_pct, sideout_pct,
- * etc.), devuelve la función correspondiente.
+ * Puntos ganados: rallies cerrados con punto propio.
  *
- * Si la métrica no existe, devuelve null.
+ * A diferencia de `puntosPorSet`, devuelve un CONTEO ABSOLUTO,
+ * no un promedio. Sirve para "cuántos puntos ganamos" o
+ * "cuántos puntos ganó X" (si ya filtramos `puntos` por X antes).
  */
+export function puntosGanados(
+  puntos: PuntoConAcciones[]
+): MetricaResultado {
+  if (puntos.length === 0) return vacio();
+
+  let ganados = 0;
+  for (const p of puntos) {
+    if (ganadorDelPunto(p.acciones) === "propio") ganados += 1;
+  }
+  return conteo(ganados, puntos.length, "puntos");
+}
+
+/**
+ * % de puntos ganados: puntos propios / total de rallies cerrados.
+ *
+ * A diferencia de `puntosGanados` (conteo absoluto), devuelve un
+ * porcentaje 0..100.
+ *
+ * Solo cuenta rallies con ganador determinado (propio o rival).
+ * Los rallies "sin ganador" (sin última acción visible o neutra)
+ * no se cuentan en el denominador — si no, el % quedaría
+ * subestimado por puntos que en realidad no cerraron.
+ */
+export function puntosGanadosPct(
+  puntos: PuntoConAcciones[]
+): MetricaResultado {
+  if (puntos.length === 0) return vacio();
+
+  let total = 0;
+  let ganados = 0;
+  for (const p of puntos) {
+    const g = ganadorDelPunto(p.acciones);
+    if (g === null) continue; // sin ganador → no cuenta
+    total += 1;
+    if (g === "propio") ganados += 1;
+  }
+
+  if (total === 0) return vacio();
+  return pct(ganados, total);
+}
+
+// ------------------------------------------------------------
+// ACCIONES EN PUNTO
+// ------------------------------------------------------------
+
+/**
+ * Acciones en punto: cuántas acciones (saques, ataques, bloqueos)
+ * terminaron en punto directo.
+ *
+ * - Saque con subtipo "ace" → cuenta.
+ * - Ataque con subtipo "punto" → cuenta.
+ * - Bloqueo con subtipo "punto" → cuenta.
+ * - Resto → no cuenta.
+ *
+ * Es útil para "cuántos puntos hizo X atacando/bloqueando/sacando".
+ */
+export function accionesPunto(
+  acciones: AccionVisual[]
+): MetricaResultado {
+  const visibles = acciones.filter((a) => !a.oculta);
+  if (visibles.length === 0) return vacio();
+
+  let cuenta = 0;
+  for (const a of visibles) {
+    const s = sub(a);
+    if (a.tipo === "saque" && !a.es_rival && s === "ace") cuenta += 1;
+    else if (a.tipo === "ataque" && !a.es_rival && s === "punto") cuenta += 1;
+    else if (a.tipo === "bloqueo" && !a.es_rival && s === "punto") cuenta += 1;
+  }
+
+  return conteo(cuenta, visibles.length, "acciones");
+}
+
+// ------------------------------------------------------------
+// DISPATCHER POR NOMBRE DE MÉTRICA
+// ------------------------------------------------------------
+
 export function resolverMetrica(
   metrica: string
 ):
@@ -478,8 +481,8 @@ export function resolverMetrica(
       return blockEfficiency;
     case "dig_efficiency":
       return digEfficiency;
-    // Las que necesitan contexto (sideout / break-point) se resuelven
-    // por separado para no complicar la firma.
+    case "acciones_punto":
+      return accionesPunto;
     default:
       return null;
   }

@@ -1,26 +1,30 @@
 // ============================================================
 // EJECUTOR — corre una consulta completa
 // ============================================================
-// FASE 4 del plan "Consultas Analíticas Libres".
+// FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
 //
-// Es el punto de entrada público que la UI va a llamar. Ata todo:
+// v1.2 (FASE 6 — bloque A):
+//   + `resultadosPunto` se calcula sobre el universo COMPLETO y
+//     se pasa al `contextoAgrupacion` para que `groupBy.ts` pueda
+//     agrupar por `"resultado_punto"`.
+//   + Se calcula UNA sola vez por consulta (no por acción), así
+//     que no afecta el rendimiento.
+//   + Sin este cambio, "cómo terminan los puntos cuando saca
+//     Joaquín" contaba el ganador mirando solo los saques de
+//     Joaquín → el ganador del punto quedaba "sin ganador".
 //
-//   1. parsearBusqueda(texto, contexto)   → ResultadoParser
-//   2. resolve time filter (últimos N, etc.) sobre `acciones`
-//   3. aplicar el filtro `BloqueTriggerFiltro` a las acciones
-//   4. construirRespuesta({ acciones, intencion, contexto })
-//   5. devolver ResultadoConsulta + meta + parser info
-//
-// No sabe nada de UI. Devuelve estructuras tipadas.
+// v1.1 (FASE 6):
+//   + `filtrarPorTiempo` ahora también filtra los PUNTOS, no solo
+//     las acciones. Antes `puntos` se pasaba sin filtrar y
+//     "cuántos puntos ganamos en los últimos 3 partidos" contaba
+//     todos los puntos del universo.
+//   + Nueva función `filtrarPuntosPorTiempo`, análoga a
+//     `filtrarPorTiempo` pero recibe PuntoConAcciones.
+//   + Si el filtro no se puede aplicar (falta info de fecha), no
+//     se corta ni acciones ni puntos.
 //
 // API pública:
 //   ejecutarConsulta(texto, contexto) → ResultadoConsultaExtendido
-//
-// Uso típico en un panel:
-//   const res = ejecutarConsulta("¿cuál es el kill % de Juan?", {
-//     acciones, puntos, jugadores, partidos,
-//   });
-//   // res.respuesta → { tipo: "porcentaje", valor: 52.3, ... }
 // ============================================================
 
 import type {
@@ -37,6 +41,7 @@ import { parsearBusqueda } from "../parserBusqueda";
 import type { ContextoParser } from "../parserBusqueda";
 import type { IntencionQuery } from "./intenciones";
 import { construirRespuesta, type ContextoRespuesta } from "./respuesta";
+import { calcularResultadosPunto } from "./groupBy";
 import type { ResultadoConsulta } from "./tipos";
 
 // ------------------------------------------------------------
@@ -44,51 +49,27 @@ import type { ResultadoConsulta } from "./tipos";
 // ------------------------------------------------------------
 
 export interface ContextoEjecutor {
-  /** Universo de acciones sobre el que correr la consulta. */
   acciones: AccionVisual[];
-  /** Puntos completos (con acciones). Solo para puntos_por_set. */
   puntos?: PuntoConAcciones[];
-  /** Jugadores disponibles (para resolver "Juan", "Pedro", etc.). */
   jugadores?: { id: string; nombre: string }[];
-  /** Partidos disponibles (para resolver "el sábado vs Boca", etc.). */
   partidos?: { id: string; nombre: string; fecha?: string }[];
 }
 
 export interface ResultadoConsultaExtendido extends ResultadoConsulta {
-  /** Parser original, para mostrar chips / noReconocidas en la UI. */
   parserInfo: {
     aplicado: boolean;
     sugerencias: string[];
     filtro: BloqueTriggerFiltro;
     intencion: IntencionQuery;
   };
-  /** Cuántas acciones sobrevivieron al filtro. */
   accionesFiltradas: number;
-  /** Universo original (antes del filtro). */
   accionesUniverso: number;
 }
 
 // ------------------------------------------------------------
-// FILTRO DE TIEMPO
+// FILTRO DE TIEMPO (acciones)
 // ------------------------------------------------------------
-// Hoy soportamos:
-//   - ultimos_n_partidos: cortar a los primeros N partidos
-//     (por orden de aparición en `partidos` si viene con fecha,
-//      o por orden de aparición en `acciones` si no).
-//   - ultimos_n_sets: cortar a los primeros N sets (por
-//     set_numero único).
-//   - esta_temporada / esta_semana / este_mes / este_ano /
-//     temporada_pasada: solo si `partidos` trae `fecha`. Si no
-//     viene fecha, no se aplica.
-//   - dia_semana: filtra por el día de la semana del partido
-//     (requiere `fecha` en `partidos`).
-//   - set_especifico: filtra por set_numero === intencion.set.
-//   - punto_especifico: filtra por punto_numero === intencion.punto.
-//   - partido_especifico: si el parser no resolvió un id concreto,
-//     no se puede aplicar. Se ignora.
-//
-// Si el filtro no se puede aplicar (falta info), devuelve TODAS
-// las acciones sin cortar.
+// Idéntico a v1.0, sin cambios funcionales.
 // ------------------------------------------------------------
 
 function filtrarPorTiempo(
@@ -99,7 +80,6 @@ function filtrarPorTiempo(
   const t = intencion.tiempo;
   if (!t) return acciones;
 
-  // --- Filtros simples ---
   if (t.tipo === "set_especifico" && t.set !== undefined) {
     return acciones.filter((a) => a.set_numero === t.set);
   }
@@ -107,7 +87,6 @@ function filtrarPorTiempo(
     return acciones.filter((a) => a.punto_numero === t.punto);
   }
 
-  // --- Últimos N partidos ---
   if (t.tipo === "ultimos_n_partidos" && t.n !== undefined && t.n > 0) {
     const idsPorPartido: string[] = [];
     const vistos = new Set<string>();
@@ -118,7 +97,6 @@ function filtrarPorTiempo(
       }
     }
 
-    // Si tenemos fechas, ordenamos por fecha DESC.
     let ordenados: string[] = idsPorPartido;
     if (partidos && partidos.length > 0) {
       const fechas = new Map<string, string>();
@@ -140,7 +118,6 @@ function filtrarPorTiempo(
     );
   }
 
-  // --- Últimos N sets ---
   if (t.tipo === "ultimos_n_sets" && t.n !== undefined && t.n > 0) {
     const setsUnicos: number[] = [];
     const vistos = new Set<number>();
@@ -154,7 +131,6 @@ function filtrarPorTiempo(
     return acciones.filter((a) => permitidos.has(a.set_numero));
   }
 
-  // --- Día de la semana ---
   if (t.tipo === "dia_semana" && t.diaSemana && partidos) {
     const DIAS: Record<string, number> = {
       domingo: 0,
@@ -180,7 +156,6 @@ function filtrarPorTiempo(
     );
   }
 
-  // --- Esta temporada / este mes / etc. ---
   if (partidos && partidos.length > 0) {
     const ahora = new Date();
     const anio = ahora.getFullYear();
@@ -219,6 +194,151 @@ function filtrarPorTiempo(
 }
 
 // ------------------------------------------------------------
+// FILTRO DE TIEMPO (puntos) — NUEVO en FASE 6
+// ------------------------------------------------------------
+// Aplica el mismo filtro de tiempo a los PuntoConAcciones.
+// Necesario para que "cuántos puntos ganamos en los últimos 3
+// partidos" sea coherente.
+//
+// PuntoConAcciones tiene `set_numero` y `punto_numero` directos,
+// y `acciones[0].partido_id` como id del partido.
+// ------------------------------------------------------------
+
+function filtrarPuntosPorTiempo(
+  puntos: PuntoConAcciones[],
+  intencion: IntencionQuery,
+  partidos: { id: string; fecha?: string }[] | undefined
+): PuntoConAcciones[] {
+  const t = intencion.tiempo;
+  if (!t) return puntos;
+
+  if (t.tipo === "set_especifico" && t.set !== undefined) {
+    return puntos.filter((p) => p.set_numero === t.set);
+  }
+  if (t.tipo === "punto_especifico" && t.punto !== undefined) {
+    return puntos.filter((p) => p.punto_numero === t.punto);
+  }
+
+  // Para el resto de los filtros temporales, el partido_id se saca
+  // de la primera acción del punto.
+  const partidoIdDePunto = (p: PuntoConAcciones): string | null => {
+    for (const a of p.acciones) {
+      if (a.partido_id) return a.partido_id;
+    }
+    return null;
+  };
+
+  if (t.tipo === "ultimos_n_partidos" && t.n !== undefined && t.n > 0) {
+    const idsPorPartido: string[] = [];
+    const vistos = new Set<string>();
+    for (const p of puntos) {
+      const pid = partidoIdDePunto(p);
+      if (pid && !vistos.has(pid)) {
+        vistos.add(pid);
+        idsPorPartido.push(pid);
+      }
+    }
+
+    let ordenados: string[] = idsPorPartido;
+    if (partidos && partidos.length > 0) {
+      const fechas = new Map<string, string>();
+      for (const p of partidos) {
+        if (p.fecha) fechas.set(p.id, p.fecha);
+      }
+      if (fechas.size > 0) {
+        ordenados = [...idsPorPartido].sort((a, b) => {
+          const fa = fechas.get(a) ?? "";
+          const fb = fechas.get(b) ?? "";
+          return fb.localeCompare(fa);
+        });
+      }
+    }
+
+    const permitidos = new Set(ordenados.slice(0, t.n));
+    return puntos.filter((p) => {
+      const pid = partidoIdDePunto(p);
+      return pid && permitidos.has(pid);
+    });
+  }
+
+  if (t.tipo === "ultimos_n_sets" && t.n !== undefined && t.n > 0) {
+    const setsUnicos: number[] = [];
+    const vistos = new Set<number>();
+    for (const p of puntos) {
+      if (!vistos.has(p.set_numero)) {
+        vistos.add(p.set_numero);
+        setsUnicos.push(p.set_numero);
+      }
+    }
+    const permitidos = new Set(setsUnicos.slice(0, t.n));
+    return puntos.filter((p) => permitidos.has(p.set_numero));
+  }
+
+  if (t.tipo === "dia_semana" && t.diaSemana && partidos) {
+    const DIAS: Record<string, number> = {
+      domingo: 0,
+      lunes: 1,
+      martes: 2,
+      miercoles: 3,
+      jueves: 4,
+      viernes: 5,
+      sabado: 6,
+    };
+    const diaBuscado = DIAS[t.diaSemana] ?? -1;
+    if (diaBuscado < 0) return puntos;
+
+    const idsPorFecha = new Set<string>();
+    for (const p of partidos) {
+      if (!p.fecha) continue;
+      const d = new Date(p.fecha);
+      if (isNaN(d.getTime())) continue;
+      if (d.getDay() === diaBuscado) idsPorFecha.add(p.id);
+    }
+    return puntos.filter((p) => {
+      const pid = partidoIdDePunto(p);
+      return pid && idsPorFecha.has(pid);
+    });
+  }
+
+  if (partidos && partidos.length > 0) {
+    const ahora = new Date();
+    const anio = ahora.getFullYear();
+    const mes = ahora.getMonth();
+    let filtroFecha: ((d: Date) => boolean) | null = null;
+
+    if (t.tipo === "este_ano") {
+      filtroFecha = (d) => d.getFullYear() === anio;
+    } else if (t.tipo === "este_mes") {
+      filtroFecha = (d) =>
+        d.getFullYear() === anio && d.getMonth() === mes;
+    } else if (t.tipo === "esta_semana") {
+      const inicioSemana = new Date(ahora);
+      inicioSemana.setDate(ahora.getDate() - ahora.getDay());
+      inicioSemana.setHours(0, 0, 0, 0);
+      filtroFecha = (d) => d.getTime() >= inicioSemana.getTime();
+    } else if (t.tipo === "temporada_pasada") {
+      filtroFecha = (d) => d.getFullYear() === anio - 1;
+    }
+
+    if (filtroFecha) {
+      const idsOk = new Set<string>();
+      for (const p of partidos) {
+        if (!p.fecha) continue;
+        const d = new Date(p.fecha);
+        if (isNaN(d.getTime())) continue;
+        if (filtroFecha(d)) idsOk.add(p.id);
+      }
+      return puntos.filter((p) => {
+        const pid = partidoIdDePunto(p);
+        return pid && idsOk.has(pid);
+      });
+    }
+  }
+
+  return puntos;
+}
+
+// ------------------------------------------------------------
 // FILTRO POR BloqueTriggerFiltro
 // ------------------------------------------------------------
 
@@ -228,7 +348,6 @@ function aplicarFiltro(
 ): AccionVisual[] {
   if (!universo || universo.length === 0) return [];
 
-  // Ordenar cronológicamente.
   const ordenadas = [...universo].sort((a, b) => {
     if (a.partido_id !== b.partido_id) {
       return (a.partido_id || "").localeCompare(b.partido_id || "");
@@ -240,7 +359,6 @@ function aplicarFiltro(
     return a.orden - b.orden;
   });
 
-  // Mapas que pide cumpleBloqueTrigger.
   const porPunto = new Map<string, AccionVisual[]>();
   for (const a of ordenadas) {
     if (a.oculta) continue;
@@ -253,7 +371,6 @@ function aplicarFiltro(
     lista.push(a);
   }
 
-  // Contexto rally: solo si el filtro lo necesita.
   const necesitaContexto =
     filtro.contextoPartido !== null ||
     (filtro.rachaJugador !== null &&
@@ -264,7 +381,6 @@ function aplicarFiltro(
     ? calcularContextoRally(ordenadas)
     : null;
 
-  // Posición en set.
   const posicionEnSetPorAccion = new Map<
     string,
     "primero" | "ultimo" | "intermedio"
@@ -299,12 +415,10 @@ function aplicarFiltro(
     }
   }
 
-  // ¿Hay algún filtro activo? Si no, devolvemos TODO (sin filtrar).
   if (esFiltroVacio(filtro)) {
     return ordenadas.filter((a) => !a.oculta);
   }
 
-  // Recorremos cada acción y evaluamos el bloque.
   const resultado: AccionVisual[] = [];
   for (let i = 0; i < ordenadas.length; i++) {
     const a = ordenadas[i];
@@ -316,8 +430,8 @@ function aplicarFiltro(
       porPunto,
       contextoRally,
       posicionEnSetPorAccion.get(a.id) ?? "intermedio",
-      null, // topPorcentaje: no se usa en consultas analíticas todavía
-      null // vsPromedio: idem
+      null,
+      null
     );
     if (ok) resultado.push(a);
   }
@@ -326,9 +440,6 @@ function aplicarFiltro(
 }
 
 function esFiltroVacio(f: BloqueTriggerFiltro): boolean {
-  // El filtro se considera "vacío" si no tiene NINGÚN criterio
-  // más allá del tipo por defecto. Ojo: si `f.tipo` es distinto al
-  // default ("ataque"), entonces sí hay filtro.
   if (f.tipo !== BLOQUE_TRIGGER_VACIO.tipo) return false;
   if (f.jugadorId !== null) return false;
   if (f.resultado !== "cualquiera") return false;
@@ -364,6 +475,7 @@ export function ejecutarConsulta(
   contexto: ContextoEjecutor
 ): ResultadoConsultaExtendido {
   const universo = contexto.acciones ?? [];
+  const universoPuntos = contexto.puntos ?? [];
 
   // 1) Parser.
   const contextoParser: ContextoParser = {
@@ -375,23 +487,42 @@ export function ejecutarConsulta(
   };
   const parsed = parsearBusqueda(texto, contextoParser);
 
-  // 2) Time filter (corta por fecha / N partidos / etc.).
+  // 2) Time filter (acciones + puntos).
   const accionesConTiempo = filtrarPorTiempo(
     universo,
     parsed.intencion,
     contexto.partidos
   );
+  const puntosConTiempo = filtrarPuntosPorTiempo(
+    universoPuntos,
+    parsed.intencion,
+    contexto.partidos
+  );
 
-  // 3) Filtro por BloqueTriggerFiltro.
+  // 3) Filtro por BloqueTriggerFiltro (solo acciones).
   const accionesFiltradas = aplicarFiltro(
     accionesConTiempo,
     parsed.filtro
   );
 
-  // 4) Construir respuesta.
+  // 4) Resultado del punto — sobre el UNIVERSO COMPLETO.
+  //    Se calcula una sola vez por consulta (una pasada O(n)) y se
+  //    reutiliza en el contexto de agrupación para `resultado_punto`.
+  //    Importante: usar `universo` (sin filtro de tiempo ni de
+  //    bloqueTrigger) para que el ganador del punto no se vea
+  //    afectado por los filtros del usuario.
+  const resultadosPunto = calcularResultadosPunto(universo);
+
+  // 5) Construir respuesta.
+  //    - Si la intención es de acciones (métrica, count, etc.),
+  //      `ctx.acciones` = acciones filtradas.
+  //    - Si la intención es "puntos_ganados", `ctx.puntos` =
+  //      puntos filtrados por tiempo.
+  //    - Si la intención necesita ambos (ej. puntos_por_rotacion),
+  //      los dos vienen filtrados.
   const ctxRespuesta: ContextoRespuesta = {
     acciones: accionesFiltradas,
-    puntos: contexto.puntos,
+    puntos: puntosConTiempo,
     intencion: parsed.intencion,
     contextoAgrupacion: {
       nombreDeJugador: contexto.jugadores
@@ -412,8 +543,9 @@ export function ejecutarConsulta(
             return p ? p.nombre : id.slice(0, 8);
           }
         : undefined,
+      resultadosPunto,
     },
-    contextoRally: undefined, // se calcula dentro de construirRespuesta si hace falta
+    contextoRally: undefined,
     jugadores: contexto.jugadores,
     partidos: contexto.partidos,
     totalUniverso: universo.filter((a) => !a.oculta).length,
@@ -421,7 +553,7 @@ export function ejecutarConsulta(
 
   const resultado = construirRespuesta(ctxRespuesta);
 
-  // 5) Extender con info del parser y contadores.
+  // 6) Extender con info del parser y contadores.
   return {
     ...resultado,
     parserInfo: {

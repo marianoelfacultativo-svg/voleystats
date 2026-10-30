@@ -3,17 +3,25 @@
 // ============================================================
 // FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
 //
-// Toma la intención detectada (IntencionQuery), las acciones YA
-// FILTRADAS por el motor, y el contexto externo, y arma un
-// ResultadoConsulta con la respuesta correcta según el tipo.
+// v1.3 (FASE 6 — bloque A.2):
+//   + `groupByEfectivo`: si la intención es `habit` y la frase
+//     habla de "cómo terminan los puntos/rallys", devuelve
+//     `"resultado_punto"` en vez de `"subtipo"`. Esto resuelve
+//     frases coloquiales del estilo "¿cómo terminan los puntos
+//     cuando saca Joaquín?" sin tener que tocar el parser.
+//   + Nueva métrica "puntos_ganados_pct": puntos propios / total
+//     puntos × 100. Cubre "¿qué porcentaje de puntos ganamos?".
 //
-// v1.1 (FASE 6):
-//   + `habit` sin groupBy asume "subtipo".
-//   + `distribution` sin groupBy asume "subtipo".
-//   + `distribution` con cambio en condicion → groupBy "cambio".
-//   + `ranking` / `max` / `min` sin groupBy → groupBy "jugador".
-//   + `frequency` sin universo → mensaje claro.
-//   + Métrica desconocida → mensaje con las soportadas.
+// v1.2 (FASE 6):
+//   + Nuevas métricas: "puntos_ganados" (usa ctx.puntos) y
+//     "acciones_punto" (usa ctx.acciones).
+//   + `puntos_ganados` devuelve un NÚMERO absoluto, no %.
+//   + `acciones_punto` devuelve un NÚMERO absoluto, no %.
+//
+// v1.1:
+//   + habit / distribution sin groupBy → subtipo.
+//   + ranking / max / min sin groupBy → jugador.
+//   + mensajes más claros.
 // ============================================================
 
 import type {
@@ -42,12 +50,15 @@ import {
 } from "./groupBy";
 import {
   acePct,
+  accionesPunto,
   attackEfficiency,
   blockEfficiency,
   breakPointPct,
   digEfficiency,
   hittingPct,
   killPct,
+  puntosGanados,
+  puntosGanadosPct,
   puntosPorRotacion,
   puntosPorSet,
   receptionPct,
@@ -55,7 +66,6 @@ import {
   sideoutPct,
   type MetricaResultado,
 } from "./metricasVoley";
-import { calcularFrecuencia } from "./frecuencia";
 import {
   analizarTendencia,
   describirTendencia,
@@ -155,6 +165,16 @@ function metricaAPromedio(m: MetricaResultado): RespuestaConsulta {
   );
 }
 
+function metricaANumero(
+  m: MetricaResultado,
+  unidad: string | null = null
+): RespuestaConsulta {
+  if (m.denominador === 0) {
+    return respuestaVacia("Sin datos para calcular esta métrica.");
+  }
+  return respuestaNumero(m.valor, unidad, m.descripcion);
+}
+
 // ------------------------------------------------------------
 // MÉTRICAS DE VÓLEY
 // ------------------------------------------------------------
@@ -164,6 +184,29 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
   if (!metrica) return respuestaVacia("Sin métrica definida.");
 
   const acciones = ctx.acciones;
+
+  // ---- Métricas que necesitan puntos completos (PuntoConAcciones) ----
+  if (metrica === "puntos_ganados") {
+    if (!ctx.puntos || ctx.puntos.length === 0) {
+      return respuestaVacia(
+        "Sin puntos cargados para calcular puntos ganados."
+      );
+    }
+    const m = puntosGanados(ctx.puntos);
+    return metricaANumero(m, "puntos");
+  }
+
+  if (metrica === "puntos_ganados_pct") {
+    if (!ctx.puntos || ctx.puntos.length === 0) {
+      return respuestaVacia(
+        "Sin puntos cargados para calcular el % de puntos ganados."
+      );
+    }
+    const m = puntosGanadosPct(ctx.puntos);
+    return metricaAPorcentaje(m);
+  }
+
+  // ---- Métricas que necesitan acciones (AccionVisual) ----
   if (contarVisibles(acciones) === 0) {
     return respuestaVacia("Sin datos para calcular esta métrica.");
   }
@@ -185,6 +228,8 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
       return metricaAPorcentaje(blockEfficiency(acciones));
     case "dig_efficiency":
       return metricaAPorcentaje(digEfficiency(acciones));
+    case "acciones_punto":
+      return metricaANumero(accionesPunto(acciones), "acciones en punto");
     case "puntos_por_set": {
       if (!ctx.puntos || ctx.puntos.length === 0) {
         return respuestaVacia(
@@ -218,7 +263,8 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
           `side-out %, break point %, recepción %, ace %, ` +
           `error de saque %, eficiencia de bloqueo, ` +
           `eficiencia de defensa, puntos por set, ` +
-          `puntos por rotación.`
+          `puntos por rotación, puntos ganados, ` +
+          `% de puntos ganados, acciones en punto.`
       );
   }
 }
@@ -234,7 +280,6 @@ function groupByEfectivo(ctx: ContextoRespuesta): GroupBy | null {
 
   const cond = intencion.condicion;
 
-  // Distribución de "cambio" → agrupamos por cambio.
   if (
     intencion.tipo === "distribution" &&
     cond?.cambioEnPunto !== undefined
@@ -242,7 +287,31 @@ function groupByEfectivo(ctx: ContextoRespuesta): GroupBy | null {
     return "cambio";
   }
 
-  // Distribución / habit sin groupBy → subtipo (resultado de la acción).
+  // ----------------------------------------------------------
+  // FASE 6 — bloque A.2:
+  // habit sobre "cómo terminan los puntos/rallys" → resultado_punto.
+  //
+  // Cubre:
+  //   - "cómo terminan los puntos cuando saca Joaquín"
+  //   - "cómo terminan los rallys"
+  //   - "cómo suelen terminar los puntos"
+  //   - "cómo terminan los puntos en el quinto set"
+  //   - "cómo terminan los puntos después de un cambio"
+  //
+  // No exige que la frase diga "por resultado_punto". Si el usuario
+  // usa esa frase, ya entra por el `if (intencion.groupBy)` de arriba.
+  // ----------------------------------------------------------
+  if (intencion.tipo === "habit") {
+    const original = (intencion.original || "").toLowerCase();
+    const hablaDeTerminar = /termin|acab|finaliz|sal(e|en)\b/.test(original);
+    const hablaDePuntoORally = /(punto|puntos|rally|rallys|pelota)/.test(
+      original
+    );
+    if (hablaDeTerminar && hablaDePuntoORally) {
+      return "resultado_punto";
+    }
+  }
+
   if (
     (intencion.tipo === "habit" || intencion.tipo === "distribution") &&
     !intencion.groupBy
@@ -250,7 +319,6 @@ function groupByEfectivo(ctx: ContextoRespuesta): GroupBy | null {
     return "subtipo";
   }
 
-  // Ranking / max / min sin groupBy → jugador.
   if (
     (intencion.tipo === "ranking" ||
       intencion.tipo === "max" ||
@@ -540,7 +608,7 @@ function ejecutarTrend(ctx: ContextoRespuesta): RespuestaConsulta {
 
   if (gb === "partido") eje = "partido";
   else if (gb === "rotacion") eje = "rotacion";
-  else eje = "set"; // default
+  else eje = "set";
 
   const puntos = construirSerie(
     ctx.acciones,
@@ -647,7 +715,7 @@ export function construirRespuesta(
         "No pude entender qué cálculo querés hacer. Probá con " +
           '"cuántos", "porcentaje", "promedio", "cada cuánto", ' +
           '"mejor", "peor", "distribución", "evolución", "suele", ' +
-          '"cómo terminan".'
+          '"cómo terminan", "puntos ganados".'
       );
   }
 
