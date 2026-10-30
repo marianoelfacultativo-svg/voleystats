@@ -1,24 +1,31 @@
 // ============================================================
-// CONTEXTO DEL RALLY — motor puro
+// CONTEXTO DEL RALLY — motor puro (v2)
 // ============================================================
-// A partir de las acciones ya cargadas (AccionVisual[]), deriva
-// POR ACCIÓN:
+// Cambios v2:
+//   + FaseRally ahora incluye "k2" y "k3" además de "side-out",
+//     "contraataque", "free-ball" y "otro".
+//   + calcularFaseRally distingue:
+//       · K1 / side-out            → primer toque propio del rally
+//                                    es recepción o libre.
+//       · Free ball                → el rival mandó una libre antes
+//                                    de que el equipo toque la pelota.
+//       · K3 / contraataque cobre. → primer toque propio es una
+//                                    cobertura (defensa con subtipo
+//                                    cobertura).
+//       · K2 / contraataque def.   → primer toque propio es defensa
+//                                    normal (subtipo no-cobertura).
+//       · "contraataque" (legacy)  → queda como fallback para datos
+//                                    muy viejos que no se pueden
+//                                    clasificar mejor. El motor v6 lo
+//                                    trata como equivalente a k2 o k3
+//                                    cuando filtra.
+//   + Se agregó el helper `esCobertura(a)` (export) para reusar la
+//     detección en otros módulos.
+//   + La detección de cobertura ignora el prefijo "toque:" que el
+//     analizador agrega a algunos subtipos de ataque.
 //
-//   - Fase del rally: side-out / contraataque / free-ball
-//   - ¿Es el primer toque del equipo en el punto?
-//   - Número de toque del equipo en el punto (1, 2, 3, 4+)
-//   - Cómo empezó el punto (ace propio/rival, recepción pos/neg, overpass…)
-//   - Delantero / zaguero / líbero (según zona_jugador)
-//   - Marcador del set al momento de la acción (parcial, diferencia,
-//     punto crítico, estado ganando/perdiendo/empatado)
-//   - Rachas (puntos consecutivos ganados/perdidos)
-//
-// NO modifica las acciones. Devuelve un Map<accionId, ContextoRally>.
-//
-// IMPORTANTE: la agrupación por punto usa `${partido_id}|${set}|${punto}`
-// para que funcione bien cuando se pasan acciones de varios partidos
-// juntos (caso "historial completo del equipo" en MiEquipo).
-// Antes era `${set}-${punto}` y mezclaba los marcadores entre partidos.
+// El resto del archivo (marcador, rachas, inicio del punto, etc.)
+// queda igual que en v1.
 // ============================================================
 
 import type { AccionVisual } from "../app/equipo/adaptadorUnificadoV2";
@@ -27,7 +34,13 @@ import type { AccionVisual } from "../app/equipo/adaptadorUnificadoV2";
 // TIPOS
 // ------------------------------------------------------------
 
-export type FaseRally = "side-out" | "contraataque" | "free-ball" | "otro";
+export type FaseRally =
+  | "side-out"
+  | "k2"
+  | "k3"
+  | "contraataque"
+  | "free-ball"
+  | "otro";
 
 export type InicioPunto =
   | "ace_propio"
@@ -73,6 +86,22 @@ function baseSubtipo(a: AccionVisual): string {
   const s =
     a.subtipo !== null && a.subtipo !== undefined ? String(a.subtipo) : "";
   return s.startsWith("toque:") ? s.slice(6) : s;
+}
+
+/**
+ * ¿La acción es una cobertura de defensa? (K3)
+ *
+ * Se acepta tanto el subtipo "raw" que usa la consola como los
+ * subtipos "finales" que se guardan en Supabase.
+ */
+export function esCobertura(a: AccionVisual): boolean {
+  if (a.tipo !== "defensa") return false;
+  const sub = baseSubtipo(a);
+  return (
+    sub === "cobertura" ||
+    sub === "cobertura_positiva" ||
+    sub === "cobertura_negativa"
+  );
 }
 
 function ubicacionPorZona(zona: number | null): UbicacionJugador {
@@ -148,29 +177,77 @@ function calcularInicioPunto(lineas: AccionVisual[]): InicioPunto {
   return "otro";
 }
 
+// ------------------------------------------------------------
+// FASES DEL RALLY — K1 / K2 / K3 / Free-ball
+// ------------------------------------------------------------
+//
+// Reglas:
+//
+//   1. Buscar el primer toque PROPIO del rally, ignorando los
+//      bloqueos (los bloqueos no cuentan como uno de los 3 toques
+//      del equipo en el vóley, y sirven para cubrir el ataque rival
+//      o responder al ataque rival, pero no "inician" la secuencia
+//      atacante propia).
+//
+//   2. Si no hay toque propio todavía, la fase es "otro" (la acción
+//      actual es del rival o es un bloqueo que cerró el punto).
+//
+//   3. Free ball: si la acción rival inmediatamente anterior al
+//      primer toque propio es una "libre", el rally es free ball.
+//
+//   4. Side-out / K1: si el primer toque propio es recepción o libre.
+//
+//   5. K3: si el primer toque propio es una cobertura (defensa con
+//      subtipo cobertura). Contraataque desde cobertura.
+//
+//   6. K2: si el primer toque propio es una defensa "normal"
+//      (subtipo no-cobertura). Contraataque desde defensa.
+//
+//   7. "contraataque" genérico se mantiene en el tipo por compat
+//      pero este detector NUNCA lo devuelve. Solo aparece en datos
+//      viejos guardados antes de v2.
+// ------------------------------------------------------------
+
 function calcularFaseRally(idx: number, lineas: AccionVisual[]): FaseRally {
   if (idx === 0) return "side-out";
 
-  const anterior = lineas[idx - 1];
-
-  if (anterior.tipo === "recepcion" && !anterior.es_rival) {
-    return "side-out";
+  // 1. Primer toque propio no-bloqueo del rally.
+  let primerToquePropioIdx = -1;
+  for (let i = 0; i <= idx; i++) {
+    const l = lineas[i];
+    if (l.es_rival) continue;
+    if (l.tipo === "bloqueo") continue;
+    primerToquePropioIdx = i;
+    break;
   }
-  if (anterior.tipo === "libre" && anterior.es_rival) {
+
+  if (primerToquePropioIdx < 0) return "otro";
+
+  const primerToquePropio = lineas[primerToquePropioIdx];
+
+  // 2. ¿Acción rival inmediatamente anterior al primer toque propio?
+  let accionRivalPrevia: AccionVisual | null = null;
+  for (let i = primerToquePropioIdx - 1; i >= 0; i--) {
+    if (lineas[i].es_rival) {
+      accionRivalPrevia = lineas[i];
+      break;
+    }
+  }
+
+  // 3. Free ball: el rival mandó una libre antes de que toquemos.
+  if (accionRivalPrevia?.tipo === "libre") {
     return "free-ball";
   }
-  if (
-    (anterior.tipo === "defensa" && !anterior.es_rival) ||
-    (anterior.tipo === "bloqueo" && !anterior.es_rival)
-  ) {
-    return "contraataque";
-  }
-  if (anterior.tipo === "ataque" && anterior.es_rival) {
-    return "contraataque";
-  }
-  if (anterior.tipo === "libre" && !anterior.es_rival) {
-    return "side-out";
-  }
+
+  // 4. Side-out / K1.
+  if (primerToquePropio.tipo === "recepcion") return "side-out";
+  if (primerToquePropio.tipo === "libre") return "side-out";
+
+  // 5. K3: contraataque desde cobertura.
+  if (esCobertura(primerToquePropio)) return "k3";
+
+  // 6. K2: contraataque desde defensa "normal".
+  if (primerToquePropio.tipo === "defensa") return "k2";
 
   return "otro";
 }
@@ -186,15 +263,6 @@ interface GrupoPunto {
   lista: AccionVisual[];
 }
 
-/**
- * Devuelve un Map<accionId, ContextoRally> con todo el contexto
- * derivado de cada acción.
- *
- * @param acciones Puede ser el universo de UN partido o de varios
- *                 partidos juntos. Los puntos se identifican por
- *                 `${partido_id}|${set}|${punto}` para no mezclar
- *                 partidos entre sí.
- */
 export function calcularContextoRally(
   acciones: AccionVisual[]
 ): Map<string, ContextoRally> {
@@ -208,12 +276,7 @@ export function calcularContextoRally(
     const k = `${partidoId}|${a.set_numero}|${a.punto_numero}`;
     let g = gruposMap.get(k);
     if (!g) {
-      g = {
-        partidoId,
-        set: a.set_numero,
-        punto: a.punto_numero,
-        lista: [],
-      };
+      g = { partidoId, set: a.set_numero, punto: a.punto_numero, lista: [] };
       gruposMap.set(k, g);
     }
     g.lista.push(a);
@@ -225,19 +288,13 @@ export function calcularContextoRally(
 
   // 2. Ordenar los puntos por (partido, set, punto).
   const puntosOrdenados = Array.from(gruposMap.values()).sort((a, b) => {
-    if (a.partidoId !== b.partidoId) {
-      return a.partidoId.localeCompare(b.partidoId);
-    }
+    if (a.partidoId !== b.partidoId) return a.partidoId.localeCompare(b.partidoId);
     if (a.set !== b.set) return a.set - b.set;
     return a.punto - b.punto;
   });
 
   // 3. Marcador por (partido, set) y rachas globales.
-  //    Las rachas se resetean al cambiar de partido o de set.
-  const marcadorPorSet = new Map<
-    string,
-    { propios: number; rivales: number }
-  >();
+  const marcadorPorSet = new Map<string, { propios: number; rivales: number }>();
   let rachaGanados = 0;
   let rachaPerdidos = 0;
   let ultimoPartido = "";
@@ -246,7 +303,6 @@ export function calcularContextoRally(
   for (const grupo of puntosOrdenados) {
     const { lista, set, partidoId } = grupo;
 
-    // Reset al cambiar de partido o de set.
     if (partidoId !== ultimoPartido || set !== ultimoSet) {
       const k = `${partidoId}|${set}`;
       marcadorPorSet.set(k, { propios: 0, rivales: 0 });
@@ -257,14 +313,10 @@ export function calcularContextoRally(
     }
 
     const setKey = `${partidoId}|${set}`;
-    const marcador = marcadorPorSet.get(setKey) ?? {
-      propios: 0,
-      rivales: 0,
-    };
+    const marcador = marcadorPorSet.get(setKey) ?? { propios: 0, rivales: 0 };
 
     const inicioPunto = calcularInicioPunto(lista);
 
-    // ¿Cómo terminó este punto? Para actualizar marcador y rachas.
     const ultima = lista.length > 0 ? lista[lista.length - 1] : null;
     let ganoPropio = false;
     if (ultima) {
@@ -280,7 +332,6 @@ export function calcularContextoRally(
       }
     }
 
-    // Asignar contexto a cada acción del punto.
     for (let i = 0; i < lista.length; i++) {
       const a = lista[i];
 
@@ -318,7 +369,6 @@ export function calcularContextoRally(
       });
     }
 
-    // Actualizar marcador y rachas para el próximo punto.
     if (ganoPropio) {
       marcador.propios++;
       rachaGanados++;
@@ -337,8 +387,6 @@ export function calcularContextoRally(
 // ------------------------------------------------------------
 // CLASIFICACIÓN RÁPIDA DEL FIN DEL PUNTO
 // ------------------------------------------------------------
-// Duplicada chiquita para no importar el motor de consecuencias
-// (evita dependencias circulares). Solo se usa acá.
 
 function clasificarResultadoFin(a: AccionVisual): string {
   const sub = baseSubtipo(a);
@@ -349,11 +397,7 @@ function clasificarResultadoFin(a: AccionVisual): string {
   }
   if (a.tipo === "recepcion") {
     if (sub === "error_directo") return "ace_contra";
-    if (
-      sub === "negativa" ||
-      sub === "doble_negativa" ||
-      sub === "overpass"
-    ) {
+    if (sub === "negativa" || sub === "doble_negativa" || sub === "overpass") {
       return "error_propio";
     }
     return "neutro";
@@ -397,8 +441,10 @@ function clasificarResultadoFin(a: AccionVisual): string {
 
 export function etiquetaFase(f: FaseRally): string {
   const map: Record<FaseRally, string> = {
-    "side-out": "Side-out",
-    contraataque: "Contraataque",
+    "side-out": "Side-out (K1)",
+    k2: "Contraataque desde defensa (K2)",
+    k3: "Contraataque desde cobertura (K3)",
+    contraataque: "Contraataque (legacy)",
     "free-ball": "Free ball",
     otro: "Otro",
   };
