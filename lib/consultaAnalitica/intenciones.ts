@@ -5,15 +5,9 @@
 // La API pública es idéntica a v1.9 (más los arrays nuevos para
 // Cat. 3, Cat. 5 y Cat. 6).
 //
-//   import {
-//     ORDEN_EVALUACION,
-//     SINONIMOS_MAX,
-//     intencionVacia,
-//     type IntencionQuery,
-//   } from "@/lib/consultaAnalitica/intenciones";
-//
-// No hay cambios de firmas ni de valores. Solo cambió la
-// ubicación física del código.
+// v2.1 (fix build): corrige el re-export de cruces.ts
+//   (SINONIMOS_CRUCES_MINIMOS no existía; ahora se re-exporta
+//   extraerCrucesDeTexto y las constantes/regex de cruces).
 // ============================================================
 
 // --- Tipos y helpers base ---
@@ -68,10 +62,25 @@ export {
 export { SINONIMOS_FASE } from "./intenciones/fase";
 
 // --- Cat. 3: salida por rol (opuesto / central / punta / armador) ---
-export { SINONIMOS_SALIDA_ROL } from "./intenciones/salida";
+export {
+  SINONIMOS_SALIDA_ROL,
+  ZONAS_POR_ROL,
+  ROL_JUGADOR_A_SALIDA,
+  matcheaSalidaRol,
+  type RolSalida,
+} from "./intenciones/salida";
 
 // --- Cat. 6: cruces de red (rallys con N+ cruces) ---
-export { SINONIMOS_CRUCES_MINIMOS } from "./intenciones/cruces";
+export {
+  CRUCES_DEFAULT_LARGO,
+  REGEX_MAS_DE_CRUCES,
+  REGEX_N_O_MAS_CRUCES,
+  REGEX_CRUCES_SUELTO,
+  REGEX_RALLY_LARGO,
+  extraerCrucesDeTexto,
+  parsearNumeroCruces,
+  type ResultadoCruces,
+} from "./intenciones/cruces";
 
 // --- Orden de evaluación del parser ---
 export { ORDEN_EVALUACION } from "./intenciones/orden";
