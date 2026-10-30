@@ -4,6 +4,11 @@
 // PANEL DE BÚSQUEDA — Análisis de consecuencias
 // ============================================================
 // Buscador en lenguaje natural + parser + chips de coincidencias.
+//
+// v2: aplica `tipoObservadoSugerido` y `relacionObservadoSugerido`
+// que devuelve el parser v3.8 cuando detecta frases del tipo
+// "ataques que defiende el rival" → tipoObservado=defensa,
+// relacion=rival.
 // ============================================================
 
 import { useMemo, useState } from "react";
@@ -11,6 +16,7 @@ import {
   etiquetaLlamadaInferida,
   etiquetaResultado,
   etiquetaTipoDisparador,
+  type RelacionJugadorObservado,
   type TipoDisparador,
 } from "@/lib/analisisConsecuencias";
 import {
@@ -47,8 +53,7 @@ export default function PanelBusqueda({
   const [texto, setTexto] = useState("");
   const [verDatosDelJugador, setVerDatosDelJugador] = useState(true);
 
-  // `acciones` no se usa dentro del componente pero se mantiene en
-  // la firma para compatibilidad futura (ej: preview de casos).
+  // `acciones` se mantiene en la firma para futuras features.
   void acciones;
 
   const parseResult: ResultadoParser = useMemo(
@@ -71,19 +76,41 @@ export default function PanelBusqueda({
       filtro: parseResult.filtro,
     };
 
-    const nuevoJugadorObservadoFiltro =
-      jugadorDetectadoId && verDatosDelJugador
-        ? "mismo"
-        : config.jugadorObservadoFiltro;
+    // v2: aplicar sugeridos del parser de secuencia.
+    // 1) jugadorObservadoFiltro:
+    //    - Si el parser detectó un jugador y "ver datos del jugador"
+    //      está prendido → "mismo".
+    //    - Si no, y el parser detectó una secuencia tipo
+    //      "que defiende el rival" → usamos `relacionObservadoSugerido`.
+    //    - Si no → dejar como estaba.
+    let nuevoJugadorObservadoFiltro = config.jugadorObservadoFiltro;
+    if (jugadorDetectadoId && verDatosDelJugador) {
+      nuevoJugadorObservadoFiltro = "mismo";
+    } else if (parseResult.relacionObservadoSugerido) {
+      nuevoJugadorObservadoFiltro = parseResult.relacionObservadoSugerido;
+    }
+
+    // 2) tipoObservado:
+    //    si el parser detectó una secuencia con tipoObservado,
+    //    lo aplicamos.
+    const nuevoTipoObservado =
+      parseResult.tipoObservadoSugerido ?? config.tipoObservado;
 
     setConfig({
       ...config,
       bloques: [nuevoBloque],
       jugadorObservadoFiltro: nuevoJugadorObservadoFiltro,
+      tipoObservado: nuevoTipoObservado,
     });
   };
 
   const limpiar = () => setTexto("");
+
+  // ¿Hay sugerencia de secuencia? (para mostrar el hint)
+  const haySecuencia =
+    parseResult.tipoObservadoSugerido !== null ||
+    parseResult.relacionObservadoSugerido !== null ||
+    parseResult.faseRallySugerida !== null;
 
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.02] p-2 space-y-1.5">
@@ -104,7 +131,7 @@ export default function PanelBusqueda({
           onKeyDown={(e) => {
             if (e.key === "Enter") aplicar();
           }}
-          placeholder='Ej: "ataques de Juan después de errar", "pipes en cierre de set"'
+          placeholder='Ej: "ataques de Juan después de errar", "ataques que defiende el rival"'
           className="flex-1 bg-slate-900 text-white text-[11px] rounded px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-slate-400 placeholder:text-slate-600"
         />
         {texto && (
@@ -177,9 +204,67 @@ export default function PanelBusqueda({
                 ? `origen Z${m.valor}`
                 : m.clave === "recepcion.columna"
                 ? `col: ${m.valor}`
+                : m.clave === "secuencia.tipoObservado"
+                ? `sig.: ${etiquetaTipoDisparador(
+                    m.valor as TipoDisparador
+                  )}`
+                : m.clave === "secuencia.relacionObservado"
+                ? `sujeto: ${
+                    m.valor === "rival"
+                      ? "rival"
+                      : m.valor === "companero"
+                      ? "compañero"
+                      : "mismo"
+                  }`
+                : m.clave === "secuencia.faseRally"
+                ? `fase: ${m.valor}`
                 : `${m.clave}: ${m.valor}`}
             </span>
           ))}
+        </div>
+      )}
+
+      {/* v2: hint de secuencia detectada */}
+      {haySecuencia && (
+        <div className="rounded border border-pink-500/30 bg-pink-500/10 p-2 space-y-0.5">
+          <p className="text-[10px] font-bold text-pink-200">
+            🎯 Secuencia detectada
+          </p>
+          <p className="text-[10px] text-pink-200/80">
+            {parseResult.tipoObservadoSugerido && (
+              <>
+                Se va a mirar la siguiente{" "}
+                <strong>
+                  {etiquetaTipoDisparador(parseResult.tipoObservadoSugerido)}
+                </strong>
+                {parseResult.relacionObservadoSugerido && (
+                  <>
+                    {" "}
+                    del{" "}
+                    <strong>
+                      {parseResult.relacionObservadoSugerido === "rival"
+                        ? "rival"
+                        : parseResult.relacionObservadoSugerido === "companero"
+                        ? "compañero"
+                        : "mismo jugador"}
+                    </strong>
+                  </>
+                )}
+                .
+              </>
+            )}
+            {parseResult.faseRallySugerida && (
+              <>
+                {" "}
+                Fase del rally sugerida:{" "}
+                <strong>{parseResult.faseRallySugerida}</strong>{" "}
+                <span className="text-pink-200/60 italic">
+                  (no se aplica automáticamente)
+                </span>
+                .
+              </>
+            )}
+          </p>
         </div>
       )}
 

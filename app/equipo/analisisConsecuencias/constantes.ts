@@ -3,6 +3,10 @@
 // ============================================================
 // Todos los arrays de opciones que alimentan los <select>,
 // multi-chips y listas de la UI. Puro datos, sin lógica.
+//
+// v2: agregada categoría "secuencia" al mapa de colores
+// (para los chips del parser v3.8 que detecta "que defiende
+// el rival", "que bloquea un compañero", "vuelve libre", etc.)
 // ============================================================
 
 import type {
@@ -327,6 +331,9 @@ export const COMPARADORES: {
 // ------------------------------------------------------------
 // COLORES POR CATEGORÍA DE MATCH DEL PARSER
 // ------------------------------------------------------------
+// v2: agregada la categoría "secuencia" (para los chips de
+// "que defiende el rival", "vuelve libre", etc.)
+// ------------------------------------------------------------
 
 export const CATEGORIA_COLOR: Record<CategoriaMatch, string> = {
   tipo: "bg-blue-500/20 text-blue-200 border-blue-500/40",
@@ -346,4 +353,5 @@ export const CATEGORIA_COLOR: Record<CategoriaMatch, string> = {
   "vs-promedio": "bg-yellow-500/20 text-yellow-200 border-yellow-500/40",
   contexto: "bg-slate-500/20 text-slate-200 border-slate-500/40",
   "posicion-set": "bg-slate-500/20 text-slate-200 border-slate-500/40",
+  secuencia: "bg-pink-500/20 text-pink-200 border-pink-500/40",
 };
