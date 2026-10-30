@@ -1,263 +1,214 @@
 // ============================================================
-// BLOQUE TRIGGER — chequeo de un bloque completo
+// INTENCIONES · SALIDA POR ROL (Cat. 3)
 // ============================================================
-// Extraído de lib/analisisConsecuencias.ts (v9).
+// Detecta frases del tipo "salida del opuesto", "por dónde
+// ataca más el central", "cuántos puntos hace el punta desde
+// la 4", etc.
 //
-// v1.2 (FASE 6 — Rondas 1.3 + 2):
-//   + evalúa bloque.salidaRol (Cat. 3) con matcheaSalidaRol.
-//   + evalúa bloque.crucesMinimos (Cat. 6) calculando cruces
-//     del punto sobre las acciones del mismo punto.
-//   + agrega ambos a hayFiltrosAvanzadosEnBloque.
+// El parser setea `CondicionFiltro.salidaRol` con el rol
+// detectado. El motor, en respuesta.ts, lo traduce a un filtro
+// efectivo:
 //
-// v1.1 (FASE 2):
-//   + evalúa bloque.ubicacion (delantero / zaguero / líbero / otro)
-//   + evalúa bloque.cambioEnPunto (boolean | null)
+//   rol:  "opuesto"  →  rol_jugador === "O", zona_origen ∈ {1, 2}
+//   rol:  "central"  →  rol_jugador ∈ {"C1","C2"}, zona_origen ∈ {3, 6}
+//   rol:  "punta"    →  rol_jugador ∈ {"P1","P2"}, zona_origen ∈ {4, 5}
+//   rol:  "armador"  →  rol_jugador === "A", zona_origen ∈ {1..6}
+//
+// ------------------------------------------------------------
+// ¿Por qué hay roles con múltiples zonas?
+// ------------------------------------------------------------
+// El opuesto ataca por la banda derecha: si está delantero
+// sale por 2, si está zaguero sale por 1. Los dos son "salida
+// del opuesto".
+//
+// Los centrales atacan por el centro: si están adelante salen
+// por 3, si están atrás salen por 6 (o por 3 si es pipe corto
+// desde la posición de central zaguero). Los dos son "salida
+// del central".
+//
+// Los puntas salen por 4 (delantero izq) o por 5 (zaguero
+// izq). Los dos son "salida del punta".
 // ============================================================
 
-import type { AccionVisual } from "../../app/equipo/adaptadorUnificadoV2";
-import type { ContextoRally } from "../contextoRally";
-import { baseSubtipo, ubicacionDeZona } from "./clasificacion";
-import { hayContextoPartidoActivo, cumpleContextoPartido } from "./contexto";
-import {
-  cumpleAccionPreviaDirecta,
-  cumplePatronPrevio,
-  verificarRacha,
-  verificarRachaJugador,
-} from "./filtrosAccion";
-import {
-  inferirDireccionAtaque,
-  inferirLlamadaArmado,
-} from "./inferencias";
-import { calificarSectorAtaque } from "./sectores";
-import type { BloqueTriggerFiltro, FiltrosAnalisis } from "./tipos";
-import { zonaDefensaRival } from "./zonas";
-import { matcheaSalidaRol } from "../consultaAnalitica/intenciones/salida";
+export type RolSalida = "opuesto" | "central" | "punta" | "armador";
+
+export const SINONIMOS_SALIDA_ROL: {
+  patrones: string[];
+  rol: RolSalida;
+}[] = [
+  // ----------------------------------------------------------
+  // OPUESTO
+  // ----------------------------------------------------------
+  {
+    patrones: [
+      "salida del opuesto", "salida de los opuestos",
+      "salida de la opuesta", "salida de las opuestas",
+      "salidas del opuesto", "salidas de los opuestos",
+      "salida del opuesto por", "salida de los opuestos por",
+      "por donde sale el opuesto", "por donde salen los opuestos",
+      "por donde ataca el opuesto", "por donde atacan los opuestos",
+      "por donde ataca mas el opuesto", "por donde atacan mas los opuestos",
+      "el opuesto ataca por", "los opuestos atacan por",
+      "el opuesto ataca mas por", "los opuestos atacan mas por",
+      "el opuesto ataca mas", "los opuestos atacan mas",
+      "el opuesto sale por", "los opuestos salen por",
+      "el opuesto sale mas por", "los opuestos salen mas por",
+      "cuantos puntos hace el opuesto",
+      "cuantos puntos hacen los opuestos",
+      "cuantos puntos del opuesto",
+      "cuantos ataques hace el opuesto",
+      "cuantos ataques del opuesto",
+      "cuantos puntos hace el opuesto desde",
+      "cuantos puntos hacen los opuestos desde",
+      "como ataca el opuesto", "como atacan los opuestos",
+      "como ataca el opuesto desde",
+      "del opuesto", "de los opuestos",
+      "los opuestos",
+    ],
+    rol: "opuesto",
+  },
+
+  // ----------------------------------------------------------
+  // CENTRAL
+  // ----------------------------------------------------------
+  {
+    patrones: [
+      "salida del central", "salida de los centrales",
+      "salida de la central", "salida de las centrales",
+      "salidas del central", "salidas de los centrales",
+      "salida del central por", "salida de los centrales por",
+      "por donde sale el central", "por donde salen los centrales",
+      "por donde ataca el central", "por donde atacan los centrales",
+      "por donde ataca mas el central",
+      "por donde atacan mas los centrales",
+      "el central ataca por", "los centrales atacan por",
+      "el central ataca mas por", "los centrales atacan mas por",
+      "el central ataca mas", "los centrales atacan mas",
+      "el central sale por", "los centrales salen por",
+      "el central sale mas por", "los centrales salen mas por",
+      "cuantos puntos hace el central",
+      "cuantos puntos hacen los centrales",
+      "cuantos puntos del central",
+      "cuantos puntos de los centrales",
+      "cuantos ataques hace el central",
+      "cuantos ataques del central",
+      "cuantos puntos hace el central desde",
+      "cuantos puntos hacen los centrales desde",
+      "como ataca el central", "como atacan los centrales",
+      "como ataca el central desde",
+      "del central", "de los centrales", "de la central",
+      "los centrales", "las centrales",
+    ],
+    rol: "central",
+  },
+
+  // ----------------------------------------------------------
+  // PUNTA
+  // ----------------------------------------------------------
+  {
+    patrones: [
+      "salida del punta", "salida de los puntas",
+      "salida de la punta", "salida de las puntas",
+      "salidas del punta", "salidas de los puntas",
+      "salida del punta por", "salida de los puntas por",
+      "por donde sale el punta", "por donde salen los puntas",
+      "por donde ataca el punta", "por donde atacan los puntas",
+      "por donde ataca mas el punta", "por donde atacan mas los puntas",
+      "el punta ataca por", "los puntas atacan por",
+      "el punta ataca mas por", "los puntas atacan mas por",
+      "el punta ataca mas", "los puntas atacan mas",
+      "el punta sale por", "los puntas salen por",
+      "el punta sale mas por", "los puntas salen mas por",
+      "cuantos puntos hace el punta",
+      "cuantos puntos hacen los puntas",
+      "cuantos puntos del punta",
+      "cuantos puntos de los puntas",
+      "cuantos ataques hace el punta",
+      "cuantos ataques del punta",
+      "cuantos puntos hace el punta desde",
+      "cuantos puntos hacen los puntas desde",
+      "como ataca el punta", "como atacan los puntas",
+      "como ataca el punta desde",
+      "salida del puntero", "salida de los punteros",
+      "por donde ataca el puntero", "por donde atacan los punteros",
+      "el puntero ataca por", "los punteros atacan por",
+      "por donde ataca mas el puntero",
+      "cuantos puntos hace el puntero",
+      "cuantos puntos de los punteros",
+      "del puntero", "de los punteros",
+      "salida del ala", "salida de las alas",
+      "por donde ataca el ala",
+      "del ala", "de las alas",
+      "salida del receptor-atacante",
+      "salida de los receptores-atacantes",
+      "del punta", "de los puntas", "de la punta",
+      "los puntas", "las puntas",
+    ],
+    rol: "punta",
+  },
+
+  // ----------------------------------------------------------
+  // ARMADOR
+  // ----------------------------------------------------------
+  {
+    patrones: [
+      "salida del armador", "salida de los armadores",
+      "salida de la armadora", "salida de las armadoras",
+      "por donde sale el armador", "por donde salen los armadores",
+      "por donde ataca el armador", "por donde atacan los armadores",
+      "por donde ataca mas el armador",
+      "el armador ataca por", "los armadores atacan por",
+      "el armador ataca mas por",
+      "el armador sale por",
+      "cuantos puntos hace el armador",
+      "cuantos puntos hacen los armadores",
+      "cuantos puntos del armador",
+      "cuantos ataques hace el armador",
+      "cuantos ataques del armador",
+      "como ataca el armador", "como atacan los armadores",
+      "del armador", "de los armadores",
+      "los armadores",
+    ],
+    rol: "armador",
+  },
+];
 
 // ------------------------------------------------------------
-// HELPER LOCAL: cruces de red de un punto
-// ------------------------------------------------------------
-// Cuenta cambios de lado entre acciones consecutivas visibles.
-// Misma lógica que calcularCrucesPorPunto de ejecutor.ts, pero
-// aplicada a una sola lista de punto.
+// MAPEO ROL → ZONAS DE ORIGEN VÁLIDAS
 // ------------------------------------------------------------
 
-function calcularCrucesDePunto(lista: AccionVisual[]): number {
-  const visibles = lista
-    .filter((x) => !x.oculta)
-    .sort((x, y) => x.orden - y.orden);
-  let cruces = 0;
-  for (let i = 1; i < visibles.length; i++) {
-    if (visibles[i].lado !== visibles[i - 1].lado) cruces += 1;
-  }
-  return cruces;
-}
+export const ZONAS_POR_ROL: Record<RolSalida, number[]> = {
+  opuesto: [1, 2],
+  central: [3, 6],
+  punta: [4, 5],
+  armador: [1, 2, 3, 4, 5, 6],
+};
 
-export function cumpleBloqueTrigger(
-  a: AccionVisual,
-  bloque: BloqueTriggerFiltro,
-  accionesCronologicas: AccionVisual[],
-  triggerIdxGlobal: number,
-  porPunto: Map<string, AccionVisual[]>,
-  contextoRally: Map<string, ContextoRally> | null,
-  posicionEnSet: "primero" | "ultimo" | "intermedio",
-  idsTopPorcentaje: Set<string> | null,
-  idsVsPromedio: Set<string> | null
+// ------------------------------------------------------------
+// ROL JUGADOR → ROL SALIDA
+// ------------------------------------------------------------
+
+export const ROL_JUGADOR_A_SALIDA: Record<string, RolSalida> = {
+  O: "opuesto",
+  C1: "central",
+  C2: "central",
+  P1: "punta",
+  P2: "punta",
+  A: "armador",
+};
+
+// ------------------------------------------------------------
+// HELPER: ¿una acción (rol + zona) matchea el filtro de salida?
+// ------------------------------------------------------------
+
+export function matcheaSalidaRol(
+  rolJugador: string | null,
+  zonaOrigen: number | null,
+  salidaRol: RolSalida
 ): boolean {
-  if (bloque.tipo !== a.tipo) return false;
-  if (bloque.jugadorId && a.jugador_id !== bloque.jugadorId) return false;
-  if (bloque.resultado !== "cualquiera") {
-    if (baseSubtipo(a) !== bloque.resultado) return false;
-  }
-
-  if (bloque.sets.length > 0 && !bloque.sets.includes(a.set_numero))
-    return false;
-  if (bloque.puntos.length > 0 && !bloque.puntos.includes(a.punto_numero))
-    return false;
-  if (
-    bloque.partidos.length > 0 &&
-    !bloque.partidos.includes(a.partido_id || "")
-  )
-    return false;
-  if (
-    bloque.roles.length > 0 &&
-    (!a.rol_jugador || !bloque.roles.includes(a.rol_jugador))
-  )
-    return false;
-  if (
-    bloque.zonasJugador.length > 0 &&
-    (a.zona_jugador === null || !bloque.zonasJugador.includes(a.zona_jugador))
-  )
-    return false;
-
-  // FASE 2: ubicación del jugador (delantero / zaguero / líbero / otro)
-  if (bloque.ubicacion !== "cualquiera") {
-    if (bloque.ubicacion === "libero") {
-      if (a.rol_jugador !== "L") return false;
-    } else {
-      const ubi = ubicacionDeZona(a.zona_jugador);
-      if (ubi !== bloque.ubicacion) return false;
-    }
-  }
-
-  // FASE 2: cambio de jugador en el punto
-  if (bloque.cambioEnPunto !== null) {
-    const tuvoCambio = a.cambioEnPunto ?? false;
-    if (tuvoCambio !== bloque.cambioEnPunto) return false;
-  }
-
-  // FASE 6 (Cat. 3): salida por rol (opuesto / central / punta / armador)
-  if (bloque.salidaRol !== null) {
-    if (!matcheaSalidaRol(a.rol_jugador, a.zona_origen, bloque.salidaRol)) {
-      return false;
-    }
-  }
-
-  // FASE 6 (Cat. 6): mínimo de cruces de red del rally
-  if (bloque.crucesMinimos !== null) {
-    const listaPunto =
-      porPunto.get(
-        `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`
-      ) ?? [];
-    const cruces = calcularCrucesDePunto(listaPunto);
-    if (cruces < bloque.crucesMinimos) return false;
-  }
-
-  if (
-    bloque.rotaciones.length > 0 &&
-    (a.rotacion_numero === null ||
-      !bloque.rotaciones.includes(a.rotacion_numero))
-  )
-    return false;
-
-  if (bloque.variante !== null) {
-    const varianteA = a.variante === "toque" ? "toque" : "remate";
-    if (varianteA !== bloque.variante) return false;
-  }
-  if (bloque.llamadasInferidas.length > 0) {
-    const llamada = inferirLlamadaArmado(a);
-    if (llamada === null || !bloque.llamadasInferidas.includes(llamada))
-      return false;
-  }
-  if (bloque.direccionAtaqueInferida.length > 0) {
-    const direccion = inferirDireccionAtaque(a);
-    if (
-      direccion === null ||
-      !bloque.direccionAtaqueInferida.includes(direccion)
-    )
-      return false;
-  }
-
-  if (bloque.sectoresAtaque.length > 0) {
-    const sector = calificarSectorAtaque(a);
-    if (sector === null || !bloque.sectoresAtaque.includes(sector))
-      return false;
-  }
-  if (bloque.zonasDefensaRival.length > 0) {
-    const zona = zonaDefensaRival(a.destino_celda, a.destino_mini);
-    if (zona === null || !bloque.zonasDefensaRival.includes(zona))
-      return false;
-  }
-
-  for (const racha of bloque.rachas) {
-    if (!verificarRacha(accionesCronologicas, triggerIdxGlobal, a, racha))
-      return false;
-  }
-
-  if (bloque.accionPreviaDirecta) {
-    const listaPunto =
-      porPunto.get(
-        `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`
-      ) ?? [];
-    const idxEnPunto = listaPunto.findIndex((x) => x.id === a.id);
-    if (
-      !cumpleAccionPreviaDirecta(
-        listaPunto,
-        idxEnPunto,
-        a,
-        bloque.accionPreviaDirecta
-      )
-    )
-      return false;
-  }
-
-  if (bloque.rachaJugador) {
-    if (
-      !verificarRachaJugador(
-        a,
-        bloque.rachaJugador,
-        contextoRally,
-        accionesCronologicas,
-        triggerIdxGlobal,
-        "cualquiera"
-      )
-    )
-      return false;
-  }
-
-  if (bloque.patronPrevio) {
-    const listaPunto =
-      porPunto.get(
-        `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`
-      ) ?? [];
-    const idxEnPunto = listaPunto.findIndex((x) => x.id === a.id);
-    if (!cumplePatronPrevio(listaPunto, idxEnPunto, bloque.patronPrevio))
-      return false;
-  }
-
-  if (bloque.topPorcentaje !== null) {
-    if (!idsTopPorcentaje || !idsTopPorcentaje.has(a.id)) return false;
-  }
-
-  if (bloque.vsPromedio !== null) {
-    if (!idsVsPromedio || !idsVsPromedio.has(a.id)) return false;
-  }
-
-  if (
-    bloque.contextoPartido &&
-    hayContextoPartidoActivo(bloque.contextoPartido)
-  ) {
-    if (!contextoRally) return false;
-    if (
-      !cumpleContextoPartido(
-        contextoRally.get(a.id),
-        bloque.contextoPartido,
-        posicionEnSet
-      )
-    )
-      return false;
-  }
-
-  return true;
-}
-
-export function hayFiltrosAvanzadosEnBloque(f: BloqueTriggerFiltro): boolean {
-  return !!(
-    f.resultado !== "cualquiera" ||
-    f.sets.length > 0 ||
-    f.puntos.length > 0 ||
-    f.partidos.length > 0 ||
-    f.roles.length > 0 ||
-    f.zonasJugador.length > 0 ||
-    f.ubicacion !== "cualquiera" ||
-    f.cambioEnPunto !== null ||
-    f.salidaRol !== null ||
-    f.crucesMinimos !== null ||
-    f.rotaciones.length > 0 ||
-    f.rachas.length > 0 ||
-    f.accionPreviaDirecta ||
-    f.rachaJugador ||
-    f.patronPrevio ||
-    f.topPorcentaje !== null ||
-    f.vsPromedio ||
-    (f.contextoPartido && hayContextoPartidoActivo(f.contextoPartido)) ||
-    f.variante !== null ||
-    f.llamadasInferidas.length > 0 ||
-    f.direccionAtaqueInferida.length > 0 ||
-    f.sectoresAtaque.length > 0 ||
-    f.zonasDefensaRival.length > 0
-  );
-}
-
-export function hayFiltroAnalisisActivo(f: FiltrosAnalisis): boolean {
-  return f.bloques.length > 0;
+  if (!rolJugador || zonaOrigen === null) return false;
+  const rolAccion = ROL_JUGADOR_A_SALIDA[rolJugador];
+  if (rolAccion !== salidaRol) return false;
+  const zonasValidas = ZONAS_POR_ROL[salidaRol];
+  return zonasValidas.includes(zonaOrigen);
 }
