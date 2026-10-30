@@ -19,6 +19,10 @@
 //   - partido      → necesita `nombreDePartido`
 //
 // Si falta el contexto, la fila se etiqueta con el id crudo.
+//
+// v1.1 (fix build):
+//   + `construirComparacion` normaliza `base` a `number` (0 si null)
+//     para que el tipo de retorno sea compatible con `FilaTabla`.
 // ============================================================
 
 import type { AccionVisual } from "../../app/equipo/adaptadorUnificadoV2";
@@ -326,10 +330,7 @@ export function construirDistribucion(
  *
  * El eje puede ser:
  *   - "set"       → x = 1..N
- *   - "partido"   → x = id del partido (se ordena por orden natural
- *                   de aparición en `acciones`, no por fecha; si
- *                   querés ordenar por fecha, ordená `acciones`
- *                   antes de llamar a esta función)
+ *   - "partido"   → x = id del partido
  *   - "rotacion"  → x = 1..6
  *
  * Para cada punto del eje calcula:
@@ -471,6 +472,9 @@ export function construirRanking(
  * dos filas (una por cada id recibido), con count / base / valor.
  *
  * No decide qué es "A" ni "B": eso lo resuelve el motor (FASE 3).
+ *
+ * `base` siempre se normaliza a `number` (0 si era null) para
+ * que coincida con el tipo de retorno esperado.
  */
 export function construirComparacion(
   acciones: AccionVisual[],
@@ -486,16 +490,33 @@ export function construirComparacion(
   const filas = construirTabla(acciones, groupBy, agg, ctx);
   const filaA = filas.find((f) => f.key === idA);
   const filaB = filas.find((f) => f.key === idB);
-  const vacia = {
-    key: "",
-    label: "",
-    count: 0,
-    base: filas.reduce((s, f) => s + f.count, 0),
-    valor: 0,
+  const totalBase = filas.reduce((s, f) => s + f.count, 0);
+
+  const normalizar = (
+    fila: FilaTabla | undefined,
+    key: string
+  ): {
+    key: string;
+    label: string;
+    count: number;
+    base: number;
+    valor: number;
+  } => {
+    if (!fila) {
+      return { key, label: key, count: 0, base: totalBase, valor: 0 };
+    }
+    return {
+      key: fila.key,
+      label: fila.label,
+      count: fila.count,
+      base: fila.base ?? 0,
+      valor: fila.valor,
+    };
   };
+
   return {
-    a: filaA ?? { ...vacia, key: idA },
-    b: filaB ?? { ...vacia, key: idB },
+    a: normalizar(filaA, idA),
+    b: normalizar(filaB, idB),
   };
 }
 
