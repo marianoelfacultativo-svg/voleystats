@@ -9,6 +9,9 @@
 // que devuelve el parser v3.8 cuando detecta frases del tipo
 // "ataques que defiende el rival" → tipoObservado=defensa,
 // relacion=rival.
+//
+// v3: narrow del tipo `"cualquiera"` antes de llamar a
+// `etiquetaTipoDisparador` (fix build TS).
 // ============================================================
 
 import { useMemo, useState } from "react";
@@ -53,7 +56,6 @@ export default function PanelBusqueda({
   const [texto, setTexto] = useState("");
   const [verDatosDelJugador, setVerDatosDelJugador] = useState(true);
 
-  // `acciones` se mantiene en la firma para futuras features.
   void acciones;
 
   const parseResult: ResultadoParser = useMemo(
@@ -76,13 +78,6 @@ export default function PanelBusqueda({
       filtro: parseResult.filtro,
     };
 
-    // v2: aplicar sugeridos del parser de secuencia.
-    // 1) jugadorObservadoFiltro:
-    //    - Si el parser detectó un jugador y "ver datos del jugador"
-    //      está prendido → "mismo".
-    //    - Si no, y el parser detectó una secuencia tipo
-    //      "que defiende el rival" → usamos `relacionObservadoSugerido`.
-    //    - Si no → dejar como estaba.
     let nuevoJugadorObservadoFiltro = config.jugadorObservadoFiltro;
     if (jugadorDetectadoId && verDatosDelJugador) {
       nuevoJugadorObservadoFiltro = "mismo";
@@ -90,9 +85,6 @@ export default function PanelBusqueda({
       nuevoJugadorObservadoFiltro = parseResult.relacionObservadoSugerido;
     }
 
-    // 2) tipoObservado:
-    //    si el parser detectó una secuencia con tipoObservado,
-    //    lo aplicamos.
     const nuevoTipoObservado =
       parseResult.tipoObservadoSugerido ?? config.tipoObservado;
 
@@ -106,10 +98,19 @@ export default function PanelBusqueda({
 
   const limpiar = () => setTexto("");
 
-  // ¿Hay sugerencia de secuencia? (para mostrar el hint)
+  // v3: narrow explícito para que TS sepa que no es "cualquiera"
+  const tipoObservadoSugeridoSeguro: TipoDisparador | null =
+    parseResult.tipoObservadoSugerido !== null &&
+    parseResult.tipoObservadoSugerido !== "cualquiera"
+      ? parseResult.tipoObservadoSugerido
+      : null;
+
+  const relacionObservadoSugeridoSeguro: RelacionJugadorObservado | null =
+    parseResult.relacionObservadoSugerido;
+
   const haySecuencia =
-    parseResult.tipoObservadoSugerido !== null ||
-    parseResult.relacionObservadoSugerido !== null ||
+    tipoObservadoSugeridoSeguro !== null ||
+    relacionObservadoSugeridoSeguro !== null ||
     parseResult.faseRallySugerida !== null;
 
   return (
@@ -224,27 +225,26 @@ export default function PanelBusqueda({
         </div>
       )}
 
-      {/* v2: hint de secuencia detectada */}
       {haySecuencia && (
         <div className="rounded border border-pink-500/30 bg-pink-500/10 p-2 space-y-0.5">
           <p className="text-[10px] font-bold text-pink-200">
             🎯 Secuencia detectada
           </p>
           <p className="text-[10px] text-pink-200/80">
-            {parseResult.tipoObservadoSugerido && (
+            {tipoObservadoSugeridoSeguro && (
               <>
                 Se va a mirar la siguiente{" "}
                 <strong>
-                  {etiquetaTipoDisparador(parseResult.tipoObservadoSugerido)}
+                  {etiquetaTipoDisparador(tipoObservadoSugeridoSeguro)}
                 </strong>
-                {parseResult.relacionObservadoSugerido && (
+                {relacionObservadoSugeridoSeguro && (
                   <>
                     {" "}
                     del{" "}
                     <strong>
-                      {parseResult.relacionObservadoSugerido === "rival"
+                      {relacionObservadoSugeridoSeguro === "rival"
                         ? "rival"
-                        : parseResult.relacionObservadoSugerido === "companero"
+                        : relacionObservadoSugeridoSeguro === "companero"
                         ? "compañero"
                         : "mismo jugador"}
                     </strong>
