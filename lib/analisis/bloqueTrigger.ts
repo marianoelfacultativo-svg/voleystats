@@ -3,17 +3,15 @@
 // ============================================================
 // Extraído de lib/analisisConsecuencias.ts (v9).
 //
-// Funciones:
-//   - cumpleBloqueTrigger(a, bloque, ...): evalúa si una acción
-//     cumple con TODOS los filtros de un bloque trigger.
-//   - hayFiltrosAvanzadosEnBloque(f): ¿tiene algún filtro avanzado
-//     activo (para mostrar el ⚙️ en la UI)?
-//   - hayFiltroAnalisisActivo(f): ¿tiene al menos un bloque?
+// v1.1 (FASE 2):
+//   + evalúa bloque.ubicacion (delantero / zaguero / líbero / otro)
+//   + evalúa bloque.cambioEnPunto (boolean | null)
+//   + agrega ubicacion y cambioEnPunto a hayFiltrosAvanzadosEnBloque
 // ============================================================
 
 import type { AccionVisual } from "../../app/equipo/adaptadorUnificadoV2";
 import type { ContextoRally } from "../contextoRally";
-import { baseSubtipo } from "./clasificacion";
+import { baseSubtipo, ubicacionDeZona } from "./clasificacion";
 import { hayContextoPartidoActivo, cumpleContextoPartido } from "./contexto";
 import {
   cumpleAccionPreviaDirecta,
@@ -65,6 +63,23 @@ export function cumpleBloqueTrigger(
     (a.zona_jugador === null || !bloque.zonasJugador.includes(a.zona_jugador))
   )
     return false;
+
+  // FASE 2: ubicación del jugador (delantero / zaguero / líbero / otro)
+  if (bloque.ubicacion !== "cualquiera") {
+    if (bloque.ubicacion === "libero") {
+      if (a.rol_jugador !== "L") return false;
+    } else {
+      const ubi = ubicacionDeZona(a.zona_jugador);
+      if (ubi !== bloque.ubicacion) return false;
+    }
+  }
+
+  // FASE 2: cambio de jugador en el punto
+  if (bloque.cambioEnPunto !== null) {
+    const tuvoCambio = a.cambioEnPunto ?? false;
+    if (tuvoCambio !== bloque.cambioEnPunto) return false;
+  }
+
   if (
     bloque.rotaciones.length > 0 &&
     (a.rotacion_numero === null ||
@@ -181,6 +196,8 @@ export function hayFiltrosAvanzadosEnBloque(f: BloqueTriggerFiltro): boolean {
     f.partidos.length > 0 ||
     f.roles.length > 0 ||
     f.zonasJugador.length > 0 ||
+    f.ubicacion !== "cualquiera" ||
+    f.cambioEnPunto !== null ||
     f.rotaciones.length > 0 ||
     f.rachas.length > 0 ||
     f.accionPreviaDirecta ||

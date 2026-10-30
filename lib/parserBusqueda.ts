@@ -1,20 +1,22 @@
 // ============================================================
-// PARSER DE BÚSQUEDA — v3.10
+// PARSER DE BÚSQUEDA — v3.11
 // Fix: "R" suelto = remate de segunda. Detección de R#, R+,
 // R!, R-, R--, R/, R= sobre el texto ORIGINAL (antes de
 // normalizar, porque normalizar() borra los símbolos).
 //
+// Cambios v3.11 (FASE 2):
+//   + Volcado de ubicación y cambioEnPunto al filtro real:
+//     si `parsearIntencion` detectó condición.ubicacion o
+//     condición.cambioEnPunto / .despuesDeCambio, esos valores
+//     se copian al `filtro` final para que la consulta filtre.
+//   + El resto del archivo es idéntico a v3.10.
+//
 // Cambios v3.10:
 //   + Nuevo campo `intencion` en `ResultadoParser`, calculado con
 //     `parsearIntencion` de ./consultaAnalitica/parserIntencion.
-//     FASE 1 del plan "Consultas Analíticas Libres".
-//   + Nada más cambia respecto de v3.9: los matches, el filtro,
-//     las sugerencias y el resto siguen igual.
 //
 // Cambios v3.9:
-//   + `extraerZonas()` ahora reconoce "<verbo de posición> en N"
-//     (1-6) como zona del jugador. Ej: "cuando estan en 4",
-//     "opuestos que juegan en 2", "puntas parados en 5", etc.
+//   + `extraerZonas()` reconoce "<verbo de posición> en N".
 //
 // Cambios v3.8:
 //   + `extraerSecuencia()`, `tipoObservadoSugerido`,
@@ -40,7 +42,7 @@ import {
 } from "./analisisConsecuencias";
 import type { FaseRally } from "./contextoRally";
 
-// FASE 1 del plan "Consultas Analíticas Libres":
+// FASE 1 / 2 del plan "Consultas Analíticas Libres":
 import { parsearIntencion } from "./consultaAnalitica/parserIntencion";
 import type { IntencionQuery } from "./consultaAnalitica/intenciones";
 import { intencionVacia } from "./consultaAnalitica/intenciones";
@@ -85,7 +87,7 @@ export interface ResultadoParser {
   tipoObservadoSugerido: TipoDisparador | "cualquiera" | null;
   relacionObservadoSugerido: RelacionJugadorObservado | null;
   faseRallySugerida: FaseRally | null;
-  /** FASE 1: intención de consulta analítica detectada (count / % / avg / etc.). */
+  /** FASE 1: intención de consulta analítica detectada. */
   intencion: IntencionQuery;
 }
 
@@ -2207,12 +2209,30 @@ export function parsearBusqueda(
   );
 
   // FASE 1: intención de consulta analítica (count / % / avg / etc.).
-  // No afecta `aplicado` ni `filtro`: es información adicional para
-  // que el motor de FASE 3 sepa QUÉ cálculo hacer.
+  // No afecta `aplicado` ni los matches: es información adicional
+  // para que el motor de FASE 3 sepa QUÉ cálculo hacer.
   const intencion = parsearIntencion(textoOriginal);
 
+  // FASE 2: si la intención detectó ubicación o cambio, los volcamos
+  // al filtro real para que la consulta filtre.
+  let filtroFinal: BloqueTriggerFiltro = filtro;
+  if (intencion.condicion?.ubicacion) {
+    filtroFinal = {
+      ...filtroFinal,
+      ubicacion: intencion.condicion.ubicacion as UbicacionFiltro,
+    };
+  }
+  if (intencion.condicion?.cambioEnPunto !== undefined) {
+    filtroFinal = {
+      ...filtroFinal,
+      cambioEnPunto: intencion.condicion.cambioEnPunto,
+    };
+  } else if (intencion.condicion?.despuesDeCambio === true) {
+    filtroFinal = { ...filtroFinal, cambioEnPunto: true };
+  }
+
   return {
-    filtro,
+    filtro: filtroFinal,
     matches: st.matches,
     noReconocidas: st.noReconocidas,
     sugerencias,

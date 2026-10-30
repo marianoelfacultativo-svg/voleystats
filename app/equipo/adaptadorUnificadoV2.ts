@@ -5,6 +5,11 @@
 //
 // Toda la lógica de flip de perspectiva + recálculo de subtipos
 // vive en lib/flipPerspectiva.ts (compartida con lib/db.ts).
+//
+// v1.1 (FASE 2):
+//   + `AccionVisual.cambioEnPunto` (opcional)
+//   + al cargar, lee `puntos_v2.cambios` y marca cada acción
+//     con si su punto tuvo al menos un cambio de jugador.
 // ============================================================
 
 import { supabase } from "@/lib/supabase";
@@ -76,6 +81,9 @@ export interface AccionVisual {
   subtipo_real: string | null;
   es_ultima_del_punto: boolean;
   calidad_armado_previo: number | null;
+
+  /** ¿El punto tuvo algún cambio de jugador? (FASE 2) */
+  cambioEnPunto?: boolean;
 }
 
 export interface PuntoConAcciones {
@@ -172,15 +180,26 @@ export async function cargarAccionesUnificadas(
   if (hayQueFlipear) rows = rows.map(flipAccionV2Row);
 
   // ------------------------------------------------------------
+  // CARGAR PUNTOS_V2 (ganadores + cambios) — FASE 2
+  // ------------------------------------------------------------
+  const { data: puntosData } = await supabase
+    .from("puntos_v2")
+    .select("set_numero, punto_numero, ganador, cambios")
+    .eq("partido_id", partidoId);
+
+  // Set de "set-punto" que tuvieron al menos un cambio.
+  const puntosConCambio = new Set<string>();
+  for (const p of puntosData ?? []) {
+    const cambios = (p as { cambios?: unknown }).cambios;
+    if (Array.isArray(cambios) && cambios.length > 0) {
+      puntosConCambio.add(`${p.set_numero}-${p.punto_numero}`);
+    }
+  }
+
+  // ------------------------------------------------------------
   // RECÁLCULO DE SUBTIPOS POST-FLIP
   // ------------------------------------------------------------
   if (hayQueFlipear) {
-    // Cargar ganadores del punto (necesarios para calcularSubtiposAtaque).
-    const { data: puntosData } = await supabase
-      .from("puntos_v2")
-      .select("set_numero, punto_numero, ganador")
-      .eq("partido_id", partidoId);
-
     const ganadores = new Map<string, Lado | null>();
     for (const p of puntosData ?? []) {
       let g = (p.ganador as Lado | null) ?? null;
@@ -264,6 +283,9 @@ export async function cargarAccionesUnificadas(
     subtipo_real: subtiipoReal(a),
     es_ultima_del_punto: false,
     calidad_armado_previo: calidadArmadoPrevioPorAccion.get(a.id) ?? null,
+    cambioEnPunto: puntosConCambio.has(
+      `${a.set_numero}-${a.punto_numero}`
+    ),
   }));
 
   // ------------------------------------------------------------

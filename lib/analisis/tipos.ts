@@ -4,6 +4,12 @@
 // Extraído de lib/analisisConsecuencias.ts (v9).
 // Solo tipos e interfaces + constantes iniciales.
 // Sin lógica, sin imports de motor.
+//
+// v1.1 (FASE 2):
+//   + BloqueTriggerFiltro.ubicacion: UbicacionFiltro
+//   + BloqueTriggerFiltro.cambioEnPunto: boolean | null
+//   + BLOQUE_TRIGGER_VACIO.ubicacion = "cualquiera"
+//   + BLOQUE_TRIGGER_VACIO.cambioEnPunto = null
 // ============================================================
 
 import type { FaseRally, InicioPunto, EstadoMarcador, DiferenciaMarcador } from "../contextoRally";
@@ -205,6 +211,10 @@ export interface BloqueTriggerFiltro {
   partidos: string[];
   roles: string[];
   zonasJugador: number[];
+  /** FASE 2: delantero / zaguero / líbero / otro. */
+  ubicacion: UbicacionFiltro;
+  /** FASE 2: ¿el punto tuvo cambios? null = cualquiera. */
+  cambioEnPunto: boolean | null;
   rotaciones: number[];
   rachas: RachaHistorica[];
   accionPreviaDirecta: FiltroAccionHistorica | null;
@@ -229,6 +239,8 @@ export const BLOQUE_TRIGGER_VACIO: BloqueTriggerFiltro = {
   partidos: [],
   roles: [],
   zonasJugador: [],
+  ubicacion: "cualquiera",
+  cambioEnPunto: null,
   rotaciones: [],
   rachas: [],
   accionPreviaDirecta: null,
