@@ -12,6 +12,12 @@
 //
 // v3: narrow del tipo `"cualquiera"` antes de llamar a
 // `etiquetaTipoDisparador` (fix build TS).
+//
+// v4 (FASE 1): agrega un bloque "Intención analítica" que muestra
+// los chips de la intención detectada por `parsearIntencion`
+// (tipo, groupBy, métrica, tiempo, condición). Es solo informativo:
+// NO se aplica al filtro. El motor de FASE 3 va a usar esa info
+// para saber qué cálculo hacer (count, %, avg, etc.).
 // ============================================================
 
 import { useMemo, useState } from "react";
@@ -41,6 +47,76 @@ interface Props {
   jugadoresParaDropdown: { id: string; nombre: string }[];
   partidosDisponibles?: { id: string; nombre: string }[];
 }
+
+// ------------------------------------------------------------
+// ETIQUETAS DE INTENCIÓN (para los chips)
+// ------------------------------------------------------------
+
+const ETIQ_TIPO_INTENCION: Record<string, string> = {
+  count: "cuántos",
+  percentage: "porcentaje",
+  average: "promedio",
+  frequency: "cada cuánto",
+  max: "máximo",
+  min: "mínimo",
+  ranking: "ranking",
+  comparison: "comparación",
+  distribution: "distribución",
+  trend: "evolución",
+  habit: "suele",
+  unknown: "",
+};
+
+const ETIQ_GROUPBY: Record<string, string> = {
+  set: "por set",
+  partido: "por partido",
+  jugador: "por jugador",
+  zona_origen: "por zona origen",
+  zona_destino: "por zona destino",
+  zona_jugador: "por zona jugador",
+  rotacion: "por rotación",
+  rol: "por rol",
+  ubicacion: "por ubicación",
+  fase: "por fase",
+  rival: "por rival",
+  resultado_partido: "por resultado",
+  tipo: "por tipo",
+  subtipo: "por subtipo",
+  velocidad: "por velocidad",
+  tipo_saque: "por tipo de saque",
+  variante: "por variante",
+  cambio: "por cambio",
+};
+
+const ETIQ_METRICA: Record<string, string> = {
+  kill_pct: "kill %",
+  attack_efficiency: "eficiencia de ataque",
+  hitting_pct: "hitting %",
+  sideout_pct: "side-out %",
+  break_point_pct: "break point %",
+  reception_pct: "calidad de recepción",
+  ace_pct: "ace %",
+  serve_error_pct: "error de saque %",
+  block_efficiency: "eficiencia de bloqueo",
+  dig_efficiency: "eficiencia de defensa",
+  puntos_por_set: "puntos por set",
+  puntos_por_rotacion: "puntos por rotación",
+};
+
+const ETIQ_TIEMPO: Record<string, string> = {
+  ultimos_n_partidos: "últimos partidos",
+  ultimos_n_sets: "últimos sets",
+  ultimos_n_jugadas: "últimas jugadas",
+  esta_temporada: "esta temporada",
+  esta_semana: "esta semana",
+  este_mes: "este mes",
+  este_ano: "este año",
+  temporada_pasada: "temporada pasada",
+  dia_semana: "día de la semana",
+  partido_especifico: "partido específico",
+  set_especifico: "set específico",
+  punto_especifico: "punto específico",
+};
 
 // ------------------------------------------------------------
 // COMPONENTE
@@ -113,6 +189,16 @@ export default function PanelBusqueda({
     relacionObservadoSugeridoSeguro !== null ||
     parseResult.faseRallySugerida !== null;
 
+  // v4: chips de intención analítica
+  const intencion = parseResult.intencion;
+  const hayIntencion = intencion.tipo !== "unknown";
+  const hayGroupBy = intencion.groupBy !== null;
+  const hayMetrica = intencion.metrica !== null;
+  const hayTiempo = intencion.tiempo !== null;
+  const hayCondicion =
+    intencion.condicion !== null &&
+    Object.keys(intencion.condicion).length > 0;
+
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.02] p-2 space-y-1.5">
       <div className="flex items-center gap-1.5">
@@ -132,7 +218,7 @@ export default function PanelBusqueda({
           onKeyDown={(e) => {
             if (e.key === "Enter") aplicar();
           }}
-          placeholder='Ej: "ataques de Juan después de errar", "ataques que defiende el rival"'
+          placeholder='Ej: "ataques de Juan después de errar", "porcentaje de recepciones perfectas por set esta temporada"'
           className="flex-1 bg-slate-900 text-white text-[11px] rounded px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-slate-400 placeholder:text-slate-600"
         />
         {texto && (
@@ -222,6 +308,176 @@ export default function PanelBusqueda({
                 : `${m.clave}: ${m.valor}`}
             </span>
           ))}
+        </div>
+      )}
+
+      {/* ============================================ */}
+      {/* v4: INTENCIÓN ANALÍTICA DETECTADA             */}
+      {/* ============================================ */}
+      {hayIntencion && (
+        <div className="rounded border border-cyan-500/30 bg-cyan-500/[0.08] p-2 space-y-1">
+          <p className="text-[10px] font-bold text-cyan-200">
+            📊 Intención analítica detectada
+          </p>
+          <div className="flex flex-wrap gap-1">
+            <span className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-cyan-500/25 text-cyan-100 border-cyan-400/60">
+              {ETIQ_TIPO_INTENCION[intencion.tipo] ?? intencion.tipo}
+            </span>
+            {hayMetrica && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-emerald-500/20 text-emerald-200 border-emerald-400/50"
+                title="Métrica de vóley detectada"
+              >
+                {ETIQ_METRICA[intencion.metrica!] ?? intencion.metrica}
+              </span>
+            )}
+            {hayGroupBy && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-violet-500/20 text-violet-200 border-violet-400/50"
+                title="Agrupación detectada"
+              >
+                {ETIQ_GROUPBY[intencion.groupBy!] ?? intencion.groupBy}
+              </span>
+            )}
+            {hayTiempo && intencion.tiempo && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-amber-500/20 text-amber-200 border-amber-400/50"
+                title="Ventana temporal detectada"
+              >
+                {ETIQ_TIEMPO[intencion.tiempo.tipo] ?? intencion.tiempo.tipo}
+                {intencion.tiempo.n ? ` (${intencion.tiempo.n})` : ""}
+                {intencion.tiempo.diaSemana
+                  ? ` (${intencion.tiempo.diaSemana})`
+                  : ""}
+                {intencion.tiempo.set ? ` · set ${intencion.tiempo.set}` : ""}
+                {intencion.tiempo.punto
+                  ? ` · punto ${intencion.tiempo.punto}`
+                  : ""}
+              </span>
+            )}
+            {intencion.ordenamiento && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-slate-500/20 text-slate-200 border-slate-400/50"
+                title="Orden detectado"
+              >
+                {intencion.ordenamiento === "asc" ? "↑ asc" : "↓ desc"}
+              </span>
+            )}
+            {intencion.limite !== null && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-slate-500/20 text-slate-200 border-slate-400/50"
+                title="Límite detectado"
+              >
+                top {intencion.limite}
+              </span>
+            )}
+            {intencion.comparacion && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-pink-500/20 text-pink-200 border-pink-400/50"
+                title="Comparación detectada"
+              >
+                {intencion.comparacion.a} vs {intencion.comparacion.b}
+              </span>
+            )}
+            {hayCondicion && intencion.condicion && (
+              <>
+                {intencion.condicion.marcador && (
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-slate-500/20 text-slate-200 border-slate-400/50"
+                    title="Marcador detectado"
+                  >
+                    {intencion.condicion.marcador}
+                  </span>
+                )}
+                {intencion.condicion.diferencia !== undefined && (
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-slate-500/20 text-slate-200 border-slate-400/50"
+                    title="Diferencia detectada"
+                  >
+                    dif {intencion.condicion.diferencia}
+                  </span>
+                )}
+                {intencion.condicion.puntoCritico && (
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-amber-500/20 text-amber-200 border-amber-400/50"
+                  >
+                    crítico
+                  </span>
+                )}
+                {intencion.condicion.rachaMinima !== undefined && (
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-rose-500/20 text-rose-200 border-rose-400/50"
+                  >
+                    racha ≥ {intencion.condicion.rachaMinima}
+                  </span>
+                )}
+                {intencion.condicion.fase && (
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-violet-500/20 text-violet-200 border-violet-400/50"
+                  >
+                    {intencion.condicion.fase}
+                  </span>
+                )}
+                {intencion.condicion.toquesMinimos !== undefined && (
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-slate-500/20 text-slate-200 border-slate-400/50"
+                  >
+                    ≥ {intencion.condicion.toquesMinimos} toques
+                  </span>
+                )}
+                {intencion.condicion.calidadArmado !== undefined && (
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-slate-500/20 text-slate-200 border-slate-400/50"
+                  >
+                    armado {intencion.condicion.calidadArmado}
+                  </span>
+                )}
+                {intencion.condicion.conErrorPrevio && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-rose-500/20 text-rose-200 border-rose-400/50">
+                    tras error
+                  </span>
+                )}
+                {intencion.condicion.conAciertoPrevio && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-emerald-500/20 text-emerald-200 border-emerald-400/50">
+                    tras acierto
+                  </span>
+                )}
+                {intencion.condicion.ubicacion && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-cyan-500/20 text-cyan-200 border-cyan-400/50">
+                    {intencion.condicion.ubicacion}
+                  </span>
+                )}
+                {intencion.condicion.zonaJugador &&
+                  intencion.condicion.zonaJugador.length > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-cyan-500/20 text-cyan-200 border-cyan-400/50">
+                      zona{" "}
+                      {intencion.condicion.zonaJugador
+                        .map((z) => `Z${z}`)
+                        .join("|")}
+                    </span>
+                  )}
+                {intencion.condicion.cambioEnPunto === true && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-fuchsia-500/20 text-fuchsia-200 border-fuchsia-400/50">
+                    con cambio
+                  </span>
+                )}
+                {intencion.condicion.cambioEnPunto === false && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-fuchsia-500/20 text-fuchsia-200 border-fuchsia-400/50">
+                    sin cambio
+                  </span>
+                )}
+                {intencion.condicion.despuesDeCambio === true && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-fuchsia-500/20 text-fuchsia-200 border-fuchsia-400/50">
+                    tras cambio
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+          <p className="text-[9px] text-cyan-200/70 italic leading-tight">
+            Solo informativo. El motor de FASE 3 usará esta intención para
+            decidir qué cálculo hacer (contar, %, promedio, etc.).
+          </p>
         </div>
       )}
 

@@ -1,29 +1,25 @@
 // ============================================================
-// PARSER DE BÚSQUEDA — v3.8
+// PARSER DE BÚSQUEDA — v3.10
 // Fix: "R" suelto = remate de segunda. Detección de R#, R+,
 // R!, R-, R--, R/, R= sobre el texto ORIGINAL (antes de
 // normalizar, porque normalizar() borra los símbolos).
 //
+// Cambios v3.10:
+//   + Nuevo campo `intencion` en `ResultadoParser`, calculado con
+//     `parsearIntencion` de ./consultaAnalitica/parserIntencion.
+//     FASE 1 del plan "Consultas Analíticas Libres".
+//   + Nada más cambia respecto de v3.9: los matches, el filtro,
+//     las sugerencias y el resto siguen igual.
+//
+// Cambios v3.9:
+//   + `extraerZonas()` ahora reconoce "<verbo de posición> en N"
+//     (1-6) como zona del jugador. Ej: "cuando estan en 4",
+//     "opuestos que juegan en 2", "puntas parados en 5", etc.
+//
 // Cambios v3.8:
-//   + NUEVO extractor `extraerSecuencia()` que detecta patrones
-//     del tipo "<verbo conjugado> <sujeto>":
-//        "que defiende el rival"  → tipoObservado=defensa,
-//                                    relacionObservado=rival
-//        "que bloquea el rival"   → tipoObservado=bloqueo,
-//                                    relacionObservado=rival
-//        "que ataca el rival"     → tipoObservado=ataque, rival
-//        "que saca un compañero"  → tipoObservado=saque,
-//                                    relacionObservado=companero
-//        etc.
-//   + NUEVO patrón "vuelve libre" / "vuelven libres" que marca
-//     `faseRallySugerida = "free-ball"` (informativo, no se
-//     aplica automáticamente).
-//   + ResultadoParser ahora devuelve 3 campos extra:
-//        tipoObservadoSugerido     (se aplica)
-//        relacionObservadoSugerido (se aplica)
-//        faseRallySugerida         (informativo)
-//   + Stopwords: rival, rivales, contrario, oponente, vuelve,
-//     vuelven, devuelve, devuelven, equipo, equipos, etc.
+//   + `extraerSecuencia()`, `tipoObservadoSugerido`,
+//     `relacionObservadoSugerido`, `faseRallySugerida`,
+//     categoría "secuencia".
 // ============================================================
 
 import {
@@ -43,6 +39,11 @@ import {
   type UbicacionFiltro,
 } from "./analisisConsecuencias";
 import type { FaseRally } from "./contextoRally";
+
+// FASE 1 del plan "Consultas Analíticas Libres":
+import { parsearIntencion } from "./consultaAnalitica/parserIntencion";
+import type { IntencionQuery } from "./consultaAnalitica/intenciones";
+import { intencionVacia } from "./consultaAnalitica/intenciones";
 
 // ------------------------------------------------------------
 // TIPOS PÚBLICOS
@@ -81,10 +82,11 @@ export interface ResultadoParser {
   noReconocidas: string[];
   sugerencias: string[];
   aplicado: boolean;
-  // v3.8
   tipoObservadoSugerido: TipoDisparador | "cualquiera" | null;
   relacionObservadoSugerido: RelacionJugadorObservado | null;
   faseRallySugerida: FaseRally | null;
+  /** FASE 1: intención de consulta analítica detectada (count / % / avg / etc.). */
+  intencion: IntencionQuery;
 }
 
 export interface ContextoParser {
@@ -899,12 +901,12 @@ const STOPWORDS: string[] = [
   // === ESPACIO / DIRECCIÓN ===
   "lado", "lados", "campo", "campos",
 
-  // === RIVAL / CONTRARIO (v3.8) ===
+  // === RIVAL / CONTRARIO ===
   "rival", "rivales", "contrario", "contrarios",
   "oponente", "oponentes", "equipo", "equipos",
   "adversario", "adversarios",
 
-  // === VUELVE / DEVUELVE (v3.8) ===
+  // === VUELVE / DEVUELVE ===
   "vuelve", "vuelven", "vuelto", "vuelta", "vuelven",
   "devuelve", "devuelven", "devolvio", "devolvió",
   "devuelto", "devuelta", "devueltas", "devueltos",
@@ -1054,16 +1056,6 @@ function consumirTiposSecundarios(
 // ============================================================
 // v3.8: EXTRACTOR DE SECUENCIA
 // ============================================================
-// Detecta patrones del tipo "<verbo conjugado> <sujeto>":
-//   - "que defiende el rival"
-//   - "que bloquea un compañero"
-//   - "que ataca el mismo jugador"
-//   - "que saca el rival"
-//   - etc.
-//
-// Y también "vuelve libre" / "vuelven libres" para marcar
-// `faseRally = "free-ball"` (informativo).
-// ============================================================
 
 interface SecuenciaExtraida {
   tipoObservado: TipoDisparador | null;
@@ -1205,7 +1197,6 @@ function extraerSecuencia(st: ExtractionState): SecuenciaExtraida {
     if (resultado.tipoObservado) break;
   }
 
-  // "vuelve libre" / "vuelven libres" → fase free-ball (informativo)
   const patronesVuelveLibre = [
     "vuelve libre", "vuelven libres",
     "vuelve de libre", "vuelven de libres",
@@ -1349,6 +1340,10 @@ function extraerPartidos(
   return out;
 }
 
+// ============================================================
+// v3.9: extraerZonas con soporte para "verbo + en + N"
+// ============================================================
+
 function extraerZonas(st: ExtractionState): number[] {
   const zonas: number[] = [];
   const regex = /\bz(?:ona)?\s*([1-6])\b/g;
@@ -1363,6 +1358,29 @@ function extraerZonas(st: ExtractionState): number[] {
     agregarMatch(st, "zona", "6", "zona", "olla");
     st.tokensConsumidos.add("olla");
   }
+
+  // v3.9: "verbo de posición + en + N" → zona del jugador.
+  const VERBOS_POSICION = [
+    "estan", "están", "esta", "está", "estaban", "estaba",
+    "estuvo", "estuvieron",
+    "juega", "juegan", "jugaba", "jugaban", "jugo", "jugó",
+    "parado", "parada", "parados", "paradas",
+    "ubicado", "ubicada", "ubicados", "ubicadas",
+    "posicionado", "posicionada", "posicionados", "posicionadas",
+  ];
+  const verboRe = VERBOS_POSICION.join("|");
+  const regexPosicion = new RegExp(
+    `\\b(?:${verboRe})\\s+en\\s+([1-6])\\b`,
+    "g"
+  );
+  while ((m = regexPosicion.exec(st.texto)) !== null) {
+    const n = parseInt(m[1], 10);
+    if (!zonas.includes(n)) zonas.push(n);
+    agregarMatch(st, "zona", String(n), "zona", m[0]);
+    const verboMatch = m[0].match(new RegExp(`^(${verboRe})`));
+    if (verboMatch) st.tokensConsumidos.add(verboMatch[1]);
+  }
+
   return zonas;
 }
 
@@ -2062,6 +2080,7 @@ export function parsearBusqueda(
       tipoObservadoSugerido: null,
       relacionObservadoSugerido: null,
       faseRallySugerida: null,
+      intencion: intencionVacia(),
     };
   }
 
@@ -2187,6 +2206,11 @@ export function parsearBusqueda(
     st.matches.length > 0
   );
 
+  // FASE 1: intención de consulta analítica (count / % / avg / etc.).
+  // No afecta `aplicado` ni `filtro`: es información adicional para
+  // que el motor de FASE 3 sepa QUÉ cálculo hacer.
+  const intencion = parsearIntencion(textoOriginal);
+
   return {
     filtro,
     matches: st.matches,
@@ -2196,5 +2220,6 @@ export function parsearBusqueda(
     tipoObservadoSugerido: secuencia.tipoObservado,
     relacionObservadoSugerido: secuencia.relacionObservado,
     faseRallySugerida: secuencia.faseRally,
+    intencion,
   };
 }
