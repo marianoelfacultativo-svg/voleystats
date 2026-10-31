@@ -17,6 +17,29 @@ import { supabase } from "@/lib/supabase";
 import ImagenAmpliable from "../equipo/ImagenAmpliable";
 import DatosBackup from "./DatosBackup";
 
+// ============================================================
+// ADMIN PAGE — panel de administración
+// ============================================================
+//
+// v2 (FASE 7.1 — DataEntry con sets y partido):
+//   + El formulario de partido ya NO edita:
+//       - set1 … set5
+//       - set1_ganado … set5_ganado
+//       - resultado_partido
+//       - errores_rivales
+//       - buenas_rivales
+//       - notas
+//     Todos esos campos los llena el DataEntry.
+//   + El formulario de partido solo edita:
+//       - equipo_id (obligatorio)
+//       - rival (texto, obligatorio)
+//       - equipo_rival_id (opcional, modo espejo)
+//       - fecha (obligatoria)
+//   + La lista de partidos sigue mostrando el score y el
+//     resultado como información de solo lectura.
+//   + Se elimina el componente `SelectorSetGanado` (ya no se usa).
+// ============================================================
+
 type Seccion = "equipos" | "jugadores" | "partidos" | "codigos" | "datos";
 
 interface Equipo {
@@ -71,6 +94,17 @@ interface Acceso {
   activo: boolean;
 }
 
+// ------------------------------------------------------------
+// ESTADO INICIAL DEL FORM DE PARTIDO (solo 4 campos)
+// ------------------------------------------------------------
+
+const nuevoPartidoVacio = () => ({
+  equipo_id: "",
+  rival: "",
+  equipo_rival_id: "",
+  fecha: "",
+});
+
 export default function AdminPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
@@ -116,26 +150,7 @@ export default function AdminPage() {
   // Partidos
   const [partidos, setPartidos] = useState<Partido[]>([]);
   const [cargandoPartidos, setCargandoPartidos] = useState(false);
-  const [nuevoPartido, setNuevoPartido] = useState({
-    equipo_id: "",
-    rival: "",
-    equipo_rival_id: "",
-    fecha: "",
-    set1: "",
-    set2: "",
-    set3: "",
-    set4: "",
-    set5: "",
-    set1_ganado: null as boolean | null,
-    set2_ganado: null as boolean | null,
-    set3_ganado: null as boolean | null,
-    set4_ganado: null as boolean | null,
-    set5_ganado: null as boolean | null,
-    resultado_partido: "" as "" | "ganado" | "perdido",
-    errores_rivales: "",
-    buenas_rivales: "",
-    notas: "",
-  });
+  const [nuevoPartido, setNuevoPartido] = useState(nuevoPartidoVacio());
   const [creandoPartido, setCreandoPartido] = useState(false);
   const [editandoPartidoId, setEditandoPartidoId] = useState<string | null>(null);
   const [editPartido, setEditPartido] = useState<Partido | null>(null);
@@ -421,6 +436,8 @@ export default function AdminPage() {
   };
 
   // ========== PARTIDOS ==========
+  // v2 (FASE 7.1): solo se cargan los 4 campos base. El resto
+  // (sets, resultado, notas) los llena el DataEntry.
   const crearPartido = async () => {
     if (!nuevoPartido.equipo_id) {
       alert("Elegí un equipo");
@@ -440,53 +457,18 @@ export default function AdminPage() {
       rival: nuevoPartido.rival.trim(),
       equipo_rival_id: nuevoPartido.equipo_rival_id || null,
       fecha: nuevoPartido.fecha,
-      set1: nuevoPartido.set1.trim() || null,
-      set2: nuevoPartido.set2.trim() || null,
-      set3: nuevoPartido.set3.trim() || null,
-      set4: nuevoPartido.set4.trim() || null,
-      set5: nuevoPartido.set5.trim() || null,
-      set1_ganado: nuevoPartido.set1_ganado,
-      set2_ganado: nuevoPartido.set2_ganado,
-      set3_ganado: nuevoPartido.set3_ganado,
-      set4_ganado: nuevoPartido.set4_ganado,
-      set5_ganado: nuevoPartido.set5_ganado,
-      resultado_partido: nuevoPartido.resultado_partido || null,
-      errores_rivales: nuevoPartido.errores_rivales
-        ? parseInt(nuevoPartido.errores_rivales)
-        : 0,
-      buenas_rivales: nuevoPartido.buenas_rivales
-        ? parseInt(nuevoPartido.buenas_rivales)
-        : 0,
-      notas: nuevoPartido.notas.trim() || null,
     });
     setCreandoPartido(false);
     if (error) {
       alert("Error al crear partido: " + error.message);
       return;
     }
-    setNuevoPartido({
-      equipo_id: "",
-      rival: "",
-      equipo_rival_id: "",
-      fecha: "",
-      set1: "",
-      set2: "",
-      set3: "",
-      set4: "",
-      set5: "",
-      set1_ganado: null,
-      set2_ganado: null,
-      set3_ganado: null,
-      set4_ganado: null,
-      set5_ganado: null,
-      resultado_partido: "",
-      errores_rivales: "",
-      buenas_rivales: "",
-      notas: "",
-    });
+    setNuevoPartido(nuevoPartidoVacio());
     cargarPartidos();
   };
 
+  // v2 (FASE 7.1): al editar, solo se actualizan los 4 campos base.
+  // Los sets, resultado, notas, etc. NO se tocan desde acá.
   const guardarEdicionPartido = async () => {
     if (!editPartido) return;
     if (
@@ -504,20 +486,6 @@ export default function AdminPage() {
         rival: editPartido.rival.trim(),
         equipo_rival_id: editPartido.equipo_rival_id || null,
         fecha: editPartido.fecha,
-        set1: editPartido.set1?.trim() || null,
-        set2: editPartido.set2?.trim() || null,
-        set3: editPartido.set3?.trim() || null,
-        set4: editPartido.set4?.trim() || null,
-        set5: editPartido.set5?.trim() || null,
-        set1_ganado: editPartido.set1_ganado,
-        set2_ganado: editPartido.set2_ganado,
-        set3_ganado: editPartido.set3_ganado,
-        set4_ganado: editPartido.set4_ganado,
-        set5_ganado: editPartido.set5_ganado,
-        resultado_partido: editPartido.resultado_partido || null,
-        errores_rivales: editPartido.errores_rivales ?? 0,
-        buenas_rivales: editPartido.buenas_rivales ?? 0,
-        notas: editPartido.notas?.trim() || null,
       })
       .eq("id", editPartido.id);
     if (error) {
@@ -630,53 +598,6 @@ export default function AdminPage() {
 
   const inputBase =
     "px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#163A85]/20 focus:border-[#163A85]";
-
-  const SelectorSetGanado = ({
-    valor,
-    onChange,
-  }: {
-    valor: boolean | null;
-    onChange: (v: boolean | null) => void;
-  }) => (
-    <div className="flex gap-1">
-      <button
-        type="button"
-        onClick={() => onChange(true)}
-        className={`px-2 py-1 text-xs font-semibold rounded transition ${
-          valor === true
-            ? "bg-green-500 text-white"
-            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-        }`}
-        title="Ganado"
-      >
-        G
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange(false)}
-        className={`px-2 py-1 text-xs font-semibold rounded transition ${
-          valor === false
-            ? "bg-red-500 text-white"
-            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-        }`}
-        title="Perdido"
-      >
-        P
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange(null)}
-        className={`px-2 py-1 text-xs font-semibold rounded transition ${
-          valor === null
-            ? "bg-slate-600 text-white"
-            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-        }`}
-        title="Sin marcar"
-      >
-        —
-      </button>
-    </div>
-  );
 
   return (
     <main className="min-h-screen bg-slate-50/70 p-4 sm:p-8">
@@ -1198,9 +1119,13 @@ export default function AdminPage() {
           {/* ============ PARTIDOS ============ */}
           {seccion === "partidos" && (
             <div>
-              <h2 className="text-xl font-semibold text-slate-900 mb-6">
+              <h2 className="text-xl font-semibold text-slate-900 mb-2">
                 Partidos
               </h2>
+              <p className="text-xs text-slate-500 mb-6">
+                Acá solo se crean los partidos. Los sets y el resultado
+                los carga el DataEntry al cerrar cada set y el partido.
+              </p>
               {equipos.length === 0 && (
                 <p className="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
                   ⚠️ Primero creá al menos un equipo.
@@ -1244,25 +1169,6 @@ export default function AdminPage() {
                     placeholder="Rival (texto)"
                     className={inputBase}
                   />
-                  <select
-                    value={nuevoPartido.equipo_rival_id}
-                    onChange={(e) =>
-                      setNuevoPartido({
-                        ...nuevoPartido,
-                        equipo_rival_id: e.target.value,
-                      })
-                    }
-                    className={`col-span-2 ${inputBase}`}
-                  >
-                    <option value="">Equipo rival (opcional, para modo espejo)</option>
-                    {equipos
-                      .filter((eq) => eq.id !== nuevoPartido.equipo_id)
-                      .map((eq) => (
-                        <option key={eq.id} value={eq.id}>
-                          {eq.nombre}
-                        </option>
-                      ))}
-                  </select>
                   <input
                     type="date"
                     value={nuevoPartido.fecha}
@@ -1274,137 +1180,28 @@ export default function AdminPage() {
                     }
                     className={`col-span-2 ${inputBase}`}
                   />
-                </div>
-                <p className="text-sm font-medium text-slate-700 pt-2">
-                  Score por set (opcional)
-                </p>
-                <div className="grid grid-cols-5 gap-2">
-                  {(["set1", "set2", "set3", "set4", "set5"] as const).map(
-                    (k, i) => (
-                      <div key={k}>
-                        <input
-                          type="text"
-                          value={nuevoPartido[k]}
-                          onChange={(e) =>
-                            setNuevoPartido({
-                              ...nuevoPartido,
-                              [k]: e.target.value,
-                            })
-                          }
-                          placeholder={`S${i + 1}`}
-                          className={`w-full ${inputBase}`}
-                        />
-                        <div className="mt-1 flex justify-center">
-                          <SelectorSetGanado
-                            valor={nuevoPartido[`${k}_ganado`]}
-                            onChange={(v) =>
-                              setNuevoPartido({
-                                ...nuevoPartido,
-                                [`${k}_ganado`]: v,
-                              })
-                            }
-                          />
-                        </div>
-                      </div>
-                    )
-                  )}
-                </div>
-
-                <p className="text-sm font-medium text-slate-700 pt-2">
-                  Resultado del partido
-                </p>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setNuevoPartido({
-                        ...nuevoPartido,
-                        resultado_partido: "ganado",
-                      })
-                    }
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                      nuevoPartido.resultado_partido === "ganado"
-                        ? "bg-green-500 text-white"
-                        : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-                    }`}
-                  >
-                    Ganado
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setNuevoPartido({
-                        ...nuevoPartido,
-                        resultado_partido: "perdido",
-                      })
-                    }
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                      nuevoPartido.resultado_partido === "perdido"
-                        ? "bg-red-500 text-white"
-                        : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-                    }`}
-                  >
-                    Perdido
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setNuevoPartido({
-                        ...nuevoPartido,
-                        resultado_partido: "",
-                      })
-                    }
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                      nuevoPartido.resultado_partido === ""
-                        ? "bg-slate-600 text-white"
-                        : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-                    }`}
-                  >
-                    Sin marcar
-                  </button>
-                </div>
-
-                <p className="text-sm font-medium text-slate-700 pt-2">
-                  Rival (informativo)
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="number"
-                    value={nuevoPartido.errores_rivales}
+                  <select
+                    value={nuevoPartido.equipo_rival_id}
                     onChange={(e) =>
                       setNuevoPartido({
                         ...nuevoPartido,
-                        errores_rivales: e.target.value,
+                        equipo_rival_id: e.target.value,
                       })
                     }
-                    placeholder="Errores rivales"
-                    className={inputBase}
-                  />
-                  <input
-                    type="number"
-                    value={nuevoPartido.buenas_rivales}
-                    onChange={(e) =>
-                      setNuevoPartido({
-                        ...nuevoPartido,
-                        buenas_rivales: e.target.value,
-                      })
-                    }
-                    placeholder="Buenas rivales"
-                    className={inputBase}
-                  />
+                    className={`col-span-2 ${inputBase}`}
+                  >
+                    <option value="">
+                      Equipo rival real (opcional, para modo espejo)
+                    </option>
+                    {equipos
+                      .filter((eq) => eq.id !== nuevoPartido.equipo_id)
+                      .map((eq) => (
+                        <option key={eq.id} value={eq.id}>
+                          {eq.nombre}
+                        </option>
+                      ))}
+                  </select>
                 </div>
-                <textarea
-                  value={nuevoPartido.notas}
-                  onChange={(e) =>
-                    setNuevoPartido({
-                      ...nuevoPartido,
-                      notas: e.target.value,
-                    })
-                  }
-                  placeholder="Notas (opcional)"
-                  rows={2}
-                  className={`w-full ${inputBase}`}
-                />
                 <button
                   onClick={crearPartido}
                   disabled={creandoPartido}
@@ -1460,8 +1257,19 @@ export default function AdminPage() {
                                   rival: e.target.value,
                                 })
                               }
-                              placeholder="Rival"
+                              placeholder="Rival (texto)"
                               className={inputBase}
+                            />
+                            <input
+                              type="date"
+                              value={editPartido.fecha}
+                              onChange={(e) =>
+                                setEditPartido({
+                                  ...editPartido,
+                                  fecha: e.target.value,
+                                })
+                              }
+                              className={`col-span-2 ${inputBase}`}
                             />
                             <select
                               value={editPartido.equipo_rival_id ?? ""}
@@ -1474,7 +1282,8 @@ export default function AdminPage() {
                               className={`col-span-2 ${inputBase}`}
                             >
                               <option value="">
-                                Equipo rival (opcional, para modo espejo)
+                                Equipo rival real (opcional, para modo
+                                espejo)
                               </option>
                               {equipos
                                 .filter(
@@ -1486,156 +1295,65 @@ export default function AdminPage() {
                                   </option>
                                 ))}
                             </select>
-                            <input
-                              type="date"
-                              value={editPartido.fecha}
-                              onChange={(e) =>
-                                setEditPartido({
-                                  ...editPartido,
-                                  fecha: e.target.value,
-                                })
-                              }
-                              className={`col-span-2 ${inputBase}`}
-                            />
                           </div>
 
-                          <p className="text-sm font-medium text-slate-700">
-                            Score y resultado por set
-                          </p>
-                          <div className="grid grid-cols-5 gap-2">
-                            {(
-                              [
-                                "set1",
-                                "set2",
-                                "set3",
-                                "set4",
-                                "set5",
-                              ] as const
-                            ).map((k, i) => (
-                              <div key={k}>
-                                <input
-                                  type="text"
-                                  value={editPartido[k] ?? ""}
-                                  onChange={(e) =>
-                                    setEditPartido({
-                                      ...editPartido,
-                                      [k]: e.target.value,
-                                    })
-                                  }
-                                  placeholder={`S${i + 1}`}
-                                  className={`w-full ${inputBase}`}
-                                />
-                                <div className="mt-1 flex justify-center">
-                                  <SelectorSetGanado
-                                    valor={editPartido[`${k}_ganado`]}
-                                    onChange={(v) =>
-                                      setEditPartido({
-                                        ...editPartido,
-                                        [`${k}_ganado`]: v,
-                                      })
-                                    }
-                                  />
+                          {/* Info de solo lectura: sets y resultado */}
+                          {((p.set1 ||
+                            p.set2 ||
+                            p.set3 ||
+                            p.set4 ||
+                            p.set5) ||
+                            p.resultado_partido) && (
+                            <div className="rounded-lg bg-white border border-slate-200 p-3">
+                              <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">
+                                Cargado por DataEntry (solo lectura)
+                              </p>
+                              {(p.set1 ||
+                                p.set2 ||
+                                p.set3 ||
+                                p.set4 ||
+                                p.set5) && (
+                                <div className="flex gap-2 flex-wrap mb-2">
+                                  {[
+                                    { s: p.set1, g: p.set1_ganado, n: 1 },
+                                    { s: p.set2, g: p.set2_ganado, n: 2 },
+                                    { s: p.set3, g: p.set3_ganado, n: 3 },
+                                    { s: p.set4, g: p.set4_ganado, n: 4 },
+                                    { s: p.set5, g: p.set5_ganado, n: 5 },
+                                  ]
+                                    .filter((x) => x.s || x.g !== null)
+                                    .map((x, i) => (
+                                      <span
+                                        key={i}
+                                        className={`text-xs px-2 py-1 rounded font-medium ${
+                                          x.g === true
+                                            ? "bg-green-100 text-green-800 border border-green-300"
+                                            : x.g === false
+                                            ? "bg-red-100 text-red-800 border border-red-300"
+                                            : "bg-slate-100 text-slate-600 border border-slate-300"
+                                        }`}
+                                      >
+                                        S{x.n}:{" "}
+                                        {x.s ?? (x.g === true ? "G" : "P")}
+                                      </span>
+                                    ))}
                                 </div>
-                              </div>
-                            ))}
-                          </div>
+                              )}
+                              {p.resultado_partido && (
+                                <p className="text-xs text-slate-600">
+                                  Resultado:{" "}
+                                  <strong>
+                                    {p.resultado_partido === "ganado"
+                                      ? "Ganado"
+                                      : p.resultado_partido === "perdido"
+                                      ? "Perdido"
+                                      : p.resultado_partido}
+                                  </strong>
+                                </p>
+                              )}
+                            </div>
+                          )}
 
-                          <p className="text-sm font-medium text-slate-700">
-                            Resultado del partido
-                          </p>
-                          <div className="grid grid-cols-3 gap-2">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setEditPartido({
-                                  ...editPartido,
-                                  resultado_partido: "ganado",
-                                })
-                              }
-                              className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                                editPartido.resultado_partido === "ganado"
-                                  ? "bg-green-500 text-white"
-                                  : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-                              }`}
-                            >
-                              Ganado
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setEditPartido({
-                                  ...editPartido,
-                                  resultado_partido: "perdido",
-                                })
-                              }
-                              className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                                editPartido.resultado_partido === "perdido"
-                                  ? "bg-red-500 text-white"
-                                  : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-                              }`}
-                            >
-                              Perdido
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setEditPartido({
-                                  ...editPartido,
-                                  resultado_partido: null,
-                                })
-                              }
-                              className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                                !editPartido.resultado_partido
-                                  ? "bg-slate-600 text-white"
-                                  : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-                              }`}
-                            >
-                              Sin marcar
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2">
-                            <input
-                              type="number"
-                              value={editPartido.errores_rivales ?? 0}
-                              onChange={(e) =>
-                                setEditPartido({
-                                  ...editPartido,
-                                  errores_rivales: parseInt(
-                                    e.target.value || "0"
-                                  ),
-                                })
-                              }
-                              placeholder="Errores rivales"
-                              className={inputBase}
-                            />
-                            <input
-                              type="number"
-                              value={editPartido.buenas_rivales ?? 0}
-                              onChange={(e) =>
-                                setEditPartido({
-                                  ...editPartido,
-                                  buenas_rivales: parseInt(
-                                    e.target.value || "0"
-                                  ),
-                                })
-                              }
-                              placeholder="Buenas rivales"
-                              className={inputBase}
-                            />
-                          </div>
-                          <textarea
-                            value={editPartido.notas ?? ""}
-                            onChange={(e) =>
-                              setEditPartido({
-                                ...editPartido,
-                                notas: e.target.value,
-                              })
-                            }
-                            placeholder="Notas"
-                            rows={2}
-                            className={`w-full ${inputBase}`}
-                          />
                           <div className="flex gap-2 justify-end">
                             <button
                               onClick={guardarEdicionPartido}

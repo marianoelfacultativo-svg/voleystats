@@ -3,6 +3,22 @@
 // ============================================================
 // FASE 3 del plan "Consultas Analíticas Libres".
 //
+// v1.4 (FASE 7.1 — contexto de partido como dato de primera clase):
+//   + groupBy "resultado_set" (set ganado / set perdido / sin
+//     resultado).
+//   + groupBy "resultado_partido" ahora devuelve una clave
+//     ("partido_ganado" | "partido_perdido" | "sin_resultado")
+//     en lugar del partido_id. La etiqueta ya no depende de
+//     `ctx.resultadoDePartido()`.
+//   + ContextoAgrupacion.resultadosSet y .resultadosPartido
+//     (mapas precalculados por el ejecutor).
+//   + Helpers exportados `calcularResultadosSet(partidos)` y
+//     `calcularResultadosPartido(partidos)` para que el
+//     ejecutor los construya desde `partidos`.
+//   + `ContextoAgrupacion.resultadoDePartido` queda marcado
+//     como deprecado: ya no se usa para etiquetar. Se mantiene
+//     en el tipo para no romper consumidores viejos.
+//
 // v1.3 (FASE 6 — Opción A, familia cruces):
 //   + groupBy "cruces" (cantidad exacta de cruces del rally).
 //   + groupBy "duracion_rally" (bucket corto / medio / largo).
@@ -54,7 +70,12 @@ export interface ContextoAgrupacion {
   nombreDePartido?: (id: string) => string;
   /** Para etiquetar "rival". */
   rivalDePartido?: (id: string) => string;
-  /** Para etiquetar "resultado_partido". */
+  /**
+   * @deprecated desde v1.4: `groupBy: "resultado_partido"` ya no
+   * usa esta función para etiquetar (usa el mapa
+   * `resultadosPartido`). Se conserva solo por compatibilidad
+   * con consumidores viejos.
+   */
   resultadoDePartido?: (id: string) => string;
   /** Para groupBy "fase". */
   contextoRally?: Map<string, ContextoRally>;
@@ -62,6 +83,7 @@ export interface ContextoAgrupacion {
    * Resultado (ganador) de cada punto. Debe calcularse sobre el
    * UNIVERSO COMPLETO (no sobre el subset filtrado).
    * Necesario para groupBy "resultado_punto".
+   * Clave: `partido|set|punto`.
    */
   resultadosPunto?: Map<string, "propio" | "rival" | null>;
   /**
@@ -70,6 +92,69 @@ export interface ContextoAgrupacion {
    * Si no se provee, se calcula como fallback sobre las acciones.
    */
   crucesPorPunto?: Map<string, number>;
+  /**
+   * FASE 7.1 — Resultado de cada set.
+   * Clave: `partido|set`. Valor: true (ganado) | false (perdido)
+   * | null (sin resultado cargado).
+   * Necesario para groupBy "resultado_set".
+   */
+  resultadosSet?: Map<string, boolean | null>;
+  /**
+   * FASE 7.1 — Resultado de cada partido.
+   * Clave: `partido`. Valor: "ganado" | "perdido" | null.
+   * Necesario para groupBy "resultado_partido".
+   */
+  resultadosPartido?: Map<string, "ganado" | "perdido" | null>;
+}
+
+// ------------------------------------------------------------
+// FASE 7.1 — HELPERS PARA CONSTRUIR LOS MAPAS
+// ------------------------------------------------------------
+// Los usa el ejecutor. Los tipos son estructurales para no
+// importar nada de `ejecutor.ts` (evita ciclo).
+// ------------------------------------------------------------
+
+export interface PartidoConResultado {
+  id: string;
+  /** Resultado de cada set (1..5). `null` o ausente = sin dato. */
+  setGanados?: (boolean | null)[];
+  /** Resultado del partido. `null`/ausente = sin dato. */
+  resultado?: "ganado" | "perdido" | null;
+}
+
+/**
+ * Devuelve un `Map<"partidoId|set", boolean | null>` con el
+ * resultado de cada set. Solo agrega entradas para los sets que
+ * tienen dato (`true` o `false`). Los sets sin dato no aparecen
+ * en el mapa (y por lo tanto el groupBy cae en "sin_resultado").
+ */
+export function calcularResultadosSet(
+  partidos: PartidoConResultado[]
+): Map<string, boolean | null> {
+  const out = new Map<string, boolean | null>();
+  for (const p of partidos) {
+    if (!p.setGanados) continue;
+    p.setGanados.forEach((v, i) => {
+      if (v === true || v === false) {
+        out.set(`${p.id}|${i + 1}`, v);
+      }
+    });
+  }
+  return out;
+}
+
+/**
+ * Devuelve un `Map<"partidoId", "ganado" | "perdido" | null>` con
+ * el resultado de cada partido.
+ */
+export function calcularResultadosPartido(
+  partidos: PartidoConResultado[]
+): Map<string, "ganado" | "perdido" | null> {
+  const out = new Map<string, "ganado" | "perdido" | null>();
+  for (const p of partidos) {
+    out.set(p.id, p.resultado ?? null);
+  }
+  return out;
 }
 
 // ------------------------------------------------------------
@@ -202,8 +287,22 @@ export function claveDeGrupo(
     }
     case "rival":
       return a.partido_id || null;
-    case "resultado_partido":
-      return a.partido_id || null;
+    case "resultado_partido": {
+      // FASE 7.1 — clave = resultado del partido (no partido_id).
+      const pid = a.partido_id || "";
+      const g = _ctx.resultadosPartido?.get(pid);
+      if (g === "ganado") return "partido_ganado";
+      if (g === "perdido") return "partido_perdido";
+      return "sin_resultado";
+    }
+    case "resultado_set": {
+      // FASE 7.1 — clave = resultado del set.
+      const k = `${a.partido_id || ""}|${a.set_numero}`;
+      const g = _ctx.resultadosSet?.get(k);
+      if (g === true) return "set_ganado";
+      if (g === false) return "set_perdido";
+      return "sin_resultado";
+    }
     case "resultado_punto": {
       const k = `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`;
       const g = _ctx.resultadosPunto?.get(k) ?? null;
@@ -284,10 +383,20 @@ export function etiquetaDeGrupo(
       return key;
     case "rival":
       return ctx.rivalDePartido ? ctx.rivalDePartido(key) : key.slice(0, 8);
-    case "resultado_partido":
-      return ctx.resultadoDePartido
-        ? ctx.resultadoDePartido(key)
-        : key.slice(0, 8);
+    case "resultado_partido": {
+      // FASE 7.1 — etiqueta a partir de la clave del resultado.
+      if (key === "partido_ganado") return "Partido ganado";
+      if (key === "partido_perdido") return "Partido perdido";
+      if (key === "sin_resultado") return "Sin resultado";
+      return key;
+    }
+    case "resultado_set": {
+      // FASE 7.1 — etiqueta a partir de la clave del resultado.
+      if (key === "set_ganado") return "Set ganado";
+      if (key === "set_perdido") return "Set perdido";
+      if (key === "sin_resultado") return "Sin resultado";
+      return key;
+    }
     case "resultado_punto":
       if (key === "punto_propio") return "Punto propio";
       if (key === "punto_rival") return "Punto rival";
@@ -364,6 +473,10 @@ export function agruparAcciones(
       crucesPorPunto: calcularCrucesPorPunto(acciones),
     };
   }
+
+  // FASE 7.1 — los mapas de resultado_set / resultado_partido NO
+  // tienen fallback: si el ejecutor no los pasa, todos los grupos
+  // caen en "sin_resultado". Es preferible a inventar datos.
 
   return agrupar(
     acciones.filter((a) => !a.oculta),

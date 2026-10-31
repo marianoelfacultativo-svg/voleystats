@@ -9,6 +9,23 @@
 //   - DIAS_SEMANA + SINONIMOS_ULTIMOS / TEMPORADA / ESPECIFICOS
 //   - SINONIMOS_CONDICION
 //
+// v1.2 (FASE 7.1 — contexto de partido como dato de primera clase):
+//   + SINONIMOS_GROUPBY:
+//       - nueva entrada "resultado_set".
+//       - se amplía la entrada "resultado_partido" con patrones
+//         de "por sets ganados/perdidos" y "en partidos ganados/
+//         perdidos".
+//   + SINONIMOS_METRICA:
+//       - 7 entradas nuevas al principio:
+//         sets_jugados, sets_ganados, sets_perdidos,
+//         puntos_por_set_ganado, puntos_por_set_perdido,
+//         sideout_pct_en_sets_ganados,
+//         sideout_pct_en_sets_perdidos.
+//   + SINONIMOS_CONDICION: strings nuevos ("en sets ganados",
+//     "en sets perdidos", "en partidos ganados", "en partidos
+//     perdidos") para dejar documentada la intención que el
+//     parserIntencion va a leer.
+//
 // v1.1 (FASE 6 — Opción A, familia cruces):
 //   + Métricas nuevas en SINONIMOS_METRICA:
 //       cruces_promedio, cruces_total, cruces_max,
@@ -151,13 +168,45 @@ export const SINONIMOS_GROUPBY: { patrones: string[]; groupBy: GroupBy }[] = [
     ],
     groupBy: "rival",
   },
+
+  // ------------------------------------------------------------
+  // RESULTADO DEL PARTIDO (ampliado en FASE 7.1)
+  // ------------------------------------------------------------
   {
     patrones: [
       "por resultado del partido", "por resultado de partido",
       "por resultado de los partidos",
+      // FASE 7.1: agregamos los "por partidos ganados/perdidos".
+      "por partidos ganados", "por partidos perdidos",
+      "por partido ganado", "por partido perdido",
+      "agrupado por resultado del partido",
+      "separado por resultado del partido",
+      "desglosado por resultado del partido",
     ],
     groupBy: "resultado_partido",
   },
+
+  // ------------------------------------------------------------
+  // RESULTADO DEL SET (NUEVO en FASE 7.1)
+  // ------------------------------------------------------------
+  {
+    patrones: [
+      "por resultado del set", "por resultado de set",
+      "por resultado de los sets",
+      "por sets ganados", "por sets perdidos",
+      "por set ganado", "por set perdido",
+      "en sets ganados", "en sets perdidos",
+      "en set ganado", "en set perdido",
+      "agrupado por resultado del set",
+      "separado por resultado del set",
+      "desglosado por resultado del set",
+    ],
+    groupBy: "resultado_set",
+  },
+
+  // ------------------------------------------------------------
+  // RESULTADO DEL PUNTO
+  // ------------------------------------------------------------
   {
     patrones: [
       "por resultado del punto",
@@ -242,7 +291,7 @@ export const SINONIMOS_GROUPBY: { patrones: string[]; groupBy: GroupBy }[] = [
   },
 
   // ------------------------------------------------------------
-  // NUEVOS (Opción A — familia cruces)
+  // FASE 6 — familia cruces
   // ------------------------------------------------------------
 
   {
@@ -289,12 +338,152 @@ export const SINONIMOS_GROUPBY: { patrones: string[]; groupBy: GroupBy }[] = [
 // ------------------------------------------------------------
 // MÉTRICAS DE VÓLEY
 // ------------------------------------------------------------
-// v1.1: las 6 métricas de cruces van al PRINCIPIO del array.
-// Los patrones son largos y específicos, así que no se pisan
-// con el resto.
+// Las métricas más específicas van al PRINCIPIO del array, así
+// el parser las matchea antes de que caiga en una entrada más
+// genérica.
 // ------------------------------------------------------------
 
 export const SINONIMOS_METRICA: { patrones: string[]; metrica: string }[] = [
+  // ============================================================
+  // FASE 7.1 — CONTEXTO DE PARTIDO
+  // ============================================================
+
+  // ---- sets_jugados ----
+  {
+    patrones: [
+      "cuantos sets jugo",
+      "cuantos sets jugó",
+      "cuantos sets jugaron",
+      "cuantos sets disputo",
+      "cuantos sets disputó",
+      "cuantos sets jugados",
+      "sets jugados",
+      "sets jugados por jugador",
+      "sets por jugador",
+      "quien jugo mas sets",
+      "quién jugó más sets",
+      "quienes jugaron mas sets",
+      "quienes jugaron más sets",
+      "jugador con mas sets",
+      "jugador con más sets",
+      "promedio de sets jugados",
+      "promedio de sets por jugador",
+    ],
+    metrica: "sets_jugados",
+  },
+
+  // ---- sets_ganados ----
+  {
+    patrones: [
+      "cuantos sets gano",
+      "cuantos sets ganó",
+      "cuantos sets ganaron",
+      "cuantos sets ganados",
+      "sets ganados",
+      "sets ganados por jugador",
+      "quien gano mas sets",
+      "quién ganó más sets",
+      "quienes ganaron mas sets",
+      "quienes ganaron más sets",
+      "jugador con mas sets ganados",
+      "jugador con más sets ganados",
+      "promedio de sets ganados",
+    ],
+    metrica: "sets_ganados",
+  },
+
+  // ---- sets_perdidos ----
+  {
+    patrones: [
+      "cuantos sets perdio",
+      "cuantos sets perdió",
+      "cuantos sets perdieron",
+      "cuantos sets perdidos",
+      "sets perdidos",
+      "sets perdidos por jugador",
+      "quien perdio mas sets",
+      "quién perdió más sets",
+      "quienes perdieron mas sets",
+      "quienes perdieron más sets",
+      "jugador con mas sets perdidos",
+      "jugador con más sets perdidos",
+      "promedio de sets perdidos",
+    ],
+    metrica: "sets_perdidos",
+  },
+
+  // ---- puntos_por_set_ganado ----
+  {
+    patrones: [
+      "puntos por set ganado",
+      "puntos por sets ganados",
+      "promedio de puntos por set ganado",
+      "promedio de puntos por sets ganados",
+      "promedio de puntos en sets ganados",
+      "media de puntos por set ganado",
+      "media de puntos por sets ganados",
+      "puntos que hacemos por set ganado",
+      "cuantos puntos por set ganado",
+      "cuantos puntos en sets ganados",
+    ],
+    metrica: "puntos_por_set_ganado",
+  },
+
+  // ---- puntos_por_set_perdido ----
+  {
+    patrones: [
+      "puntos por set perdido",
+      "puntos por sets perdidos",
+      "promedio de puntos por set perdido",
+      "promedio de puntos por sets perdidos",
+      "promedio de puntos en sets perdidos",
+      "media de puntos por set perdido",
+      "media de puntos por sets perdidos",
+      "puntos que hacemos por set perdido",
+      "cuantos puntos por set perdido",
+      "cuantos puntos en sets perdidos",
+    ],
+    metrica: "puntos_por_set_perdido",
+  },
+
+  // ---- sideout_pct_en_sets_ganados ----
+  {
+    patrones: [
+      "sideout en sets ganados",
+      "side-out en sets ganados",
+      "side out en sets ganados",
+      "sideout % en sets ganados",
+      "side-out % en sets ganados",
+      "sideout en set ganado",
+      "sideout cuando ganamos el set",
+      "sideout en los sets que ganamos",
+      "side-out en los sets que ganamos",
+      "efectividad recibiendo en sets ganados",
+      "porcentaje de side-out en sets ganados",
+      "porcentaje de sideout en sets ganados",
+    ],
+    metrica: "sideout_pct_en_sets_ganados",
+  },
+
+  // ---- sideout_pct_en_sets_perdidos ----
+  {
+    patrones: [
+      "sideout en sets perdidos",
+      "side-out en sets perdidos",
+      "side out en sets perdidos",
+      "sideout % en sets perdidos",
+      "side-out % en sets perdidos",
+      "sideout en set perdido",
+      "sideout cuando perdimos el set",
+      "sideout en los sets que perdimos",
+      "side-out en los sets que perdimos",
+      "efectividad recibiendo en sets perdidos",
+      "porcentaje de side-out en sets perdidos",
+      "porcentaje de sideout en sets perdidos",
+    ],
+    metrica: "sideout_pct_en_sets_perdidos",
+  },
+
   // ============================================================
   // FAMILIA CRUCES (Opción A)
   // ============================================================
@@ -464,7 +653,7 @@ export const SINONIMOS_METRICA: { patrones: string[]; metrica: string }[] = [
   },
 
   // ============================================================
-  // Resto de métricas (idénticas a v1.0)
+  // Resto de métricas
   // ============================================================
 
   // ---- % de puntos ganados (bloque A.2) ----
@@ -838,6 +1027,11 @@ export const SINONIMOS_ESPECIFICOS: string[] = [
 // ------------------------------------------------------------
 // CONDICIÓN
 // ------------------------------------------------------------
+// Array meramente informativo: el parserIntencion NO lo importa.
+// Está acá para dejar documentado el "vocabulario" de condiciones
+// que el motor entiende. Cada nueva CondicionFiltro debería
+// agregar sus patrones acá para mantener la doc alineada.
+// ------------------------------------------------------------
 
 export const SINONIMOS_CONDICION: string[] = [
   "cuando", "si", "en los casos en que", "siempre que",
@@ -900,4 +1094,14 @@ export const SINONIMOS_CONDICION: string[] = [
   "en el set final", "en el set decisivo",
   "en la recta final", "en el cierre",
   "en la definicion", "en la definición",
+
+  // FASE 7.1 — contexto de partido
+  "en sets ganados", "en sets perdidos",
+  "en set ganado", "en set perdido",
+  "en los sets que ganamos", "en los sets que perdimos",
+  "en los sets ganados", "en los sets perdidos",
+  "en partidos ganados", "en partidos perdidos",
+  "en partido ganado", "en partido perdido",
+  "en los partidos que ganamos", "en los partidos que perdimos",
+  "en los partidos ganados", "en los partidos perdidos",
 ];

@@ -3,9 +3,17 @@
 // ============================================================
 // POPUPS V2 — switch que renderiza el popup activo
 // ============================================================
+//
+// v2.1 (FASE 7.1 — armado cruzado + remate de segunda):
+//   + Nuevos popups: "armado-cruzado" y "variante-remate-segunda".
+//   + Callbacks nuevos:
+//       · onArmadoCruzadoConfirmar
+//       · onVarianteRemateSegundaConfirmar
+// ============================================================
 
 import {
   PopupArmado,
+  PopupArmadoCruzado,
   PopupAtaqueToqueLibre,
   PopupBloqueo,
   PopupDefensa,
@@ -16,6 +24,7 @@ import {
   PopupRoceRed,
   PopupSaque,
   PopupTipoSaque,
+  PopupVarianteRemateSegunda,
   PopupVelocidad,
   type ValorArmado,
   type ValorRecepcion,
@@ -24,8 +33,10 @@ import {
   type ValorVelocidad,
   type TipoDefensa,
   type ResultadoRoceRed,
+  type ResultadoArmadoCruzado,
   type VarianteAtaquePopup,
   type VarianteRemateSegunda,
+  type VarianteToqueRemateSegunda,
   type JugadorEnCancha,
   type JugadorZona,
 } from "./PopupValoracion";
@@ -59,6 +70,12 @@ interface Props {
   ) => void;
   onAtaqueToqueLibreConfirmar: (v: VarianteAtaquePopup) => void;
   onRemateSegundaConfirmar: (v: VarianteRemateSegunda) => void;
+
+  // FASE 7.1 — armado cruzado
+  onArmadoCruzadoConfirmar: (v: ResultadoArmadoCruzado) => void;
+  onVarianteRemateSegundaConfirmar: (v: VarianteToqueRemateSegunda) => void;
+
+  // Común
   onCerrar: () => void;
   onSiguiente: () => void;
 }
@@ -80,6 +97,8 @@ export default function PopupsV2({
   onRoceRedConfirmar,
   onAtaqueToqueLibreConfirmar,
   onRemateSegundaConfirmar,
+  onArmadoCruzadoConfirmar,
+  onVarianteRemateSegundaConfirmar,
   onCerrar,
   onSiguiente,
 }: Props) {
@@ -198,5 +217,28 @@ export default function PopupsV2({
       />
     );
   }
+
+  // ------------------------------------------------------------
+  // FASE 7.1 — armado cruzado + variante remate de segunda
+  // ------------------------------------------------------------
+  if (popupActivo.tipo === "armado-cruzado") {
+    return (
+      <PopupArmadoCruzado
+        pos={popupActivo.pos}
+        onConfirmar={onArmadoCruzadoConfirmar}
+        onCancelar={onCerrar}
+      />
+    );
+  }
+  if (popupActivo.tipo === "variante-remate-segunda") {
+    return (
+      <PopupVarianteRemateSegunda
+        pos={popupActivo.pos}
+        onConfirmar={onVarianteRemateSegundaConfirmar}
+        onCancelar={onCerrar}
+      />
+    );
+  }
+
   return null;
 }

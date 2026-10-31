@@ -4,10 +4,19 @@
 // Extraído de intenciones.ts (v1.9). Solo tipos + intencionVacia.
 // Sin diccionarios, sin lógica.
 //
+// v1.3 (FASE 7.1 — contexto de partido como dato de primera clase):
+//   + GroupBy "resultado_set" (agrupa por set ganado/perdido).
+//   + GroupBy "resultado_partido" ya existía pero ahora se usa
+//     de verdad (ver respuesta.ts, groupBy.ts, ejecutor.ts).
+//   + CondicionFiltro.setGanado (filtra acciones de sets
+//     ganados o perdidos).
+//   + CondicionFiltro.resultadoPartido (filtra acciones por
+//     resultado del partido: ganado / perdido).
+//
 // v1.2 (FASE 6 — Opción A completa):
-//   + CondicionFiltro.crucesMaximos: number  (rallys con ≤ N cruces)
-//   + CondicionFiltro.crucesExactos: number  (rallys con N cruces exactos)
-//   + CondicionFiltro.crucesRango: [number, number] (entre N y M)
+//   + CondicionFiltro.crucesMaximos: number
+//   + CondicionFiltro.crucesExactos: number
+//   + CondicionFiltro.crucesRango: [number, number]
 //   + GroupBy "cruces"         (agrupa por cantidad exacta de cruces)
 //   + GroupBy "duracion_rally" (agrupa por bucket corto/medio/largo)
 //
@@ -65,14 +74,15 @@ export type GroupBy =
   | "rival"
   | "resultado_partido"
   | "resultado_punto"
+  | "resultado_set"     // ← NUEVO (FASE 7.1)
   | "tipo"
   | "subtipo"
   | "velocidad"
   | "tipo_saque"
   | "variante"
   | "cambio"
-  | "cruces"          // ← NUEVO
-  | "duracion_rally"; // ← NUEVO
+  | "cruces"            // ← FASE 6
+  | "duracion_rally";   // ← FASE 6
 
 export type TiempoTipo =
   | "ultimos_n_partidos"
@@ -117,6 +127,7 @@ export interface TiempoFiltro {
 // ------------------------------------------------------------
 
 export interface CondicionFiltro {
+  // --- Existente ---
   marcador?: string;
   diferencia?: number;
   puntoCritico?: boolean;
@@ -130,8 +141,12 @@ export interface CondicionFiltro {
   zonaJugador?: number[];
   cambioEnPunto?: boolean;
   despuesDeCambio?: boolean;
+
+  // --- Cat. 3 ---
   /** Rol cuyo "salida" (zona de origen del ataque) se filtra. */
   salidaRol?: "opuesto" | "central" | "punta" | "armador";
+
+  // --- Cat. 6 ---
   /** Cantidad mínima de cruces de red del rally. */
   crucesMinimos?: number;
   /** Cantidad máxima de cruces de red del rally. */
@@ -140,6 +155,19 @@ export interface CondicionFiltro {
   crucesExactos?: number;
   /** Rango [min, max] de cruces de red del rally. */
   crucesRango?: [number, number];
+
+  // --- FASE 7.1 — Contexto de partido ---
+  /**
+   * Filtra acciones de sets ganados (true) o perdidos (false).
+   * Necesita que el ejecutor tenga acceso a `partidos[].setGanado`
+   * por partido.
+   */
+  setGanado?: boolean;
+  /**
+   * Filtra acciones por resultado del partido: solo acciones de
+   * partidos ganados o solo de perdidos.
+   */
+  resultadoPartido?: "ganado" | "perdido";
 }
 
 // ------------------------------------------------------------

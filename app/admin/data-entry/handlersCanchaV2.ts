@@ -2,6 +2,19 @@
 // HANDLERS CANCHA V2 — DataEntryV2
 // Factory que devuelve los callbacks de la cancha y crearLinea.
 // ============================================================
+//
+// v2.1 (FASE 7.1 — armado cruzado):
+//   + Cuando la clasificación devuelve popup: "armado-cruzado",
+//     NO se encola el popup de "jugador" por estrella. El handler
+//     del armado cruzado decide internamente si preguntar jugador
+//     (solo si elige "libre" y es propio).
+//   + Cuando el armado es del rival en modo espejo y cruzó la red,
+//     se mantiene el popup "armado-cruzado" en lugar de
+//     sobreescribirlo con "armado" (que era el popup de calidad
+//     de armado normal).
+//
+// v1: versión original.
+// ============================================================
 
 import type { Dispatch, SetStateAction } from "react";
 import type { CoordsV2 } from "./CanchaV2";
@@ -171,7 +184,11 @@ export function crearHandlersCancha(params: Params) {
         popupFinal = "recepcion";
       } else if (res.tipo === "armado") {
         jugadorFinal = jugadorQueArmaDeRot(rotacionRivalEfectiva);
-        popupFinal = "armado";
+        // FASE 7.1 — si el armado rival cruzó la red, mantener
+        // el popup "armado-cruzado". Si no, popup de calidad de
+        // armado normal.
+        popupFinal =
+          res.popup === "armado-cruzado" ? "armado-cruzado" : "armado";
       } else if (res.tipo === "ataque") {
         jugadorFinal = jugadorQueAtacaDesdeCelda(
           origenInv.celda,
@@ -197,15 +214,6 @@ export function crearHandlersCancha(params: Params) {
     // Si la línea viene desde cancha rival, tiene un desvío en bloqueo
     // propio, y se clasifica como "ataque" o "bloqueo" PROPIO, en
     // realidad son DOS acciones: un ataque rival + un bloqueo propio.
-    //
-    // Antes este SPLIT solo se disparaba con tipo="bloqueo". Eso hacía
-    // que cuando `comoAtaque` daba true (destino rival/fuera), la línea
-    // se guardara como 1 sola acción de ataque con es_rival=false y el
-    // jugador de nuestro bloqueo (BUG: el ataque rival aparecía como
-    // propio y en cancha rival).
-    //
-    // Ahora también se dispara con tipo="ataque", así siempre se separa
-    // en las 2 acciones correctas.
     if (
       (res.tipo === "bloqueo" || res.tipo === "ataque") &&
       !res.esRival &&
@@ -270,10 +278,25 @@ export function crearHandlersCancha(params: Params) {
     setDesviosPendientes([]);
     ponerCirculo(destino);
 
+    // ------------------------------------------------------------
+    // Cola de popups
+    // ------------------------------------------------------------
+    // Si el popup final es "armado-cruzado", NO se encola el popup
+    // de "jugador" por estrella. El handler del armado cruzado
+    // decide si preguntar jugador (solo si elige "libre" y es
+    // propio). En los demás casos, el comportamiento es el mismo
+    // de antes.
+    // ------------------------------------------------------------
     const cola: PopupEnCola[] = [];
     const pos = posicionPopup(destino);
-    if (popupFinal) cola.push({ tipo: popupFinal, pos, lineaId: nueva.id });
-    if (estrella && !res.esRival) {
+    if (popupFinal) {
+      cola.push({ tipo: popupFinal, pos, lineaId: nueva.id });
+    }
+    if (
+      estrella &&
+      !res.esRival &&
+      popupFinal !== "armado-cruzado"
+    ) {
       cola.push({ tipo: "jugador", pos, lineaId: nueva.id });
     }
     setColaPopups(cola);

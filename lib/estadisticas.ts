@@ -25,6 +25,22 @@ export interface AccionDB {
    * "cae en cancha rival" en las tablas crudas. Opcional.
    */
   destino_celda?: string | null;
+
+  // ------------------------------------------------------------
+  // FASE 7.1 — Contexto de partido como dato de primera clase
+  // ------------------------------------------------------------
+  // Estos dos campos los rellena `cargarAccionesCompatibles` en
+  // `lib/db.ts` leyendo `partidos.setN_ganado` y
+  // `partidos.resultado_partido`.
+  //
+  // Si vienen null/undefined (datos viejos), el motor cuenta el set
+  // como "jugado" pero NO como "ganado" ni "perdido". Esto evita
+  // inventar resultados cuando no hay data.
+  // ------------------------------------------------------------
+  /** ¿El set se ganó (true) o se perdió (false)? null = desconocido. */
+  set_ganado?: boolean | null;
+  /** Resultado del partido: "ganado" | "perdido" | null = desconocido. */
+  resultado_partido?: "ganado" | "perdido" | null;
 }
 
 export const BASE_SCORES: Record<string, Record<string, number>> = {
@@ -317,6 +333,24 @@ export interface EstadisticasJugador {
   valoracionPonderadaPorFundamento: Record<string, number>;
   factorVolumen: number;
   porFundamento: Record<string, EstadisticasFundamento>;
+
+  // ------------------------------------------------------------
+  // FASE 7.1 — Sets jugados / ganados / perdidos por jugador
+  // ------------------------------------------------------------
+  // - setsJugados: cantidad de (partido_id, set_numero) distintos
+  //   donde el jugador tuvo al menos una acción.
+  // - setsGanados: de esos, cuántos sets se ganaron (según
+  //   `AccionDB.set_ganado === true`).
+  // - setsPerdidos: de esos, cuántos sets se perdieron (según
+  //   `AccionDB.set_ganado === false`).
+  //
+  // Invariante: setsJugados >= setsGanados + setsPerdidos. La
+  // diferencia son sets con resultado desconocido.
+  // ------------------------------------------------------------
+  setsJugados: number;
+  setsGanados: number;
+  setsPerdidos: number;
+
   armador?: EstadisticasArmador;
   recepcion?: {
     promediosPorSet: PromedioRecepcionSet[];
@@ -703,6 +737,46 @@ export function calcularPromedioPorSet(
   return result;
 }
 
+// ------------------------------------------------------------
+// FASE 7.1 — Sets jugados / ganados / perdidos por jugador
+// ------------------------------------------------------------
+//
+// Cuenta sets distintos (partido_id + set_numero) en los que el
+// jugador tuvo al menos una acción, y de esos, cuántos se ganaron
+// o perdieron según `AccionDB.set_ganado`.
+//
+// Si `set_ganado` viene null/undefined (datos viejos o partidos
+// sin resultado cargado), el set cuenta como jugado pero NO suma
+// a ganados ni a perdidos. Invariante:
+//   setsJugados >= setsGanados + setsPerdidos
+// ------------------------------------------------------------
+
+interface SetsJugador {
+  jugados: number;
+  ganados: number;
+  perdidos: number;
+}
+
+function calcularSetsJugador(accionesDelJugador: AccionDB[]): SetsJugador {
+  const setsJugados = new Set<string>();
+  const setsGanados = new Set<string>();
+  const setsPerdidos = new Set<string>();
+
+  for (const a of accionesDelJugador) {
+    const key = `${a.partido_id ?? "sin-partido"}|${a.set_numero}`;
+    setsJugados.add(key);
+
+    if (a.set_ganado === true) setsGanados.add(key);
+    else if (a.set_ganado === false) setsPerdidos.add(key);
+  }
+
+  return {
+    jugados: setsJugados.size,
+    ganados: setsGanados.size,
+    perdidos: setsPerdidos.size,
+  };
+}
+
 export function calcularEstadisticasJugador(
   jugadorId: string,
   acciones: AccionDB[],
@@ -830,6 +904,9 @@ export function calcularEstadisticasJugador(
   let recepcion: EstadisticasJugador["recepcion"] | undefined;
   if (!esArmador) recepcion = calcularEstadisticasRecepcion(propias);
 
+  // FASE 7.1 — sets jugados / ganados / perdidos
+  const sets = calcularSetsJugador(propias);
+
   return {
     jugador_id: jugadorId,
     totalAcciones,
@@ -847,6 +924,9 @@ export function calcularEstadisticasJugador(
     valoracionPonderadaPorFundamento,
     factorVolumen,
     porFundamento,
+    setsJugados: sets.jugados,
+    setsGanados: sets.ganados,
+    setsPerdidos: sets.perdidos,
     armador,
     recepcion,
   };
@@ -908,6 +988,9 @@ export function calcularEstadisticasEquipo(
     valoracionPonderadaPorFundamento: {},
     factorVolumen: 1,
     porFundamento: {},
+    setsJugados: 0,
+    setsGanados: 0,
+    setsPerdidos: 0,
   };
 
   for (const fund of fundamentos) {
@@ -925,6 +1008,17 @@ export function calcularEstadisticasEquipo(
 
   let sumaNormTotal = 0;
   let countNormTotal = 0;
+
+  // FASE 7.1 — acumulador de sets del equipo (por partido_id+set_numero)
+  const setsEquipoJugados = new Set<string>();
+  const setsEquipoGanados = new Set<string>();
+  const setsEquipoPerdidos = new Set<string>();
+  for (const a of acciones) {
+    const key = `${a.partido_id ?? "sin-partido"}|${a.set_numero}`;
+    setsEquipoJugados.add(key);
+    if (a.set_ganado === true) setsEquipoGanados.add(key);
+    else if (a.set_ganado === false) setsEquipoPerdidos.add(key);
+  }
 
   for (const id of jugadoresIds) {
     const est = calcularEstadisticasJugador(
@@ -999,6 +1093,11 @@ export function calcularEstadisticasEquipo(
 
   totalesIniciales.valoracionMediaNormalizada =
     countNormTotal > 0 ? sumaNormTotal / countNormTotal : 0;
+
+  // FASE 7.1 — sets del equipo
+  totalesIniciales.setsJugados = setsEquipoJugados.size;
+  totalesIniciales.setsGanados = setsEquipoGanados.size;
+  totalesIniciales.setsPerdidos = setsEquipoPerdidos.size;
 
   return { porJugador, totales: totalesIniciales };
 }

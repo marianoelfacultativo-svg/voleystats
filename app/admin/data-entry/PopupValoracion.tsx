@@ -54,6 +54,29 @@ export type VarianteAtaquePopup = "toque" | "libre";
 
 export type VarianteRemateSegunda = "remate-segunda";
 
+// ------------------------------------------------------------
+// FASE 7.1 — armado cruzado + remate de segunda
+// ------------------------------------------------------------
+// Cuando el armado cruza la red, el popup ofrece 3 opciones:
+//   - "armado"          → armado-pasado (neutro, puntaje 2)
+//   - "remate-segunda"  → abre sub-popup de variante
+//   - "libre"           → libre (con popup de jugador si propio)
+//
+// Si elige "remate-segunda", el sub-popup de variante ofrece:
+//   - "toque-segunda"   (default, preseleccionado)
+//   - "remate-segunda"
+// Ambos se guardan con tipo: "ataque".
+// ------------------------------------------------------------
+
+export type ResultadoArmadoCruzado =
+  | "armado"
+  | "remate-segunda"
+  | "libre";
+
+export type VarianteToqueRemateSegunda =
+  | "toque-segunda"
+  | "remate-segunda";
+
 export type ValorVelocidad = 1 | 1.5 | 2 | 3 | 5;
 
 export interface JugadorEnCancha {
@@ -182,6 +205,29 @@ const OPCIONES_ROCE_RED: {
   { id: "roce-red-rival", label: "Roce red rival", color: "#0284c7" },
 ];
 
+// ------------------------------------------------------------
+// FASE 7.1 — opciones del popup de armado cruzado
+// ------------------------------------------------------------
+
+const OPCIONES_ARMADO_CRUZADO: {
+  id: ResultadoArmadoCruzado;
+  label: string;
+  color: string;
+}[] = [
+  { id: "armado", label: "Armado", color: "#8b5cf6" },
+  { id: "remate-segunda", label: "Remate de segunda", color: "#dc2626" },
+  { id: "libre", label: "Libre", color: "#a16207" },
+];
+
+const OPCIONES_VARIANTE_REMATE_SEGUNDA: {
+  id: VarianteToqueRemateSegunda;
+  label: string;
+  color: string;
+}[] = [
+  { id: "toque-segunda", label: "Toque (default)", color: "#f59e0b" },
+  { id: "remate-segunda", label: "Remate", color: "#dc2626" },
+];
+
 const ORDEN_VELOCIDAD: ValorVelocidad[] = [1, 1.5, 2, 3, 5];
 
 const ETIQ_VELOCIDAD: Record<ValorVelocidad, string> = {
@@ -263,25 +309,10 @@ function PopupWrapper({ pos, ancho, alto, titulo, children }: WrapperProps) {
   // ----------------------------------------------------------
   // GAP EN PÍXELES REALES
   // ----------------------------------------------------------
-  // Queremos que el espacio entre el click y el borde del popup
-  // sea siempre GAP_PX píxeles en pantalla, sin importar el zoom.
-  //
-  // 1 unidad de layout (pre-transformación) se mapea a `sx` píxeles
-  // en el eje horizontal renderizado y a `sy` píxeles en el vertical
-  // (con la orientación ya tenida en cuenta por el contexto).
-  //
-  // Por lo tanto, el gap equivalente en layout units es:
-  //   gapLocalX = GAP_PX / sx
-  //   gapLocalY = GAP_PX / sy
-  // ----------------------------------------------------------
   const GAP_PX = 12;
   const gapLocalX = sx !== 0 ? GAP_PX / sx : GAP_PX;
   const gapLocalY = sy !== 0 ? GAP_PX / sy : GAP_PX;
 
-  // Semianchos del popup después de la transformación local.
-  // El rect se dibuja con ancho `ancho` pero la transformación
-  // scale(escX) alrededor de su centro lo deja con ancho visual
-  // `ancho * escX` en layout units → `ancho * popupZoom` px.
   const semiAnchoT = (ancho / 2) * escX;
   const semiAltoT = (alto / 2) * escY;
 
@@ -290,12 +321,7 @@ function PopupWrapper({ pos, ancho, alto, titulo, children }: WrapperProps) {
   // ----------------------------------------------------------
   const clickEnIzquierda = pos.x < W / 2;
 
-  // Popup a la IZQUIERDA del click → borde derecho transformado a gapLocalX.
-  // bordeDer = x + ancho/2 * (1 + escX)  ⇒  x = pos.x - gapLocalX - ancho/2 - semiAnchoT
   const natIzqX = pos.x - gapLocalX - ancho / 2 - semiAnchoT;
-
-  // Popup a la DERECHA del click → borde izquierdo transformado a gapLocalX.
-  // bordeIzq = x + ancho/2 * (1 - escX)  ⇒  x = pos.x + gapLocalX - ancho/2 + semiAnchoT
   const natDerX = pos.x + gapLocalX - ancho / 2 + semiAnchoT;
 
   const naturalX = clickEnIzquierda ? natIzqX : natDerX;
@@ -315,7 +341,6 @@ function PopupWrapper({ pos, ancho, alto, titulo, children }: WrapperProps) {
   else if (fitsX(flippedX)) x = flippedX;
   else x = naturalX;
 
-  // Clamp final sobre los BORDES transformados.
   if (bordeIzqX(x) < minBordeX) x = minBordeX - ancho / 2 + semiAnchoT;
   if (bordeDerX(x) > maxBordeX) x = maxBordeX - ancho / 2 - semiAnchoT;
 
@@ -324,12 +349,7 @@ function PopupWrapper({ pos, ancho, alto, titulo, children }: WrapperProps) {
   // ----------------------------------------------------------
   const clickEnArriba = pos.y < H / 2;
 
-  // Popup ARRIBA del click → borde inferior transformado a gapLocalY.
-  // bordeBot = y + alto/2 * (1 + escY)  ⇒  y = pos.y - gapLocalY - alto/2 - semiAltoT
   const natArrY = pos.y - gapLocalY - alto / 2 - semiAltoT;
-
-  // Popup ABAJO del click → borde superior transformado a gapLocalY.
-  // bordeTop = y + alto/2 * (1 - escY)  ⇒  y = pos.y + gapLocalY - alto/2 + semiAltoT
   const natAbaY = pos.y + gapLocalY - alto / 2 + semiAltoT;
 
   const naturalY = clickEnArriba ? natArrY : natAbaY;
@@ -424,7 +444,7 @@ function BotonSvg({
   fontSize = 10,
   onClick,
 }: BotonProps) {
-  const label = texto.length > 16 ? texto.slice(0, 15) + "…" : texto;
+  const label = texto.length > 18 ? texto.slice(0, 17) + "…" : texto;
   return (
     <g
       style={{ cursor: "pointer", pointerEvents: "auto" }}
@@ -1193,7 +1213,7 @@ export function PopupAtaqueToqueLibre({
 }
 
 // ============================================================
-// POPUP REMATE DE SEGUNDA
+// POPUP REMATE DE SEGUNDA (legacy — desde defensa rival)
 // ============================================================
 
 interface PopupRemateSegundaProps {
@@ -1303,6 +1323,155 @@ export function PopupBloqueo({
           color="#e2e8f0"
           colorTexto="#475569"
           fontSize={8}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP ARMADO CRUZADO (FASE 7.1)
+// ============================================================
+// Aparece cuando el armado cruza la red (en cualquier dirección).
+//
+// Opciones:
+//   - "Armado"          → armado-pasado (neutro, puntaje 2).
+//   - "Remate de segunda" → abre sub-popup de variante.
+//   - "Libre"           → libre (con popup de jugador si propio).
+// ============================================================
+
+interface PopupArmadoCruzadoProps {
+  pos: PopupPos;
+  onConfirmar: (v: ResultadoArmadoCruzado) => void;
+  onCancelar: () => void;
+}
+
+export function PopupArmadoCruzado({
+  pos,
+  onConfirmar,
+  onCancelar,
+}: PopupArmadoCruzadoProps) {
+  const pad = 8;
+  const ancho = 280;
+  const altoOpcion = 26;
+  const gap = 4;
+  const alto =
+    20 + OPCIONES_ARMADO_CRUZADO.length * altoOpcion +
+    (OPCIONES_ARMADO_CRUZADO.length - 1) * gap + 8 + 16 + 8;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="ARMADO — Cruzó la red"
+    >
+      <g>
+        {OPCIONES_ARMADO_CRUZADO.map((o, i) => (
+          <BotonSvg
+            key={o.id}
+            x={pad}
+            y={i * (altoOpcion + gap)}
+            w={ancho - pad * 2}
+            h={altoOpcion}
+            texto={o.label}
+            color={o.color}
+            fontSize={11}
+            onClick={() => onConfirmar(o.id)}
+          />
+        ))}
+
+        <BotonSvg
+          x={pad}
+          y={
+            OPCIONES_ARMADO_CRUZADO.length * altoOpcion +
+            (OPCIONES_ARMADO_CRUZADO.length - 1) * gap + 8
+          }
+          w={ancho - pad * 2}
+          h={16}
+          texto="Cancelar (Esc)"
+          color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP VARIANTE REMATE DE SEGUNDA (FASE 7.1)
+// ============================================================
+// Sub-popup que aparece después de elegir "Remate de segunda"
+// en el popup de armado cruzado.
+//
+// Opciones:
+//   - "Toque" (default, preseleccionado) → variante "toque-segunda".
+//   - "Remate"                            → variante "remate-segunda".
+//
+// Ambos se guardan con tipo: "ataque".
+// ============================================================
+
+interface PopupVarianteRemateSegundaProps {
+  pos: PopupPos;
+  onConfirmar: (v: VarianteToqueRemateSegunda) => void;
+  onCancelar: () => void;
+}
+
+export function PopupVarianteRemateSegunda({
+  pos,
+  onConfirmar,
+  onCancelar,
+}: PopupVarianteRemateSegundaProps) {
+  const pad = 8;
+  const ancho = 280;
+  const alto = 20 + 12 + 2 * 28 + 4 + 8 + 16 + 8;
+
+  return (
+    <PopupWrapper
+      pos={pos}
+      ancho={ancho}
+      alto={alto}
+      titulo="REMATE DE SEGUNDA — Variante"
+    >
+      <g>
+        <text
+          x={ancho / 2}
+          y={10}
+          textAnchor="middle"
+          fontSize={9}
+          fontWeight={600}
+          fill="#64748b"
+          pointerEvents="none"
+        >
+          ¿Toque o remate?
+        </text>
+
+        {OPCIONES_VARIANTE_REMATE_SEGUNDA.map((o, i) => (
+          <BotonSvg
+            key={o.id}
+            x={pad}
+            y={18 + i * 32}
+            w={ancho - pad * 2}
+            h={28}
+            texto={o.label}
+            color={o.color}
+            fontSize={12}
+            onClick={() => onConfirmar(o.id)}
+          />
+        ))}
+
+        <BotonSvg
+          x={pad}
+          y={18 + 2 * 32 + 4}
+          w={ancho - pad * 2}
+          h={16}
+          texto="Cancelar (Esc)"
+          color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={9}
           onClick={onCancelar}
         />
       </g>

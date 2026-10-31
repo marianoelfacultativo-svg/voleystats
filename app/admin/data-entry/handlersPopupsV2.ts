@@ -2,10 +2,21 @@
 // HANDLERS POPUPS V2 — DataEntryV2
 // Factory que devuelve todos los callbacks de los popups.
 // ============================================================
+//
+// v2.1 (FASE 7.1 — armado cruzado + remate de segunda):
+//   + handleArmadoCruzadoConfirmar(v: ResultadoArmadoCruzado)
+//   + handleVarianteRemateSegundaConfirmar(v)
+//
+// v1: handlers originales.
+// ============================================================
 
 import type { LineaClasificada } from "@/lib/clasificacionV2";
 import type { PopupEnCola } from "./tiposV2";
-import type { ValorRecepcion } from "./PopupValoracion";
+import type {
+  ValorRecepcion,
+  ResultadoArmadoCruzado,
+  VarianteToqueRemateSegunda,
+} from "./PopupValoracion";
 
 interface Params {
   popupActivo: PopupEnCola | null;
@@ -246,6 +257,120 @@ export function crearHandlersPopups({
     popupSiguiente();
   };
 
+  // ============================================================
+  // FASE 7.1 — ARMADO CRUZADO
+  // ============================================================
+  //
+  // La línea llega con tipo: "armado", subtipo: "armado-pasado",
+  // popup: "armado-cruzado".
+  //
+  // Las 3 ramas:
+  //   - "armado"          → dejar la línea como está (armado-pasado,
+  //                          neutro, puntaje 2). Solo avanzar.
+  //   - "remate-segunda"  → convertir a tipo: "ataque" con
+  //                          variante: "toque-segunda" (default) y
+  //                          encolar "variante-remate-segunda" para
+  //                          que el usuario elija toque o remate.
+  //                          Descartar cualquier "jugador" pendiente
+  //                          por estrella (el jugador es el armador).
+  //   - "libre"           → convertir a tipo: "libre". Si es propio,
+  //                          encolar "jugador" para preguntar quién
+  //                          la pasó. Si es rival, no preguntar.
+  // ============================================================
+
+  const handleArmadoCruzadoConfirmar = (v: ResultadoArmadoCruzado) => {
+    if (!popupActivo) return;
+    const lineaId = popupActivo.lineaId;
+    const pos = popupActivo.pos;
+
+    // ---------- 1. "armado" ----------
+    // La línea ya quedó como armado-pasado al crearse. Solo avanzar.
+    if (v === "armado") {
+      popupSiguiente();
+      return;
+    }
+
+    // ---------- 2. "remate-segunda" ----------
+    // Convertir a ataque con variante default "toque-segunda" y
+    // preguntar la variante en el sub-popup.
+    if (v === "remate-segunda") {
+      setLineas((prev) =>
+        prev.map((l) =>
+          l.id === lineaId
+            ? {
+                ...l,
+                tipo: "ataque",
+                subtipo: null,
+                variante: "toque-segunda",
+              }
+            : l
+        )
+      );
+      setColaPopups((prev) => {
+        const sinActual = prev.slice(1);
+        const sinJugador = sinActual.filter((p) => p.tipo !== "jugador");
+        return [
+          { tipo: "variante-remate-segunda", pos, lineaId },
+          ...sinJugador,
+        ];
+      });
+      return;
+    }
+
+    // ---------- 3. "libre" ----------
+    // Convertir a libre. Preguntar jugador solo si es propio.
+    const linea = lineas.find((l) => l.id === lineaId);
+    const esRival = linea?.esRival ?? false;
+
+    setLineas((prev) =>
+      prev.map((l) =>
+        l.id === lineaId
+          ? {
+              ...l,
+              tipo: "libre",
+              subtipo: null,
+              variante: null,
+              jugadorId: null,
+            }
+          : l
+      )
+    );
+
+    if (esRival) {
+      popupSiguiente();
+      return;
+    }
+
+    setColaPopups((prev) => {
+      const sinActual = prev.slice(1);
+      const sinJugador = sinActual.filter((p) => p.tipo !== "jugador");
+      return [{ tipo: "jugador", pos, lineaId }, ...sinJugador];
+    });
+  };
+
+  // ============================================================
+  // FASE 7.1 — VARIANTE REMATE DE SEGUNDA
+  // ============================================================
+  //
+  // Sub-popup del armado cruzado.
+  // El usuario elige "toque-segunda" (default) o "remate-segunda".
+  // Solo se actualiza el campo `variante` de la línea.
+  // ============================================================
+
+  const handleVarianteRemateSegundaConfirmar = (
+    v: VarianteToqueRemateSegunda
+  ) => {
+    if (!popupActivo?.lineaId) {
+      popupSiguiente();
+      return;
+    }
+    const lineaId = popupActivo.lineaId;
+    setLineas((prev) =>
+      prev.map((l) => (l.id === lineaId ? { ...l, variante: v } : l))
+    );
+    popupSiguiente();
+  };
+
   return {
     popupSiguiente,
     cerrarPopup,
@@ -262,5 +387,7 @@ export function crearHandlersPopups({
     handleRoceRedConfirmar,
     handleAtaqueToqueLibreConfirmar,
     handleRemateSegundaConfirmar,
+    handleArmadoCruzadoConfirmar,
+    handleVarianteRemateSegundaConfirmar,
   };
 }

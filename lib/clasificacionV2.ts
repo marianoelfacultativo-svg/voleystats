@@ -1,6 +1,19 @@
 // ============================================================
 // CLASIFICACIÓN V2 — motor de tipos de acción
 // ============================================================
+//
+// v2.1 (FASE 7.1 — armado cruzado + remate de segunda):
+//   + VarianteAtaque ahora acepta "toque-segunda" y
+//     "remate-segunda". Se guardan con tipo: "ataque" y se
+//     distinguen por variante, así el motor de subtipos de
+//     ataque funciona sin cambios.
+//   + PopupRequerido suma "armado-cruzado" y
+//     "variante-remate-segunda".
+//   + armarOlibre: cuando el armado cruza la red, devuelve
+//     tipo: "armado" + subtipo: "armado-pasado" + popup:
+//     "armado-cruzado" (en lugar de remate-segunda/libre).
+//     El handler del popup decide qué tipo final se guarda.
+// ============================================================
 
 import {
   numeroRotacionDesdePosiciones,
@@ -26,6 +39,7 @@ export type TipoAccion =
 
 export type Lado = "propio" | "rival";
 export type Situacion = "saque" | "recepcion";
+
 export type PopupRequerido =
   | "saque"
   | "tipo-saque"
@@ -38,9 +52,31 @@ export type PopupRequerido =
   | "bloqueo"
   | "ataque-toque-libre"
   | "remate-segunda"
+  | "armado-cruzado"            // ← NUEVO
+  | "variante-remate-segunda"   // ← NUEVO
   | null;
 
-export type VarianteAtaque = "remate" | "toque";
+/**
+ * Variantes de ataque.
+ *
+ * - "remate" / "toque": ataque normal (toque = remate de toque
+ *   común, sin pasar por "segunda").
+ * - "toque-segunda": toque de segunda desde el armado cruzado,
+ *   elegido como "Toque" en el sub-popup de variante.
+ * - "remate-segunda": remate de segunda desde el armado cruzado,
+ *   elegido como "Remate" en el sub-popup de variante.
+ *
+ * Los 4 valores se guardan con tipo: "ataque" y se distinguen
+ * por `variante` para que el motor de subtipos funcione igual
+ * (mira dónde cae la pelota: error si es la última acción y
+ * cae en cancha propia, neutro si sigue con defensa, etc.).
+ */
+export type VarianteAtaque =
+  | "remate"
+  | "toque"
+  | "toque-segunda"    // ← NUEVO
+  | "remate-segunda";  // ← NUEVO
+
 export type TipoSaque = "potencia" | "flotado";
 
 export interface PuntoV2 {
@@ -243,15 +279,6 @@ function zonaFisicaDeCelda(celda: string): Zona | null {
 // ============================================================
 // POSICIONES DE JUEGO
 // ============================================================
-//
-// Formación de recepción confirmada por el club (izq → der):
-//   R1: Pz - L - Pd
-//   R2: Pd - L - Pz
-//   R3: Pd - Pz - L
-//   R4: Pd - Pz - L
-//   R5: Pd - L - Pz
-//   R6: Pd - Pz - L
-// ------------------------------------------------------------
 
 export type RolJuego = "A" | "O" | "C1" | "C2" | "P1" | "P2" | "L";
 
@@ -598,13 +625,34 @@ export function clasificarLinea(
     };
   }
 
+  // ============================================================
+  // ARMADO CRUZADO (FASE 7.1)
+  // ============================================================
+  //
+  // Si la pelota cruza la red (en cualquier dirección) sin que
+  // haya pasado por un ataque, la clasificación devuelve
+  // tipo: "armado" + subtipo: "armado-pasado" + popup:
+  // "armado-cruzado".
+  //
+  // El handler del popup decide qué tipo final queda:
+  //   - "Armado" → queda armado-pasado (neutro, puntaje 2).
+  //   - "Remate de segunda" → sub-popup de variante
+  //     ("toque-segunda" o "remate-segunda") y el tipo pasa a
+  //     "ataque".
+  //   - "Libre" → tipo pasa a "libre", popup de jugador si es
+  //     propio.
+  //
+  // Aplica a ambos lados (propio y rival). En el caso rival,
+  // "Libre" no abre popup de jugador.
+  // ============================================================
   const armarOlibre = (esRival: boolean): ResultadoClasificacion =>
     cruzaNet
       ? {
-          tipo: "libre",
+          tipo: "armado",
           esRival,
-          jugadorId: null,
-          popup: esRival ? "remate-segunda" : "libre",
+          jugadorId: esRival ? null : jugadorQueArma(estado.rotacion),
+          popup: "armado-cruzado",
+          subtipoFijo: "armado-pasado",
         }
       : {
           tipo: "armado",

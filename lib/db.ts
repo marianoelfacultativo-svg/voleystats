@@ -325,6 +325,25 @@ export interface AccionDB {
   destino_mini?: string | null;
   posicion_inicial_celda?: string | null;
   posicion_inicial_mini?: string | null;
+
+  // ------------------------------------------------------------
+  // FASE 7.1 — Contexto de partido como dato de primera clase
+  // ------------------------------------------------------------
+  // Los rellena `cargarAccionesCompatibles` a partir de
+  // `partidos.setN_ganado` y `partidos.resultado_partido`.
+  //
+  // Si el equipo actual es el `equipo_rival_id` del partido,
+  // estos valores vienen INVERTIDOS desde la perspectiva del
+  // equipo que está mirando. Es decir: `set_ganado === true`
+  // significa "el equipo que mira ganó ese set", no "el equipo
+  // local ganó ese set".
+  //
+  // Si el partido no tiene resultado cargado, quedan en null.
+  // ------------------------------------------------------------
+  /** ¿El equipo que mira ganó este set? null = desconocido. */
+  set_ganado?: boolean | null;
+  /** Resultado del partido desde el equipo que mira. null = desconocido. */
+  resultado_partido?: "ganado" | "perdido" | null;
 }
 
 // ============================================================
@@ -375,6 +394,10 @@ interface AccionIndividual {
   posicion_inicial_celda?: string | null;
   posicion_inicial_mini?: string | null;
   created_at: string;
+
+  // FASE 7.1 — contexto de partido (ya normalizado al equipo que mira)
+  set_ganado: boolean | null;
+  resultado_partido: "ganado" | "perdido" | null;
 }
 
 function fundamentoV2aV1(tipo: string): string | null {
@@ -468,6 +491,71 @@ function zonaTendenciaDeCelda(celda: string | null): number | null {
   }
 }
 
+// ------------------------------------------------------------
+// FASE 7.1 — Contexto de partido
+// ------------------------------------------------------------
+// Lee de `partidos` los campos `setN_ganado` y `resultado_partido`,
+// y los INVIERTE si el equipo que mira es el `equipo_rival_id`.
+// ------------------------------------------------------------
+
+interface ContextoPartido {
+  setGanadoPorSet: Map<number, boolean | null>;
+  resultadoPartido: "ganado" | "perdido" | null;
+}
+
+function invertirGanado(
+  v: boolean | null | undefined,
+  flipear: boolean
+): boolean | null {
+  if (v === null || v === undefined) return null;
+  return flipear ? !v : v;
+}
+
+function invertirResultadoPartido(
+  v: string | null | undefined,
+  flipear: boolean
+): "ganado" | "perdido" | null {
+  if (v === "ganado") return flipear ? "perdido" : "ganado";
+  if (v === "perdido") return flipear ? "ganado" : "perdido";
+  return null;
+}
+
+async function cargarContextoPartido(
+  partidoId: string,
+  flipear: boolean
+): Promise<ContextoPartido> {
+  const setGanadoPorSet = new Map<number, boolean | null>();
+  let resultadoPartido: "ganado" | "perdido" | null = null;
+
+  if (!partidoId) return { setGanadoPorSet, resultadoPartido };
+
+  const { data } = await supabase
+    .from("partidos")
+    .select(
+      "set1_ganado, set2_ganado, set3_ganado, set4_ganado, set5_ganado, resultado_partido"
+    )
+    .eq("id", partidoId)
+    .maybeSingle();
+
+  if (data) {
+    setGanadoPorSet.set(1, invertirGanado(data.set1_ganado, flipear));
+    setGanadoPorSet.set(2, invertirGanado(data.set2_ganado, flipear));
+    setGanadoPorSet.set(3, invertirGanado(data.set3_ganado, flipear));
+    setGanadoPorSet.set(4, invertirGanado(data.set4_ganado, flipear));
+    setGanadoPorSet.set(5, invertirGanado(data.set5_ganado, flipear));
+    resultadoPartido = invertirResultadoPartido(
+      data.resultado_partido,
+      flipear
+    );
+  }
+
+  return { setGanadoPorSet, resultadoPartido };
+}
+
+// ------------------------------------------------------------
+// Carga principal: acciones_v2 → AccionDB[]
+// ------------------------------------------------------------
+
 export async function cargarAccionesCompatibles(
   partidoId: string,
   equipoId?: string
@@ -477,6 +565,12 @@ export async function cargarAccionesCompatibles(
 
   const hayQueFlipear = await debeFlipear(partidoId, equipoId);
   const puntos = prepararPuntos(res.puntos, hayQueFlipear);
+
+  // FASE 7.1 — contexto de partido (ya normalizado al equipo que mira)
+  const contextoPartido = await cargarContextoPartido(
+    partidoId,
+    hayQueFlipear
+  );
 
   const acciones: AccionIndividual[] = [];
   for (const p of puntos) {
@@ -508,6 +602,8 @@ export async function cargarAccionesCompatibles(
         posicion_inicial_celda: a.posicion_inicial_celda ?? null,
         posicion_inicial_mini: a.posicion_inicial_mini ?? null,
         created_at: a.created_at ?? p.created_at ?? "",
+        set_ganado: contextoPartido.setGanadoPorSet.get(p.set_numero) ?? null,
+        resultado_partido: contextoPartido.resultadoPartido,
       });
     }
   }
@@ -558,6 +654,8 @@ export async function cargarAccionesCompatibles(
       destino_mini: acc.destino_mini ?? null,
       posicion_inicial_celda: acc.posicion_inicial_celda ?? null,
       posicion_inicial_mini: acc.posicion_inicial_mini ?? null,
+      set_ganado: acc.set_ganado,
+      resultado_partido: acc.resultado_partido,
     });
 
     anteriorFinal = final;
@@ -582,6 +680,8 @@ export async function cargarAccionesCompatibles(
         cantidad: 1,
         puntaje: 5,
         puntajeBase: 5,
+        set_ganado: contextoPartido.setGanadoPorSet.get(p.set_numero) ?? null,
+        resultado_partido: contextoPartido.resultadoPartido,
       });
     }
   }

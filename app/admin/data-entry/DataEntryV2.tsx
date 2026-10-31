@@ -11,6 +11,9 @@ import BotonesAccionV2 from "./BotonesAccionV2";
 import PopupsV2 from "./PopupsV2";
 import SecuenciaV2 from "./SecuenciaV2";
 import SetupInicialV2 from "./SetupInicialV2";
+import CierreSetBanner from "./CierreSetBanner";
+import CierrePartidoBanner from "./CierrePartidoBanner";
+import ReabrirSetConfirm from "./ReabrirSetConfirm";
 
 import { supabase } from "@/lib/supabase";
 
@@ -23,11 +26,23 @@ import {
   CLAVE_POSICIONES_FIJAS,
   CLAVE_V2,
   POSICIONES_VACIAS,
+  VERSION_SCHEMA_LOCAL,
+  clavePunto,
+  esTieBreak,
+  maxSetsDeFormato,
+  puntosParaGanarSet,
+  setTerminado,
+  setsNecesariosParaGanar,
+  type FormatoPartido,
   type Jugador,
+  type PartidoCerrado,
   type PopupEnCola,
   type PosicionesFijasMap,
   type Props,
   type PuntoCerrado,
+  type PuntosPorSet,
+  type SetCerrado,
+  type SetsCerrados,
 } from "./tiposV2";
 
 import {
@@ -57,10 +72,72 @@ import type { CambioPendiente } from "./PanelRotacionV2";
 
 // Archivos extraídos
 import { cargarPuntoDesde as cargarPuntoDesdeHelper } from "./cargarPuntoV2";
-import { cargarPuntosCerradosDesdeDB } from "./cargaDBV2";
+import { cargarEstadoDesdeDB } from "./cargaDBV2";
 import { guardarPuntosEnSupabase } from "./guardarSupabaseV2";
 import { crearHandlersPopups } from "./handlersPopupsV2";
 import { crearHandlersCancha } from "./handlersCanchaV2";
+
+// ============================================================
+// HELPERS DE MIGRACIÓN LOCALSTORAGE v1 → v2
+// ============================================================
+
+interface LocalStorageV2Data {
+  version: number;
+  setActivo: number;
+  puntoActual: number;
+  setupCompleto: boolean;
+  formatoPartido: FormatoPartido;
+  puntosCerrados: PuntosPorSet;
+  setsCerrados: SetsCerrados;
+  partidoCerrado: PartidoCerrado | null;
+  rotacion: RotacionPunto | null;
+  saqueInicial: "propio" | "rival";
+  liberos: Libero[];
+  posicionesPunto: Record<Zona, string>;
+  cambiosPendientes: CambioPendiente[];
+  lineas: LineaClasificada[];
+  contadorId: number;
+  modoEspejo: boolean;
+  equipoRivalId: string | null;
+  rotacionRival: RotacionPunto | null;
+  liberosRival: Libero[];
+  posicionesPuntoRival: Record<Zona, string>;
+  cambiosPendientesRival: CambioPendiente[];
+}
+
+/**
+ * Migra data vieja (v1) a v2:
+ *   - Asigna set_numero = 1 a todos los puntos.
+ *   - Cambia la clave de "punto" a "1-punto".
+ *   - Inicializa setsCerrados = {}, partidoCerrado = null,
+ *     formatoPartido = "bo3".
+ */
+function migrarV1aV2(raw: any): any {
+  const puntosCerradosViejos: Record<number, any> = raw.puntosCerrados ?? {};
+  const puntosCerradosNuevos: PuntosPorSet = {};
+  for (const [numStr, pc] of Object.entries(puntosCerradosViejos)) {
+    const num = parseInt(numStr, 10);
+    if (isNaN(num)) continue;
+    const pcMigrado = {
+      ...pc,
+      numero: num,
+      set_numero: pc.set_numero ?? 1,
+    };
+    puntosCerradosNuevos[clavePunto(pcMigrado.set_numero, num)] = pcMigrado;
+  }
+  return {
+    ...raw,
+    puntosCerrados: puntosCerradosNuevos,
+    setsCerrados: raw.setsCerrados ?? {},
+    partidoCerrado: raw.partidoCerrado ?? null,
+    formatoPartido: raw.formatoPartido ?? "bo3",
+    version: VERSION_SCHEMA_LOCAL,
+  };
+}
+
+// ============================================================
+// COMPONENTE
+// ============================================================
 
 export default function DataEntryV2({
   partidoId,
@@ -71,11 +148,19 @@ export default function DataEntryV2({
   rotacionInicial,
   equiposDisponibles,
 }: Props) {
-  const [puntosCerrados, setPuntosCerrados] = useState<
-    Record<number, PuntoCerrado>
-  >({});
+  // ===== Estado principal =====
+  const [puntosCerrados, setPuntosCerrados] = useState<PuntosPorSet>({});
+  const [setsCerrados, setSetsCerrados] = useState<SetsCerrados>({});
+  const [partidoCerrado, setPartidoCerrado] =
+    useState<PartidoCerrado | null>(null);
+
+  const [setActivo, setSetActivo] = useState<number>(1);
   const [puntoActual, setPuntoActual] = useState<number>(1);
 
+  const [formatoPartido, setFormatoPartido] =
+    useState<FormatoPartido>("bo3");
+
+  // ===== Estado del punto en edición =====
   const [lineas, setLineas] = useState<LineaClasificada[]>([]);
   const [circuloSinArmar, setCirculoSinArmar] = useState<PuntoV2 | null>(null);
   const [circuloArmado, setCirculoArmado] = useState<PuntoV2 | null>(null);
@@ -100,6 +185,7 @@ export default function DataEntryV2({
     {}
   );
 
+  // ===== Modo espejo =====
   const [modoEspejo, setModoEspejo] = useState(false);
   const [equipoRivalId, setEquipoRivalId] = useState<string | null>(null);
   const [jugadoresRival, setJugadoresRival] = useState<Jugador[]>([]);
@@ -114,26 +200,67 @@ export default function DataEntryV2({
   const [posicionesFijasRival, setPosicionesFijasRival] =
     useState<PosicionesFijasMap>({});
 
-  const [setActivo] = useState<number>(1);
+  // ===== UI =====
   const [orientacion, setOrientacion] = useState<Orientacion>("vertical");
   const [guardando, setGuardando] = useState(false);
   const [setupCompleto, setSetupCompleto] = useState(false);
   const [hidratado, setHidratado] = useState(false);
 
-  // ------------------------------------------------------------
-  // ARMADO AUTOMÁTICO DE CÍRCULOS
-  // ------------------------------------------------------------
-  // true  → los círculos nuevos nacen armados (naranja ✓)
-  // false → nacen sin armar (blanco, como antes)
+  // ===== Banners y modales =====
+  const [bannerSet, setBannerSet] = useState<SetCerrado | null>(null);
+  const [bannerPartido, setBannerPartido] =
+    useState<PartidoCerrado | null>(null);
+  const [setAReabrir, setSetAReabrir] = useState<SetCerrado | null>(null);
+
+  // ===== Armado automático =====
   const [armadoAutomatico, setArmadoAutomatico] = useState<boolean>(true);
 
-  const puntoActualCerrado = !!puntosCerrados[puntoActual];
+  // ===== Derivados =====
+  const claveActual = clavePunto(setActivo, puntoActual);
+  const puntoActualCerrado = !!puntosCerrados[claveActual];
+  const setCerradoActual = !!setsCerrados[setActivo];
 
+  const setsPropios = useMemo(
+    () =>
+      Object.values(setsCerrados).filter((s) => s.ganador === "propio")
+        .length,
+    [setsCerrados]
+  );
+  const setsRivales = useMemo(
+    () =>
+      Object.values(setsCerrados).filter((s) => s.ganador === "rival")
+        .length,
+    [setsCerrados]
+  );
+
+  const maxSets = maxSetsDeFormato(formatoPartido);
+
+  /** Todos los puntos cerrados del set activo. */
+  const puntosDelSetActivo = useMemo(() => {
+    return Object.values(puntosCerrados)
+      .filter((p) => p.set_numero === setActivo)
+      .sort((a, b) => a.numero - b.numero);
+  }, [puntosCerrados, setActivo]);
+
+  /** Marcador del set activo. */
+  const marcadorSetActivo = useMemo(() => {
+    let propios = 0;
+    let rivales = 0;
+    for (const p of puntosDelSetActivo) {
+      if (p.ganador === "propio") propios++;
+      else rivales++;
+    }
+    return { propios, rivales };
+  }, [puntosDelSetActivo]);
+
+  /** Máximo navegable en el set activo. */
   const maxNavegable = useMemo(() => {
-    const nums = Object.keys(puntosCerrados).map((n) => parseInt(n));
-    const ultimo = nums.length > 0 ? Math.max(...nums) : 0;
+    const ultimo =
+      puntosDelSetActivo.length > 0
+        ? puntosDelSetActivo[puntosDelSetActivo.length - 1].numero
+        : 0;
     return ultimo + 1;
-  }, [puntosCerrados]);
+  }, [puntosDelSetActivo]);
 
   const situacion: Situacion =
     saqueInicial === "propio" ? "saque" : "recepcion";
@@ -272,15 +399,10 @@ export default function DataEntryV2({
   const lineasParaUI = useMemo(() => lineas.map(aLineaV2), [lineas]);
   const origenActivoParaUI: PuntoV2 | null = circuloSinArmar ?? circuloArmado;
 
-  const marcador = useMemo(() => {
-    let p = 0;
-    let r = 0;
-    for (const pc of Object.values(puntosCerrados)) {
-      if (pc.ganador === "propio") p++;
-      else r++;
-    }
-    return { propio: p, rival: r };
-  }, [puntosCerrados]);
+  const marcador = {
+    propio: marcadorSetActivo.propios,
+    rival: marcadorSetActivo.rivales,
+  };
 
   const secuenciaConValores = useMemo(() => {
     const conSaque = calcularSubtiposSaque(lineas);
@@ -304,6 +426,10 @@ export default function DataEntryV2({
     return "?";
   };
 
+  // ============================================================
+  // EFECTOS
+  // ============================================================
+
   useEffect(() => {
     if (!equipoRivalId) {
       setJugadoresRival([]);
@@ -325,15 +451,7 @@ export default function DataEntryV2({
     setRotacionRival(rotacionVacia(1, setActivo, puntoActual, "rival"));
   }, [modoEspejo, equipoRivalId, rotacionRival, setActivo, puntoActual]);
 
-  const ejecutarCargarPunto = (cerrados: Record<number, PuntoCerrado>, n: number) => {
-    cargarPuntoDesdeHelper(cerrados, n, modoEspejo, rotacionInicial, {
-      setLineas, setCirculoSinArmar, setCirculoArmado, setDesviosPendientes,
-      setEstrella, setColaPopups, setContadorId, setSaqueInicial, setRotacion,
-      setLiberos, setPosicionesPunto, setCambiosPendientes, setRotacionRival,
-      setLiberosRival, setPosicionesPuntoRival, setCambiosPendientesRival,
-    });
-  };
-
+  // Persistencia de posiciones fijas
   useEffect(() => {
     if (!partidoId || !hidratado) return;
     try {
@@ -341,23 +459,44 @@ export default function DataEntryV2({
     } catch {}
   }, [partidoId, hidratado, posicionesFijas]);
 
+  // Persistencia del estado completo
   useEffect(() => {
     if (!partidoId || !hidratado) return;
     try {
-      localStorage.setItem(CLAVE_V2 + partidoId, JSON.stringify({
-        ts: Date.now(), setActivo, puntoActual, setupCompleto, puntosCerrados,
-        rotacion, saqueInicial, liberos, posicionesPunto, cambiosPendientes,
-        lineas, contadorId, modoEspejo, equipoRivalId, rotacionRival,
-        liberosRival, posicionesPuntoRival, cambiosPendientesRival,
-      }));
+      const data: LocalStorageV2Data = {
+        version: VERSION_SCHEMA_LOCAL,
+        setActivo,
+        puntoActual,
+        setupCompleto,
+        formatoPartido,
+        puntosCerrados,
+        setsCerrados,
+        partidoCerrado,
+        rotacion,
+        saqueInicial,
+        liberos,
+        posicionesPunto,
+        cambiosPendientes,
+        lineas,
+        contadorId,
+        modoEspejo,
+        equipoRivalId,
+        rotacionRival,
+        liberosRival,
+        posicionesPuntoRival,
+        cambiosPendientesRival,
+      };
+      localStorage.setItem(CLAVE_V2 + partidoId, JSON.stringify(data));
     } catch {}
   }, [
-    partidoId, hidratado, setActivo, puntoActual, setupCompleto, puntosCerrados,
-    rotacion, saqueInicial, liberos, posicionesPunto, cambiosPendientes, lineas,
-    contadorId, modoEspejo, equipoRivalId, rotacionRival, liberosRival,
+    partidoId, hidratado, setActivo, puntoActual, setupCompleto, formatoPartido,
+    puntosCerrados, setsCerrados, partidoCerrado, rotacion, saqueInicial,
+    liberos, posicionesPunto, cambiosPendientes, lineas, contadorId,
+    modoEspejo, equipoRivalId, rotacionRival, liberosRival,
     posicionesPuntoRival, cambiosPendientesRival,
   ]);
 
+  // Hidratación inicial
   useEffect(() => {
     if (!partidoId) return;
 
@@ -367,7 +506,11 @@ export default function DataEntryV2({
     const raw = localStorage.getItem(CLAVE_V2 + partidoId);
     if (raw) {
       try {
-        const data = JSON.parse(raw);
+        let data = JSON.parse(raw);
+        // Migrar v1 → v2 si hace falta
+        if (!data.version || data.version < VERSION_SCHEMA_LOCAL) {
+          data = migrarV1aV2(data);
+        }
         if (data.setupCompleto !== undefined) setSetupCompleto(data.setupCompleto);
         if (data.modoEspejo !== undefined) setModoEspejo(data.modoEspejo);
         if (data.equipoRivalId !== undefined) setEquipoRivalId(data.equipoRivalId);
@@ -375,14 +518,25 @@ export default function DataEntryV2({
         if (data.liberosRival) setLiberosRival(data.liberosRival);
         if (data.posicionesPuntoRival) setPosicionesPuntoRival(data.posicionesPuntoRival);
         if (data.cambiosPendientesRival) setCambiosPendientesRival(data.cambiosPendientesRival);
+        if (data.formatoPartido) setFormatoPartido(data.formatoPartido);
 
-        const cerrados: Record<number, PuntoCerrado> = data.puntosCerrados ?? {};
+        const cerrados: PuntosPorSet = data.puntosCerrados ?? {};
+        const sets: SetsCerrados = data.setsCerrados ?? {};
+        const partido: PartidoCerrado | null = data.partidoCerrado ?? null;
+
         setPuntosCerrados(cerrados);
-        const pto = data.puntoActual ?? 1;
-        setPuntoActual(pto);
-        ejecutarCargarPunto(cerrados, pto);
+        setSetsCerrados(sets);
+        setPartidoCerrado(partido);
 
-        if (!cerrados[pto]) {
+        const setPto = data.setActivo ?? 1;
+        const pto = data.puntoActual ?? 1;
+        setSetActivo(setPto);
+        setPuntoActual(pto);
+
+        ejecutarCargarPunto(cerrados, sets, setPto, pto);
+
+        const claveAct = clavePunto(setPto, pto);
+        if (!cerrados[claveAct]) {
           if (data.rotacion) setRotacion(data.rotacion);
           if (data.saqueInicial) setSaqueInicial(data.saqueInicial);
           if (data.liberos) setLiberos(data.liberos);
@@ -393,25 +547,84 @@ export default function DataEntryV2({
         }
         setHidratado(true);
         return;
-      } catch {}
+      } catch (e) {
+        console.error("Error leyendo localStorage:", e);
+      }
     }
 
+    // Fallback: cargar desde Supabase
     (async () => {
       try {
-        const cerrados = await cargarPuntosCerradosDesdeDB(partidoId, 1);
-        setPuntosCerrados(cerrados);
-        const numeros = Object.keys(cerrados).map((k) => parseInt(k));
-        const siguiente = numeros.length > 0 ? Math.max(...numeros) + 1 : 1;
-        setPuntoActual(siguiente);
-        ejecutarCargarPunto(cerrados, siguiente);
-        if (numeros.length > 0) setSetupCompleto(true);
+        const estado = await cargarEstadoDesdeDB(
+          partidoId,
+          equipoId,
+          formatoPartido
+        );
+        setPuntosCerrados(estado.puntosCerrados);
+        setSetsCerrados(estado.setsCerrados);
+        setPartidoCerrado(estado.partidoCerrado);
+        setSetActivo(estado.setActivoRecomendado);
+        setPuntoActual(estado.puntoActivoRecomendado);
+
+        ejecutarCargarPunto(
+          estado.puntosCerrados,
+          estado.setsCerrados,
+          estado.setActivoRecomendado,
+          estado.puntoActivoRecomendado
+        );
+
+        if (Object.keys(estado.puntosCerrados).length > 0) {
+          setSetupCompleto(true);
+        }
       } catch (e) {
-        console.error("Error cargando puntos desde Supabase:", e);
+        console.error("Error cargando desde Supabase:", e);
       }
       setHidratado(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partidoId]);
+
+  // ============================================================
+  // CARGA DE PUNTO
+  // ============================================================
+
+  const ejecutarCargarPunto = (
+    puntos: PuntosPorSet,
+    sets: SetsCerrados,
+    setNum: number,
+    ptoNum: number
+  ) => {
+    cargarPuntoDesdeHelper(
+      puntos,
+      sets,
+      setNum,
+      ptoNum,
+      modoEspejo,
+      rotacionInicial,
+      {
+        setLineas,
+        setCirculoSinArmar,
+        setCirculoArmado,
+        setDesviosPendientes,
+        setEstrella,
+        setColaPopups,
+        setContadorId,
+        setSaqueInicial,
+        setRotacion,
+        setLiberos,
+        setPosicionesPunto,
+        setCambiosPendientes,
+        setRotacionRival,
+        setLiberosRival,
+        setPosicionesPuntoRival,
+        setCambiosPendientesRival,
+      }
+    );
+  };
+
+  // ============================================================
+  // HANDLERS DE CANCHA Y POPUPS
+  // ============================================================
 
   const { handleMiniClick, handleClickCirculo } = crearHandlersCancha({
     setupCompleto,
@@ -430,12 +643,118 @@ export default function DataEntryV2({
     handleDefensaX2Change, handleDefensaConfirmar, handleLibreConfirmar,
     handleJugadorConfirmar, handleBloqueoConfirmar, handleRoceRedConfirmar,
     handleAtaqueToqueLibreConfirmar, handleRemateSegundaConfirmar,
+    handleArmadoCruzadoConfirmar, handleVarianteRemateSegundaConfirmar,
   } = crearHandlersPopups({
     popupActivo, lineas, contadorId, equipoId, equipoRivalId,
     setLineas, setColaPopups, setContadorId, setDesviosPendientes,
   });
 
+  // ============================================================
+  // HANDLERS DE CIERRE DE SET / PARTIDO
+  // ============================================================
+
+  const cerrarSet = (
+    ganador: "propio" | "rival",
+    propios: number,
+    rivales: number,
+    nuevosCerrados: PuntosPorSet
+  ) => {
+    if (!rotacion) {
+      alert("Falta la rotación para cerrar el set.");
+      return;
+    }
+
+    const setCerradoNuevo: SetCerrado = {
+      numero: setActivo,
+      ganador,
+      puntosPropios: propios,
+      puntosRivales: rivales,
+      rotacionAlCerrar: rotacion,
+      liberosAlCerrar: liberos,
+    };
+
+    const nuevosSets: SetsCerrados = {
+      ...setsCerrados,
+      [setActivo]: setCerradoNuevo,
+    };
+    setSetsCerrados(nuevosSets);
+    setBannerSet(setCerradoNuevo);
+
+    const needed = setsNecesariosParaGanar(formatoPartido);
+    const setsProp = Object.values(nuevosSets).filter(
+      (s) => s.ganador === "propio"
+    ).length;
+    const setsRiv = Object.values(nuevosSets).filter(
+      (s) => s.ganador === "rival"
+    ).length;
+
+    if (setsProp >= needed || setsRiv >= needed) {
+      const ganadorPartido: "propio" | "rival" =
+        setsProp > setsRiv ? "propio" : "rival";
+      const pc: PartidoCerrado = {
+        ganador: ganadorPartido,
+        setsPropios: setsProp,
+        setsRivales: setsRiv,
+      };
+      setPartidoCerrado(pc);
+      setBannerPartido(pc);
+      return;
+    }
+
+    const siguienteSet = setActivo + 1;
+    if (siguienteSet <= maxSets) {
+      navegarASetInterno(nuevosCerrados, nuevosSets, siguienteSet);
+    }
+  };
+
+  const navegarASetInterno = (
+    puntos: PuntosPorSet,
+    sets: SetsCerrados,
+    nuevoSet: number
+  ) => {
+    const puntosDelSet = Object.values(puntos)
+      .filter((p) => p.set_numero === nuevoSet)
+      .sort((a, b) => a.numero - b.numero);
+    const ultimo =
+      puntosDelSet.length > 0
+        ? puntosDelSet[puntosDelSet.length - 1].numero
+        : 0;
+    const ptoTarget = ultimo + 1;
+
+    setSetActivo(nuevoSet);
+    setPuntoActual(ptoTarget);
+    ejecutarCargarPunto(puntos, sets, nuevoSet, ptoTarget);
+
+    if (ptoTarget === 1 && nuevoSet > 1) {
+      const clavePrimeroAnterior = clavePunto(nuevoSet - 1, 1);
+      const primerAnterior = puntos[clavePrimeroAnterior];
+      if (primerAnterior) {
+        const saqueOpuesto: "propio" | "rival" =
+          primerAnterior.saqueInicial === "propio" ? "rival" : "propio";
+        setSaqueInicial(saqueOpuesto);
+        setRotacion((prev) =>
+          prev ? { ...prev, saque_equipo: saqueOpuesto } : prev
+        );
+        if (modoEspejo && rotacionRival) {
+          setRotacionRival((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  saque_equipo: saqueOpuesto === "propio" ? "rival" : "propio",
+                }
+              : prev
+          );
+        }
+      }
+    }
+  };
+
+  // ============================================================
+  // HANDLERS DE BORRADO Y EDICIÓN
+  // ============================================================
+
   const handleBorrarUltima = () => {
+    if (setCerradoActual) return;
     if (lineas.length === 0) {
       if (circuloArmado || circuloSinArmar) {
         setCirculoArmado(null);
@@ -455,9 +774,7 @@ export default function DataEntryV2({
   };
 
   const handleBorrarPunto = () => {
-    // Los diálogos nativos (confirm/alert) fuerzan la salida de
-    // fullscreen en la mayoría de los navegadores. Si estamos en
-    // pantalla completa, borramos directo sin preguntar.
+    if (setCerradoActual) return;
     const enFullscreen = !!document.fullscreenElement;
     if (
       lineas.length > 0 &&
@@ -473,9 +790,10 @@ export default function DataEntryV2({
     setEstrella(null);
     setColaPopups([]);
     setContadorId(1);
+
     if (puntoActualCerrado) {
       const copia = { ...puntosCerrados };
-      delete copia[puntoActual];
+      delete copia[claveActual];
       setPuntosCerrados(copia);
     }
   };
@@ -494,7 +812,11 @@ export default function DataEntryV2({
       localStorage.removeItem(CLAVE_V2 + partidoId);
       localStorage.removeItem(CLAVE_POSICIONES_FIJAS + partidoId);
     } catch {}
+
     setPuntosCerrados({});
+    setSetsCerrados({});
+    setPartidoCerrado(null);
+    setSetActivo(1);
     setPuntoActual(1);
     setLineas([]);
     setCirculoSinArmar(null);
@@ -518,23 +840,42 @@ export default function DataEntryV2({
     setCambiosPendientesRival([]);
     setPosicionesFijasRival({});
     setSetupCompleto(false);
+    setBannerSet(null);
+    setBannerPartido(null);
 
     (async () => {
       try {
-        const cerrados = await cargarPuntosCerradosDesdeDB(partidoId, 1);
-        setPuntosCerrados(cerrados);
-        const numeros = Object.keys(cerrados).map((k) => parseInt(k));
-        const siguiente = numeros.length > 0 ? Math.max(...numeros) + 1 : 1;
-        setPuntoActual(siguiente);
-        ejecutarCargarPunto(cerrados, siguiente);
-        if (numeros.length > 0) setSetupCompleto(true);
+        const estado = await cargarEstadoDesdeDB(
+          partidoId,
+          equipoId,
+          formatoPartido
+        );
+        setPuntosCerrados(estado.puntosCerrados);
+        setSetsCerrados(estado.setsCerrados);
+        setPartidoCerrado(estado.partidoCerrado);
+        setSetActivo(estado.setActivoRecomendado);
+        setPuntoActual(estado.puntoActivoRecomendado);
+        ejecutarCargarPunto(
+          estado.puntosCerrados,
+          estado.setsCerrados,
+          estado.setActivoRecomendado,
+          estado.puntoActivoRecomendado
+        );
+        if (Object.keys(estado.puntosCerrados).length > 0) {
+          setSetupCompleto(true);
+        }
       } catch (e) {
         console.error("Error recargando desde Supabase:", e);
       }
     })();
   };
 
+  // ============================================================
+  // HANDLERS DE CIERRE DE PUNTO
+  // ============================================================
+
   const handleCerrarPunto = () => {
+    if (setCerradoActual) return;
     if (lineas.length === 0) return;
     if (!rotacion) { alert("Falta rotación."); return; }
     const ganador = ganadorDelPunto(lineas);
@@ -542,6 +883,7 @@ export default function DataEntryV2({
 
     const punto: PuntoCerrado = {
       numero: puntoActual,
+      set_numero: setActivo,
       lineas,
       saqueInicial,
       situacion,
@@ -550,51 +892,139 @@ export default function DataEntryV2({
       liberos,
       posicionesPunto,
       cambios: cambiosPendientes,
-      equipoId: saqueInicial === "propio" ? equipoId : equipoRivalId ?? undefined,
-      estadoRival: modoEspejo && rotacionRival ? {
-        rotacion: rotacionRival,
-        liberos: liberosRival,
-        posicionesPunto: posicionesPuntoRival,
-        cambios: cambiosPendientesRival,
-      } : undefined,
+      equipoId:
+        saqueInicial === "propio" ? equipoId : equipoRivalId ?? undefined,
+      estadoRival:
+        modoEspejo && rotacionRival
+          ? {
+              rotacion: rotacionRival,
+              liberos: liberosRival,
+              posicionesPunto: posicionesPuntoRival,
+              cambios: cambiosPendientesRival,
+            }
+          : undefined,
     };
 
-    if (puntoActualCerrado) {
-      setPuntosCerrados((prev) => ({ ...prev, [puntoActual]: punto }));
+    const clave = clavePunto(setActivo, puntoActual);
+    const nuevosCerrados: PuntosPorSet = {
+      ...puntosCerrados,
+      [clave]: punto,
+    };
+    setPuntosCerrados(nuevosCerrados);
+
+    let propios = 0;
+    let rivales = 0;
+    for (const p of Object.values(nuevosCerrados)) {
+      if (p.set_numero !== setActivo) continue;
+      if (p.ganador === "propio") propios++;
+      else rivales++;
+    }
+    const target = puntosParaGanarSet(formatoPartido, setActivo);
+    if (setTerminado(propios, rivales, target)) {
+      const ganadorSet: "propio" | "rival" = propios > rivales ? "propio" : "rival";
+      cerrarSet(ganadorSet, propios, rivales, nuevosCerrados);
       return;
     }
 
-    const nuevosCerrados: Record<number, PuntoCerrado> = { ...puntosCerrados, [puntoActual]: punto };
-    setPuntosCerrados(nuevosCerrados);
+    if (partidoCerrado) return;
+
     const siguiente = puntoActual + 1;
     setPuntoActual(siguiente);
-    ejecutarCargarPunto(nuevosCerrados, siguiente);
+    ejecutarCargarPunto(
+      nuevosCerrados,
+      setsCerrados,
+      setActivo,
+      siguiente
+    );
   };
 
+  // ============================================================
+  // HANDLERS DE REABRIR SET
+  // ============================================================
+
+  const handleSolicitarReabrir = () => {
+    const sc = setsCerrados[setActivo];
+    if (sc) setSetAReabrir(sc);
+  };
+
+  const handleConfirmarReabrir = () => {
+    if (!setAReabrir) return;
+
+    const nuevosSets = { ...setsCerrados };
+    delete nuevosSets[setAReabrir.numero];
+    setSetsCerrados(nuevosSets);
+
+    setPartidoCerrado(null);
+
+    setSetActivo(setAReabrir.numero);
+    const puntosDelSet = Object.values(puntosCerrados)
+      .filter((p) => p.set_numero === setAReabrir.numero)
+      .sort((a, b) => a.numero - b.numero);
+    const ultimo =
+      puntosDelSet.length > 0
+        ? puntosDelSet[puntosDelSet.length - 1].numero
+        : 0;
+    const ptoTarget = ultimo + 1;
+    setPuntoActual(ptoTarget);
+    ejecutarCargarPunto(
+      puntosCerrados,
+      nuevosSets,
+      setAReabrir.numero,
+      ptoTarget
+    );
+
+    setSetAReabrir(null);
+  };
+
+  const handleCancelarReabrir = () => {
+    setSetAReabrir(null);
+  };
+
+  // ============================================================
+  // HANDLERS DE GUARDADO
+  // ============================================================
+
   const handleGuardarSupabase = async () => {
-    const lista = Object.values(puntosCerrados).sort((a, b) => a.numero - b.numero);
+    const lista = Object.values(puntosCerrados).sort((a, b) => {
+      if (a.set_numero !== b.set_numero) return a.set_numero - b.set_numero;
+      return a.numero - b.numero;
+    });
     if (lista.length === 0) { alert("No hay puntos cerrados para guardar."); return; }
     const enFullscreen = !!document.fullscreenElement;
     if (
       !enFullscreen &&
-      !confirm(`¿Guardar ${lista.length} punto${lista.length !== 1 ? "s" : ""} en Supabase?\n\nLos mismos puntos se borrarán de las tablas V1 (reemplazo).`)
+      !confirm(
+        `¿Guardar ${lista.length} punto${lista.length !== 1 ? "s" : ""} en Supabase?\n\nTambién se actualizará el resultado del partido y los sets ganados.\n\nLos mismos puntos se borrarán de las tablas V1 (reemplazo).`
+      )
     ) {
       return;
     }
 
     setGuardando(true);
     const res = await guardarPuntosEnSupabase({
-      partidoId, setActivo, listaPuntos: lista, equipoId,
-      equipoRivalId, posicionesFijas, posicionesFijasRival, modoEspejo,
+      partidoId,
+      setActivo,
+      listaPuntos: lista,
+      equipoId,
+      equipoRivalId,
+      posicionesFijas,
+      posicionesFijasRival,
+      modoEspejo,
+      setsCerrados,
+      partidoCerrado,
     });
     setGuardando(false);
 
     if (res.errores > 0) {
-      alert(`⚠️ ${res.errores} punto(s) con error. Primer error: ${res.primerError}`);
+      alert(`⚠️ ${res.errores} error(es). Primer error: ${res.primerError}`);
     } else {
-      alert("✅ Puntos guardados en Supabase (V1 limpiado en esos puntos)");
+      alert("✅ Puntos y resultado del partido guardados en Supabase");
     }
   };
+
+  // ============================================================
+  // HANDLERS DE ROTACIÓN / SAQUE / POSICIONES
+  // ============================================================
 
   const handleGuardarCambios = () => {
     if (!rotacion) return;
@@ -682,11 +1112,25 @@ export default function DataEntryV2({
     if (id && !rotacionRival) setRotacionRival(rotacionVacia(1, setActivo, puntoActual, "rival"));
   };
 
+  // ============================================================
+  // NAVEGACIÓN
+  // ============================================================
+
   const irAPunto = (n: number) => {
     if (n < 1 || n > maxNavegable) return;
+    if (setCerradoActual) return;
     setPuntoActual(n);
-    ejecutarCargarPunto(puntosCerrados, n);
+    ejecutarCargarPunto(puntosCerrados, setsCerrados, setActivo, n);
   };
+
+  const irASet = (n: number) => {
+    if (n < 1 || n > maxSets) return;
+    navegarASetInterno(puntosCerrados, setsCerrados, n);
+  };
+
+  // ============================================================
+  // TECLADO
+  // ============================================================
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -705,13 +1149,23 @@ export default function DataEntryV2({
         else if (circuloSinArmar) { setCirculoSinArmar(null); setEstrella(null); }
         return;
       }
-      if (e.key === "Enter") { e.preventDefault(); handleCerrarPunto(); return; }
-      if (e.key.toLowerCase() === "d" && !e.ctrlKey && !e.metaKey) handleBorrarUltima();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (!setCerradoActual) handleCerrarPunto();
+        return;
+      }
+      if (e.key.toLowerCase() === "d" && !e.ctrlKey && !e.metaKey) {
+        if (!setCerradoActual) handleBorrarUltima();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [colaPopups, lineas, rotacion, puntoActual, circuloArmado, circuloSinArmar, desviosPendientes, puntosCerrados, saqueInicial, situacion, liberos, posicionesPunto, cambiosPendientes]);
+  }, [colaPopups, lineas, rotacion, setActivo, puntoActual, circuloArmado, circuloSinArmar, desviosPendientes, puntosCerrados, setsCerrados, saqueInicial, situacion, liberos, posicionesPunto, cambiosPendientes, setCerradoActual]);
+
+  // ============================================================
+  // SETUP
+  // ============================================================
 
   const necesitaSetup = !setupCompleto;
 
@@ -729,13 +1183,38 @@ export default function DataEntryV2({
     return equiposDisponibles.find((e) => e.id === equipoRivalId)?.nombre ?? "";
   }, [equipoRivalId, equiposDisponibles]);
 
+  // ============================================================
+  // RENDER
+  // ============================================================
+
   return (
     <div className="space-y-3">
+      {/* ===== BANNERS ===== */}
+      <CierreSetBanner
+        cerrado={bannerSet}
+        onDismiss={() => setBannerSet(null)}
+      />
+      <CierrePartidoBanner
+        cerrado={bannerPartido}
+        onDismiss={() => setBannerPartido(null)}
+      />
+
+      {/* ===== MARCADOR ===== */}
       <BarraMarcadorV2
         nombreMiEquipo={nombreMiEquipo}
-        nombreRival={modoEspejo && nombreEquipoRivalSeleccionado ? nombreEquipoRivalSeleccionado : nombreRival}
+        nombreRival={
+          modoEspejo && nombreEquipoRivalSeleccionado
+            ? nombreEquipoRivalSeleccionado
+            : nombreRival
+        }
         setActivo={setActivo}
         marcador={marcador}
+        setsPropios={setsPropios}
+        setsRivales={setsRivales}
+        setsCerrados={setsCerrados}
+        formatoPartido={formatoPartido}
+        onIrSet={irASet}
+        setCerrado={setCerradoActual}
         visibleNavegacion={!necesitaSetup}
         puntoActual={puntoActual}
         puntoActualCerrado={puntoActualCerrado}
@@ -748,6 +1227,7 @@ export default function DataEntryV2({
         onIrPunto={irAPunto}
       />
 
+      {/* ===== SETUP ===== */}
       {necesitaSetup && (
         <SetupInicialV2
           rotacion={rotacion}
@@ -769,6 +1249,8 @@ export default function DataEntryV2({
           posicionesPuntoRival={posicionesPuntoRival}
           posicionesFijasActualesRival={posicionesFijasActualesRival}
           cambiosPendientesRival={cambiosPendientesRival}
+          formatoPartido={formatoPartido}
+          onCambioFormatoPartido={setFormatoPartido}
           onFijarPosiciones={handleFijarPosiciones}
           onLimpiarFijadas={handleLimpiarFijadas}
           onSetLiberos={setLiberos}
@@ -791,6 +1273,7 @@ export default function DataEntryV2({
         />
       )}
 
+      {/* ===== CONSOLA ===== */}
       {!necesitaSetup && (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-3">
@@ -817,6 +1300,8 @@ export default function DataEntryV2({
                   posicionesPuntoRival={posicionesPuntoRival}
                   posicionesFijasActualesRival={posicionesFijasActualesRival}
                   cambiosPendientesRival={cambiosPendientesRival}
+                  formatoPartido={formatoPartido}
+                  onCambioFormatoPartido={setFormatoPartido}
                   onFijarPosiciones={handleFijarPosiciones}
                   onLimpiarFijadas={handleLimpiarFijadas}
                   onSetLiberos={setLiberos}
@@ -843,7 +1328,12 @@ export default function DataEntryV2({
 
             <div className="relative bg-white rounded-2xl shadow-sm border border-slate-200 p-3">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] font-bold text-slate-500 uppercase">Punto {puntoActual} · Set {setActivo}</p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase">
+                  Set {setActivo} · Punto {puntoActual}
+                  {esTieBreak(formatoPartido, setActivo) && (
+                    <span className="ml-1 text-amber-600">(tie-break)</span>
+                  )}
+                </p>
                 <button
                   onClick={() => setOrientacion((o) => o === "vertical" ? "horizontal" : "vertical")}
                   className="px-2 py-0.5 text-[10px] rounded border border-slate-300 hover:bg-slate-50 text-slate-600"
@@ -854,17 +1344,17 @@ export default function DataEntryV2({
 
               <CanchaV2
                 orientacion={orientacion}
-                onMiniClick={handleMiniClick}
+                onMiniClick={setCerradoActual ? undefined : handleMiniClick}
                 onCerrarPunto={handleCerrarPunto}
                 onPuntoSiguiente={() => irAPunto(puntoActual + 1)}
                 onPuntoAnterior={() => irAPunto(puntoActual - 1)}
                 onBorrarPunto={handleBorrarPunto}
                 onBorrarLinea={handleBorrarUltima}
-                puedeCerrarPunto={lineas.length > 0}
-                puedeIrSiguiente={puntoActual + 1 <= maxNavegable}
-                puedeIrAnterior={puntoActual > 1}
-                puedeBorrarPunto={lineas.length > 0}
-                puedeBorrarLinea={lineas.length > 0 || !!circuloArmado || !!circuloSinArmar}
+                puedeCerrarPunto={lineas.length > 0 && !setCerradoActual}
+                puedeIrSiguiente={puntoActual + 1 <= maxNavegable && !setCerradoActual}
+                puedeIrAnterior={puntoActual > 1 && !setCerradoActual}
+                puedeBorrarPunto={lineas.length > 0 && !setCerradoActual}
+                puedeBorrarLinea={!setCerradoActual && (lineas.length > 0 || !!circuloArmado || !!circuloSinArmar)}
                 armadoAutomatico={armadoAutomatico}
                 onToggleArmadoAutomatico={() => setArmadoAutomatico((v) => !v)}
               >
@@ -875,39 +1365,44 @@ export default function DataEntryV2({
                   desviosPendientes={desviosPendientes}
                   estrella={estrella}
                   orientacion={orientacion}
-                  onClickCirculo={handleClickCirculo}
+                  onClickCirculo={setCerradoActual ? undefined : handleClickCirculo}
                 />
 
-                <PopupsV2
-                  popupActivo={popupActivo}
-                  jugadoresEnCancha={jugadoresEnCancha}
-                  delanterosPorZona={
-                    popupActivo && lineas.find((l) => l.id === popupActivo.lineaId)?.equipoId === equipoRivalId
-                      ? delanterosPorZonaRival
-                      : delanterosPorZona
-                  }
-                  onSaqueConfirmar={handleSaqueConfirmar}
-                  onTipoSaqueConfirmar={handleTipoSaqueConfirmar}
-                  onRecepcionConfirmar={handleRecepcionConfirmar}
-                  onArmadoConfirmar={handleArmadoConfirmar}
-                  onVelocidadConfirmar={handleVelocidadConfirmar}
-                  onDefensaConfirmar={handleDefensaConfirmar}
-                  onDefensaX2Change={handleDefensaX2Change}
-                  onLibreConfirmar={handleLibreConfirmar}
-                  onJugadorConfirmar={handleJugadorConfirmar}
-                  onBloqueoConfirmar={handleBloqueoConfirmar}
-                  onRoceRedConfirmar={handleRoceRedConfirmar}
-                  onAtaqueToqueLibreConfirmar={handleAtaqueToqueLibreConfirmar}
-                  onRemateSegundaConfirmar={handleRemateSegundaConfirmar}
-                  onCerrar={cerrarPopup}
-                  onSiguiente={popupSiguiente}
-                />
+                {!setCerradoActual && (
+                  <PopupsV2
+                    popupActivo={popupActivo}
+                    jugadoresEnCancha={jugadoresEnCancha}
+                    delanterosPorZona={
+                      popupActivo && lineas.find((l) => l.id === popupActivo.lineaId)?.equipoId === equipoRivalId
+                        ? delanterosPorZonaRival
+                        : delanterosPorZona
+                    }
+                    onSaqueConfirmar={handleSaqueConfirmar}
+                    onTipoSaqueConfirmar={handleTipoSaqueConfirmar}
+                    onRecepcionConfirmar={handleRecepcionConfirmar}
+                    onArmadoConfirmar={handleArmadoConfirmar}
+                    onVelocidadConfirmar={handleVelocidadConfirmar}
+                    onDefensaConfirmar={handleDefensaConfirmar}
+                    onDefensaX2Change={handleDefensaX2Change}
+                    onLibreConfirmar={handleLibreConfirmar}
+                    onJugadorConfirmar={handleJugadorConfirmar}
+                    onBloqueoConfirmar={handleBloqueoConfirmar}
+                    onRoceRedConfirmar={handleRoceRedConfirmar}
+                    onAtaqueToqueLibreConfirmar={handleAtaqueToqueLibreConfirmar}
+                    onRemateSegundaConfirmar={handleRemateSegundaConfirmar}
+                    onArmadoCruzadoConfirmar={handleArmadoCruzadoConfirmar}
+                    onVarianteRemateSegundaConfirmar={handleVarianteRemateSegundaConfirmar}
+                    onCerrar={cerrarPopup}
+                    onSiguiente={popupSiguiente}
+                  />
+                )}
               </CanchaV2>
             </div>
           </div>
 
           <BotonesAccionV2
             guardando={guardando}
+            setCerrado={setCerradoActual}
             puedeBorrarUltima={lineas.length > 0 || !!circuloArmado || !!circuloSinArmar}
             puedeBorrarPunto={lineas.length > 0}
             puedeGuardar={Object.keys(puntosCerrados).length > 0}
@@ -917,9 +1412,24 @@ export default function DataEntryV2({
             onGuardar={handleGuardarSupabase}
             onCerrarPunto={handleCerrarPunto}
             onBorrarLocal={handleBorrarLocal}
+            onReabrirSet={handleSolicitarReabrir}
           />
         </>
       )}
+
+      {/* ===== MODAL REABRIR SET ===== */}
+      <ReabrirSetConfirm
+        setAReabrir={setAReabrir}
+        setsPosterioresCargados={
+          setAReabrir
+            ? Object.values(setsCerrados).filter(
+                (s) => s.numero > setAReabrir.numero
+              ).length
+            : 0
+        }
+        onConfirmar={handleConfirmarReabrir}
+        onCancelar={handleCancelarReabrir}
+      />
     </div>
   );
 }

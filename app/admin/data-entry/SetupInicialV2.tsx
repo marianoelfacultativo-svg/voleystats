@@ -4,12 +4,28 @@
 // SETUP INICIAL V2 — pantalla "Antes de empezar el partido"
 // modo = "setup"  → título + panel rotación + botón Comenzar
 // modo = "carga"  → solo el panel rotación (para usar durante el partido)
+//
+// v2.1 (corrección FASE 7.1 — tie-break en BO3):
+//   + El subtítulo del botón BO3 ahora aclara que el 3° set es
+//     tie-break a 15.
+//   + El subtítulo del botón BO5 ahora aclara que el 5° set es
+//     tie-break a 15.
+//
+// v2 (FASE 7.1 — DataEntry con sets y partido):
+//   + Nuevo prop `formatoPartido: "bo3" | "bo5"` y su handler
+//     `onCambioFormatoPartido`.
+//   + Selector de formato del partido (BO3 / BO5) en modo "setup".
+//     En modo "carga" no se muestra (ya está decidido).
 // ============================================================
 
 import PanelRotacionV2, {
   type CambioPendiente,
 } from "./PanelRotacionV2";
-import type { Jugador, EquipoOpcion } from "./tiposV2";
+import type {
+  Jugador,
+  EquipoOpcion,
+  FormatoPartido,
+} from "./tiposV2";
 import type { Libero, RotacionPunto, SaqueEquipo, Zona } from "@/lib/rotaciones";
 
 interface Props {
@@ -37,6 +53,10 @@ interface Props {
   posicionesPuntoRival: Record<Zona, string>;
   posicionesFijasActualesRival: Record<Zona, string>;
   cambiosPendientesRival: CambioPendiente[];
+
+  // ---------- FORMATO DEL PARTIDO (FASE 7.1) ----------
+  formatoPartido: FormatoPartido;
+  onCambioFormatoPartido: (f: FormatoPartido) => void;
 
   // ---------- HANDLERS MI EQUIPO ----------
   onFijarPosiciones: (pos: Record<Zona, string>) => void;
@@ -87,6 +107,8 @@ export default function SetupInicialV2({
   posicionesPuntoRival,
   posicionesFijasActualesRival,
   cambiosPendientesRival,
+  formatoPartido,
+  onCambioFormatoPartido,
   onFijarPosiciones,
   onLimpiarFijadas,
   onSetLiberos,
@@ -192,6 +214,41 @@ export default function SetupInicialV2({
       <h2 className="text-lg font-bold text-amber-900">
         🎬 Antes de empezar el partido
       </h2>
+
+      {/* Formato del partido (FASE 7.1) */}
+      <div className="bg-white border border-amber-200 rounded-lg p-3 space-y-2">
+        <p className="text-sm font-semibold text-amber-900">
+          🏆 Formato del partido
+        </p>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => onCambioFormatoPartido("bo3")}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition border-2 text-left ${
+              formatoPartido === "bo3"
+                ? "bg-amber-500 text-white border-amber-600 shadow"
+                : "bg-white text-slate-700 border-slate-300 hover:bg-amber-50"
+            }`}
+          >
+            Al mejor de 3
+            <span className="block text-[10px] font-normal opacity-80">
+              2 sets para ganar · 3° set a 15 (tie-break)
+            </span>
+          </button>
+          <button
+            onClick={() => onCambioFormatoPartido("bo5")}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition border-2 text-left ${
+              formatoPartido === "bo5"
+                ? "bg-amber-500 text-white border-amber-600 shadow"
+                : "bg-white text-slate-700 border-slate-300 hover:bg-amber-50"
+            }`}
+          >
+            Al mejor de 5
+            <span className="block text-[10px] font-normal opacity-80">
+              3 sets para ganar · 5° set a 15 (tie-break)
+            </span>
+          </button>
+        </div>
+      </div>
 
       {/* Toggle modo espejo + selector equipo rival */}
       <div className="flex flex-wrap items-center gap-3 bg-white border border-amber-200 rounded-lg p-3">
