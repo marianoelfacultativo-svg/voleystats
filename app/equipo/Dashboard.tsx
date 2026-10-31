@@ -49,6 +49,7 @@ interface Partido {
 interface Jugador {
   id: string;
   nombre: string;
+  apodo: string | null;
   numero: number | null;
   rol: string;
 }
@@ -121,7 +122,7 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
         .order("fecha", { ascending: false }),
       supabase
         .from("jugadores")
-        .select("id, nombre, numero, rol")
+        .select("id, nombre, apodo, numero, rol")
         .order("nombre"),
       supabase.from("equipos").select("id, nombre"),
     ]).then(async ([partRes, jugRes, eqRes]) => {
@@ -142,9 +143,6 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
         return;
       }
 
-      // Carga en paralelo:
-      //   - AccionDB (para los gráficos / rankings / stats del dashboard)
-      //   - AccionVisual + PuntoConAcciones (para el ConsultaPanel)
       const [compatibles, unificadas] = await Promise.all([
         Promise.all(ids.map((pid) => cargarAccionesCompatibles(pid, equipoId))),
         Promise.all(ids.map((pid) => cargarAccionesUnificadas(pid, equipoId))),
@@ -258,9 +256,12 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
       j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
   }
 
+  // FASE 7.4 — pasar apodo y número al ConsultaPanel
   const jugadoresParaConsulta = jugadores.map((j) => ({
     id: j.id,
     nombre: j.nombre + (j.numero !== null ? ` #${j.numero}` : ""),
+    apodo: j.apodo,
+    numero: j.numero,
   }));
 
   const partidosParaConsulta = partidos.map((p) => ({
@@ -300,7 +301,7 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* ============ CONSULTAS ANALÍTICAS (arriba, fuera del PDF) ============ */}
+      {/* ============ CONSULTAS ANALÍTICAS ============ */}
       <section
         data-pdf-ignorar
         className="rounded-2xl p-4 sm:p-5"
@@ -338,7 +339,7 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
       </div>
 
       <div ref={refPDF} className="space-y-6">
-        {/* ─── CARD ÚLTIMO PARTIDO (ESTILO ESTADIO / BROADCAST) ─── */}
+        {/* ─── CARD ÚLTIMO PARTIDO ─── */}
         {ultimoPartido && statsUltimo && (
           <section
             className="rounded-2xl p-5 sm:p-6 transition-all"
@@ -547,7 +548,6 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
               </div>
             </div>
 
-            {/* Tabla de Fundamentos */}
             <div
               className="rounded-2xl p-3 sm:p-5 overflow-x-auto"
               style={{

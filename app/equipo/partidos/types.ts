@@ -2,6 +2,10 @@
 // TIPOS Y CONSTANTES COMPARTIDAS — Partidos
 // ============================================================
 // Todo lo que es solo tipos, interfaces y constantes puras.
+//
+// v1.1 (FASE 7.4):
+//   + `Jugador.apodo?: string | null` para el resolver de
+//     jugadores (apodo / apellido / nombre de pila).
 // ============================================================
 
 import type { CSSProperties } from "react";
@@ -29,6 +33,8 @@ export interface Partido {
 export interface Jugador {
   id: string;
   nombre: string;
+  /** Apodo informal. Opcional. Lo usa el resolver de jugadores. */
+  apodo?: string | null;
   numero: number | null;
   rol: string;
 }

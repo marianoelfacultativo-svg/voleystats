@@ -5,22 +5,10 @@
 // ============================================================
 // FASE 5 del plan "Consultas Analíticas Libres".
 //
-// Componente de UI:
-//   - Textarea / input para escribir la consulta en lenguaje natural.
-//   - Botón "Consultar".
-//   - Ejemplos rápidos (chips).
-//   - Renderiza el resultado con `<ConsultaResultado />`.
-//
-// Llama a `ejecutarConsulta` de lib/consultaAnalitica/ejecutor.
-//
-// Uso típico en MiEquipo o Dashboard:
-//
-//   <ConsultaPanel
-//     acciones={accionesVisuales}
-//     puntos={puntosCompletos}
-//     jugadores={jugadores}
-//     partidos={partidos}
-//   />
+// v1.1 (FASE 7.4):
+//   + `jugadores` acepta `apodo?` y `numero?` para que el
+//     ejecutor pueda resolver apodos / apellidos / nombre de
+//     pila y desambiguar.
 // ============================================================
 
 import { useMemo, useState } from "react";
@@ -42,7 +30,12 @@ import ConsultaResultado from "./ConsultaResultado";
 interface Props {
   acciones: AccionVisual[];
   puntos?: PuntoConAcciones[];
-  jugadores?: { id: string; nombre: string }[];
+  jugadores?: {
+    id: string;
+    nombre: string;
+    apodo?: string | null;
+    numero?: number | null;
+  }[];
   partidos?: { id: string; nombre: string; fecha?: string }[];
   /** Nombre amigable del jugador (opcional; si no viene, usa el id). */
   nombreDeJugador?: (id: string) => string;
@@ -84,7 +77,6 @@ export default function ConsultaPanel({
 
   const hayDatos = acciones.length > 0;
 
-  // Contador de acciones / puntos para mostrar arriba.
   const totalAcciones = useMemo(
     () => acciones.filter((a) => !a.oculta).length,
     [acciones]
@@ -107,7 +99,6 @@ export default function ConsultaPanel({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter sin Shift ejecuta. Shift+Enter hace salto de línea.
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleConsultar();

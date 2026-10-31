@@ -3,6 +3,29 @@
 // ============================================================
 // FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
 //
+// v1.8 (FASE 7.4):
+//   + `ContextoRespuesta.jugadores` pasa a `JugadorParaResolver[]`
+//     (compatible con `{id, nombre}` y suma `apodo?` / `numero?`).
+//   + `ejecutarComparison` usa `resolverJugador` (apodo / apellido
+//     / nombre de pila) y devuelve `respuestaVacia` con aviso de
+//     desambiguación si hay más de un candidato.
+//   + `ejecutarHabit` y `ejecutarDistribution` cuentan PUNTOS
+//     (no acciones) cuando `groupBy` es por punto:
+//       resultado_punto, resultado_set, resultado_partido,
+//       cruces, duracion_rally, set.
+//   + Nueva función local `calcularDistribucionPorPuntos`.
+//
+// v1.7 (FASE 7.4 — problema C: fase por punto):
+//   + `ContextoRespuesta.fasesPorPunto` (Map<clave, FaseRally>)
+//     calculado por el ejecutor sobre el universo completo.
+//   + `aplicarCondicionesExtra` reescrito para el filtro de fase:
+//       · Filtra PUNTOS COMPLETOS por la fase del punto (cómo
+//         empezó el rally), no acciones sueltas.
+//       · Deriva las acciones filtradas a partir de los puntos
+//         filtrados (solo las acciones de esos puntos).
+//       · Fallback a la lógica vieja (filtro acción por acción
+//         con `contextoRally`) si no hay puntos disponibles.
+//
 // v1.6 (FASE 6 — Opción A, familia cruces):
 //   + 6 métricas nuevas: cruces_promedio, cruces_total,
 //     cruces_max, rallys_largos, rallys_cortos, rallys_medios.
@@ -28,9 +51,15 @@ import type {
 } from "../../app/equipo/adaptadorUnificadoV2";
 import {
   calcularContextoRally,
+  calcularFasesPorPunto,
   type ContextoRally,
+  type FaseRally,
 } from "../contextoRally";
-import { puntajeDeAccion } from "../analisis/clasificacion";
+import {
+  baseSubtipo,
+  clasificarResultado,
+  puntajeDeAccion,
+} from "../analisis/clasificacion";
 import type { AggFn, GroupBy, IntencionQuery } from "./intenciones";
 import {
   porcentaje,
@@ -82,6 +111,7 @@ import {
   describirTendencia,
 } from "./tendencias";
 import type {
+  ItemDistribucion,
   ResultadoConsulta,
   RespuestaConsulta,
   FilaTabla,
@@ -100,6 +130,11 @@ import {
   respuestaTabla,
   respuestaVacia,
 } from "./tipos";
+import {
+  resolverJugador,
+  describirCandidatos,
+  type JugadorParaResolver,
+} from "./resolverJugador";
 
 // ------------------------------------------------------------
 // CONTEXTO DE ENTRADA
@@ -111,7 +146,17 @@ export interface ContextoRespuesta {
   intencion: IntencionQuery;
   contextoAgrupacion?: ContextoAgrupacion;
   contextoRally?: Map<string, ContextoRally>;
-  jugadores?: { id: string; nombre: string }[];
+  /**
+   * FASE 7.4 — Fase de cada PUNTO del universo (no de cada acción).
+   * Clave: `partido_id|set_numero|punto_numero`.
+   * Calculado por `ejecutor.ts` sobre el universo completo.
+   */
+  fasesPorPunto?: Map<string, FaseRally>;
+  /**
+   * FASE 7.4 — Lista de jugadores con apodo (opcional) y número.
+   * Estructuralmente compatible con `{id, nombre}`.
+   */
+  jugadores?: JugadorParaResolver[];
   partidos?: { id: string; nombre: string }[];
   totalUniverso?: number;
 }
@@ -164,22 +209,10 @@ function frasePidePuntos(original: string): boolean {
 // ------------------------------------------------------------
 // AMBIGÜEDAD DE CRUCES
 // ------------------------------------------------------------
-// El usuario pidió cruces sin dar un N explícito (ej: "rally
-// largo", "rally corto", "cruces de red"). El parser ya asumió
-// un default y lo dejó en condicion.crucesMinimos/Maximos.
-// Acá mostramos el aviso al usuario.
-//
-// Reglas:
-//   - Si la frase tiene un número explícito de cruces → no ambiguo.
-//   - Si la frase dice "rally largo/corto", "cruces", "pelotazos",
-//     "intercambios" sin N → ambiguo.
-//   - Si la frase no trata de cruces → no ambiguo.
-// ------------------------------------------------------------
 
 function esAmbiguedadCruces(intencion: IntencionQuery): boolean {
   const original = normalizarTexto(intencion.original || "");
 
-  // Números explícitos de cruces → no ambiguo.
   if (/\b(?:mas|más)\s+de\s+\d+\s+cruces?\b/.test(original)) return false;
   if (/\bmenos\s+de\s+\d+\s+cruces?\b/.test(original)) return false;
   if (/\bhasta\s+\d+\s+cruces?\b/.test(original)) return false;
@@ -189,7 +222,6 @@ function esAmbiguedadCruces(intencion: IntencionQuery): boolean {
   if (/\b\d+\s+pelotazos?\b/.test(original)) return false;
   if (/\b\d+\s+intercambios?\b/.test(original)) return false;
 
-  // Palabras ambiguas sin número → ambiguo.
   if (/\brallys?\s+larg/.test(original)) return true;
   if (/\brallys?\s+cort/.test(original)) return true;
   if (/\bcruces?\b/.test(original)) return true;
@@ -226,6 +258,16 @@ function agregarAvisoAmbiguedad(
 // APLICAR CONDICIONES EXTRA
 // ------------------------------------------------------------
 
+function claveDePunto(a: AccionVisual): string {
+  return `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`;
+}
+
+function claveDePuntoDesdePunto(p: PuntoConAcciones): string {
+  const pid =
+    p.acciones.find((a) => a.partido_id)?.partido_id ?? "";
+  return `${pid}|${p.set_numero}|${p.punto_numero}`;
+}
+
 function aplicarCondicionesExtra(
   ctx: ContextoRespuesta
 ): ContextoRespuesta {
@@ -236,21 +278,54 @@ function aplicarCondicionesExtra(
   const tieneSalida = !!cond.salidaRol;
   if (!tieneFase && !tieneSalida) return ctx;
 
-  let mapaRally: Map<string, ContextoRally> | null = null;
-  if (tieneFase) {
-    mapaRally = ctx.contextoRally ?? calcularContextoRally(ctx.acciones);
-  }
-
   let acciones = ctx.acciones;
+  let puntos = ctx.puntos;
+  let contextoRally = ctx.contextoRally;
 
-  if (tieneFase && mapaRally) {
+  // ----------------------------------------------------------
+  // FASE — filtrar puntos completos por fase del punto
+  // ----------------------------------------------------------
+  if (tieneFase) {
     const faseBuscada = cond.fase!;
-    acciones = acciones.filter((a) => {
-      const c = mapaRally!.get(a.id);
-      return c?.fase === faseBuscada;
-    });
+
+    const fasesPorPunto: Map<string, FaseRally> =
+      ctx.fasesPorPunto ??
+      calcularFasesPorPunto(
+        ctx.puntos && ctx.puntos.length > 0
+          ? ctx.puntos.flatMap((p) => p.acciones)
+          : ctx.acciones
+      );
+
+    const tenemosPuntos =
+      ctx.puntos !== undefined && ctx.puntos !== null;
+
+    if (tenemosPuntos) {
+      const puntosFiltrados: PuntoConAcciones[] = (ctx.puntos ?? []).filter(
+        (p) => fasesPorPunto.get(claveDePuntoDesdePunto(p)) === faseBuscada
+      );
+
+      const clavesOk = new Set<string>();
+      for (const p of puntosFiltrados) {
+        clavesOk.add(claveDePuntoDesdePunto(p));
+      }
+
+      acciones = acciones.filter((a) => clavesOk.has(claveDePunto(a)));
+
+      puntos = puntosFiltrados;
+    } else {
+      const mapaRally =
+        ctx.contextoRally ?? calcularContextoRally(ctx.acciones);
+      acciones = acciones.filter((a) => {
+        const c = mapaRally.get(a.id);
+        return c?.fase === faseBuscada;
+      });
+      contextoRally = mapaRally;
+    }
   }
 
+  // ----------------------------------------------------------
+  // SALIDA POR ROL — filtro de acciones (sin cambios)
+  // ----------------------------------------------------------
   if (tieneSalida) {
     const rol = cond.salidaRol!;
     acciones = acciones.filter((a) =>
@@ -258,25 +333,11 @@ function aplicarCondicionesExtra(
     );
   }
 
-  let puntos = ctx.puntos;
-  if (tieneFase && mapaRally && puntos && puntos.length > 0) {
-    const faseBuscada = cond.fase!;
-    puntos = puntos.filter((p) => {
-      const vis = p.acciones
-        .filter((a) => !a.oculta)
-        .sort((a, b) => a.orden - b.orden);
-      const ultima = vis[vis.length - 1];
-      if (!ultima) return false;
-      const c = mapaRally!.get(ultima.id);
-      return c?.fase === faseBuscada;
-    });
-  }
-
   return {
     ...ctx,
     acciones,
     puntos,
-    contextoRally: mapaRally ?? ctx.contextoRally,
+    contextoRally,
   };
 }
 
@@ -297,21 +358,6 @@ function meta(
     totalAcciones,
     totalUniverso: ctx.totalUniverso ?? totalAcciones,
   };
-}
-
-function resolverJugadorPorNombre(
-  nombre: string,
-  jugadores: { id: string; nombre: string }[]
-): string | null {
-  const norm = normalizarTexto(nombre).trim();
-  if (!norm) return null;
-  for (const j of jugadores) {
-    const nNorm = normalizarTexto(j.nombre).trim();
-    if (nNorm === norm || nNorm.includes(norm) || norm.includes(nNorm)) {
-      return j.id;
-    }
-  }
-  return null;
 }
 
 function metricaAPorcentaje(m: MetricaResultado): RespuestaConsulta {
@@ -382,6 +428,176 @@ function puedeContarPuntosPorDimension(
 }
 
 // ------------------------------------------------------------
+// FASE 7.4 — DISTRIBUCIÓN POR PUNTOS
+// ------------------------------------------------------------
+// Para los groupBy que "no tienen sentido por acción" (porque
+// agrupar acciones sueltas de un mismo punto da 3-4x el conteo
+// real), agrupamos por PUNTO entero.
+//
+// GroupBy cubiertos acá:
+//   - resultado_punto    (punto_propio / punto_rival / sin_ganador)
+//   - resultado_set      (set_ganado / set_perdido / sin_resultado)
+//   - resultado_partido  (partido_ganado / partido_perdido / sin_resultado)
+//   - cruces             (cantidad exacta de cruces del rally)
+//   - duracion_rally     (corto / medio / largo)
+//   - set                (número de set)
+//
+// Si el groupBy no es de este tipo, devuelve `null` y el caller
+// cae al camino normal (agrupar acciones).
+// ------------------------------------------------------------
+
+function esGroupByPorPunto(gb: GroupBy): boolean {
+  return (
+    gb === "resultado_punto" ||
+    gb === "resultado_set" ||
+    gb === "resultado_partido" ||
+    gb === "cruces" ||
+    gb === "duracion_rally" ||
+    gb === "set"
+  );
+}
+
+function calcularCrucesDePunto(lista: AccionVisual[]): number {
+  const visibles = lista
+    .filter((x) => !x.oculta)
+    .sort((x, y) => x.orden - y.orden);
+  let cruces = 0;
+  for (let i = 1; i < visibles.length; i++) {
+    if (visibles[i].lado !== visibles[i - 1].lado) cruces += 1;
+  }
+  return cruces;
+}
+
+function bucketDuracion(cruces: number): "corto" | "medio" | "largo" {
+  if (cruces <= CRUCES_DEFAULT_CORTO) return "corto";
+  if (cruces < CRUCES_DEFAULT_LARGO) return "medio";
+  return "largo";
+}
+
+function etiquetaGrupoPorPunto(gb: GroupBy, key: string): string {
+  switch (gb) {
+    case "resultado_punto":
+      if (key === "punto_propio") return "Punto propio";
+      if (key === "punto_rival") return "Punto rival";
+      if (key === "sin_ganador") return "Sin ganador";
+      return key;
+    case "resultado_set":
+      if (key === "set_ganado") return "Set ganado";
+      if (key === "set_perdido") return "Set perdido";
+      if (key === "sin_resultado") return "Sin resultado";
+      return key;
+    case "resultado_partido":
+      if (key === "partido_ganado") return "Partido ganado";
+      if (key === "partido_perdido") return "Partido perdido";
+      if (key === "sin_resultado") return "Sin resultado";
+      return key;
+    case "cruces": {
+      const n = parseInt(key, 10);
+      if (isNaN(n)) return key;
+      return n === 1 ? "1 cruce" : `${n} cruces`;
+    }
+    case "duracion_rally":
+      if (key === "corto") return `Corto (≤${CRUCES_DEFAULT_CORTO} cruces)`;
+      if (key === "medio") return `Medio (${CRUCES_DEFAULT_CORTO + 1} cruces)`;
+      if (key === "largo") return `Largo (≥${CRUCES_DEFAULT_LARGO} cruces)`;
+      return key;
+    case "set":
+      return `Set ${key}`;
+    default:
+      return key;
+  }
+}
+
+function calcularDistribucionPorPuntos(
+  ctx: ContextoRespuesta,
+  gb: GroupBy
+): ItemDistribucion[] | null {
+  if (!esGroupByPorPunto(gb)) return null;
+  if (!ctx.puntos || ctx.puntos.length === 0) return null;
+
+  const mapa = new Map<string, number>();
+
+  for (const p of ctx.puntos) {
+    const visibles = p.acciones
+      .filter((a) => !a.oculta)
+      .sort((a, b) => a.orden - b.orden);
+    const ultima = visibles[visibles.length - 1] ?? null;
+
+    let key: string | null = null;
+
+    switch (gb) {
+      case "resultado_punto": {
+        if (!ultima) {
+          key = "sin_ganador";
+          break;
+        }
+        const cat = clasificarResultado(ultima);
+        if (cat === "punto") {
+          key = ultima.es_rival ? "punto_rival" : "punto_propio";
+        } else if (cat === "error") {
+          key = ultima.es_rival ? "punto_propio" : "punto_rival";
+        } else {
+          key = "sin_ganador";
+        }
+        break;
+      }
+      case "resultado_set": {
+        const setGanado = ctx.contextoAgrupacion?.resultadosSet?.get(
+          `${ultima?.partido_id ?? ""}|${p.set_numero}`
+        );
+        if (setGanado === true) key = "set_ganado";
+        else if (setGanado === false) key = "set_perdido";
+        else key = "sin_resultado";
+        break;
+      }
+      case "resultado_partido": {
+        const pid = ultima?.partido_id ?? "";
+        const res = ctx.contextoAgrupacion?.resultadosPartido?.get(pid);
+        if (res === "ganado") key = "partido_ganado";
+        else if (res === "perdido") key = "partido_perdido";
+        else key = "sin_resultado";
+        break;
+      }
+      case "cruces": {
+        const n = calcularCrucesDePunto(p.acciones);
+        key = String(n);
+        break;
+      }
+      case "duracion_rally": {
+        const n = calcularCrucesDePunto(p.acciones);
+        key = bucketDuracion(n);
+        break;
+      }
+      case "set": {
+        key = String(p.set_numero);
+        break;
+      }
+      default:
+        return null;
+    }
+
+    if (key === null) continue;
+    mapa.set(key, (mapa.get(key) ?? 0) + 1);
+  }
+
+  if (mapa.size === 0) return [];
+
+  const total = Array.from(mapa.values()).reduce((s, n) => s + n, 0);
+
+  const items: ItemDistribucion[] = Array.from(mapa.entries()).map(
+    ([key, count]) => ({
+      key,
+      label: etiquetaGrupoPorPunto(gb, key),
+      count,
+      porcentaje: total > 0 ? redondear((count / total) * 100, 1) : 0,
+    })
+  );
+
+  items.sort((a, b) => b.count - a.count);
+  return items;
+}
+
+// ------------------------------------------------------------
 // MÉTRICAS DE VÓLEY
 // ------------------------------------------------------------
 
@@ -444,7 +660,7 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
   }
 
   // ============================================================
-  // RESTO DE MÉTRICAS (idénticas a v1.5)
+  // RESTO DE MÉTRICAS (idénticas a v1.7)
   // ============================================================
   if (metrica === "puntos_ganados") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
@@ -581,6 +797,38 @@ function ejecutarCount(ctx: ContextoRespuesta): RespuestaConsulta {
   const gb = groupByEfectivo(ctx);
 
   if (gb) {
+    // Si el groupBy es por punto, contar PUNTOS.
+    if (esGroupByPorPunto(gb)) {
+      const items = calcularDistribucionPorPuntos(ctx, gb);
+      if (items) {
+        const totalPuntos = items.reduce((s, it) => s + it.count, 0);
+        const filas: FilaTabla[] = items.map((it) => ({
+          key: it.key,
+          label: it.label,
+          count: it.count,
+          base: totalPuntos > 0 ? totalPuntos : null,
+          valor: it.count,
+          porcentaje: it.porcentaje,
+          extra: null,
+        }));
+        return respuestaTabla(
+          filas,
+          gb,
+          "count",
+          {
+            key: "TOTAL",
+            label: "TOTAL",
+            count: totalPuntos,
+            base: totalPuntos,
+            valor: totalPuntos,
+            porcentaje: 100,
+            extra: null,
+          },
+          `${totalPuntos} puntos en total (contando PUNTOS, no acciones).`
+        );
+      }
+    }
+
     const filas = construirTabla(
       acciones,
       gb,
@@ -821,14 +1069,31 @@ function ejecutarComparison(ctx: ContextoRespuesta): RespuestaConsulta {
     );
   }
 
-  const idA = resolverJugadorPorNombre(comp.a, ctx.jugadores);
-  const idB = resolverJugadorPorNombre(comp.b, ctx.jugadores);
+  // FASE 7.4 — resolver cada nombre con apodo / apellido / pila.
+  const rA = resolverJugador(comp.a, ctx.jugadores);
+  const rB = resolverJugador(comp.b, ctx.jugadores);
 
-  if (!idA || !idB) {
+  if (rA.motivo === "ambiguo") {
     return respuestaVacia(
-      `No pude encontrar a "${!idA ? comp.a : comp.b}" en la lista de jugadores.`
+      `Hay varios jugadores que matchean "${comp.a}". ` +
+        `Especificá cuál: ${describirCandidatos(rA.candidatos)}.`
     );
   }
+  if (rB.motivo === "ambiguo") {
+    return respuestaVacia(
+      `Hay varios jugadores que matchean "${comp.b}". ` +
+        `Especificá cuál: ${describirCandidatos(rB.candidatos)}.`
+    );
+  }
+  if (rA.motivo !== "unico" || rB.motivo !== "unico") {
+    const faltante = rA.motivo !== "unico" ? comp.a : comp.b;
+    return respuestaVacia(
+      `No pude encontrar a "${faltante}" en la lista de jugadores.`
+    );
+  }
+
+  const idA = rA.ids[0];
+  const idB = rB.ids[0];
 
   const gb = groupByEfectivo(ctx) ?? "jugador";
   const filas = construirTabla(
@@ -864,6 +1129,22 @@ function ejecutarDistribution(ctx: ContextoRespuesta): RespuestaConsulta {
       "Para una distribución necesito una agrupación (por set, por zona, etc.)."
     );
   }
+
+  // FASE 7.4 — si es por punto, contar PUNTOS.
+  if (esGroupByPorPunto(gb)) {
+    const items = calcularDistribucionPorPuntos(ctx, gb);
+    if (items !== null) {
+      if (items.length === 0) {
+        return respuestaVacia("Sin datos para distribuir.");
+      }
+      return respuestaDistribucion(
+        items,
+        gb,
+        `Distribución por ${gb} (contando puntos).`
+      );
+    }
+  }
+
   const items = construirDistribucion(
     ctx.acciones,
     gb,
@@ -914,6 +1195,24 @@ function ejecutarHabit(ctx: ContextoRespuesta): RespuestaConsulta {
       'Para "suele" necesito una agrupación. Ej: "cómo terminan sus saques" ' +
         'se agrupa automáticamente por subtipo (ace, positivo, negativo, error).'
     );
+  }
+
+  // FASE 7.4 — si es por punto, contar PUNTOS.
+  if (esGroupByPorPunto(gb)) {
+    const items = calcularDistribucionPorPuntos(ctx, gb);
+    if (items !== null) {
+      if (items.length === 0) {
+        return respuestaVacia("Sin datos para detectar hábito.");
+      }
+      const total = items.reduce((s, it) => s + it.count, 0);
+      const top = items[0] ?? null;
+      return respuestaHabit(
+        top?.key ?? null,
+        top?.label ?? null,
+        items,
+        `Lo más frecuente (${top?.label}): ${top?.porcentaje ?? 0}% de ${total} puntos.`
+      );
+    }
   }
 
   const habit = construirHabit(

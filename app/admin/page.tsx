@@ -21,6 +21,12 @@ import DatosBackup from "./DatosBackup";
 // ADMIN PAGE — panel de administración
 // ============================================================
 //
+// v2.1 (FASE 7.4):
+//   + Nuevo campo `apodo` (opcional) en jugadores.
+//   + Input de apodo en "Nuevo jugador" y "Editar jugador".
+//   + El apodo se muestra en la lista entre paréntesis.
+//   + Se manda `apodo` en insert y update.
+//
 // v2 (FASE 7.1 — DataEntry con sets y partido):
 //   + El formulario de partido ya NO edita:
 //       - set1 … set5
@@ -51,6 +57,7 @@ interface Equipo {
 interface Jugador {
   id: string;
   nombre: string;
+  apodo: string | null;
   numero: number | null;
   imagen_url: string | null;
   rol: string;
@@ -129,6 +136,7 @@ export default function AdminPage() {
   const [asignaciones, setAsignaciones] = useState<JugadorEquipo[]>([]);
   const [cargandoJugadores, setCargandoJugadores] = useState(false);
   const [nombreNuevoJug, setNombreNuevoJug] = useState("");
+  const [apodoNuevoJug, setApodoNuevoJug] = useState("");
   const [numeroNuevoJug, setNumeroNuevoJug] = useState("");
   const [archivoImagenNuevo, setArchivoImagenNuevo] = useState<File | null>(
     null
@@ -140,6 +148,7 @@ export default function AdminPage() {
 
   const [editandoJugId, setEditandoJugId] = useState<string | null>(null);
   const [editNombreJug, setEditNombreJug] = useState("");
+  const [editApodoJug, setEditApodoJug] = useState("");
   const [editNumeroJug, setEditNumeroJug] = useState("");
   const [editArchivoImagen, setEditArchivoImagen] = useState<File | null>(null);
   const [editPreview, setEditPreview] = useState("");
@@ -345,6 +354,7 @@ export default function AdminPage() {
       .from("jugadores")
       .insert({
         nombre,
+        apodo: apodoNuevoJug.trim() || null,
         numero: numeroNuevoJug ? parseInt(numeroNuevoJug) : null,
         imagen_url: imagenUrl,
         rol: rolNuevoJug,
@@ -366,6 +376,7 @@ export default function AdminPage() {
 
     setCreandoJugador(false);
     setNombreNuevoJug("");
+    setApodoNuevoJug("");
     setNumeroNuevoJug("");
     setArchivoImagenNuevo(null);
     setPreviewNuevo("");
@@ -389,6 +400,7 @@ export default function AdminPage() {
       .from("jugadores")
       .update({
         nombre,
+        apodo: editApodoJug.trim() || null,
         numero: editNumeroJug ? parseInt(editNumeroJug) : null,
         imagen_url: imagenUrl,
         rol: editRolJug,
@@ -468,7 +480,6 @@ export default function AdminPage() {
   };
 
   // v2 (FASE 7.1): al editar, solo se actualizan los 4 campos base.
-  // Los sets, resultado, notas, etc. NO se tocan desde acá.
   const guardarEdicionPartido = async () => {
     if (!editPartido) return;
     if (
@@ -851,12 +862,19 @@ export default function AdminPage() {
                 <p className="text-sm font-medium text-slate-700 mb-2">
                   Nuevo jugador
                 </p>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <input
                     type="text"
                     value={nombreNuevoJug}
                     onChange={(e) => setNombreNuevoJug(e.target.value)}
                     placeholder="Nombre"
+                    className={inputBase}
+                  />
+                  <input
+                    type="text"
+                    value={apodoNuevoJug}
+                    onChange={(e) => setApodoNuevoJug(e.target.value)}
+                    placeholder="Apodo (opcional)"
                     className={inputBase}
                   />
                   <input
@@ -866,7 +884,7 @@ export default function AdminPage() {
                     placeholder="Número (opcional)"
                     className={inputBase}
                   />
-                  <div className="col-span-2">
+                  <div className="col-span-3">
                     <label className="block text-xs text-slate-500 mb-1">
                       Imagen del jugador (opcional)
                     </label>
@@ -910,7 +928,7 @@ export default function AdminPage() {
                     onChange={(e) =>
                       setRolNuevoJug(e.target.value as "normal" | "armador")
                     }
-                    className={inputBase}
+                    className={`col-span-2 ${inputBase}`}
                   >
                     <option value="normal">Rol: Jugador normal</option>
                     <option value="armador">Rol: Armador</option>
@@ -951,7 +969,16 @@ export default function AdminPage() {
                               placeholder="Nombre"
                               className={`w-full ${inputBase}`}
                             />
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-3 gap-2">
+                              <input
+                                type="text"
+                                value={editApodoJug}
+                                onChange={(e) =>
+                                  setEditApodoJug(e.target.value)
+                                }
+                                placeholder="Apodo (opcional)"
+                                className={inputBase}
+                              />
                               <input
                                 type="number"
                                 value={editNumeroJug}
@@ -1057,6 +1084,12 @@ export default function AdminPage() {
                             />
                             <span className="flex-1 font-medium text-slate-800">
                               👤 {jug.nombre}
+                              {jug.apodo && (
+                                <span className="text-slate-500 font-normal italic">
+                                  {" "}
+                                  &quot;{jug.apodo}&quot;
+                                </span>
+                              )}
                               {jug.numero !== null && (
                                 <span className="text-slate-500 font-normal">
                                   {" "}
@@ -1079,6 +1112,7 @@ export default function AdminPage() {
                               onClick={() => {
                                 setEditandoJugId(jug.id);
                                 setEditNombreJug(jug.nombre);
+                                setEditApodoJug(jug.apodo ?? "");
                                 setEditNumeroJug(
                                   jug.numero !== null
                                     ? String(jug.numero)
@@ -1297,7 +1331,6 @@ export default function AdminPage() {
                             </select>
                           </div>
 
-                          {/* Info de solo lectura: sets y resultado */}
                           {((p.set1 ||
                             p.set2 ||
                             p.set3 ||

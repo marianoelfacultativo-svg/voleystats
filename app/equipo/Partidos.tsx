@@ -17,6 +17,10 @@
 // FASE 5: agrega `ConsultaPanel` arriba del detalle cuando el modo
 // es "partido" (un solo partido seleccionado). El panel responde
 // consultas libres usando SOLO las acciones de ese partido.
+//
+// v1.1 (FASE 7.4):
+//   + `jugadoresParaConsulta` pasa `apodo` y `numero` al
+//     ConsultaPanel para el resolver de jugadores.
 // ============================================================
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -118,7 +122,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   const refPDF = useRef<HTMLDivElement>(null);
 
   // ---------- Dataset paralelo para el análisis de consecuencias ----------
-  // Se carga EAGER por cada partido activo (una sola query extra).
   const [accionesVisuales, setAccionesVisuales] = useState<AccionVisual[]>([]);
   const [puntosCompletosPartido, setPuntosCompletosPartido] = useState<
     PuntoConAcciones[]
@@ -126,13 +129,10 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   const [cargandoVisuales, setCargandoVisuales] = useState(false);
 
   // ============ EFFECTS ============
-  // Reset filtros tácticos al cambiar de partido activo.
   useEffect(() => {
     setFiltrosTacticos({ ...FILTROS_TACTICOS_VACIO });
   }, [partidoSeleccionado]);
 
-  // Cargar accionesVisuales + puntos del partido activo (todas:
-  // propias + rivales, con flip y es_ultima_del_punto resueltos).
   useEffect(() => {
     if (!partidoSeleccionado || !equipoId) {
       setAccionesVisuales([]);
@@ -425,11 +425,14 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   );
 
   // ---- Jugadores y partidos para el ConsultaPanel (modo partido) ----
+  // FASE 7.4 — pasa `apodo` y `numero` para el resolver.
   const jugadoresParaConsulta = useMemo(
     () =>
       jugadores.map((j) => ({
         id: j.id,
         nombre: j.nombre + (j.numero !== null ? ` #${j.numero}` : ""),
+        apodo: j.apodo ?? null,
+        numero: j.numero,
       })),
     [jugadores]
   );
@@ -593,7 +596,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* ---------- BOTÓN EXPORTAR PDF ---------- */}
       <div className="flex justify-end" data-pdf-ignorar>
         <button
           onClick={handleDescargarPDF}
@@ -612,7 +614,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         </button>
       </div>
 
-      {/* ---------- CONTENIDO EXPORTABLE ---------- */}
       <div ref={refPDF} className="space-y-4">
         <HeaderPartido
           modoPrincipal={modoPrincipal}
@@ -625,7 +626,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
           hayFiltrosTacticosActivos={hayFiltrosTacticosActivos}
         />
 
-        {/* Barra de modos principales */}
         <div className="flex flex-wrap justify-end gap-2" data-pdf-ignorar>
           <button
             onClick={() => handleToggleModoPrincipal("partido")}
@@ -659,7 +659,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
           </button>
         </div>
 
-        {/* Layout de 3 columnas */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
           <ListaPartidos
             modoPrincipal={modoPrincipal}
@@ -690,9 +689,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
             scoreDe={scoreDe}
           />
 
-          {/* Columna derecha: vista según modo */}
           <div className="col-span-1 lg:col-span-2">
-            {/* MODO PARTIDO */}
             {modoPrincipal === "partido" && (
               <>
                 {!partidoDetalle || !statsPartido ? (
@@ -719,7 +716,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                   </p>
                 ) : (
                   <div className="space-y-4">
-                    {/* ============ CONSULTAS ANALÍTICAS (solo este partido) ============ */}
                     <section
                       data-pdf-ignorar
                       className="rounded-2xl p-3 sm:p-4"
@@ -740,7 +736,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                       />
                     </section>
 
-                    {/* ============ DETALLE DEL PARTIDO ============ */}
                     <VistaDetallePartido
                       partidoDetalle={partidoDetalle}
                       statsPartido={statsPartido}
@@ -763,7 +758,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               </>
             )}
 
-            {/* MODO COMPARAR PARTIDOS */}
             {modoPrincipal === "comparar-partidos" && (
               <VistaCompararPartidos
                 partidosComparadosData={partidosComparadosData.map((s) => ({
@@ -778,7 +772,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
               />
             )}
 
-            {/* MODO JUGADOR POR PARTIDOS */}
             {modoPrincipal === "jugador-por-partidos" && (
               <VistaJugadorPorPartidos
                 jugadorSeleccionadoJxP={jugadorSeleccionadoJxP}

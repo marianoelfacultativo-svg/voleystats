@@ -5,19 +5,31 @@
 // ============================================================
 // Buscador en lenguaje natural + parser + chips de coincidencias.
 //
-// v2: aplica `tipoObservadoSugerido` y `relacionObservadoSugerido`
-// que devuelve el parser v3.8 cuando detecta frases del tipo
-// "ataques que defiende el rival" → tipoObservado=defensa,
-// relacion=rival.
+// v5 (FASE 7.4):
+//   + `jugadoresParaDropdown` acepta `apodo?` y `numero?` para
+//     que el parser pueda resolver apodos / apellidos / pila.
+//   + Si `parseResult.jugadorAmbiguo === true`:
+//       · Se muestra un bloque rojo con los candidatos y la
+//         sugerencia ("usá nombre completo, apodo o #número").
+//       · El botón "Aplicar" queda deshabilitado (no se puede
+//         ejecutar una consulta con un jugador ambiguo).
+//   + `jugadorDetectadoId` sigue siendo `null` en ese caso
+//     (el parser no asigna `filtro.jugadorId` cuando hay
+//     ambigüedad), así que la consulta NO filtra por jugador
+//     accidentalmente.
+//
+// v4 (FASE 1): agrega un bloque "Intención analítica" que
+// muestra los chips de la intención detectada por
+// `parsearIntencion` (tipo, groupBy, métrica, tiempo,
+// condición). Es solo informativo: NO se aplica al filtro.
 //
 // v3: narrow del tipo `"cualquiera"` antes de llamar a
 // `etiquetaTipoDisparador` (fix build TS).
 //
-// v4 (FASE 1): agrega un bloque "Intención analítica" que muestra
-// los chips de la intención detectada por `parsearIntencion`
-// (tipo, groupBy, métrica, tiempo, condición). Es solo informativo:
-// NO se aplica al filtro. El motor de FASE 3 va a usar esa info
-// para saber qué cálculo hacer (count, %, avg, etc.).
+// v2: aplica `tipoObservadoSugerido` y `relacionObservadoSugerido`
+// que devuelve el parser cuando detecta frases del tipo
+// "ataques que defiende el rival" → tipoObservado=defensa,
+// relacion=rival.
 // ============================================================
 
 import { useMemo, useState } from "react";
@@ -44,7 +56,12 @@ interface Props {
   acciones: AccionVisual[];
   config: ConfiguracionPanel;
   setConfig: (c: ConfiguracionPanel) => void;
-  jugadoresParaDropdown: { id: string; nombre: string }[];
+  jugadoresParaDropdown: {
+    id: string;
+    nombre: string;
+    apodo?: string | null;
+    numero?: number | null;
+  }[];
   partidosDisponibles?: { id: string; nombre: string }[];
 }
 
@@ -143,10 +160,17 @@ export default function PanelBusqueda({
     [texto, jugadoresParaDropdown, partidosDisponibles]
   );
 
-  const jugadorDetectadoId = parseResult.filtro.jugadorId ?? null;
+  // FASE 7.4 — si es ambiguo, `filtro.jugadorId` ya viene null
+  // (el parser no asigna un jugador único). Lo dejamos explícito
+  // para que el checkbox de "Ver datos del mismo jugador" no
+  // aparezca y para no filtrar por jugador por accidente.
+  const jugadorDetectadoId = parseResult.jugadorAmbiguo
+    ? null
+    : parseResult.filtro.jugadorId ?? null;
 
   const aplicar = () => {
     if (!parseResult.aplicado) return;
+    if (parseResult.jugadorAmbiguo) return; // defensa extra: no aplicar si es ambiguo
 
     const nuevoBloque = {
       id: generarIdBloque(),
@@ -199,6 +223,11 @@ export default function PanelBusqueda({
     intencion.condicion !== null &&
     Object.keys(intencion.condicion).length > 0;
 
+  // Botón "Aplicar": además de requerir `aplicado`, no se puede
+  // apretar si el jugador es ambiguo.
+  const puedeAplicar =
+    parseResult.aplicado && !parseResult.jugadorAmbiguo;
+
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.02] p-2 space-y-1.5">
       <div className="flex items-center gap-1.5">
@@ -232,16 +261,58 @@ export default function PanelBusqueda({
         )}
         <button
           onClick={aplicar}
-          disabled={!parseResult.aplicado}
+          disabled={!puedeAplicar}
           className={`text-[10px] font-bold px-2.5 py-1 rounded border transition shrink-0 ${
-            parseResult.aplicado
+            puedeAplicar
               ? "bg-emerald-500/20 text-emerald-200 border-emerald-400/60 hover:bg-emerald-500/30"
               : "bg-white/5 text-slate-500 border-white/10 cursor-not-allowed"
           }`}
+          title={
+            parseResult.jugadorAmbiguo
+              ? "Desambiguá el jugador antes de aplicar"
+              : !parseResult.aplicado
+              ? "La consulta no está lista"
+              : "Aplicar filtro"
+          }
         >
           Aplicar
         </button>
       </div>
+
+      {/* ============================================ */}
+      {/* FASE 7.4 — JUGADOR AMBIGUO                    */}
+      {/* ============================================ */}
+      {parseResult.jugadorAmbiguo && parseResult.jugadorAviso && (
+        <div className="rounded border border-rose-500/40 bg-rose-500/10 p-2 space-y-1">
+          <p className="text-[10px] font-bold text-rose-200">
+            ⚠️ Jugador ambiguo
+          </p>
+          <p className="text-[10px] text-rose-100 leading-snug">
+            {parseResult.jugadorAviso}
+          </p>
+          {parseResult.jugadorCandidatos.length > 0 && (
+            <div className="flex flex-wrap gap-1 pt-0.5">
+              {parseResult.jugadorCandidatos.map((j) => (
+                <span
+                  key={j.id}
+                  className="text-[10px] px-1.5 py-0.5 rounded border border-rose-500/40 bg-rose-500/10 text-rose-200 font-mono"
+                  title={`ID: ${j.id}`}
+                >
+                  {j.nombre}
+                  {j.apodo ? ` "${j.apodo}"` : ""}
+                  {j.numero !== null && j.numero !== undefined
+                    ? ` #${j.numero}`
+                    : ""}
+                </span>
+              ))}
+            </div>
+          )}
+          <p className="text-[9px] text-rose-200/70 italic">
+            Probá con nombre completo, apodo o #número (ej: &quot;Joaco&quot;,
+            &quot;Joaquín Pérez&quot;, &quot;#7&quot;).
+          </p>
+        </div>
+      )}
 
       {parseResult.matches.length > 0 && (
         <div className="flex flex-wrap gap-1">
@@ -575,7 +646,7 @@ export default function PanelBusqueda({
         </div>
       )}
 
-      {texto && !parseResult.aplicado && (
+      {texto && !parseResult.aplicado && !parseResult.jugadorAmbiguo && (
         <div className="rounded border border-amber-500/30 bg-amber-500/10 p-2 space-y-1">
           <p className="text-[10px] font-bold text-amber-200">
             No encontrado. Reformulá o probá con:

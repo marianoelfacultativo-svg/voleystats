@@ -5,23 +5,10 @@
 // ============================================================
 // FASE 5 del plan "Consultas Analíticas Libres".
 //
-// Toma el resultado del ejecutor y lo renderiza según el tipo
-// de respuesta:
-//   - numero       → tarjeta grande con el número
-//   - porcentaje   → tarjeta con % + fracción
-//   - promedio     → tarjeta con promedio
-//   - frecuencia   → "Cada X acciones"
-//   - max / min    → fila destacada
-//   - ranking      → tabla ordenada
-//   - tabla        → tabla con total
-//   - distribucion → barras horizontales
-//   - serie        → mini gráfico de barras por punto
-//   - habit        → card con "lo más frecuente" + barras
-//   - comparacion  → dos columnas A vs B
-//   - texto        → párrafo
-//   - vacio        → mensaje
-//
-// No ejecuta consultas. Solo muestra.
+// v1.1 (FASE 7.4):
+//   + Muestra un aviso destacado si `parserInfo.jugadorAmbiguo`
+//     es true, listando los candidatos para que el usuario
+//     reformule con nombre completo, apodo o #número.
 // ============================================================
 
 import type { ResultadoConsultaExtendido } from "@/lib/consultaAnalitica/ejecutor";
@@ -195,7 +182,6 @@ function TablaFilas({
   filas,
   mostrarTotal = false,
   total = null,
-  nombreDeJugador,
 }: {
   filas: FilaTabla[];
   mostrarTotal?: boolean;
@@ -605,6 +591,35 @@ export default function ConsultaResultado({
           {accionesFiltradas} / {accionesUniverso} acciones
         </span>
       </div>
+
+      {/* FASE 7.4 — Aviso de ambigüedad de jugador */}
+      {parserInfo.jugadorAmbiguo && parserInfo.jugadorAviso && (
+        <div className="rounded border border-rose-500/40 bg-rose-500/10 p-2.5 space-y-1">
+          <p className="text-[11px] font-bold text-rose-200">
+            ⚠️ Jugador ambiguo
+          </p>
+          <p className="text-[11px] text-rose-100">{parserInfo.jugadorAviso}</p>
+          {parserInfo.jugadorCandidatos.length > 0 && (
+            <div className="flex flex-wrap gap-1 pt-1">
+              {parserInfo.jugadorCandidatos.map((j) => (
+                <span
+                  key={j.id}
+                  className="text-[10px] px-1.5 py-0.5 rounded border border-rose-500/40 bg-rose-500/10 text-rose-200 font-mono"
+                >
+                  {j.nombre}
+                  {j.apodo ? ` "${j.apodo}"` : ""}
+                  {j.numero !== null && j.numero !== undefined
+                    ? ` #${j.numero}`
+                    : ""}
+                </span>
+              ))}
+            </div>
+          )}
+          <p className="text-[10px] text-rose-200/70 italic">
+            Probá con nombre completo, apodo o #número.
+          </p>
+        </div>
+      )}
 
       {/* Parser info si no se aplicó */}
       {!parserInfo.aplicado && parserInfo.sugerencias.length > 0 && (

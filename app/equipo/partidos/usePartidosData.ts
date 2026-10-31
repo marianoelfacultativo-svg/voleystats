@@ -11,6 +11,10 @@
 //   - datos de rival (errores / buenas) por partido
 //
 // Devuelve todo tipado + helpers de nombres (memoizados).
+//
+// v1.1 (FASE 7.4):
+//   + El select de jugadores trae `apodo` para que el
+//     ConsultaPanel pueda resolver apodos / apellidos / pila.
 // ============================================================
 
 import { useCallback, useEffect, useState } from "react";
@@ -64,7 +68,7 @@ export function usePartidosData(equipoId: string): UsePartidosDataResult {
         .order("fecha", { ascending: false }),
       supabase
         .from("jugadores")
-        .select("id, nombre, numero, rol")
+        .select("id, nombre, apodo, numero, rol")
         .order("nombre"),
       supabase.from("equipos").select("id, nombre"),
     ]).then(async ([partRes, jugRes, eqRes]) => {

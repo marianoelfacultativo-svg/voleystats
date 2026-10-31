@@ -3,13 +3,22 @@
 // ============================================================
 // FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
 //
+// v1.6 (FASE 7.4):
+//   + `parserInfo` suma `jugadorAmbiguo`, `jugadorAviso` y
+//     `jugadorCandidatos` para que la UI muestre el aviso de
+//     desambiguación.
+//
+// v1.5 (FASE 7.4 — problema C: fase por punto):
+//   + Se calcula `fasesPorPunto = calcularFasesPorPunto(universo)`
+//     UNA SOLA VEZ sobre el universo completo.
+//   + Se pasa al `ContextoRespuesta` para que
+//     `aplicarCondicionesExtra` filtre PUNTOS completos por fase
+//     (no acciones sueltas).
+//
 // v1.4 (FASE 6 — Opción A, familia cruces):
 //   + `crucesPorPunto` se calcula sobre el universo COMPLETO y
 //     se pasa al contextoAgrupacion (para groupBy cruces /
 //     duracion_rally).
-//   + Filtros nuevos: crucesMaximos, crucesExactos, crucesRango.
-//   + Se usa `calcularCrucesPorPunto` exportada desde groupBy.ts
-//     (antes era una copia local).
 //
 // v1.3 (FASE 6 — Rondas 1.3 + 2):
 //   + crucesMinimos + salidaRol volcados al filtro final.
@@ -25,7 +34,10 @@ import type {
   AccionVisual,
   PuntoConAcciones,
 } from "../../app/equipo/adaptadorUnificadoV2";
-import { calcularContextoRally } from "../contextoRally";
+import {
+  calcularContextoRally,
+  calcularFasesPorPunto,
+} from "../contextoRally";
 import {
   BLOQUE_TRIGGER_VACIO,
   type BloqueTriggerFiltro,
@@ -40,6 +52,7 @@ import {
   calcularResultadosPunto,
 } from "./groupBy";
 import type { ResultadoConsulta } from "./tipos";
+import type { JugadorParaResolver } from "./resolverJugador";
 
 // ------------------------------------------------------------
 // CONTEXTO DE ENTRADA
@@ -48,7 +61,7 @@ import type { ResultadoConsulta } from "./tipos";
 export interface ContextoEjecutor {
   acciones: AccionVisual[];
   puntos?: PuntoConAcciones[];
-  jugadores?: { id: string; nombre: string }[];
+  jugadores?: JugadorParaResolver[];
   partidos?: { id: string; nombre: string; fecha?: string }[];
 }
 
@@ -58,6 +71,12 @@ export interface ResultadoConsultaExtendido extends ResultadoConsulta {
     sugerencias: string[];
     filtro: BloqueTriggerFiltro;
     intencion: IntencionQuery;
+    /** FASE 7.4: ¿el jugador detectado matchea con más de uno? */
+    jugadorAmbiguo: boolean;
+    /** FASE 7.4: aviso legible cuando `jugadorAmbiguo` es true. */
+    jugadorAviso: string | null;
+    /** FASE 7.4: candidatos cuando hay ambigüedad. */
+    jugadorCandidatos: JugadorParaResolver[];
   };
   accionesFiltradas: number;
   accionesUniverso: number;
@@ -460,17 +479,6 @@ function esFiltroVacio(f: BloqueTriggerFiltro): boolean {
 // ------------------------------------------------------------
 // FILTRO POR CRUCES (aplica los 4 campos)
 // ------------------------------------------------------------
-// Recibe el mapa crucesPorPunto calculado sobre el universo
-// completo y devuelve el set de puntos que pasan el filtro.
-//
-// - crucesMinimos:  cruces >= N
-// - crucesMaximos:  cruces <= N
-// - crucesExactos:  cruces === N
-// - crucesRango:    N <= cruces <= M
-//
-// Si no hay ningún filtro activo, devuelve null (para indicar
-// "no filtrar").
-// ------------------------------------------------------------
 
 function filtrarPuntosPorCruces(
   acciones: AccionVisual[],
@@ -485,7 +493,6 @@ function filtrarPuntosPorCruces(
   const tieneRango = cond.crucesRango !== undefined && cond.crucesRango !== null;
   if (!tieneMin && !tieneMax && !tieneExacto && !tieneRango) return null;
 
-  // Si el usuario no pasó el mapa, calcularlo ahora.
   const mapa = crucesPorPunto.size > 0 ? crucesPorPunto : calcularCrucesPorPunto(acciones);
 
   const permitidos = new Set<string>();
@@ -537,9 +544,6 @@ export function ejecutarConsulta(
   );
 
   // 3) Cruces de red — sobre el UNIVERSO COMPLETO.
-  //    Se calcula una sola vez y se reutiliza para:
-  //      - filtrar acciones/puntos (crucesMinimos/Maximos/Exactos/Rango)
-  //      - pasar al contextoAgrupacion (para groupBy cruces/duracion_rally)
   const crucesPorPunto = calcularCrucesPorPunto(universo);
 
   const puntosPermitidosPorCruces = filtrarPuntosPorCruces(
@@ -569,7 +573,10 @@ export function ejecutarConsulta(
   // 5) Resultado del punto — sobre el UNIVERSO COMPLETO.
   const resultadosPunto = calcularResultadosPunto(universo);
 
-  // 6) Construir respuesta.
+  // 6) FASE 7.4 — Fase de cada punto, sobre el UNIVERSO COMPLETO.
+  const fasesPorPunto = calcularFasesPorPunto(universo);
+
+  // 7) Construir respuesta.
   const ctxRespuesta: ContextoRespuesta = {
     acciones: accionesFiltradas,
     puntos: puntosConTiempo,
@@ -597,6 +604,7 @@ export function ejecutarConsulta(
       crucesPorPunto,
     },
     contextoRally: undefined,
+    fasesPorPunto,
     jugadores: contexto.jugadores,
     partidos: contexto.partidos,
     totalUniverso: universo.filter((a) => !a.oculta).length,
@@ -604,7 +612,7 @@ export function ejecutarConsulta(
 
   const resultado = construirRespuesta(ctxRespuesta);
 
-  // 7) Volcar filtros extra al filtro final.
+  // 8) Volcar filtros extra al filtro final.
   let filtroFinal: BloqueTriggerFiltro = parsed.filtro;
   if (parsed.intencion.condicion?.salidaRol !== undefined) {
     filtroFinal = {
@@ -637,7 +645,7 @@ export function ejecutarConsulta(
     };
   }
 
-  // 8) Extender con info del parser y contadores.
+  // 9) Extender con info del parser y contadores.
   return {
     ...resultado,
     parserInfo: {
@@ -645,6 +653,9 @@ export function ejecutarConsulta(
       sugerencias: parsed.sugerencias,
       filtro: filtroFinal,
       intencion: parsed.intencion,
+      jugadorAmbiguo: parsed.jugadorAmbiguo,
+      jugadorAviso: parsed.jugadorAviso,
+      jugadorCandidatos: parsed.jugadorCandidatos,
     },
     accionesFiltradas: accionesFiltradas.filter((a) => !a.oculta).length,
     accionesUniverso: universo.filter((a) => !a.oculta).length,

@@ -1,7 +1,17 @@
 // ============================================================
-// CONTEXTO DEL RALLY — motor puro (v2)
+// CONTEXTO DEL RALLY — motor puro (v3)
 // ============================================================
-// Cambios v2:
+// Cambios v3 (FASE 7.4 — problema C):
+//   + Nuevo `calcularFaseDePunto(accionesDelPunto)`: clasifica el
+//     PUNTO ENTERO por cómo arrancó el rally, no cada acción.
+//   + Nuevo `calcularFasesPorPunto(acciones)`: Map<clave, fase>
+//     sobre el universo. Clave `partido|set|punto`, mismo formato
+//     que `calcularResultadosPunto` y `calcularCrucesPorPunto`.
+//   + Se usa para que "cómo terminan los puntos en side-out"
+//     filtre PUNTOS completos (no acciones sueltas) y así el
+//     resultado del punto se calcule sobre la última acción real.
+//
+// v2:
 //   + FaseRally ahora incluye "k2" y "k3" además de "side-out",
 //     "contraataque", "free-ball" y "otro".
 //   + calcularFaseRally distingue:
@@ -253,7 +263,7 @@ function calcularFaseRally(idx: number, lineas: AccionVisual[]): FaseRally {
 }
 
 // ------------------------------------------------------------
-// CÁLCULO PRINCIPAL
+// CÁLCULO PRINCIPAL (por acción)
 // ------------------------------------------------------------
 
 interface GrupoPunto {
@@ -433,6 +443,112 @@ function clasificarResultadoFin(a: AccionVisual): string {
     return "error_propio";
   }
   return "neutro";
+}
+
+// ------------------------------------------------------------
+// FASE POR PUNTO (FASE 7.4 — problema C)
+// ------------------------------------------------------------
+// A diferencia de `calcularFaseRally`, que clasifica CADA ACCIÓN
+// según el momento del rally, `calcularFaseDePunto` clasifica el
+// PUNTO ENTERO por cómo empezó el rally.
+//
+// Regla:
+//   - Mira la primera acción PROPIA no-bloqueo del punto.
+//   - Si es recepción o libre → side-out.
+//   - Si es cobertura → k3.
+//   - Si es defensa normal → k2.
+//   - Si el rival mandó una libre antes → free-ball.
+//   - Sin primer toque propio → otro.
+//
+// Ventaja: si el rally arrancó en side-out, TODO el punto es
+// side-out, sin importar desvíos, bloqueos, defensas posteriores
+// ni cuántas acciones siga. Eso permite filtrar PUNTOS completos
+// (no acciones sueltas) por fase, que es lo que necesita
+// "cómo terminan los puntos en side-out".
+//
+// Nota sobre `punto_desviado_ataque`, `use_rival_ataque`,
+// `gorro_ataque` y `punto_directo_ataque`: son variantes de
+// "punto propio". NO cambian la fase. La fase queda fijada por
+// cómo arrancó el rally.
+// ------------------------------------------------------------
+
+export function calcularFaseDePunto(
+  accionesDelPunto: AccionVisual[]
+): FaseRally {
+  const visibles = accionesDelPunto
+    .filter((a) => !a.oculta)
+    .sort((a, b) => a.orden - b.orden);
+
+  if (visibles.length === 0) return "otro";
+
+  // Primer toque propio no-bloqueo.
+  let primerToquePropio: AccionVisual | null = null;
+  let idxPrimerToquePropio = -1;
+  for (let i = 0; i < visibles.length; i++) {
+    const a = visibles[i];
+    if (a.es_rival) continue;
+    if (a.tipo === "bloqueo") continue;
+    primerToquePropio = a;
+    idxPrimerToquePropio = i;
+    break;
+  }
+
+  if (!primerToquePropio) return "otro";
+
+  // Acción rival inmediatamente anterior al primer toque propio.
+  let accionRivalPrevia: AccionVisual | null = null;
+  for (let i = idxPrimerToquePropio - 1; i >= 0; i--) {
+    if (visibles[i].es_rival) {
+      accionRivalPrevia = visibles[i];
+      break;
+    }
+  }
+
+  // Free ball: el rival mandó una libre antes de que toquemos.
+  if (accionRivalPrevia?.tipo === "libre") return "free-ball";
+
+  // Side-out: primer toque propio es recepción o libre.
+  if (primerToquePropio.tipo === "recepcion") return "side-out";
+  if (primerToquePropio.tipo === "libre") return "side-out";
+
+  // K3: primer toque propio es cobertura.
+  if (esCobertura(primerToquePropio)) return "k3";
+
+  // K2: primer toque propio es defensa normal.
+  if (primerToquePropio.tipo === "defensa") return "k2";
+
+  return "otro";
+}
+
+/**
+ * Calcula la fase de CADA punto del universo y devuelve un
+ * `Map<clave, FaseRally>`, con clave `partido_id|set_numero|punto_numero`
+ * (mismo formato que `calcularResultadosPunto` y `calcularCrucesPorPunto`).
+ *
+ * Se calcula sobre el UNIVERSO COMPLETO (no sobre el subset filtrado)
+ * para que el filtro por fase sea consistente aunque el usuario haya
+ * aplicado otros filtros antes.
+ */
+export function calcularFasesPorPunto(
+  acciones: AccionVisual[]
+): Map<string, FaseRally> {
+  const porPunto = new Map<string, AccionVisual[]>();
+  for (const a of acciones) {
+    if (a.oculta) continue;
+    const k = `${a.partido_id || ""}|${a.set_numero}|${a.punto_numero}`;
+    let arr = porPunto.get(k);
+    if (!arr) {
+      arr = [];
+      porPunto.set(k, arr);
+    }
+    arr.push(a);
+  }
+
+  const out = new Map<string, FaseRally>();
+  for (const [k, lista] of porPunto) {
+    out.set(k, calcularFaseDePunto(lista));
+  }
+  return out;
 }
 
 // ------------------------------------------------------------

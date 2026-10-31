@@ -1,8 +1,21 @@
 // ============================================================
-// PARSER DE BÚSQUEDA — v3.11
-// Fix: "R" suelto = remate de segunda. Detección de R#, R+,
-// R!, R-, R--, R/, R= sobre el texto ORIGINAL (antes de
-// normalizar, porque normalizar() borra los símbolos).
+// PARSER DE BÚSQUEDA — v4.0
+// Fix (FASE 7.4):
+//   + Resolución de jugadores por apodo / apellido / nombre de
+//     pila / nombre completo, con desambiguación explícita.
+//     Delegado a `lib/consultaAnalitica/resolverJugador.ts`.
+//   + Nuevos campos en `ResultadoParser`:
+//       · jugadorAmbiguo: boolean
+//       · jugadorCandidatos: JugadorParaResolver[]
+//       · jugadorAviso: string | null
+//   + Nueva tabla `SINONIMOS_TIPO_RESULTADO` que infiere tipo +
+//     resultado desde la palabra sola. Ej:
+//       "gorro"     → ataque + gorro_ataque
+//       "ace"       → saque + ace
+//       "use rival" → ataque + use_rival_ataque
+//       "overpass"  → recepcion + overpass
+//     Antes, si el usuario no mencionaba el tipo explícito, el
+//     parser caía en default `ataque` y perdía el resultado.
 //
 // Cambios v3.11 (FASE 2):
 //   + Volcado de ubicación y cambioEnPunto al filtro real:
@@ -47,6 +60,14 @@ import { parsearIntencion } from "./consultaAnalitica/parserIntencion";
 import type { IntencionQuery } from "./consultaAnalitica/intenciones";
 import { intencionVacia } from "./consultaAnalitica/intenciones";
 
+// FASE 7.4 — resolver de jugadores:
+import {
+  resolverJugador,
+  resolverJugadorAId,
+  describirCandidatos,
+  type JugadorParaResolver,
+} from "./consultaAnalitica/resolverJugador";
+
 // ------------------------------------------------------------
 // TIPOS PÚBLICOS
 // ------------------------------------------------------------
@@ -89,10 +110,16 @@ export interface ResultadoParser {
   faseRallySugerida: FaseRally | null;
   /** FASE 1: intención de consulta analítica detectada. */
   intencion: IntencionQuery;
+  /** FASE 7.4: ¿hay más de un jugador que matchea? */
+  jugadorAmbiguo: boolean;
+  /** FASE 7.4: candidatos cuando `jugadorAmbiguo` es true. */
+  jugadorCandidatos: JugadorParaResolver[];
+  /** FASE 7.4: aviso legible para la UI. null si no hay ambigüedad. */
+  jugadorAviso: string | null;
 }
 
 export interface ContextoParser {
-  jugadores?: { id: string; nombre: string }[];
+  jugadores?: JugadorParaResolver[];
   partidos?: { id: string; nombre: string }[];
 }
 
@@ -363,6 +390,111 @@ const SINONIMOS_TIPO: Record<TipoDisparador, string[]> = {
     "cruzaron la línea", "cruzando la línea",
   ],
 };
+
+// ------------------------------------------------------------
+// SINÓNIMOS QUE IMPLICAN TIPO + RESULTADO (FASE 7.4)
+// ------------------------------------------------------------
+//
+// Si el usuario escribe "gorro", "ace", "use rival", etc. sin
+// mencionar el tipo explícito ("ataque", "saque"), el parser
+// infiere AMBOS desde la palabra sola.
+//
+// Esto resuelve el caso reportado:
+//   "¿cuántos gorros recibió X?"
+//   → tipo = ataque, resultado = gorro_ataque
+//
+// Reglas:
+//   - El tipo se infiere si `p.tipo` es null.
+//   - El resultado se infiere solo si el resultado actual es
+//     "cualquiera" (para no pisar un resultado explícito).
+//   - El fragmento se consume de tokens para que no quede como
+//     "no reconocida".
+// ------------------------------------------------------------
+
+interface SinonimoTipoResultado {
+  patrones: string[];
+  tipo: TipoDisparador;
+  resultado: string | null;
+}
+
+const SINONIMOS_TIPO_RESULTADO: SinonimoTipoResultado[] = [
+  // Gorros recibidos = ataque propio + gorro_ataque
+  {
+    patrones: [
+      "gorro", "gorros", "gorro recibido", "gorros recibidos",
+      "lo taparon", "tapada", "tapadas", "tapado", "tapados",
+      "chapa", "chapas", "pincho", "pinchos",
+      "techada", "techadas", "techado", "techados",
+      "lo techó", "lo techno", "lo techó el rival",
+      "me lo taparon", "nos taparon",
+    ],
+    tipo: "ataque",
+    resultado: "gorro_ataque",
+  },
+  // Aces = saque propio + ace
+  {
+    patrones: [
+      "ace", "aces",
+      "punto directo de saque",
+      "ace de saque", "aces de saque",
+      "servicio directo", "servicios directos",
+    ],
+    tipo: "saque",
+    resultado: "ace",
+  },
+  // Use rival = ataque propio + use_rival_ataque
+  {
+    patrones: [
+      "use rival", "use-rival", "block out", "block-out",
+      "blockout", "blockouts",
+      "usa el bloqueo", "usó el bloqueo", "uso el bloqueo",
+      "pega el bloqueo", "pega en el bloqueo",
+      "rebota en el bloqueo", "rebotó en el bloqueo",
+      "toca el bloqueo", "tocó el bloqueo",
+      "sale por afuera", "sale desviado", "salen desviados",
+      "pasa por el bloqueo",
+    ],
+    tipo: "ataque",
+    resultado: "use_rival_ataque",
+  },
+  // Overpass = recepción propia + overpass
+  {
+    patrones: [
+      "overpass", "overpasses",
+      "recepcion overpass", "recepciones overpass",
+    ],
+    tipo: "recepcion",
+    resultado: "overpass",
+  },
+  // Error de saque
+  {
+    patrones: [
+      "doble falta", "doble falta de saque",
+      "error de saque", "errores de saque",
+      "saque errado", "saques errados",
+    ],
+    tipo: "saque",
+    resultado: "negativo",
+  },
+  // Bloqueo a la red
+  {
+    patrones: [
+      "bloqueo a la red", "bloqueos a la red",
+      "toque de red del bloqueo",
+    ],
+    tipo: "bloqueo",
+    resultado: "red",
+  },
+  // Error directo en recepción (ace en contra)
+  {
+    patrones: [
+      "ace en contra", "aces en contra",
+      "error directo en recepcion", "error directo de recepcion",
+    ],
+    tipo: "recepcion",
+    resultado: "error_directo",
+  },
+];
 
 // ------------------------------------------------------------
 // DICCIONARIOS — RESULTADO
@@ -872,19 +1004,14 @@ const SINONIMOS_CONTEXTO = {
 // ------------------------------------------------------------
 
 const STOPWORDS: string[] = [
-  // === ARTÍCULOS Y PREPOSICIONES ===
   "del", "los", "las", "una", "unos", "unas",
   "por", "para", "con", "sin", "entre", "hacia",
   "desde", "hasta", "sobre", "bajo", "segun", "según",
   "tras", "ante", "contra", "durante",
-
-  // === CONJUNCIONES Y CONECTORES ===
   "pero", "sino", "aunque", "mientras", "porque", "pues",
   "entonces", "tambien", "también", "ademas", "además",
   "incluso", "salvo", "excepto", "luego", "asi", "así",
-  "mientras", "entretanto", "mientras tanto",
-
-  // === ADVERBIOS Y CUANTIFICADORES ===
+  "entretanto", "mientras tanto",
   "solo", "solamente", "unicamente", "únicamente",
   "muy", "mas", "más", "menos", "mucho", "mucha",
   "muchos", "muchas", "poco", "poca", "pocos", "pocas",
@@ -899,35 +1026,23 @@ const STOPWORDS: string[] = [
   "aqui", "aquí", "ahora", "antes", "despues", "después",
   "siempre", "nunca", "jamas", "jamás", "casi",
   "aun", "aún", "quiza", "quizás", "tal", "vez", "veces",
-
-  // === ESPACIO / DIRECCIÓN ===
   "lado", "lados", "campo", "campos",
-
-  // === RIVAL / CONTRARIO ===
   "rival", "rivales", "contrario", "contrarios",
   "oponente", "oponentes", "equipo", "equipos",
   "adversario", "adversarios",
-
-  // === VUELVE / DEVUELVE ===
-  "vuelve", "vuelven", "vuelto", "vuelta", "vuelven",
+  "vuelve", "vuelven", "vuelto", "vuelta",
   "devuelve", "devuelven", "devolvio", "devolvió",
   "devuelto", "devuelta", "devueltas", "devueltos",
-
-  // === INTERROGATIVOS ===
   "que", "qué", "cual", "cuál", "cuales", "cuáles",
   "cuanto", "cuánto", "cuanta", "cuánta",
   "cuantos", "cuántos", "cuantas", "cuántas",
   "quien", "quién", "quienes", "quiénes",
   "donde", "dónde", "cuando", "cuándo",
   "como", "cómo",
-
-  // === DEMOSTRATIVOS ===
   "este", "esta", "estos", "estas",
   "ese", "esa", "esos", "esas",
   "aquel", "aquella", "aquellos", "aquellas",
   "esto", "eso", "aquello",
-
-  // === IMPERATIVOS Y COMANDOS ===
   "mostrame", "mostranos", "mostrar", "muestra", "muestrame",
   "muestranos", "muestro", "muestren", "muestrenme",
   "dame", "danos", "darme", "dar", "da", "doy",
@@ -943,8 +1058,6 @@ const STOPWORDS: string[] = [
   "revisa", "revisame", "revisar", "reviso",
   "traeme", "traer", "trae", "traigo",
   "sabes", "saber", "sabemos", "sepa",
-
-  // === VERBOS GENÉRICOS ===
   "es", "son", "era", "eran", "fue", "fueron",
   "ser", "estar", "esta", "estan", "están",
   "estuvo", "estuvieron", "estaba", "estaban",
@@ -967,8 +1080,6 @@ const STOPWORDS: string[] = [
   "salio", "salió", "sale", "salen",
   "entro", "entró", "entra", "entran",
   "fue por", "fue de",
-
-  // === MULETILLAS ===
   "bueno", "entonces", "listo", "dale", "vamos",
   "va", "ok", "bien", "che",
 ];
@@ -995,25 +1106,72 @@ function agregarMatch(
   st.matches.push({ clave, valor, categoria, fragmento });
 }
 
+// ------------------------------------------------------------
+// EXTRACCIÓN DE JUGADOR (delegada al resolver)
+// ------------------------------------------------------------
+//
+// v4.0: en vez de recorrer `jugadores` buscando `includes(nombre)`,
+// delegamos en `resolverJugador`, que sabe de apodo, apellido,
+// nombre de pila y desambiguación.
+//
+// Esta función se mantiene con la misma firma por compatibilidad
+// con `extraerToqueDeSegunda` y otros extractores. Devuelve el
+// `ResultadoResolucion` completo, que el caller usa para:
+//   - quedarse con `ids[0]` si es único
+//   - marcar `jugadorAmbiguo` + `jugadorAviso` si es ambiguo
+//   - dejar `null` si no encontró nada
+// ------------------------------------------------------------
+
 function extraerJugador(
   st: ExtractionState,
-  jugadores: { id: string; nombre: string }[] | undefined
-): string | null {
-  if (!jugadores || jugadores.length === 0) return null;
-  const ordenados = [...jugadores].sort(
-    (a, b) => b.nombre.length - a.nombre.length
-  );
-  for (const j of ordenados) {
-    const nNorm = normalizar(j.nombre);
-    if (!nNorm) continue;
-    if (st.texto.includes(nNorm)) {
-      agregarMatch(st, "jugador", j.nombre, "jugador", nNorm);
-      for (const t of nNorm.split(" "))
+  jugadores: JugadorParaResolver[] | undefined
+): ReturnType<typeof resolverJugador> {
+  if (!jugadores || jugadores.length === 0) {
+    return {
+      ids: [],
+      ambiguo: false,
+      candidatos: [],
+      motivo: "no_encontrado",
+      match: null,
+    };
+  }
+
+  const resolucion = resolverJugador(st.texto, jugadores);
+
+  if (resolucion.motivo === "unico") {
+    const j = jugadores.find((x) => x.id === resolucion.ids[0]);
+    if (j) {
+      agregarMatch(
+        st,
+        "jugador",
+        j.nombre,
+        "jugador",
+        resolucion.match ?? normalizar(j.nombre)
+      );
+      const tokens = new Set<string>();
+      for (const t of normalizar(j.nombre).split(" ")) {
+        if (t.length >= 3) tokens.add(t);
+      }
+      if (j.apodo) {
+        for (const t of normalizar(j.apodo).split(" ")) {
+          if (t.length >= 3) tokens.add(t);
+        }
+      }
+      // Consumir el match exacto (aunque sea 1-2 chars).
+      const matchTokens = (resolucion.match ?? "").split(" ");
+      for (const t of matchTokens) {
         if (t.length >= 3) st.tokensConsumidos.add(t);
-      return j.id;
+      }
+      for (const t of tokens) st.tokensConsumidos.add(t);
+    }
+  } else if (resolucion.motivo === "ambiguo") {
+    // Consumir tokens del match para no confundirlos con "no reconocidas".
+    for (const t of (resolucion.match ?? "").split(" ")) {
+      if (t.length >= 3) st.tokensConsumidos.add(t);
     }
   }
-  return null;
+
+  return resolucion;
 }
 
 function extraerTipo(st: ExtractionState): TipoDisparador | null {
@@ -1029,6 +1187,54 @@ function extraerTipo(st: ExtractionState): TipoDisparador | null {
         for (const t of s.split(" "))
           if (t.length >= 3) st.tokensConsumidos.add(t);
         return tipo;
+      }
+    }
+  }
+  return null;
+}
+
+// ------------------------------------------------------------
+// INFERENCIA TIPO+RESULTADO (FASE 7.4)
+// ------------------------------------------------------------
+//
+// Se usa cuando `extraerTipo` no encontró un tipo explícito.
+// Devuelve el tipo + resultado inferidos desde la palabra sola:
+//   "gorro" → { tipo: ataque, resultado: gorro_ataque }
+//   "ace"   → { tipo: saque,  resultado: ace }
+//   "use rival" → { tipo: ataque, resultado: use_rival_ataque }
+//   "overpass" → { tipo: recepcion, resultado: overpass }
+// ------------------------------------------------------------
+
+interface InferenciaTipoResultado {
+  tipo: TipoDisparador;
+  resultado: string | null;
+  fragmento: string;
+}
+
+function inferirTipoResultado(
+  st: ExtractionState
+): InferenciaTipoResultado | null {
+  for (const entrada of SINONIMOS_TIPO_RESULTADO) {
+    const ordenados = ordenarPorLargoDesc(entrada.patrones);
+    for (const patron of ordenados) {
+      if (st.texto.includes(patron)) {
+        for (const t of patron.split(" "))
+          if (t.length >= 3) st.tokensConsumidos.add(t);
+        agregarMatch(st, "tipo", entrada.tipo, "tipo", patron);
+        if (entrada.resultado) {
+          agregarMatch(
+            st,
+            "resultado",
+            entrada.resultado,
+            "resultado",
+            patron
+          );
+        }
+        return {
+          tipo: entrada.tipo,
+          resultado: entrada.resultado,
+          fragmento: patron,
+        };
       }
     }
   }
@@ -1762,7 +1968,7 @@ interface ToqueSegunda {
 
 function extraerToqueDeSegunda(
   st: ExtractionState,
-  jugadores: { id: string; nombre: string }[] | undefined,
+  jugadores: JugadorParaResolver[] | undefined,
   viaRSuelto: boolean
 ): ToqueSegunda {
   const texto = st.texto;
@@ -1787,15 +1993,19 @@ function extraerToqueDeSegunda(
 
   let jugadorId: string | null = null;
   if (!excluirArmador && jugadores) {
-    const ordenados = [...jugadores].sort(
-      (a, b) => b.nombre.length - a.nombre.length
-    );
-    for (const j of ordenados) {
-      const nNorm = normalizar(j.nombre);
-      if (nNorm && texto.includes(nNorm)) {
-        jugadorId = j.id;
-        agregarMatch(st, "jugador", j.nombre, "jugador", nNorm);
-        break;
+    // FASE 7.4: delegamos en resolverJugadorAId para aprovechar
+    // apodo / apellido / nombre de pila.
+    jugadorId = resolverJugadorAId(texto, jugadores);
+    if (jugadorId) {
+      const j = jugadores.find((x) => x.id === jugadorId);
+      if (j) {
+        agregarMatch(
+          st,
+          "jugador",
+          j.nombre,
+          "jugador",
+          normalizar(j.nombre)
+        );
       }
     }
   }
@@ -1923,6 +2133,7 @@ interface Piezas {
     atras: boolean;
   };
   recepcionSimbolo: RecepcionSimbolo | null;
+  inferencia: InferenciaTipoResultado | null;
 }
 
 function construirFiltro(p: Piezas): BloqueTriggerFiltro {
@@ -1937,10 +2148,25 @@ function construirFiltro(p: Piezas): BloqueTriggerFiltro {
     tipoFinal = "recepcion";
   if (p.recepcionSimbolo !== null) tipoFinal = "recepcion";
 
+  // FASE 7.4: si no hay tipo explícito pero la palabra sola implica
+  // tipo + resultado ("gorro", "ace", "use rival", etc.), lo usamos.
+  if (!p.tipo && p.inferencia) {
+    tipoFinal = p.inferencia.tipo;
+  }
+
   let resultadoFinal: string | "cualquiera" =
     p.resultado ?? "cualquiera";
   if (p.recepcionSimbolo !== null) {
     resultadoFinal = p.recepcionSimbolo.valor;
+  }
+  // FASE 7.4: si no hay resultado explícito pero la inferencia
+  // trae uno, lo usamos.
+  if (
+    resultadoFinal === "cualquiera" &&
+    p.inferencia &&
+    p.inferencia.resultado
+  ) {
+    resultadoFinal = p.inferencia.resultado;
   }
   const resultadosValidos = resultadosPorTipoAnalisis(tipoFinal);
   if (
@@ -2083,6 +2309,9 @@ export function parsearBusqueda(
       relacionObservadoSugerido: null,
       faseRallySugerida: null,
       intencion: intencionVacia(),
+      jugadorAmbiguo: false,
+      jugadorCandidatos: [],
+      jugadorAviso: null,
     };
   }
 
@@ -2097,10 +2326,30 @@ export function parsearBusqueda(
     );
   }
 
-  const jugadorId = extraerJugador(st, contexto.jugadores);
+  // ----------------------------------------------------------
+  // FASE 7.4 — resolver jugador (apodo / apellido / nombre).
+  // ----------------------------------------------------------
+  const resolucionJugador = extraerJugador(st, contexto.jugadores);
+  const jugadorId =
+    resolucionJugador.motivo === "unico"
+      ? resolucionJugador.ids[0]
+      : null;
+  const jugadorAmbiguo = resolucionJugador.motivo === "ambiguo";
+  const jugadorCandidatos = jugadorAmbiguo
+    ? resolucionJugador.candidatos
+    : [];
+  const jugadorAviso = jugadorAmbiguo
+    ? `Hay varios jugadores que matchean "${resolucionJugador.match}". ` +
+      `Especificá cuál: ${describirCandidatos(jugadorCandidatos)}.`
+    : null;
+
   const tipo = extraerTipo(st);
   const resultadoPorTexto = extraerResultado(st, tipo);
   consumirTiposSecundarios(st, tipo);
+
+  // FASE 7.4 — si no hay tipo explícito, intentar inferir
+  // tipo + resultado desde palabras como "gorro", "ace", etc.
+  const inferencia = tipo === null ? inferirTipoResultado(st) : null;
 
   const secuencia = extraerSecuencia(st);
 
@@ -2155,6 +2404,7 @@ export function parsearBusqueda(
     toqueSegunda,
     recepcionZona,
     recepcionSimbolo,
+    inferencia,
   });
 
   const tokens = st.texto.split(/\s+/).filter((t) => t.length >= 3);
@@ -2200,7 +2450,8 @@ export function parsearBusqueda(
     recepcionZona.origen !== null ||
     viaRSuelto ||
     secuencia.tipoObservado !== null ||
-    secuencia.faseRally !== null;
+    secuencia.faseRally !== null ||
+    inferencia !== null;
 
   const sugerencias = generarSugerencias(
     st,
@@ -2241,5 +2492,8 @@ export function parsearBusqueda(
     relacionObservadoSugerido: secuencia.relacionObservado,
     faseRallySugerida: secuencia.faseRally,
     intencion,
+    jugadorAmbiguo,
+    jugadorCandidatos,
+    jugadorAviso,
   };
 }
