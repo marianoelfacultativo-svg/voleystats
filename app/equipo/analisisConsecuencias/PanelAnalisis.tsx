@@ -10,6 +10,11 @@
 //   - Sección "Mirar"
 //   - Avanzado del análisis (alcance + comparadores)
 //   - Comportamiento del trigger + Consecuencia
+//
+// v5.1 (FASE 7.4 cierre — propagación de apodo):
+//   + `jugadoresParaDropdown` acepta `apodo?` y `numero?`.
+//     Solo cambia el tipo: el array se pasa tal cual a
+//     PanelBusqueda, que ya sabe resolver apodos / números.
 // ============================================================
 
 import { useMemo } from "react";
@@ -47,7 +52,13 @@ interface Props {
   config: ConfiguracionPanel;
   setConfig: (c: ConfiguracionPanel) => void;
   nombre: (id: string | null) => string;
-  jugadoresParaDropdown: { id: string; nombre: string }[];
+  /** FASE 7.4 — acepta `apodo` y `numero` opcionales. */
+  jugadoresParaDropdown: {
+    id: string;
+    nombre: string;
+    apodo?: string | null;
+    numero?: number | null;
+  }[];
   setsUnicos: number[];
   puntosUnicos: number[];
   partidosDisponibles?: { id: string; nombre: string }[];

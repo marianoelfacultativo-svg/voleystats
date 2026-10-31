@@ -3,35 +3,38 @@
 // ============================================================
 // FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
 //
+// v1.9 (FASE 7.4 — "Sin datos" → 0):
+//   + Los 3 helpers de métrica (porcentaje / promedio / número)
+//     devuelven 0 / 0% / 0.0 con `detalle: "Sin datos (0 casos)."`
+//     cuando el denominador es 0. Antes devolvían `respuestaVacia`.
+//   + `ejecutarMetrica`: cada chequeo de "faltan puntos" devuelve
+//     el valor 0 del tipo correcto (no un mensaje).
+//   + `ejecutarAverage` / `ejecutarFrequency` / `ejecutarMaxMin` /
+//     `ejecutarDistribution` / `ejecutarTrend` / `ejecutarHabit`:
+//     cuando no hay datos (pero la consulta sí se entendió),
+//     devuelven estructura vacía con 0 en vez de `respuestaVacia`.
+//   + Se mantienen como `respuestaVacia` solo:
+//       · "No pude entender qué cálculo querés hacer"
+//       · "Para max/min/ranking necesito una agrupación"
+//       · "Para comparar necesito la lista de jugadores"
+//       · "No pude encontrar a X en la lista"
+//   + `ejecutarComparison` ahora usa el wording "Ambigüedad en la
+//     comparación: X coincide con varios jugadores. Candidatos: …"
+//     (antes decía "Hay varios jugadores que matchean…").
+//
 // v1.8 (FASE 7.4):
-//   + `ContextoRespuesta.jugadores` pasa a `JugadorParaResolver[]`
-//     (compatible con `{id, nombre}` y suma `apodo?` / `numero?`).
+//   + `ContextoRespuesta.jugadores` pasa a `JugadorParaResolver[]`.
 //   + `ejecutarComparison` usa `resolverJugador` (apodo / apellido
-//     / nombre de pila) y devuelve `respuestaVacia` con aviso de
-//     desambiguación si hay más de un candidato.
-//   + `ejecutarHabit` y `ejecutarDistribution` cuentan PUNTOS
-//     (no acciones) cuando `groupBy` es por punto:
-//       resultado_punto, resultado_set, resultado_partido,
-//       cruces, duracion_rally, set.
-//   + Nueva función local `calcularDistribucionPorPuntos`.
+//     / nombre de pila).
+//   + `ejecutarHabit` y `ejecutarDistribution` cuentan PUNTOS (no
+//     acciones) cuando `groupBy` es por punto.
 //
 // v1.7 (FASE 7.4 — problema C: fase por punto):
-//   + `ContextoRespuesta.fasesPorPunto` (Map<clave, FaseRally>)
-//     calculado por el ejecutor sobre el universo completo.
-//   + `aplicarCondicionesExtra` reescrito para el filtro de fase:
-//       · Filtra PUNTOS COMPLETOS por la fase del punto (cómo
-//         empezó el rally), no acciones sueltas.
-//       · Deriva las acciones filtradas a partir de los puntos
-//         filtrados (solo las acciones de esos puntos).
-//       · Fallback a la lógica vieja (filtro acción por acción
-//         con `contextoRally`) si no hay puntos disponibles.
+//   + `ContextoRespuesta.fasesPorPunto` (Map<clave, FaseRally>).
+//   + `aplicarCondicionesExtra` filtra PUNTOS completos por fase.
 //
 // v1.6 (FASE 6 — Opción A, familia cruces):
-//   + 6 métricas nuevas: cruces_promedio, cruces_total,
-//     cruces_max, rallys_largos, rallys_cortos, rallys_medios.
-//   + Aviso de ambigüedad: si la frase pidió cruces sin N
-//     ("rally largo", "rally corto", "cruces de red"), se
-//     agrega al detalle el default asumido.
+//   + 6 métricas nuevas + aviso de ambigüedad de cruces.
 //
 // v1.5 (Rondas 1.2 + 1.3 + 2):
 //   + aplicarCondicionesExtra (fase + salidaRol).
@@ -56,7 +59,6 @@ import {
   type FaseRally,
 } from "../contextoRally";
 import {
-  baseSubtipo,
   clasificarResultado,
   puntajeDeAccion,
 } from "../analisis/clasificacion";
@@ -282,9 +284,6 @@ function aplicarCondicionesExtra(
   let puntos = ctx.puntos;
   let contextoRally = ctx.contextoRally;
 
-  // ----------------------------------------------------------
-  // FASE — filtrar puntos completos por fase del punto
-  // ----------------------------------------------------------
   if (tieneFase) {
     const faseBuscada = cond.fase!;
 
@@ -323,9 +322,6 @@ function aplicarCondicionesExtra(
     }
   }
 
-  // ----------------------------------------------------------
-  // SALIDA POR ROL — filtro de acciones (sin cambios)
-  // ----------------------------------------------------------
   if (tieneSalida) {
     const rol = cond.salidaRol!;
     acciones = acciones.filter((a) =>
@@ -360,16 +356,25 @@ function meta(
   };
 }
 
+// ------------------------------------------------------------
+// MÉTRICAS → RESPUESTA
+// ------------------------------------------------------------
+// FASE 7.4 v1.9 — si el denominador es 0, devolvemos 0 / 0% / 0.0
+// con `detalle: "Sin datos (0 casos)."` en vez de `respuestaVacia`.
+// ------------------------------------------------------------
+
+const DETALLE_SIN_DATOS = "Sin datos (0 casos).";
+
 function metricaAPorcentaje(m: MetricaResultado): RespuestaConsulta {
   if (m.denominador === 0) {
-    return respuestaVacia("Sin datos para calcular esta métrica.");
+    return respuestaPorcentaje(0, 1, DETALLE_SIN_DATOS);
   }
   return respuestaPorcentaje(m.numerador, m.denominador, m.descripcion);
 }
 
 function metricaAPromedio(m: MetricaResultado): RespuestaConsulta {
   if (m.denominador === 0) {
-    return respuestaVacia("Sin datos para calcular esta métrica.");
+    return respuestaPromedio(0, 1, DETALLE_SIN_DATOS);
   }
   return respuestaPromedio(
     m.valor * m.denominador,
@@ -383,7 +388,7 @@ function metricaANumero(
   unidad: string | null = null
 ): RespuestaConsulta {
   if (m.denominador === 0) {
-    return respuestaVacia("Sin datos para calcular esta métrica.");
+    return respuestaNumero(0, unidad, DETALLE_SIN_DATOS);
   }
   return respuestaNumero(m.valor, unidad, m.descripcion);
 }
@@ -428,22 +433,7 @@ function puedeContarPuntosPorDimension(
 }
 
 // ------------------------------------------------------------
-// FASE 7.4 — DISTRIBUCIÓN POR PUNTOS
-// ------------------------------------------------------------
-// Para los groupBy que "no tienen sentido por acción" (porque
-// agrupar acciones sueltas de un mismo punto da 3-4x el conteo
-// real), agrupamos por PUNTO entero.
-//
-// GroupBy cubiertos acá:
-//   - resultado_punto    (punto_propio / punto_rival / sin_ganador)
-//   - resultado_set      (set_ganado / set_perdido / sin_resultado)
-//   - resultado_partido  (partido_ganado / partido_perdido / sin_resultado)
-//   - cruces             (cantidad exacta de cruces del rally)
-//   - duracion_rally     (corto / medio / largo)
-//   - set                (número de set)
-//
-// Si el groupBy no es de este tipo, devuelve `null` y el caller
-// cae al camino normal (agrupar acciones).
+// DISTRIBUCIÓN POR PUNTOS
 // ------------------------------------------------------------
 
 function esGroupByPorPunto(gb: GroupBy): boolean {
@@ -600,6 +590,9 @@ function calcularDistribucionPorPuntos(
 // ------------------------------------------------------------
 // MÉTRICAS DE VÓLEY
 // ------------------------------------------------------------
+// FASE 7.4 v1.9 — sin datos devuelve 0 del tipo correcto,
+// NO un mensaje.
+// ------------------------------------------------------------
 
 function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
   const metrica = ctx.intencion.metrica;
@@ -612,60 +605,69 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
   // ============================================================
   if (metrica === "cruces_promedio") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
-      return respuestaVacia(
-        "Sin puntos cargados para calcular cruces de red."
-      );
+      return metricaAPromedio({
+        valor: 0,
+        numerador: 0,
+        denominador: 0,
+        descripcion: "",
+      });
     }
     return metricaAPromedio(crucesPromedio(ctx.puntos));
   }
   if (metrica === "cruces_total") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
-      return respuestaVacia(
-        "Sin puntos cargados para calcular cruces de red."
+      return metricaANumero(
+        { valor: 0, numerador: 0, denominador: 0, descripcion: "" },
+        "cruces"
       );
     }
     return metricaANumero(crucesTotal(ctx.puntos), "cruces");
   }
   if (metrica === "cruces_max") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
-      return respuestaVacia(
-        "Sin puntos cargados para calcular cruces de red."
+      return metricaANumero(
+        { valor: 0, numerador: 0, denominador: 0, descripcion: "" },
+        "cruces"
       );
     }
     return metricaANumero(crucesMax(ctx.puntos), "cruces");
   }
   if (metrica === "rallys_largos") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
-      return respuestaVacia(
-        "Sin puntos cargados para calcular rallys largos."
+      return metricaANumero(
+        { valor: 0, numerador: 0, denominador: 0, descripcion: "" },
+        "rallys largos"
       );
     }
     return metricaANumero(rallysLargos(ctx.puntos), "rallys largos");
   }
   if (metrica === "rallys_cortos") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
-      return respuestaVacia(
-        "Sin puntos cargados para calcular rallys cortos."
+      return metricaANumero(
+        { valor: 0, numerador: 0, denominador: 0, descripcion: "" },
+        "rallys cortos"
       );
     }
     return metricaANumero(rallysCortos(ctx.puntos), "rallys cortos");
   }
   if (metrica === "rallys_medios") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
-      return respuestaVacia(
-        "Sin puntos cargados para calcular rallys medios."
+      return metricaANumero(
+        { valor: 0, numerador: 0, denominador: 0, descripcion: "" },
+        "rallys medios"
       );
     }
     return metricaANumero(rallysMedios(ctx.puntos), "rallys medios");
   }
 
   // ============================================================
-  // RESTO DE MÉTRICAS (idénticas a v1.7)
+  // PUNTOS GANADOS
   // ============================================================
   if (metrica === "puntos_ganados") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
-      return respuestaVacia(
-        "Sin puntos cargados para calcular puntos ganados."
+      return metricaANumero(
+        { valor: 0, numerador: 0, denominador: 0, descripcion: "" },
+        "puntos"
       );
     }
     const m = puntosGanados(ctx.puntos);
@@ -674,17 +676,25 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
 
   if (metrica === "puntos_ganados_pct") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
-      return respuestaVacia(
-        "Sin puntos cargados para calcular el % de puntos ganados."
-      );
+      return metricaAPorcentaje({
+        valor: 0,
+        numerador: 0,
+        denominador: 0,
+        descripcion: "",
+      });
     }
     const m = puntosGanadosPct(ctx.puntos);
     return metricaAPorcentaje(m);
   }
 
-  if (contarVisibles(acciones) === 0) {
-    return respuestaVacia("Sin datos para calcular esta métrica.");
-  }
+  // ============================================================
+  // RESTO DE MÉTRICAS
+  // ============================================================
+  // Si no hay acciones visibles, los helpers de cada métrica
+  // devolverán 0 (porque las funciones de metricasVoley devuelven
+  // `vacio()` que tiene denominador 0). Ya no cortamos antes.
+  // ============================================================
+  void contarVisibles(acciones);
 
   switch (metrica) {
     case "kill_pct":
@@ -707,17 +717,23 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
       return metricaANumero(accionesPunto(acciones), "acciones en punto");
     case "puntos_por_set": {
       if (!ctx.puntos || ctx.puntos.length === 0) {
-        return respuestaVacia(
-          "Sin puntos cargados para calcular puntos por set."
-        );
+        return metricaAPromedio({
+          valor: 0,
+          numerador: 0,
+          denominador: 0,
+          descripcion: "",
+        });
       }
       return metricaAPromedio(puntosPorSet(ctx.puntos));
     }
     case "puntos_por_rotacion": {
       if (!ctx.puntos || ctx.puntos.length === 0) {
-        return respuestaVacia(
-          "Sin puntos cargados para calcular puntos por rotación."
-        );
+        return metricaAPromedio({
+          valor: 0,
+          numerador: 0,
+          denominador: 0,
+          descripcion: "",
+        });
       }
       return metricaAPromedio(puntosPorRotacion(ctx.puntos));
     }
@@ -797,7 +813,6 @@ function ejecutarCount(ctx: ContextoRespuesta): RespuestaConsulta {
   const gb = groupByEfectivo(ctx);
 
   if (gb) {
-    // Si el groupBy es por punto, contar PUNTOS.
     if (esGroupByPorPunto(gb)) {
       const items = calcularDistribucionPorPuntos(ctx, gb);
       if (items) {
@@ -821,7 +836,7 @@ function ejecutarCount(ctx: ContextoRespuesta): RespuestaConsulta {
             count: totalPuntos,
             base: totalPuntos,
             valor: totalPuntos,
-            porcentaje: 100,
+            porcentaje: totalPuntos > 0 ? 100 : 0,
             extra: null,
           },
           `${totalPuntos} puntos en total (contando PUNTOS, no acciones).`
@@ -841,7 +856,7 @@ function ejecutarCount(ctx: ContextoRespuesta): RespuestaConsulta {
       count: total,
       base: total,
       valor: total,
-      porcentaje: 100,
+      porcentaje: total > 0 ? 100 : 0,
       extra: null,
     };
     return respuestaTabla(
@@ -887,7 +902,7 @@ function ejecutarPercentage(ctx: ContextoRespuesta): RespuestaConsulta {
 
   return respuestaPorcentaje(
     count,
-    base,
+    base > 0 ? base : 1,
     `${count} de ${base} acciones (${redondear(
       porcentaje(count, base),
       1
@@ -921,7 +936,7 @@ function ejecutarAverage(ctx: ContextoRespuesta): RespuestaConsulta {
     if (p !== null) puntajes.push(p);
   }
   if (puntajes.length === 0) {
-    return respuestaVacia("Sin acciones con puntaje para promediar.");
+    return respuestaPromedio(0, 1, DETALLE_SIN_DATOS);
   }
   const prom = promedio(puntajes);
   return respuestaPromedio(
@@ -940,7 +955,7 @@ function ejecutarFrequency(ctx: ContextoRespuesta): RespuestaConsulta {
       : count;
 
   if (count === 0) {
-    return respuestaVacia("Sin eventos para calcular la frecuencia.");
+    return respuestaFrecuencia(0, base > 0 ? base : 1, DETALLE_SIN_DATOS);
   }
   if (base === count) {
     return respuestaVacia(
@@ -979,8 +994,18 @@ function ejecutarMaxMin(
       nombreDeJugador: ctx.contextoAgrupacion?.nombreDeJugador,
     });
     if (dist.length === 0) {
-      return respuestaVacia(
-        "No hay rallies ganados con esa dimensión (faltan datos)."
+      return respuestaMaxMin(
+        tipo,
+        {
+          key: "_none",
+          label: "Sin datos",
+          count: 0,
+          base: 0,
+          valor: 0,
+          porcentaje: 0,
+          extra: null,
+        },
+        DETALLE_SIN_DATOS
       );
     }
     filas = puntosDimensionAFilas(dist);
@@ -992,7 +1017,19 @@ function ejecutarMaxMin(
   }
 
   if (filas.length === 0) {
-    return respuestaVacia("Sin filas para comparar.");
+    return respuestaMaxMin(
+      tipo,
+      {
+        key: "_none",
+        label: "Sin datos",
+        count: 0,
+        base: 0,
+        valor: 0,
+        porcentaje: 0,
+        extra: null,
+      },
+      DETALLE_SIN_DATOS
+    );
   }
 
   let mejor: FilaTabla = filas[0];
@@ -1069,20 +1106,20 @@ function ejecutarComparison(ctx: ContextoRespuesta): RespuestaConsulta {
     );
   }
 
-  // FASE 7.4 — resolver cada nombre con apodo / apellido / pila.
   const rA = resolverJugador(comp.a, ctx.jugadores);
   const rB = resolverJugador(comp.b, ctx.jugadores);
 
+  // FASE 7.4 v1.9 — wording "Ambigüedad" (no "desambiguar").
   if (rA.motivo === "ambiguo") {
     return respuestaVacia(
-      `Hay varios jugadores que matchean "${comp.a}". ` +
-        `Especificá cuál: ${describirCandidatos(rA.candidatos)}.`
+      `Ambigüedad en la comparación: "${comp.a}" coincide con varios ` +
+        `jugadores. Candidatos: ${describirCandidatos(rA.candidatos)}.`
     );
   }
   if (rB.motivo === "ambiguo") {
     return respuestaVacia(
-      `Hay varios jugadores que matchean "${comp.b}". ` +
-        `Especificá cuál: ${describirCandidatos(rB.candidatos)}.`
+      `Ambigüedad en la comparación: "${comp.b}" coincide con varios ` +
+        `jugadores. Candidatos: ${describirCandidatos(rB.candidatos)}.`
     );
   }
   if (rA.motivo !== "unico" || rB.motivo !== "unico") {
@@ -1130,17 +1167,15 @@ function ejecutarDistribution(ctx: ContextoRespuesta): RespuestaConsulta {
     );
   }
 
-  // FASE 7.4 — si es por punto, contar PUNTOS.
   if (esGroupByPorPunto(gb)) {
     const items = calcularDistribucionPorPuntos(ctx, gb);
     if (items !== null) {
-      if (items.length === 0) {
-        return respuestaVacia("Sin datos para distribuir.");
-      }
       return respuestaDistribucion(
         items,
         gb,
-        `Distribución por ${gb} (contando puntos).`
+        items.length === 0
+          ? DETALLE_SIN_DATOS
+          : `Distribución por ${gb} (contando puntos).`
       );
     }
   }
@@ -1150,13 +1185,10 @@ function ejecutarDistribution(ctx: ContextoRespuesta): RespuestaConsulta {
     gb,
     ctx.contextoAgrupacion
   );
-  if (items.length === 0) {
-    return respuestaVacia("Sin datos para distribuir.");
-  }
   return respuestaDistribucion(
     items,
     gb,
-    `Distribución por ${gb}.`
+    items.length === 0 ? DETALLE_SIN_DATOS : `Distribución por ${gb}.`
   );
 }
 
@@ -1175,7 +1207,12 @@ function ejecutarTrend(ctx: ContextoRespuesta): RespuestaConsulta {
     ctx.contextoAgrupacion
   );
   if (puntos.length === 0) {
-    return respuestaVacia("Sin datos para analizar la tendencia.");
+    return respuestaSerie(
+      eje,
+      [],
+      ctx.intencion.agregacion,
+      DETALLE_SIN_DATOS
+    );
   }
 
   const tendencia = analizarTendencia(puntos);
@@ -1197,20 +1234,18 @@ function ejecutarHabit(ctx: ContextoRespuesta): RespuestaConsulta {
     );
   }
 
-  // FASE 7.4 — si es por punto, contar PUNTOS.
   if (esGroupByPorPunto(gb)) {
     const items = calcularDistribucionPorPuntos(ctx, gb);
     if (items !== null) {
-      if (items.length === 0) {
-        return respuestaVacia("Sin datos para detectar hábito.");
-      }
       const total = items.reduce((s, it) => s + it.count, 0);
       const top = items[0] ?? null;
       return respuestaHabit(
         top?.key ?? null,
         top?.label ?? null,
         items,
-        `Lo más frecuente (${top?.label}): ${top?.porcentaje ?? 0}% de ${total} puntos.`
+        items.length === 0
+          ? DETALLE_SIN_DATOS
+          : `Lo más frecuente (${top?.label}): ${top?.porcentaje ?? 0}% de ${total} puntos.`
       );
     }
   }
@@ -1221,7 +1256,7 @@ function ejecutarHabit(ctx: ContextoRespuesta): RespuestaConsulta {
     ctx.contextoAgrupacion
   );
   if (habit.items.length === 0) {
-    return respuestaVacia("Sin datos para detectar hábito.");
+    return respuestaHabit(null, null, [], DETALLE_SIN_DATOS);
   }
   return respuestaHabit(
     habit.valorMasFrecuente,

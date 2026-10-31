@@ -5,31 +5,16 @@
 // ============================================================
 // Buscador en lenguaje natural + parser + chips de coincidencias.
 //
+// v5.1 (FASE 7.4 cierre):
+//   + Título del bloque rojo: "Jugador ambiguo" → "Ambigüedad".
+//     El texto del aviso viene del parser (ya dice "Ambigüedad: …").
+//   + El resto del archivo es idéntico a v5.
+//
 // v5 (FASE 7.4):
-//   + `jugadoresParaDropdown` acepta `apodo?` y `numero?` para
-//     que el parser pueda resolver apodos / apellidos / pila.
-//   + Si `parseResult.jugadorAmbiguo === true`:
-//       · Se muestra un bloque rojo con los candidatos y la
-//         sugerencia ("usá nombre completo, apodo o #número").
-//       · El botón "Aplicar" queda deshabilitado (no se puede
-//         ejecutar una consulta con un jugador ambiguo).
-//   + `jugadorDetectadoId` sigue siendo `null` en ese caso
-//     (el parser no asigna `filtro.jugadorId` cuando hay
-//     ambigüedad), así que la consulta NO filtra por jugador
-//     accidentalmente.
-//
-// v4 (FASE 1): agrega un bloque "Intención analítica" que
-// muestra los chips de la intención detectada por
-// `parsearIntencion` (tipo, groupBy, métrica, tiempo,
-// condición). Es solo informativo: NO se aplica al filtro.
-//
-// v3: narrow del tipo `"cualquiera"` antes de llamar a
-// `etiquetaTipoDisparador` (fix build TS).
-//
-// v2: aplica `tipoObservadoSugerido` y `relacionObservadoSugerido`
-// que devuelve el parser cuando detecta frases del tipo
-// "ataques que defiende el rival" → tipoObservado=defensa,
-// relacion=rival.
+//   + `jugadoresParaDropdown` acepta `apodo?` y `numero?`.
+//   + Si `parseResult.jugadorAmbiguo === true`, se muestra un
+//     bloque rojo con los candidatos y el botón "Aplicar" queda
+//     deshabilitado.
 // ============================================================
 
 import { useMemo, useState } from "react";
@@ -161,16 +146,14 @@ export default function PanelBusqueda({
   );
 
   // FASE 7.4 — si es ambiguo, `filtro.jugadorId` ya viene null
-  // (el parser no asigna un jugador único). Lo dejamos explícito
-  // para que el checkbox de "Ver datos del mismo jugador" no
-  // aparezca y para no filtrar por jugador por accidente.
+  // (el parser no asigna un jugador único).
   const jugadorDetectadoId = parseResult.jugadorAmbiguo
     ? null
     : parseResult.filtro.jugadorId ?? null;
 
   const aplicar = () => {
     if (!parseResult.aplicado) return;
-    if (parseResult.jugadorAmbiguo) return; // defensa extra: no aplicar si es ambiguo
+    if (parseResult.jugadorAmbiguo) return; // defensa extra
 
     const nuevoBloque = {
       id: generarIdBloque(),
@@ -280,12 +263,12 @@ export default function PanelBusqueda({
       </div>
 
       {/* ============================================ */}
-      {/* FASE 7.4 — JUGADOR AMBIGUO                    */}
+      {/* FASE 7.4 cierre — TÍTULO "Ambigüedad"         */}
       {/* ============================================ */}
       {parseResult.jugadorAmbiguo && parseResult.jugadorAviso && (
         <div className="rounded border border-rose-500/40 bg-rose-500/10 p-2 space-y-1">
           <p className="text-[10px] font-bold text-rose-200">
-            ⚠️ Jugador ambiguo
+            ⚠️ Ambigüedad
           </p>
           <p className="text-[10px] text-rose-100 leading-snug">
             {parseResult.jugadorAviso}

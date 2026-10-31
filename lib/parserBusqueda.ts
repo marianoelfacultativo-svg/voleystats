@@ -1,6 +1,12 @@
 // ============================================================
-// PARSER DE BÚSQUEDA — v4.0
-// Fix (FASE 7.4):
+// PARSER DE BÚSQUEDA — v4.1
+// Fix (FASE 7.4 cierre):
+//   + Wording del aviso de ambigüedad cambiado de
+//     "Hay varios jugadores que matchean… Especificá cuál…"
+//     a "Ambigüedad: "X" coincide con varios jugadores. …".
+//     El resto del archivo es idéntico a v4.0.
+//
+// v4.0 (FASE 7.4):
 //   + Resolución de jugadores por apodo / apellido / nombre de
 //     pila / nombre completo, con desambiguación explícita.
 //     Delegado a `lib/consultaAnalitica/resolverJugador.ts`.
@@ -9,32 +15,7 @@
 //       · jugadorCandidatos: JugadorParaResolver[]
 //       · jugadorAviso: string | null
 //   + Nueva tabla `SINONIMOS_TIPO_RESULTADO` que infiere tipo +
-//     resultado desde la palabra sola. Ej:
-//       "gorro"     → ataque + gorro_ataque
-//       "ace"       → saque + ace
-//       "use rival" → ataque + use_rival_ataque
-//       "overpass"  → recepcion + overpass
-//     Antes, si el usuario no mencionaba el tipo explícito, el
-//     parser caía en default `ataque` y perdía el resultado.
-//
-// Cambios v3.11 (FASE 2):
-//   + Volcado de ubicación y cambioEnPunto al filtro real:
-//     si `parsearIntencion` detectó condición.ubicacion o
-//     condición.cambioEnPunto / .despuesDeCambio, esos valores
-//     se copian al `filtro` final para que la consulta filtre.
-//   + El resto del archivo es idéntico a v3.10.
-//
-// Cambios v3.10:
-//   + Nuevo campo `intencion` en `ResultadoParser`, calculado con
-//     `parsearIntencion` de ./consultaAnalitica/parserIntencion.
-//
-// Cambios v3.9:
-//   + `extraerZonas()` reconoce "<verbo de posición> en N".
-//
-// Cambios v3.8:
-//   + `extraerSecuencia()`, `tipoObservadoSugerido`,
-//     `relacionObservadoSugerido`, `faseRallySugerida`,
-//     categoría "secuencia".
+//     resultado desde la palabra sola.
 // ============================================================
 
 import {
@@ -55,12 +36,10 @@ import {
 } from "./analisisConsecuencias";
 import type { FaseRally } from "./contextoRally";
 
-// FASE 1 / 2 del plan "Consultas Analíticas Libres":
 import { parsearIntencion } from "./consultaAnalitica/parserIntencion";
 import type { IntencionQuery } from "./consultaAnalitica/intenciones";
 import { intencionVacia } from "./consultaAnalitica/intenciones";
 
-// FASE 7.4 — resolver de jugadores:
 import {
   resolverJugador,
   resolverJugadorAId,
@@ -108,13 +87,9 @@ export interface ResultadoParser {
   tipoObservadoSugerido: TipoDisparador | "cualquiera" | null;
   relacionObservadoSugerido: RelacionJugadorObservado | null;
   faseRallySugerida: FaseRally | null;
-  /** FASE 1: intención de consulta analítica detectada. */
   intencion: IntencionQuery;
-  /** FASE 7.4: ¿hay más de un jugador que matchea? */
   jugadorAmbiguo: boolean;
-  /** FASE 7.4: candidatos cuando `jugadorAmbiguo` es true. */
   jugadorCandidatos: JugadorParaResolver[];
-  /** FASE 7.4: aviso legible para la UI. null si no hay ambigüedad. */
   jugadorAviso: string | null;
 }
 
@@ -394,22 +369,6 @@ const SINONIMOS_TIPO: Record<TipoDisparador, string[]> = {
 // ------------------------------------------------------------
 // SINÓNIMOS QUE IMPLICAN TIPO + RESULTADO (FASE 7.4)
 // ------------------------------------------------------------
-//
-// Si el usuario escribe "gorro", "ace", "use rival", etc. sin
-// mencionar el tipo explícito ("ataque", "saque"), el parser
-// infiere AMBOS desde la palabra sola.
-//
-// Esto resuelve el caso reportado:
-//   "¿cuántos gorros recibió X?"
-//   → tipo = ataque, resultado = gorro_ataque
-//
-// Reglas:
-//   - El tipo se infiere si `p.tipo` es null.
-//   - El resultado se infiere solo si el resultado actual es
-//     "cualquiera" (para no pisar un resultado explícito).
-//   - El fragmento se consume de tokens para que no quede como
-//     "no reconocida".
-// ------------------------------------------------------------
 
 interface SinonimoTipoResultado {
   patrones: string[];
@@ -418,7 +377,6 @@ interface SinonimoTipoResultado {
 }
 
 const SINONIMOS_TIPO_RESULTADO: SinonimoTipoResultado[] = [
-  // Gorros recibidos = ataque propio + gorro_ataque
   {
     patrones: [
       "gorro", "gorros", "gorro recibido", "gorros recibidos",
@@ -431,7 +389,6 @@ const SINONIMOS_TIPO_RESULTADO: SinonimoTipoResultado[] = [
     tipo: "ataque",
     resultado: "gorro_ataque",
   },
-  // Aces = saque propio + ace
   {
     patrones: [
       "ace", "aces",
@@ -442,7 +399,6 @@ const SINONIMOS_TIPO_RESULTADO: SinonimoTipoResultado[] = [
     tipo: "saque",
     resultado: "ace",
   },
-  // Use rival = ataque propio + use_rival_ataque
   {
     patrones: [
       "use rival", "use-rival", "block out", "block-out",
@@ -457,7 +413,6 @@ const SINONIMOS_TIPO_RESULTADO: SinonimoTipoResultado[] = [
     tipo: "ataque",
     resultado: "use_rival_ataque",
   },
-  // Overpass = recepción propia + overpass
   {
     patrones: [
       "overpass", "overpasses",
@@ -466,7 +421,6 @@ const SINONIMOS_TIPO_RESULTADO: SinonimoTipoResultado[] = [
     tipo: "recepcion",
     resultado: "overpass",
   },
-  // Error de saque
   {
     patrones: [
       "doble falta", "doble falta de saque",
@@ -476,7 +430,6 @@ const SINONIMOS_TIPO_RESULTADO: SinonimoTipoResultado[] = [
     tipo: "saque",
     resultado: "negativo",
   },
-  // Bloqueo a la red
   {
     patrones: [
       "bloqueo a la red", "bloqueos a la red",
@@ -485,7 +438,6 @@ const SINONIMOS_TIPO_RESULTADO: SinonimoTipoResultado[] = [
     tipo: "bloqueo",
     resultado: "red",
   },
-  // Error directo en recepción (ace en contra)
   {
     patrones: [
       "ace en contra", "aces en contra",
@@ -1106,22 +1058,6 @@ function agregarMatch(
   st.matches.push({ clave, valor, categoria, fragmento });
 }
 
-// ------------------------------------------------------------
-// EXTRACCIÓN DE JUGADOR (delegada al resolver)
-// ------------------------------------------------------------
-//
-// v4.0: en vez de recorrer `jugadores` buscando `includes(nombre)`,
-// delegamos en `resolverJugador`, que sabe de apodo, apellido,
-// nombre de pila y desambiguación.
-//
-// Esta función se mantiene con la misma firma por compatibilidad
-// con `extraerToqueDeSegunda` y otros extractores. Devuelve el
-// `ResultadoResolucion` completo, que el caller usa para:
-//   - quedarse con `ids[0]` si es único
-//   - marcar `jugadorAmbiguo` + `jugadorAviso` si es ambiguo
-//   - dejar `null` si no encontró nada
-// ------------------------------------------------------------
-
 function extraerJugador(
   st: ExtractionState,
   jugadores: JugadorParaResolver[] | undefined
@@ -1157,7 +1093,6 @@ function extraerJugador(
           if (t.length >= 3) tokens.add(t);
         }
       }
-      // Consumir el match exacto (aunque sea 1-2 chars).
       const matchTokens = (resolucion.match ?? "").split(" ");
       for (const t of matchTokens) {
         if (t.length >= 3) st.tokensConsumidos.add(t);
@@ -1165,7 +1100,6 @@ function extraerJugador(
       for (const t of tokens) st.tokensConsumidos.add(t);
     }
   } else if (resolucion.motivo === "ambiguo") {
-    // Consumir tokens del match para no confundirlos con "no reconocidas".
     for (const t of (resolucion.match ?? "").split(" ")) {
       if (t.length >= 3) st.tokensConsumidos.add(t);
     }
@@ -1192,18 +1126,6 @@ function extraerTipo(st: ExtractionState): TipoDisparador | null {
   }
   return null;
 }
-
-// ------------------------------------------------------------
-// INFERENCIA TIPO+RESULTADO (FASE 7.4)
-// ------------------------------------------------------------
-//
-// Se usa cuando `extraerTipo` no encontró un tipo explícito.
-// Devuelve el tipo + resultado inferidos desde la palabra sola:
-//   "gorro" → { tipo: ataque, resultado: gorro_ataque }
-//   "ace"   → { tipo: saque,  resultado: ace }
-//   "use rival" → { tipo: ataque, resultado: use_rival_ataque }
-//   "overpass" → { tipo: recepcion, resultado: overpass }
-// ------------------------------------------------------------
 
 interface InferenciaTipoResultado {
   tipo: TipoDisparador;
@@ -1567,7 +1489,6 @@ function extraerZonas(st: ExtractionState): number[] {
     st.tokensConsumidos.add("olla");
   }
 
-  // v3.9: "verbo de posición + en + N" → zona del jugador.
   const VERBOS_POSICION = [
     "estan", "están", "esta", "está", "estaban", "estaba",
     "estuvo", "estuvieron",
@@ -1993,8 +1914,6 @@ function extraerToqueDeSegunda(
 
   let jugadorId: string | null = null;
   if (!excluirArmador && jugadores) {
-    // FASE 7.4: delegamos en resolverJugadorAId para aprovechar
-    // apodo / apellido / nombre de pila.
     jugadorId = resolverJugadorAId(texto, jugadores);
     if (jugadorId) {
       const j = jugadores.find((x) => x.id === jugadorId);
@@ -2148,8 +2067,6 @@ function construirFiltro(p: Piezas): BloqueTriggerFiltro {
     tipoFinal = "recepcion";
   if (p.recepcionSimbolo !== null) tipoFinal = "recepcion";
 
-  // FASE 7.4: si no hay tipo explícito pero la palabra sola implica
-  // tipo + resultado ("gorro", "ace", "use rival", etc.), lo usamos.
   if (!p.tipo && p.inferencia) {
     tipoFinal = p.inferencia.tipo;
   }
@@ -2159,8 +2076,6 @@ function construirFiltro(p: Piezas): BloqueTriggerFiltro {
   if (p.recepcionSimbolo !== null) {
     resultadoFinal = p.recepcionSimbolo.valor;
   }
-  // FASE 7.4: si no hay resultado explícito pero la inferencia
-  // trae uno, lo usamos.
   if (
     resultadoFinal === "cualquiera" &&
     p.inferencia &&
@@ -2326,9 +2241,7 @@ export function parsearBusqueda(
     );
   }
 
-  // ----------------------------------------------------------
-  // FASE 7.4 — resolver jugador (apodo / apellido / nombre).
-  // ----------------------------------------------------------
+  // FASE 7.4 — resolver jugador
   const resolucionJugador = extraerJugador(st, contexto.jugadores);
   const jugadorId =
     resolucionJugador.motivo === "unico"
@@ -2338,17 +2251,22 @@ export function parsearBusqueda(
   const jugadorCandidatos = jugadorAmbiguo
     ? resolucionJugador.candidatos
     : [];
+
+  // ============================================================
+  // FASE 7.4 cierre — Wording "Ambigüedad"
+  // ============================================================
+  // Antes: "Hay varios jugadores que matchean "X". Especificá cuál: …"
+  // Ahora: "Ambigüedad: "X" coincide con varios jugadores. Candidatos: …"
+  // ============================================================
   const jugadorAviso = jugadorAmbiguo
-    ? `Hay varios jugadores que matchean "${resolucionJugador.match}". ` +
-      `Especificá cuál: ${describirCandidatos(jugadorCandidatos)}.`
+    ? `Ambigüedad: "${resolucionJugador.match ?? ""}" coincide con varios jugadores. ` +
+      `Candidatos: ${describirCandidatos(jugadorCandidatos)}.`
     : null;
 
   const tipo = extraerTipo(st);
   const resultadoPorTexto = extraerResultado(st, tipo);
   consumirTiposSecundarios(st, tipo);
 
-  // FASE 7.4 — si no hay tipo explícito, intentar inferir
-  // tipo + resultado desde palabras como "gorro", "ace", etc.
   const inferencia = tipo === null ? inferirTipoResultado(st) : null;
 
   const secuencia = extraerSecuencia(st);
@@ -2459,13 +2377,8 @@ export function parsearBusqueda(
     st.matches.length > 0
   );
 
-  // FASE 1: intención de consulta analítica (count / % / avg / etc.).
-  // No afecta `aplicado` ni los matches: es información adicional
-  // para que el motor de FASE 3 sepa QUÉ cálculo hacer.
   const intencion = parsearIntencion(textoOriginal);
 
-  // FASE 2: si la intención detectó ubicación o cambio, los volcamos
-  // al filtro real para que la consulta filtre.
   let filtroFinal: BloqueTriggerFiltro = filtro;
   if (intencion.condicion?.ubicacion) {
     filtroFinal = {

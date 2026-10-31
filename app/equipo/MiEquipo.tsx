@@ -34,9 +34,20 @@ import AnalisisConsecuencias from "./AnalisisConsecuencias";
 import IconoVoley from "./IconoVoley";
 import { descargarComoPDF } from "@/lib/exportarPDF";
 
+// ============================================================
+// v1.1 (FASE 7.4 cierre — propagación de apodo):
+//   + `Jugador` suma `apodo?: string | null`.
+//   + `jugadoresDisponibles` (que se pasa a `AnalisisConsecuencias`)
+//     ahora incluye `apodo` y `numero`, para que el resolver
+//     de jugadores del PanelBusqueda pueda resolver apodos /
+//     apellidos / nombre de pila.
+// ============================================================
+
 interface Jugador {
   id: string;
   nombre: string;
+  /** Apodo informal. Opcional. Lo usa el resolver de jugadores. */
+  apodo?: string | null;
   numero: number | null;
   imagen_url: string | null;
   rol: string;
@@ -166,8 +177,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
   const [descargando, setDescargando] = useState(false);
 
   // ---------- Dataset paralelo para el análisis de consecuencias ----------
-  // Se carga LAZY (solo cuando el usuario selecciona un jugador) y
-  // solo una vez por montaje (cacheado con `visualesCargadasRef`).
   const [partidosIds, setPartidosIds] = useState<string[]>([]);
   const [accionesVisuales, setAccionesVisuales] = useState<AccionVisual[]>([]);
   const [cargandoVisuales, setCargandoVisuales] = useState(false);
@@ -228,9 +237,6 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
   }, [equipoId]);
 
   // ---------- Carga LAZY de accionesVisuales ----------
-  // Se dispara la primera vez que el usuario selecciona un jugador.
-  // Trae TODAS las acciones del partido (propias + rivales) con
-  // es_ultima_del_punto y flip resueltos por `cargarAccionesUnificadas`.
   useEffect(() => {
     if (!jugadorSeleccionado) return;
     if (partidosIds.length === 0 || !equipoId) return;
@@ -424,9 +430,14 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
     }
   };
 
+  // ============================================================
+  // FASE 7.4 cierre — propagar apodo y numero a AnalisisConsecuencias
+  // ============================================================
   const jugadoresDisponibles = jugadores.map((j) => ({
     id: j.id,
     nombre: nombreDeJugador(j.id),
+    apodo: j.apodo ?? null,
+    numero: j.numero,
   }));
 
   if (jugadores.length === 0) {

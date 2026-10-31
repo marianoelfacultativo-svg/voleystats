@@ -5,10 +5,20 @@
 // ============================================================
 // FASE 5 del plan "Consultas Analíticas Libres".
 //
+// v1.2 (FASE 7.4 cierre):
+//   + FIX del "0 instead of no data": `esVacia` ya NO se activa
+//     cuando `accionesFiltradas === 0`. Solo se activa con
+//     `respuesta.tipo === "vacio"`.
+//     → Un `{ tipo: "porcentaje", valor: 0, count: 0, base: 1 }`
+//       se muestra como `0%`. Un `{ tipo: "numero", valor: 0 }`
+//       se muestra como `0`. Un `{ tipo: "promedio", valor: 0 }`
+//       se muestra como `0.0`.
+//   + Título del bloque de ambigüedad: "Jugador ambiguo"
+//     → "Ambigüedad en la consulta".
+//
 // v1.1 (FASE 7.4):
 //   + Muestra un aviso destacado si `parserInfo.jugadorAmbiguo`
-//     es true, listando los candidatos para que el usuario
-//     reformule con nombre completo, apodo o #número.
+//     es true, listando los candidatos.
 // ============================================================
 
 import type { ResultadoConsultaExtendido } from "@/lib/consultaAnalitica/ejecutor";
@@ -567,8 +577,21 @@ export default function ConsultaResultado({
   const { respuesta, meta, parserInfo, accionesFiltradas, accionesUniverso } =
     resultado;
 
-  const esVacia =
-    respuesta.tipo === "vacio" || accionesFiltradas === 0;
+  // ============================================================
+  // FASE 7.4 cierre — FIX del "0 instead of no data"
+  // ============================================================
+  // ANTES (mal):
+  //   const esVacia =
+  //     respuesta.tipo === "vacio" || accionesFiltradas === 0;
+  //   → ocultaba el 0 aunque la consulta se hubiera entendido.
+  //
+  // AHORA (bien):
+  //   Solo es vacía cuando el motor devolvió `respuestaVacia`.
+  //   Si la consulta se entendió pero no hay datos, el motor ya
+  //   devuelve `{ tipo: "porcentaje", valor: 0, count: 0, base: 1 }`
+  //   o `{ tipo: "numero", valor: 0 }`, y acá lo mostramos tal cual.
+  // ============================================================
+  const esVacia = respuesta.tipo === "vacio";
 
   return (
     <div className="space-y-2">
@@ -592,11 +615,13 @@ export default function ConsultaResultado({
         </span>
       </div>
 
-      {/* FASE 7.4 — Aviso de ambigüedad de jugador */}
+      {/* ============================================================ */}
+      {/* FASE 7.4 cierre — Título "Ambigüedad en la consulta"          */}
+      {/* ============================================================ */}
       {parserInfo.jugadorAmbiguo && parserInfo.jugadorAviso && (
         <div className="rounded border border-rose-500/40 bg-rose-500/10 p-2.5 space-y-1">
           <p className="text-[11px] font-bold text-rose-200">
-            ⚠️ Jugador ambiguo
+            ⚠️ Ambigüedad en la consulta
           </p>
           <p className="text-[11px] text-rose-100">{parserInfo.jugadorAviso}</p>
           {parserInfo.jugadorCandidatos.length > 0 && (
@@ -641,12 +666,9 @@ export default function ConsultaResultado({
       )}
 
       {/* Respuesta principal */}
-      {esVacia && respuesta.tipo !== "vacio" ? (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.08] p-3">
-          <p className="text-xs text-amber-200">
-            No hay acciones que cumplan con los filtros de la consulta.
-          </p>
-        </div>
+      {/* El 0 / 0% / 0.0 se renderiza normal (ya no se oculta). */}
+      {esVacia ? (
+        renderRespuesta(respuesta, nombreDeJugador)
       ) : (
         renderRespuesta(respuesta, nombreDeJugador)
       )}

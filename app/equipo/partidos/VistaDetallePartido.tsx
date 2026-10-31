@@ -9,8 +9,13 @@
 //   - Estadísticas crudas
 //   - Consecuencias
 //
-// Tiene su propio estado de `modoDetalle` y `jugadoresComparados`
-// (no vive en el contenedor). Se resetea al cambiar de partido.
+// v1.1 (FASE 7.4 cierre — propagación de apodo):
+//   + `jugadoresDisponibles` (que se pasa a `AnalisisConsecuencias`)
+//     ahora incluye `apodo` y `numero`, para que el resolver de
+//     jugadores del PanelBusqueda pueda resolver apodos /
+//     apellidos / nombre de pila.
+//   + El tipo `Jugador` de `./types` ya tiene `apodo?` desde v1.1
+//     de ese archivo, así que solo se mapea.
 // ============================================================
 
 import { useEffect, useState } from "react";
@@ -215,11 +220,18 @@ export default function VistaDetallePartido({
     ),
   }));
 
-  // Lista de jugadores para el dropdown de "jugador específico"
-  // en el panel de consecuencias.
+  // ============================================================
+  // FASE 7.4 cierre — propagar apodo y numero a AnalisisConsecuencias
+  // ============================================================
+  // El tipo `Jugador` de ./types ya tiene `apodo?: string | null`
+  // y `numero: number | null`. Solo hay que mapearlos para que el
+  // resolver de jugadores del PanelBusqueda pueda matchearlos.
+  // ============================================================
   const jugadoresDisponibles = jugadores.map((j) => ({
     id: j.id,
     nombre: nombreDe(j.id),
+    apodo: j.apodo ?? null,
+    numero: j.numero,
   }));
 
   return (

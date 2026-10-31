@@ -3,20 +3,16 @@
 // ============================================================
 // ANÁLISIS DE CONSECUENCIAS — Componente principal (UI v5)
 // ============================================================
-// Orquesta:
-//   - Header con conteo A/B y botón comparar
-//   - Sección A6 "Cómo suele jugar un jugador" (colapsable)
-//   - Panel A (siempre)
-//   - Panel B (solo en modo comparación)
-//
-// El estado de configuración de cada panel vive acá. Los hijos
-// son presentacionales.
+// v5.2 (FASE 7.4 cierre — propagación de apodo):
+//   + `jugadoresDisponibles` acepta `apodo?` y `numero?` para
+//     que el resolver de jugadores pueda resolver apodos /
+//     apellidos / nombre de pila también desde el análisis de
+//     consecuencias (no solo desde ConsultaPanel).
+//   + `jugadoresParaDropdown` mapea esos campos al `PanelBusqueda`.
 //
 // v5.1 (FASE 5):
 //   + Reexporta como exports nombrados `ConsultaPanel` y
-//     `ConsultaResultado` para que se puedan importar así:
-//       import { ConsultaPanel } from "@/app/equipo/analisisConsecuencias";
-//   + No cambia nada del componente principal.
+//     `ConsultaResultado`.
 // ============================================================
 
 import { useMemo, useState } from "react";
@@ -37,7 +33,13 @@ interface Props {
   nombreDeJugador?: (id: string | null) => string;
   titulo?: string;
   jugadorId?: string;
-  jugadoresDisponibles?: { id: string; nombre: string }[];
+  /** FASE 7.4 — acepta `apodo` y `numero` opcionales. */
+  jugadoresDisponibles?: {
+    id: string;
+    nombre: string;
+    apodo?: string | null;
+    numero?: number | null;
+  }[];
   partidosDisponibles?: { id: string; nombre: string }[];
 }
 
@@ -89,10 +91,25 @@ export default function AnalisisConsecuencias({
     return id.slice(0, 8);
   };
 
+  // ============================================================
+  // FASE 7.4 cierre — propagar `apodo` y `numero` al dropdown
+  // ============================================================
+  // Antes mapeaba solo `{ id, nombre }`, así que el parser no
+  // podía resolver apodos ni números en el PanelBusqueda de
+  // este componente. Ahora sí.
+  // ============================================================
   const jugadoresParaDropdown = useMemo(
     () =>
       listaJugadores
-        .map((id) => ({ id, nombre: nombre(id) }))
+        .map((id) => {
+          const j = jugadoresDisponibles?.find((x) => x.id === id);
+          return {
+            id,
+            nombre: nombre(id),
+            apodo: j?.apodo ?? null,
+            numero: j?.numero ?? null,
+          };
+        })
         .sort((a, b) => a.nombre.localeCompare(b.nombre)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [listaJugadores, nombreDeJugador, jugadoresDisponibles]
@@ -277,9 +294,6 @@ export default function AnalisisConsecuencias({
 
 // ------------------------------------------------------------
 // FASE 5: reexports de los paneles de consulta analítica
-// ------------------------------------------------------------
-// Para que se puedan importar así desde cualquier lado:
-//   import { ConsultaPanel, ConsultaResultado } from "@/app/equipo/analisisConsecuencias";
 // ------------------------------------------------------------
 
 export { default as ConsultaPanel } from "./ConsultaPanel";
