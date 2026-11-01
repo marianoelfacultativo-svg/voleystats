@@ -3,49 +3,21 @@
 // ============================================================
 // FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
 //
+// v2.0 (FASE 7.5 — AST compilado):
+//   + Nuevo path `ejecutarComparacionBaseline(ctx)`:
+//       · si `condicion.compararConBaseline === true` y hay
+//         `condicion.expr` y hay `intencion.metrica`,
+//       · calcula VariablesPunto sobre el universo,
+//       · filtra los puntos que cumplen `expr`,
+//       · calcula la métrica sobre las acciones de esos puntos,
+//       · calcula la métrica sobre TODAS las acciones (baseline),
+//       · devuelve `RespuestaComparacionBaseline`.
+//   + `ContextoRespuesta` suma `variablesPunto?` (opcional, para
+//     que el ejecutor lo precálcule y no recalculamos dos veces).
+//
 // v1.9 (FASE 7.4 — "Sin datos" → 0):
 //   + Los 3 helpers de métrica (porcentaje / promedio / número)
-//     devuelven 0 / 0% / 0.0 con `detalle: "Sin datos (0 casos)."`
-//     cuando el denominador es 0. Antes devolvían `respuestaVacia`.
-//   + `ejecutarMetrica`: cada chequeo de "faltan puntos" devuelve
-//     el valor 0 del tipo correcto (no un mensaje).
-//   + `ejecutarAverage` / `ejecutarFrequency` / `ejecutarMaxMin` /
-//     `ejecutarDistribution` / `ejecutarTrend` / `ejecutarHabit`:
-//     cuando no hay datos (pero la consulta sí se entendió),
-//     devuelven estructura vacía con 0 en vez de `respuestaVacia`.
-//   + Se mantienen como `respuestaVacia` solo:
-//       · "No pude entender qué cálculo querés hacer"
-//       · "Para max/min/ranking necesito una agrupación"
-//       · "Para comparar necesito la lista de jugadores"
-//       · "No pude encontrar a X en la lista"
-//   + `ejecutarComparison` ahora usa el wording "Ambigüedad en la
-//     comparación: X coincide con varios jugadores. Candidatos: …"
-//     (antes decía "Hay varios jugadores que matchean…").
-//
-// v1.8 (FASE 7.4):
-//   + `ContextoRespuesta.jugadores` pasa a `JugadorParaResolver[]`.
-//   + `ejecutarComparison` usa `resolverJugador` (apodo / apellido
-//     / nombre de pila).
-//   + `ejecutarHabit` y `ejecutarDistribution` cuentan PUNTOS (no
-//     acciones) cuando `groupBy` es por punto.
-//
-// v1.7 (FASE 7.4 — problema C: fase por punto):
-//   + `ContextoRespuesta.fasesPorPunto` (Map<clave, FaseRally>).
-//   + `aplicarCondicionesExtra` filtra PUNTOS completos por fase.
-//
-// v1.6 (FASE 6 — Opción A, familia cruces):
-//   + 6 métricas nuevas + aviso de ambigüedad de cruces.
-//
-// v1.5 (Rondas 1.2 + 1.3 + 2):
-//   + aplicarCondicionesExtra (fase + salidaRol).
-//   + frasePidePuntos + puntosPorDimension para max/min/ranking.
-//
-// v1.4 (Ronda 1.1):
-//   + agregacionEfectiva (mejor/peor → avg).
-//
-// v1.3 (bloque A.2):
-//   + habit "cómo terminan" → resultado_punto.
-//   + puntos_ganados_pct.
+//     devuelven 0 cuando el denominador es 0.
 // ============================================================
 
 import type {
@@ -120,6 +92,7 @@ import type {
 } from "./tipos";
 import {
   respuestaComparacion,
+  respuestaComparacionBaseline,
   respuestaDistribucion,
   respuestaFrecuencia,
   respuestaHabit,
@@ -137,6 +110,11 @@ import {
   describirCandidatos,
   type JugadorParaResolver,
 } from "./resolverJugador";
+import {
+  calcularVariablesPunto,
+  type VariablesPunto,
+} from "./variablesPunto";
+import { evaluarBooleano } from "./expresiones";
 
 // ------------------------------------------------------------
 // CONTEXTO DE ENTRADA
@@ -148,19 +126,12 @@ export interface ContextoRespuesta {
   intencion: IntencionQuery;
   contextoAgrupacion?: ContextoAgrupacion;
   contextoRally?: Map<string, ContextoRally>;
-  /**
-   * FASE 7.4 — Fase de cada PUNTO del universo (no de cada acción).
-   * Clave: `partido_id|set_numero|punto_numero`.
-   * Calculado por `ejecutor.ts` sobre el universo completo.
-   */
   fasesPorPunto?: Map<string, FaseRally>;
-  /**
-   * FASE 7.4 — Lista de jugadores con apodo (opcional) y número.
-   * Estructuralmente compatible con `{id, nombre}`.
-   */
   jugadores?: JugadorParaResolver[];
   partidos?: { id: string; nombre: string }[];
   totalUniverso?: number;
+  /** FASE 7.5 — Variables por punto precálculadas (opcional). */
+  variablesPunto?: Map<string, VariablesPunto>;
 }
 
 // ------------------------------------------------------------
@@ -358,9 +329,6 @@ function meta(
 
 // ------------------------------------------------------------
 // MÉTRICAS → RESPUESTA
-// ------------------------------------------------------------
-// FASE 7.4 v1.9 — si el denominador es 0, devolvemos 0 / 0% / 0.0
-// con `detalle: "Sin datos (0 casos)."` en vez de `respuestaVacia`.
 // ------------------------------------------------------------
 
 const DETALLE_SIN_DATOS = "Sin datos (0 casos).";
@@ -590,9 +558,6 @@ function calcularDistribucionPorPuntos(
 // ------------------------------------------------------------
 // MÉTRICAS DE VÓLEY
 // ------------------------------------------------------------
-// FASE 7.4 v1.9 — sin datos devuelve 0 del tipo correcto,
-// NO un mensaje.
-// ------------------------------------------------------------
 
 function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
   const metrica = ctx.intencion.metrica;
@@ -600,9 +565,7 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
 
   const acciones = ctx.acciones;
 
-  // ============================================================
-  // FAMILIA CRUCES (Opción A)
-  // ============================================================
+  // FAMILIA CRUCES
   if (metrica === "cruces_promedio") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
       return metricaAPromedio({
@@ -660,9 +623,7 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
     return metricaANumero(rallysMedios(ctx.puntos), "rallys medios");
   }
 
-  // ============================================================
   // PUNTOS GANADOS
-  // ============================================================
   if (metrica === "puntos_ganados") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
       return metricaANumero(
@@ -687,13 +648,6 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
     return metricaAPorcentaje(m);
   }
 
-  // ============================================================
-  // RESTO DE MÉTRICAS
-  // ============================================================
-  // Si no hay acciones visibles, los helpers de cada métrica
-  // devolverán 0 (porque las funciones de metricasVoley devuelven
-  // `vacio()` que tiene denominador 0). Ya no cortamos antes.
-  // ============================================================
   void contarVisibles(acciones);
 
   switch (metrica) {
@@ -751,6 +705,131 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
       return respuestaVacia(
         `Métrica "${metrica}" no implementada todavía.`
       );
+  }
+}
+
+// ------------------------------------------------------------
+// COMPARE-TO-BASELINE (FASE 7.5 — capa 4)
+// ------------------------------------------------------------
+// Se dispara cuando `condicion.compararConBaseline === true` y
+// hay `condicion.expr`. Calcula:
+//   - variablesPunto sobre el universo,
+//   - filtra los puntos que cumplen expr,
+//   - calcula la métrica sobre las acciones de esos puntos,
+//   - calcula la métrica sobre TODAS las acciones (baseline),
+//   - devuelve `RespuestaComparacionBaseline`.
+// ------------------------------------------------------------
+
+function ejecutarComparacionBaseline(
+  ctx: ContextoRespuesta
+): RespuestaConsulta {
+  const cond = ctx.intencion.condicion;
+  const metrica = ctx.intencion.metrica;
+
+  if (!cond?.expr) {
+    return respuestaVacia(
+      "Comparación con baseline: falta la expresión del filtro."
+    );
+  }
+  if (!metrica) {
+    return respuestaVacia(
+      "Comparación con baseline: falta la métrica a comparar."
+    );
+  }
+
+  const puntosUniverso = ctx.puntos ?? [];
+  if (puntosUniverso.length === 0) {
+    return respuestaComparacionBaseline(
+      metrica,
+      0,
+      0,
+      0,
+      0,
+      "Sin puntos en el universo."
+    );
+  }
+
+  // 1. Variables por punto (usar precálculo si existe)
+  const variables =
+    ctx.variablesPunto ??
+    calcularVariablesPunto(puntosUniverso, {
+      formatoPartido: "bo3",
+    });
+
+  // 2. Filtrar puntos por expr
+  const clavesFiltradas = new Set<string>();
+  for (const [clave, vars] of variables) {
+    try {
+      if (evaluarBooleano(cond.expr, vars)) {
+        clavesFiltradas.add(clave);
+      }
+    } catch {
+      // Si la evaluación falla, se ignora el punto.
+    }
+  }
+
+  // 3. Acciones filtradas (las que están en puntos filtrados)
+  const accionesFiltradas: AccionVisual[] = [];
+  for (const p of puntosUniverso) {
+    if (clavesFiltradas.has(claveDePuntoDesdePunto(p))) {
+      for (const a of p.acciones) accionesFiltradas.push(a);
+    }
+  }
+
+  // 4. Métrica filtrada: reusar ejecutarMetrica con contexto parcial
+  const ctxFiltrado: ContextoRespuesta = {
+    ...ctx,
+    acciones: accionesFiltradas,
+    puntos: puntosUniverso.filter((p) =>
+      clavesFiltradas.has(claveDePuntoDesdePunto(p))
+    ),
+  };
+  const respFiltrada = ejecutarMetrica(ctxFiltrado);
+
+  // 5. Métrica general (baseline)
+  const respGeneral = ejecutarMetrica(ctx);
+
+  // 6. Extraer números de cada respuesta
+  const numFiltrada = extraerNumeroDeRespuesta(respFiltrada);
+  const numGeneral = extraerNumeroDeRespuesta(respGeneral);
+
+  if (numFiltrada === null || numGeneral === null) {
+    return respuestaVacia(
+      "Comparación con baseline: la métrica no devolvió un número."
+    );
+  }
+
+  const puntosQueCumplen = clavesFiltradas.size;
+  const puntosTotales = puntosUniverso.length;
+
+  const detalle =
+    `${puntosQueCumplen} de ${puntosTotales} puntos cumplen la condición. ` +
+    `Filtrada: ${redondear(numFiltrada, 2)} · General: ${redondear(
+      numGeneral,
+      2
+    )} · Diferencia: ${
+      numFiltrada - numGeneral >= 0 ? "+" : ""
+    }${redondear(numFiltrada - numGeneral, 2)}.`;
+
+  return respuestaComparacionBaseline(
+    metrica,
+    redondear(numFiltrada, 2),
+    redondear(numGeneral, 2),
+    puntosQueCumplen,
+    puntosTotales,
+    detalle
+  );
+}
+
+function extraerNumeroDeRespuesta(r: RespuestaConsulta): number | null {
+  switch (r.tipo) {
+    case "numero":
+    case "porcentaje":
+    case "promedio":
+    case "frecuencia":
+      return r.valor;
+    default:
+      return null;
   }
 }
 
@@ -1109,7 +1188,6 @@ function ejecutarComparison(ctx: ContextoRespuesta): RespuestaConsulta {
   const rA = resolverJugador(comp.a, ctx.jugadores);
   const rB = resolverJugador(comp.b, ctx.jugadores);
 
-  // FASE 7.4 v1.9 — wording "Ambigüedad" (no "desambiguar").
   if (rA.motivo === "ambiguo") {
     return respuestaVacia(
       `Ambigüedad en la comparación: "${comp.a}" coincide con varios ` +
@@ -1281,6 +1359,27 @@ export function construirRespuesta(
   const fragmentos: string[] = [...ctx.intencion.fragmentos];
   const noReconocidas: string[] = [];
   const metaFinal = meta(ctx, totalAcciones);
+
+  // ============================================================
+  // FASE 7.5 — comparación filtrada vs baseline
+  // ============================================================
+  // Si la intención pide `compararConBaseline` Y hay métrica Y
+  // hay `expr`, dispatch a `ejecutarComparacionBaseline`.
+  // Esto es prioritario sobre el dispatch normal de métricas.
+  // ============================================================
+  if (
+    ctx.intencion.condicion?.compararConBaseline === true &&
+    ctx.intencion.condicion?.expr &&
+    ctx.intencion.metrica
+  ) {
+    const resp = ejecutarComparacionBaseline(ctx);
+    return {
+      respuesta: agregarAvisoAmbiguedad(resp, ctx.intencion),
+      meta: metaFinal,
+      fragmentos,
+      noReconocidas,
+    };
+  }
 
   if (ctx.intencion.metrica) {
     const resp = ejecutarMetrica(ctx);

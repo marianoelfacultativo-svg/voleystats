@@ -3,12 +3,17 @@
 // ============================================================
 // FASE 3 del plan "Consultas Analíticas Libres".
 //
-// Acá viven SOLO los tipos de salida del motor de cálculo.
-// Cada intención (count, percentage, average, frequency, etc.)
-// produce una `RespuestaConsulta` distinta, que la UI de FASE 5
-// va a renderizar según corresponda.
+// v1.1 (FASE 7.5 — AST compilado):
+//   + Nuevo tipo `RespuestaComparacionBaseline` con:
+//       filtrada, general, diferencia,
+//       puntosQueCumplen, puntosTotales.
+//   + Se agrega a la union `RespuestaConsulta`.
+//   + Nueva factory `respuestaComparacionBaseline(...)`.
 //
-// No hay lógica acá. Solo tipos + helper de respuesta vacía.
+// v1.0:
+//   + Tipos base (numero, porcentaje, promedio, frecuencia,
+//     max/min, ranking, tabla, distribucion, serie, habit,
+//     comparacion, texto, vacio).
 // ============================================================
 
 import type { AggFn, GroupBy, TipoIntencion } from "./intenciones";
@@ -18,19 +23,12 @@ import type { AggFn, GroupBy, TipoIntencion } from "./intenciones";
 // ------------------------------------------------------------
 
 export interface FilaTabla {
-  /** Clave interna (por ejemplo "set-3", "jugador-abc", "zona-4"). */
   key: string;
-  /** Etiqueta visible ("Set 3", "Juan #7", "Zona 4"). */
   label: string;
-  /** Cuántas acciones cayeron en esta fila (numerador). */
   count: number;
-  /** Denominador (para porcentajes / promedios). null = no aplica. */
   base: number | null;
-  /** Valor principal de la fila (count, %, avg, etc.). */
   valor: number;
-  /** % del total, si aplica (0..100). */
   porcentaje: number | null;
-  /** Valor adicional opcional (ej. efectividad, eficiencia, etc.). */
   extra: number | null;
 }
 
@@ -38,20 +36,14 @@ export interface ItemDistribucion {
   key: string;
   label: string;
   count: number;
-  /** % sobre el total. 0..100. */
   porcentaje: number;
 }
 
 export interface PuntoSerie {
-  /** Eje X (string o número). Para "por set", 1..5. Para fechas, ISO. */
   x: string | number;
-  /** Etiqueta visible del eje X ("Set 3", "vs Boca (2025-04-12)"). */
   label: string;
-  /** Valor principal de ese punto. */
   y: number;
-  /** Denominador de ese punto, si aplica. */
   base: number | null;
-  /** % sobre el total, si aplica. */
   porcentaje: number | null;
 }
 
@@ -71,6 +63,7 @@ export type RespuestaConsulta =
   | RespuestaSerie
   | RespuestaHabit
   | RespuestaComparacion
+  | RespuestaComparacionBaseline
   | RespuestaTexto
   | RespuestaVacia;
 
@@ -83,11 +76,8 @@ export interface RespuestaNumero {
 
 export interface RespuestaPorcentaje {
   tipo: "porcentaje";
-  /** 0..100 */
   valor: number;
-  /** Numerador absoluto. */
   count: number;
-  /** Denominador absoluto. */
   base: number;
   detalle: string | null;
 }
@@ -95,18 +85,14 @@ export interface RespuestaPorcentaje {
 export interface RespuestaPromedio {
   tipo: "promedio";
   valor: number;
-  /** Cuántas acciones se promediaron. */
   n: number;
   detalle: string | null;
 }
 
 export interface RespuestaFrecuencia {
   tipo: "frecuencia";
-  /** Cada cuántas acciones ocurre. Ej. 4.2 = "cada 4.2". */
   valor: number;
-  /** Total de acciones base. */
   base: number;
-  /** Total de eventos (el numerador). */
   count: number;
   detalle: string | null;
 }
@@ -120,40 +106,30 @@ export interface RespuestaMaxMin {
 export interface RespuestaRanking {
   tipo: "ranking";
   filas: FilaTabla[];
-  /** Agregación usada para ordenar (count, %, avg, etc.). */
   agregacion: AggFn;
-  /** Dirección del ordenamiento. */
   orden: "asc" | "desc";
   detalle: string | null;
 }
 
 export interface RespuestaTabla {
   tipo: "tabla";
-  /** GroupBy de la tabla (set, jugador, rotacion, etc.). */
   groupBy: GroupBy | null;
   filas: FilaTabla[];
-  /** Agregación principal (la que calcula `valor`). */
   agregacion: AggFn;
-  /** Total general (fila "TOTAL"). */
   total: FilaTabla | null;
   detalle: string | null;
 }
 
 export interface RespuestaDistribucion {
   tipo: "distribucion";
-  /** GroupBy sobre el que se calcula la distribución. */
   groupBy: GroupBy | null;
-  /** Dimensiones paralelas opcionales (ej. distribución de ataques
-   *  por zona destino Y por resultado). */
   items: ItemDistribucion[];
-  /** Total de acciones incluidas. */
   total: number;
   detalle: string | null;
 }
 
 export interface RespuestaSerie {
   tipo: "serie";
-  /** Eje X (set, partido, fecha, rotación, etc.). */
   eje: string;
   puntos: PuntoSerie[];
   agregacion: AggFn;
@@ -162,26 +138,42 @@ export interface RespuestaSerie {
 
 export interface RespuestaHabit {
   tipo: "habit";
-  /** Valor más frecuente (subtipo, zona destino, tipo, etc.). */
   valorMasFrecuente: string | null;
-  /** Etiqueta visible del valor más frecuente. */
   etiqueta: string | null;
-  /** % sobre el total. */
   porcentaje: number;
-  /** Total de acciones consideradas. */
   total: number;
-  /** Distribución completa por si quieren mostrar el detalle. */
   items: ItemDistribucion[];
   detalle: string | null;
 }
 
 export interface RespuestaComparacion {
   tipo: "comparacion";
-  /** Etiqueta de cada lado (nombre del jugador o equipo). */
   a: { etiqueta: string; valor: number; count: number; base: number };
   b: { etiqueta: string; valor: number; count: number; base: number };
-  /** Diferencia b - a (para mostrar "X más que Y"). */
   diferencia: number;
+  detalle: string | null;
+}
+
+/**
+ * Comparación filtrada vs baseline general.
+ * Se produce cuando `condicion.compararConBaseline === true`.
+ *
+ * Ejemplo: "cuando al rival le faltan la mitad de puntos,
+ *           cómo varía la efectividad respecto al general".
+ *
+ * - `filtrada`  = métrica sobre los puntos que cumplen el filtro.
+ * - `general`   = métrica sobre TODOS los puntos (baseline).
+ * - `diferencia`= filtrada - general.
+ * - `puntosQueCumplen` / `puntosTotales` = tamaño de cada conjunto.
+ */
+export interface RespuestaComparacionBaseline {
+  tipo: "comparacion_baseline";
+  metrica: string;
+  filtrada: number;
+  general: number;
+  diferencia: number;
+  puntosQueCumplen: number;
+  puntosTotales: number;
   detalle: string | null;
 }
 
@@ -206,18 +198,14 @@ export interface MetaConsulta {
   agregacion: AggFn;
   groupBy: GroupBy | null;
   metrica: string | null;
-  /** Cuántas acciones del universo se consideraron (después del filtro). */
   totalAcciones: number;
-  /** Cuántas acciones del universo total había antes del filtro. */
   totalUniverso: number;
 }
 
 export interface ResultadoConsulta {
   respuesta: RespuestaConsulta;
   meta: MetaConsulta;
-  /** Fragmentos que el parser reconoció en la consulta. */
   fragmentos: string[];
-  /** Palabras que NO se reconocieron (para mostrar al usuario). */
   noReconocidas: string[];
 }
 
@@ -354,6 +342,26 @@ export function respuestaComparacion(
     a,
     b,
     diferencia: b.valor - a.valor,
+    detalle,
+  };
+}
+
+export function respuestaComparacionBaseline(
+  metrica: string,
+  filtrada: number,
+  general: number,
+  puntosQueCumplen: number,
+  puntosTotales: number,
+  detalle: string | null = null
+): RespuestaComparacionBaseline {
+  return {
+    tipo: "comparacion_baseline",
+    metrica,
+    filtrada,
+    general,
+    diferencia: filtrada - general,
+    puntosQueCumplen,
+    puntosTotales,
     detalle,
   };
 }

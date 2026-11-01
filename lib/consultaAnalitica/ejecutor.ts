@@ -3,38 +3,26 @@
 // ============================================================
 // FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
 //
+// v1.8 (FASE 7.5 — AST compilado):
+//   + Calcula `variablesPunto` sobre `puntosConTiempo` UNA SOLA VEZ
+//     y lo pasa a `ContextoRespuesta.variablesPunto`.
+//   + `ejecutarComparacionBaseline` (en respuesta.ts) lo usa para
+//     filtrar los puntos que cumplen `condicion.expr` y comparar
+//     contra el baseline general.
+//   + Se calcula SOLO si la intención pide `compararConBaseline`
+//     (para no penalizar consultas normales).
+//
 // v1.7 (FASE 7.4 cierre — fallback a count):
 //   + Si el parser detectó filtros válidos (`parsed.aplicado`)
 //     pero NO una intención de cálculo (`intencion.tipo ===
 //     "unknown"`), asumimos `count`.
-//     Casos típicos que cubre:
-//       · "quiero ver los ataques de mariano"
-//       · "los saques de joaco"
-//       · "ataques después de errar"
-//     Antes devolvía respuestaVacia("No pude entender..."),
-//     que era engañoso: el parser sí había entendido el filtro.
-//   + El `intencion` que se devuelve en `parserInfo` ya viene
-//     con el fallback aplicado (la UI muestra "count" en vez de
-//     "unknown").
 //
-// v1.6 (FASE 7.4):
-//   + `parserInfo` suma `jugadorAmbiguo`, `jugadorAviso` y
-//     `jugadorCandidatos`.
-//
-// v1.5 (FASE 7.4 — problema C: fase por punto):
-//   + Se calcula `fasesPorPunto` UNA SOLA VEZ sobre el universo.
-//
-// v1.4 (FASE 6 — Opción A, familia cruces):
-//   + `crucesPorPunto` sobre el universo completo.
-//
-// v1.3 (FASE 6 — Rondas 1.3 + 2):
-//   + crucesMinimos + salidaRol volcados al filtro final.
-//
-// v1.2 (FASE 6 — bloque A.1):
-//   + resultadosPunto sobre el universo completo.
-//
-// v1.1 (FASE 6):
-//   + Filtro de tiempo también sobre puntos.
+// v1.6 (FASE 7.4): parserInfo suma jugadorAmbiguo/jugadorAviso/candidatos.
+// v1.5 (FASE 7.4 — problema C): fasesPorPunto sobre el universo.
+// v1.4 (FASE 6 — Opción A): crucesPorPunto sobre el universo.
+// v1.3 (FASE 6 — Rondas 1.3 + 2): crucesMinimos + salidaRol.
+// v1.2 (FASE 6 — bloque A.1): resultadosPunto sobre el universo.
+// v1.1 (FASE 6): filtro de tiempo también sobre puntos.
 // ============================================================
 
 import type {
@@ -60,6 +48,7 @@ import {
 } from "./groupBy";
 import type { ResultadoConsulta } from "./tipos";
 import type { JugadorParaResolver } from "./resolverJugador";
+import { calcularVariablesPunto } from "./variablesPunto";
 
 // ------------------------------------------------------------
 // CONTEXTO DE ENTRADA
@@ -88,20 +77,6 @@ export interface ResultadoConsultaExtendido extends ResultadoConsulta {
 
 // ------------------------------------------------------------
 // FALLBACK DE INTENCIÓN
-// ------------------------------------------------------------
-// Si el parser detectó filtros (tipo, jugador, sets, etc.)
-// pero NO una intención de cálculo (count / % / avg / etc.),
-// asumimos `count`.
-//
-// El parser detecta `aplicado = true` cuando al menos uno de
-// estos está presente: tipo, resultado, jugador, recepción
-// símbolo, sets, puntos, partidos, roles, zonas, rotaciones,
-// velocidad, tipo de saque, previa, racha, top, vs promedio,
-// contexto, toque de segunda, secuencia, inferencia.
-//
-// Es un caso muy típico: "quiero ver los ataques de mariano",
-// "los saques de joaco", "ataques después de errar". El
-// usuario espera el TOTAL, no un mensaje de "no entendí".
 // ------------------------------------------------------------
 
 function aplicarFallbackCount(
@@ -512,7 +487,7 @@ function esFiltroVacio(f: BloqueTriggerFiltro): boolean {
 }
 
 // ------------------------------------------------------------
-// FILTRO POR CRUCES (aplica los 4 campos)
+// FILTRO POR CRUCES
 // ------------------------------------------------------------
 
 function filtrarPuntosPorCruces(
@@ -566,10 +541,8 @@ export function ejecutarConsulta(
   };
   const parsed = parsearBusqueda(texto, contextoParser);
 
-  // ============================================================
   // 1.b) FALLBACK: si el parser entendió los filtros pero NO
   // la intención, asumimos `count`.
-  // ============================================================
   const intencion = aplicarFallbackCount(parsed.intencion, parsed.aplicado);
 
   // 2) Time filter (acciones + puntos).
@@ -617,6 +590,27 @@ export function ejecutarConsulta(
   // 6) FASE 7.4 — Fase de cada punto, sobre el UNIVERSO COMPLETO.
   const fasesPorPunto = calcularFasesPorPunto(universo);
 
+  // ============================================================
+  // 6.b) FASE 7.5 — Variables por punto
+  // ============================================================
+  // Solo se calculan si la intención pide comparar contra baseline.
+  // Se calculan sobre `puntosConTiempo` (el universo que el usuario
+  // ve), así los conteos de `puntosQueCumplen` / `puntosTotales`
+  // son consistentes con lo que está mirando.
+  //
+  // NOTA: `formatoPartido` queda en "bo3" (default) hasta que
+  // `partidos` tenga columna `formato`. Ver deuda técnica #0.3.
+  // ============================================================
+  const necesitaVariables =
+    intencion.condicion?.compararConBaseline === true &&
+    !!intencion.condicion?.expr;
+
+  const variablesPunto = necesitaVariables
+    ? calcularVariablesPunto(puntosConTiempo, {
+        formatoPartido: "bo3",
+      })
+    : undefined;
+
   // 7) Construir respuesta.
   const ctxRespuesta: ContextoRespuesta = {
     acciones: accionesFiltradas,
@@ -649,6 +643,7 @@ export function ejecutarConsulta(
     jugadores: contexto.jugadores,
     partidos: contexto.partidos,
     totalUniverso: universo.filter((a) => !a.oculta).length,
+    variablesPunto,
   };
 
   const resultado = construirRespuesta(ctxRespuesta);

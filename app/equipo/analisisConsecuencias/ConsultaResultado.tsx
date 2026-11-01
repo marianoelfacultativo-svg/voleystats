@@ -5,20 +5,15 @@
 // ============================================================
 // FASE 5 del plan "Consultas Analíticas Libres".
 //
+// v1.3 (FASE 7.5 — AST compilado):
+//   + Nuevo case `comparacion_baseline`: renderiza la comparación
+//     filtrada vs general (métrica, diferencia, puntos que cumplen
+//     vs totales) que produce el motor de capas 3+4.
+//
 // v1.2 (FASE 7.4 cierre):
 //   + FIX del "0 instead of no data": `esVacia` ya NO se activa
-//     cuando `accionesFiltradas === 0`. Solo se activa con
-//     `respuesta.tipo === "vacio"`.
-//     → Un `{ tipo: "porcentaje", valor: 0, count: 0, base: 1 }`
-//       se muestra como `0%`. Un `{ tipo: "numero", valor: 0 }`
-//       se muestra como `0`. Un `{ tipo: "promedio", valor: 0 }`
-//       se muestra como `0.0`.
-//   + Título del bloque de ambigüedad: "Jugador ambiguo"
-//     → "Ambigüedad en la consulta".
-//
-// v1.1 (FASE 7.4):
-//   + Muestra un aviso destacado si `parserInfo.jugadorAmbiguo`
-//     es true, listando los candidatos.
+//     cuando `accionesFiltradas === 0`. Solo con `respuesta.tipo === "vacio"`.
+//   + Título "Ambigüedad en la consulta".
 // ============================================================
 
 import type { ResultadoConsultaExtendido } from "@/lib/consultaAnalitica/ejecutor";
@@ -179,6 +174,111 @@ function TarjetaFrecuencia({
       </p>
       {detalle && (
         <p className="text-[11px] text-slate-500 mt-1 italic">{detalle}</p>
+      )}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------
+// SUBCOMPONENTE: COMPARACIÓN BASELINE
+// ------------------------------------------------------------
+
+function TarjetaComparacionBaseline({
+  metrica,
+  filtrada,
+  general,
+  diferencia,
+  puntosQueCumplen,
+  puntosTotales,
+  detalle,
+}: {
+  metrica: string;
+  filtrada: number;
+  general: number;
+  diferencia: number;
+  puntosQueCumplen: number;
+  puntosTotales: number;
+  detalle: string | null;
+}) {
+  const esSube = diferencia > 0;
+  const esBaja = diferencia < 0;
+  const pctCumplen =
+    puntosTotales > 0
+      ? Math.round((puntosQueCumplen / puntosTotales) * 100)
+      : 0;
+
+  return (
+    <div style={cardBase} className="p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
+          Comparación vs baseline
+        </p>
+        <span className="text-[10px] px-1.5 py-0.5 rounded border border-violet-400/50 bg-violet-500/15 text-violet-200 font-semibold">
+          {metrica}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-lg bg-blue-500/10 border border-blue-400/30 p-3">
+          <p className="text-[10px] uppercase font-bold text-blue-200 mb-1">
+            Filtrada
+          </p>
+          <p className="text-2xl font-black text-white tabular-nums">
+            {fmt(filtrada)}
+          </p>
+          <p className="text-[10px] text-slate-400 mt-1 tabular-nums">
+            {puntosQueCumplen} de {puntosTotales} puntos ({pctCumplen}%)
+          </p>
+        </div>
+
+        <div className="rounded-lg bg-slate-500/10 border border-slate-400/30 p-3">
+          <p className="text-[10px] uppercase font-bold text-slate-300 mb-1">
+            General (baseline)
+          </p>
+          <p className="text-2xl font-black text-white tabular-nums">
+            {fmt(general)}
+          </p>
+          <p className="text-[10px] text-slate-400 mt-1 tabular-nums">
+            {puntosTotales} puntos totales
+          </p>
+        </div>
+      </div>
+
+      <div
+        className={`rounded-lg p-3 border ${
+          esSube
+            ? "bg-emerald-500/10 border-emerald-400/40"
+            : esBaja
+            ? "bg-rose-500/10 border-rose-400/40"
+            : "bg-slate-500/10 border-slate-400/40"
+        }`}
+      >
+        <p className="text-[10px] uppercase font-bold tracking-wider text-slate-300 mb-1">
+          Diferencia
+        </p>
+        <p
+          className={`text-2xl font-black tabular-nums ${
+            esSube
+              ? "text-emerald-300"
+              : esBaja
+              ? "text-rose-300"
+              : "text-slate-300"
+          }`}
+        >
+          {esSube ? "+" : ""}
+          {fmt(diferencia)}
+        </p>
+        <p className="text-[11px] text-slate-400 mt-1">
+          {esSube
+            ? "La métrica SUBE en los puntos filtrados vs el general."
+            : esBaja
+            ? "La métrica BAJA en los puntos filtrados vs el general."
+            : "Sin diferencia significativa entre filtrado y general."}
+        </p>
+      </div>
+
+      {detalle && (
+        <p className="text-[11px] text-slate-500 italic">{detalle}</p>
       )}
     </div>
   );
@@ -542,6 +642,22 @@ function renderRespuesta(
         </div>
       );
 
+    // ============================================================
+    // FASE 7.5 — Comparación filtrada vs baseline
+    // ============================================================
+    case "comparacion_baseline":
+      return (
+        <TarjetaComparacionBaseline
+          metrica={r.metrica}
+          filtrada={r.filtrada}
+          general={r.general}
+          diferencia={r.diferencia}
+          puntosQueCumplen={r.puntosQueCumplen}
+          puntosTotales={r.puntosTotales}
+          detalle={r.detalle}
+        />
+      );
+
     case "texto":
       return (
         <div style={cardBase} className="p-3">
@@ -577,20 +693,7 @@ export default function ConsultaResultado({
   const { respuesta, meta, parserInfo, accionesFiltradas, accionesUniverso } =
     resultado;
 
-  // ============================================================
-  // FASE 7.4 cierre — FIX del "0 instead of no data"
-  // ============================================================
-  // ANTES (mal):
-  //   const esVacia =
-  //     respuesta.tipo === "vacio" || accionesFiltradas === 0;
-  //   → ocultaba el 0 aunque la consulta se hubiera entendido.
-  //
-  // AHORA (bien):
-  //   Solo es vacía cuando el motor devolvió `respuestaVacia`.
-  //   Si la consulta se entendió pero no hay datos, el motor ya
-  //   devuelve `{ tipo: "porcentaje", valor: 0, count: 0, base: 1 }`
-  //   o `{ tipo: "numero", valor: 0 }`, y acá lo mostramos tal cual.
-  // ============================================================
+  // Solo es vacía cuando el motor devolvió `respuestaVacia`.
   const esVacia = respuesta.tipo === "vacio";
 
   return (
@@ -615,9 +718,7 @@ export default function ConsultaResultado({
         </span>
       </div>
 
-      {/* ============================================================ */}
-      {/* FASE 7.4 cierre — Título "Ambigüedad en la consulta"          */}
-      {/* ============================================================ */}
+      {/* Ambigüedad en la consulta */}
       {parserInfo.jugadorAmbiguo && parserInfo.jugadorAviso && (
         <div className="rounded border border-rose-500/40 bg-rose-500/10 p-2.5 space-y-1">
           <p className="text-[11px] font-bold text-rose-200">
@@ -666,12 +767,9 @@ export default function ConsultaResultado({
       )}
 
       {/* Respuesta principal */}
-      {/* El 0 / 0% / 0.0 se renderiza normal (ya no se oculta). */}
-      {esVacia ? (
-        renderRespuesta(respuesta, nombreDeJugador)
-      ) : (
-        renderRespuesta(respuesta, nombreDeJugador)
-      )}
+      {esVacia
+        ? renderRespuesta(respuesta, nombreDeJugador)
+        : renderRespuesta(respuesta, nombreDeJugador)}
     </div>
   );
 }
