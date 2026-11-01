@@ -16,17 +16,13 @@
 //   has     → ¿el array contiene el valor? (para tiposPresentes, etc.)
 //   count   → longitud del array
 //
-// El motor distingue dos "tipos" de expresión:
-//   - NUMÉRICA  → devuelve un number
-//   - BOOLEANA  → devuelve un boolean
-//
-// Reglas de tipado (validadas por `tipoDe`):
+// Reglas de tipado:
 //   num, var(numérica), op → NUMÉRICA
 //   var(booleana), cmp, and, or, not, has → BOOLEANA
 //   count → NUMÉRICA
 //
-// El compilador SIEMPRE tiene que producir una expresión booleana
-// como raíz del filtro. Si no, se rechaza con error.
+// Alias: `numero` es equivalente a `num` (compatibilidad con
+// consumidores que usan la forma larga).
 // ============================================================
 
 import type { VariablesPunto } from "./variablesPunto";
@@ -145,6 +141,9 @@ export function tipoDe(e: Expr): TipoExpr {
 export function num(value: number): ExprNum {
   return { kind: "num", value };
 }
+
+// Alias por compatibilidad con consumidores que usan `numero`
+export const numero = num;
 
 export function variable(path: string): ExprVar {
   return { kind: "var", path };
