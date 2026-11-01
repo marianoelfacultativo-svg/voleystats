@@ -1,41 +1,28 @@
 // ============================================================
-// CONTEXTO DEL RALLY — motor puro (v3)
+// CONTEXTO DEL RALLY — motor puro (v4)
 // ============================================================
+// Cambios v4 (FASE 7.5 — Pendiente #0: fix de cierre de set):
+//   + Nuevas funciones EXPORTADAS:
+//       · targetDelSet(set, formato)           → 25 o 15 (tie-break)
+//       · puntosParaCerrarSet(propios, rivales, set, formato)
+//       · esSetTerminado(propios, rivales, set, formato)
+//     Reemplazan la fórmula hardcoded (25 - max) que tenía el bug:
+//     no consideraba tie-break ni la regla de 2 puntos de diferencia.
+//   + ContextoRally suma 2 campos: setNumero y formatoPartido.
+//   + calcularContextoRally acepta `formatoPartido: "bo3" | "bo5"`.
+//   + `esPuntoCritico` y `puntosParaCerrar` (privadas) se ELIMINAN.
+//     Ahora `esPuntoCritico` = puntosParaCerrarSet(...) <= 5.
+//
 // Cambios v3 (FASE 7.4 — problema C):
 //   + Nuevo `calcularFaseDePunto(accionesDelPunto)`: clasifica el
 //     PUNTO ENTERO por cómo arrancó el rally, no cada acción.
 //   + Nuevo `calcularFasesPorPunto(acciones)`: Map<clave, fase>
 //     sobre el universo. Clave `partido|set|punto`, mismo formato
 //     que `calcularResultadosPunto` y `calcularCrucesPorPunto`.
-//   + Se usa para que "cómo terminan los puntos en side-out"
-//     filtre PUNTOS completos (no acciones sueltas) y así el
-//     resultado del punto se calcule sobre la última acción real.
 //
 // v2:
 //   + FaseRally ahora incluye "k2" y "k3" además de "side-out",
 //     "contraataque", "free-ball" y "otro".
-//   + calcularFaseRally distingue:
-//       · K1 / side-out            → primer toque propio del rally
-//                                    es recepción o libre.
-//       · Free ball                → el rival mandó una libre antes
-//                                    de que el equipo toque la pelota.
-//       · K3 / contraataque cobre. → primer toque propio es una
-//                                    cobertura (defensa con subtipo
-//                                    cobertura).
-//       · K2 / contraataque def.   → primer toque propio es defensa
-//                                    normal (subtipo no-cobertura).
-//       · "contraataque" (legacy)  → queda como fallback para datos
-//                                    muy viejos que no se pueden
-//                                    clasificar mejor. El motor v6 lo
-//                                    trata como equivalente a k2 o k3
-//                                    cuando filtra.
-//   + Se agregó el helper `esCobertura(a)` (export) para reusar la
-//     detección en otros módulos.
-//   + La detección de cobertura ignora el prefijo "toque:" que el
-//     analizador agrega a algunos subtipos de ataque.
-//
-// El resto del archivo (marcador, rachas, inicio del punto, etc.)
-// queda igual que en v1.
 // ============================================================
 
 import type { AccionVisual } from "../app/equipo/adaptadorUnificadoV2";
@@ -68,6 +55,45 @@ export type EstadoMarcador = "empatado" | "ganando" | "perdiendo";
 
 export type DiferenciaMarcador = "0" | "1-2" | "3-5" | "6+";
 
+// ------------------------------------------------------------
+// CIERRE DE SET — regla correcta (Pendiente #0)
+// ------------------------------------------------------------
+// target = 25 normal, 15 en tie-break (BO3 set 3 / BO5 set 5).
+// Para ganar: llegar al target con 2+ de diferencia.
+// ------------------------------------------------------------
+
+export function targetDelSet(
+  set: number,
+  formato: "bo3" | "bo5"
+): number {
+  if (formato === "bo3" && set === 3) return 15;
+  if (formato === "bo5" && set === 5) return 15;
+  return 25;
+}
+
+export function puntosParaCerrarSet(
+  puntosPropios: number,
+  puntosRivales: number,
+  set: number,
+  formato: "bo3" | "bo5"
+): number {
+  const target = targetDelSet(set, formato);
+  const minimoParaGanar = Math.max(target, puntosRivales + 2);
+  return Math.max(0, minimoParaGanar - puntosPropios);
+}
+
+export function esSetTerminado(
+  puntosPropios: number,
+  puntosRivales: number,
+  set: number,
+  formato: "bo3" | "bo5"
+): boolean {
+  const target = targetDelSet(set, formato);
+  const max = Math.max(puntosPropios, puntosRivales);
+  const min = Math.min(puntosPropios, puntosRivales);
+  return max >= target && max - min >= 2;
+}
+
 export interface ContextoRally {
   // --- Rally ---
   fase: FaseRally;
@@ -86,6 +112,9 @@ export interface ContextoRally {
   // --- Rachas ---
   rachaGanadosActual: number;
   rachaPerdidosActual: number;
+  // --- Set y formato (para tie-break / regla de 2) ---
+  setNumero: number;
+  formatoPartido: "bo3" | "bo5";
 }
 
 // ------------------------------------------------------------
@@ -130,19 +159,6 @@ function tramoDiferencia(
   if (diff <= 2) return "1-2";
   if (diff <= 5) return "3-5";
   return "6+";
-}
-
-function esPuntoCritico(puntosPropios: number, puntosRivales: number): boolean {
-  const max = Math.max(puntosPropios, puntosRivales);
-  return max >= 20;
-}
-
-function puntosParaCerrar(
-  puntosPropios: number,
-  puntosRivales: number
-): number {
-  const propio = Math.max(puntosPropios, puntosRivales);
-  return Math.max(0, 25 - propio);
 }
 
 function calcularInicioPunto(lineas: AccionVisual[]): InicioPunto {
@@ -274,7 +290,8 @@ interface GrupoPunto {
 }
 
 export function calcularContextoRally(
-  acciones: AccionVisual[]
+  acciones: AccionVisual[],
+  formatoPartido: "bo3" | "bo5" = "bo3"
 ): Map<string, ContextoRally> {
   const resultado = new Map<string, ContextoRally>();
 
@@ -372,10 +389,16 @@ export function calcularContextoRally(
             : "perdiendo",
         diferencia: tramoDiferencia(marcador.propios, marcador.rivales),
         esPuntoCritico:
-          esPuntoCritico(marcador.propios, marcador.rivales) &&
-          puntosParaCerrar(marcador.propios, marcador.rivales) <= 5,
+          puntosParaCerrarSet(
+            marcador.propios,
+            marcador.rivales,
+            set,
+            formatoPartido
+          ) <= 5,
         rachaGanadosActual: rachaGanados,
         rachaPerdidosActual: rachaPerdidos,
+        setNumero: set,
+        formatoPartido,
       });
     }
 
@@ -459,17 +482,6 @@ function clasificarResultadoFin(a: AccionVisual): string {
 //   - Si es defensa normal → k2.
 //   - Si el rival mandó una libre antes → free-ball.
 //   - Sin primer toque propio → otro.
-//
-// Ventaja: si el rally arrancó en side-out, TODO el punto es
-// side-out, sin importar desvíos, bloqueos, defensas posteriores
-// ni cuántas acciones siga. Eso permite filtrar PUNTOS completos
-// (no acciones sueltas) por fase, que es lo que necesita
-// "cómo terminan los puntos en side-out".
-//
-// Nota sobre `punto_desviado_ataque`, `use_rival_ataque`,
-// `gorro_ataque` y `punto_directo_ataque`: son variantes de
-// "punto propio". NO cambian la fase. La fase queda fijada por
-// cómo arrancó el rally.
 // ------------------------------------------------------------
 
 export function calcularFaseDePunto(
@@ -524,10 +536,6 @@ export function calcularFaseDePunto(
  * Calcula la fase de CADA punto del universo y devuelve un
  * `Map<clave, FaseRally>`, con clave `partido_id|set_numero|punto_numero`
  * (mismo formato que `calcularResultadosPunto` y `calcularCrucesPorPunto`).
- *
- * Se calcula sobre el UNIVERSO COMPLETO (no sobre el subset filtrado)
- * para que el filtro por fase sea consistente aunque el usuario haya
- * aplicado otros filtros antes.
  */
 export function calcularFasesPorPunto(
   acciones: AccionVisual[]

@@ -2,28 +2,29 @@
 // INTENCIONES · TIPOS
 // ============================================================
 // Extraído de intenciones.ts (v1.9). Solo tipos + intencionVacia.
-// Sin diccionarios, sin lógica.
+//
+// v1.4 (FASE 7.5 — AST compilado):
+//   + CondicionFiltro suma 2 campos opcionales:
+//       · expr                 → Expr del AST (capa 4)
+//       · compararConBaseline  → true si la frase pide comparar
+//                                 contra el general
+//     Los setea `parserIntencion` cuando `compilarCondicion` detecta
+//     una condición compleja. El ejecutor los usa para filtrar
+//     VariablesPunto y disparar `RespuestaComparacionBaseline`.
 //
 // v1.3 (FASE 7.1 — contexto de partido como dato de primera clase):
-//   + GroupBy "resultado_set" (agrupa por set ganado/perdido).
-//   + GroupBy "resultado_partido" ya existía pero ahora se usa
-//     de verdad (ver respuesta.ts, groupBy.ts, ejecutor.ts).
-//   + CondicionFiltro.setGanado (filtra acciones de sets
-//     ganados o perdidos).
-//   + CondicionFiltro.resultadoPartido (filtra acciones por
-//     resultado del partido: ganado / perdido).
+//   + GroupBy "resultado_set".
+//   + CondicionFiltro.setGanado / .resultadoPartido.
 //
 // v1.2 (FASE 6 — Opción A completa):
-//   + CondicionFiltro.crucesMaximos: number
-//   + CondicionFiltro.crucesExactos: number
-//   + CondicionFiltro.crucesRango: [number, number]
-//   + GroupBy "cruces"         (agrupa por cantidad exacta de cruces)
-//   + GroupBy "duracion_rally" (agrupa por bucket corto/medio/largo)
+//   + CondicionFiltro.crucesMaximos / .crucesExactos / .crucesRango.
+//   + GroupBy "cruces" / "duracion_rally".
 //
 // v1.1 (FASE 6 — Rondas 1.3 + 2):
-//   + CondicionFiltro.salidaRol
-//   + CondicionFiltro.crucesMinimos
+//   + CondicionFiltro.salidaRol / .crucesMinimos.
 // ============================================================
+
+import type { Expr } from "../expresiones";
 
 // ------------------------------------------------------------
 // TIPOS BASE
@@ -74,15 +75,15 @@ export type GroupBy =
   | "rival"
   | "resultado_partido"
   | "resultado_punto"
-  | "resultado_set"     // ← NUEVO (FASE 7.1)
+  | "resultado_set"
   | "tipo"
   | "subtipo"
   | "velocidad"
   | "tipo_saque"
   | "variante"
   | "cambio"
-  | "cruces"            // ← FASE 6
-  | "duracion_rally";   // ← FASE 6
+  | "cruces"
+  | "duracion_rally";
 
 export type TiempoTipo =
   | "ultimos_n_partidos"
@@ -147,27 +148,30 @@ export interface CondicionFiltro {
   salidaRol?: "opuesto" | "central" | "punta" | "armador";
 
   // --- Cat. 6 ---
-  /** Cantidad mínima de cruces de red del rally. */
   crucesMinimos?: number;
-  /** Cantidad máxima de cruces de red del rally. */
   crucesMaximos?: number;
-  /** Cantidad exacta de cruces de red del rally. */
   crucesExactos?: number;
-  /** Rango [min, max] de cruces de red del rally. */
   crucesRango?: [number, number];
 
   // --- FASE 7.1 — Contexto de partido ---
-  /**
-   * Filtra acciones de sets ganados (true) o perdidos (false).
-   * Necesita que el ejecutor tenga acceso a `partidos[].setGanado`
-   * por partido.
-   */
   setGanado?: boolean;
-  /**
-   * Filtra acciones por resultado del partido: solo acciones de
-   * partidos ganados o solo de perdidos.
-   */
   resultadoPartido?: "ganado" | "perdido";
+
+  // --- FASE 7.5 — AST compilado (capa 4) ---
+  /**
+   * Expresión booleana del AST que filtra puntos.
+   * Cuando está presente, el ejecutor la aplica sobre
+   * `VariablesPunto` antes de calcular la métrica.
+   * Null = sin filtro complejo (se usan los campos de arriba).
+   */
+  expr?: Expr | null;
+  /**
+   * Si true, la frase pide comparar la métrica filtrada contra un
+   * baseline general (sin filtro). El motor devuelve un
+   * `RespuestaComparacionBaseline` con `filtrada`, `general`,
+   * `diferencia`, `puntosQueCumplen`, `puntosTotales`.
+   */
+  compararConBaseline?: boolean;
 }
 
 // ------------------------------------------------------------

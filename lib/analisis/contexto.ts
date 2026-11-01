@@ -3,17 +3,27 @@
 // ============================================================
 // Extraído de lib/analisisConsecuencias.ts (v9).
 //
-// Funciones puras:
-//   - hayContextoPartidoActivo(ctx): ¿el filtro de contexto tiene
+// v2 (FASE 7.5 — Pendiente #0: fix de cierre de set):
+//   + `cumpleContextoPartido` ya NO usa `Math.max(0, 25 - maxPts)`
+//     inline (fórmula con bug: ignoraba tie-break y regla de 2).
+//   + Ahora importa `puntosParaCerrarSet` de `../contextoRally` y
+//     le pasa `ctx.setNumero` + `ctx.formatoPartido`.
+//
+// v1:
+//   + hayContextoPartidoActivo(ctx): ¿el filtro de contexto tiene
 //     algún campo activo? Se usa para saber si hay que calcular el
 //     contexto del rally.
-//   - matcheaFase(ctxFase, filtroFase): "contraataque" legacy
+//   + matcheaFase(ctxFase, filtroFase): "contraataque" legacy
 //     matchea k2 o k3.
-//   - cumpleContextoPartido(ctx, filtro, posicionEnSet): evalúa si
+//   + cumpleContextoPartido(ctx, filtro, posicionEnSet): evalúa si
 //     el contexto de una acción cumple el filtro.
 // ============================================================
 
-import type { ContextoRally, FaseRally } from "../contextoRally";
+import {
+  puntosParaCerrarSet,
+  type ContextoRally,
+  type FaseRally,
+} from "../contextoRally";
 import type { ContextoPartidoFiltro } from "./tipos";
 
 export function hayContextoPartidoActivo(
@@ -69,8 +79,12 @@ export function cumpleContextoPartido(
   if (filtro.marcador.soloCriticos && !ctx.esPuntoCritico) return false;
 
   if (filtro.marcador.puntosParaCerrar !== "cualquiera") {
-    const maxPts = Math.max(ctx.puntosPropios, ctx.puntosRivales);
-    const ptsCerrar = Math.max(0, 25 - maxPts);
+    const ptsCerrar = puntosParaCerrarSet(
+      ctx.puntosPropios,
+      ctx.puntosRivales,
+      ctx.setNumero,
+      ctx.formatoPartido
+    );
     const max = parseInt(
       filtro.marcador.puntosParaCerrar.replace("<=", "").trim(),
       10

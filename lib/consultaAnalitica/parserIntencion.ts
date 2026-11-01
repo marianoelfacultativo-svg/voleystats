@@ -9,6 +9,19 @@
 // ni el CÓMO (eso lo hace FASE 3 con el motor de cálculo).
 // Solo detecta la INTENCIÓN de la consulta.
 //
+// v1.2 (FASE 7.5 — AST compilado):
+//   + Llama a `compilarCondicion()` cuando `pareceCondicionCompleja()`
+//     detecta que la frase tiene lógica (cuando X, compare_to_baseline,
+//     en sets ganados, racha de N+, cruces, etc.).
+//   + Si el compilador devuelve un `filtro` (Expr) → lo guarda en
+//     `condicion.expr`.
+//   + Si devuelve `compararConBaseline=true` → lo guarda en
+//     `condicion.compararConBaseline`.
+//   + Si devuelve `metrica` y el parser no detectó una, la asigna.
+//   + Los fragmentos del compilador se suman a `resultado.fragmentos`.
+//   + El resto del comportamiento (sinónimos de siempre) NO cambia.
+//     Si el compilador no matchea, el parser sigue funcionando igual.
+//
 // v1.1 (FASE 6 — Rondas 1.3 y 2):
 //   + `extraerCondicion` detecta `salidaRol` (Cat. 3) usando
 //     SINONIMOS_SALIDA_ROL.
@@ -39,6 +52,10 @@ import {
 import { SINONIMOS_FASE } from "./intenciones/fase";
 import { SINONIMOS_SALIDA_ROL } from "./intenciones/salida";
 import { extraerCrucesDeTexto } from "./intenciones/cruces";
+import {
+  compilarCondicion,
+  pareceCondicionCompleja,
+} from "./compiladorCondicion";
 
 // ------------------------------------------------------------
 // HELPERS INTERNOS
@@ -303,6 +320,10 @@ function extraerTiempo(
 //   + Fase del rally usa SINONIMOS_FASE.
 //   + Detecta salidaRol (Cat. 3).
 //   + Detecta crucesMinimos (Cat. 6).
+//
+// v1.2:
+//   + Al final, si la frase parece compleja, llama a
+//     compilarCondicion() y vuelca `expr` + `compararConBaseline`.
 // ------------------------------------------------------------
 
 function extraerCondicion(
@@ -470,10 +491,7 @@ function extraerCondicion(
     break;
   }
 
-  // --- NUEVO v1.1: Salida por rol (Cat. 3) ---
-  // Se matchea acá, después de la ubicación y antes de la zona
-  // específica. Los patrones son largos y específicos, así que
-  // no se pisan con "delantero" / "zaguero" suelto.
+  // --- Salida por rol (Cat. 3) ---
   for (const entrada of SINONIMOS_SALIDA_ROL) {
     const patrones = ordenarPorLargoDesc(entrada.patrones);
     let match: string | null = null;
@@ -490,7 +508,7 @@ function extraerCondicion(
     }
   }
 
-  // --- NUEVO v1.1: Cruces mínimos de red (Cat. 6) ---
+  // --- Cruces mínimos de red (Cat. 6) ---
   const cruces = extraerCrucesDeTexto(texto);
   if (cruces) {
     cond.crucesMinimos = cruces.crucesMinimos;
@@ -614,9 +632,56 @@ export function parsearIntencion(textoOriginal: string): IntencionQuery {
 
   // --- Condición (marcador, racha, ubicación, cambio, fase, salida, cruces) ---
   const cond = extraerCondicion(texto);
-  if (cond) {
-    resultado.condicion = cond.condicion;
-    resultado.fragmentos.push(...cond.fragmentos);
+
+  // ============================================================
+  // FASE 7.5 — AST compilado (capa 4)
+  // ============================================================
+  // Si la frase tiene lógica compleja ("cuando X, cómo varía Y",
+  // "en sets ganados", "racha de 3+", "en la mitad de puntos que...",
+  // etc.), el compilador produce una Expr booleana y opcionalmente
+  // detecta una métrica + baseline.
+  //
+  // El compilador NO reemplaza al parser: se suma. Si el compilador
+  // no matchea nada, todo sigue como antes.
+  // ============================================================
+  let condFinal: CondicionFiltro | null = cond ? cond.condicion : null;
+  const fragmentosCond: string[] = cond ? [...cond.fragmentos] : [];
+
+  if (pareceCondicionCompleja(texto)) {
+    const compilado = compilarCondicion(texto);
+
+    if (compilado.metrica) {
+      // Si el parser no detectó una métrica, el compilador decide.
+      if (!resultado.metrica) {
+        resultado.metrica = compilado.metrica.nombre;
+        resultado.fragmentos.push(...compilado.fragmentos);
+      }
+    } else if (compilado.fragmentos.length > 0) {
+      resultado.fragmentos.push(...compilado.fragmentos);
+    }
+
+    // Si el compilador produjo un filtro (Expr), lo guardamos.
+    if (compilado.filtro) {
+      if (!condFinal) condFinal = {};
+      condFinal.expr = compilado.filtro;
+      fragmentosCond.push(...compilado.fragmentos);
+    }
+
+    // Si la frase pide comparar contra baseline, lo marcamos.
+    if (compilado.compararConBaseline) {
+      if (!condFinal) condFinal = {};
+      condFinal.compararConBaseline = true;
+    }
+
+    // Si compiló con error, lo dejamos pasar como fragmento de debug
+    if (compilado.error) {
+      resultado.fragmentos.push(`[compilador] ${compilado.error}`);
+    }
+  }
+
+  if (condFinal && Object.keys(condFinal).length > 0) {
+    resultado.condicion = condFinal;
+    resultado.fragmentos.push(...fragmentosCond);
   }
 
   // --- Ordenamiento (de mayor a menor / ascendente / top N) ---

@@ -3,22 +3,29 @@
 // ============================================================
 // FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
 //
+// v1.7 (FASE 7.4 cierre — fallback a count):
+//   + Si el parser detectó filtros válidos (`parsed.aplicado`)
+//     pero NO una intención de cálculo (`intencion.tipo ===
+//     "unknown"`), asumimos `count`.
+//     Casos típicos que cubre:
+//       · "quiero ver los ataques de mariano"
+//       · "los saques de joaco"
+//       · "ataques después de errar"
+//     Antes devolvía respuestaVacia("No pude entender..."),
+//     que era engañoso: el parser sí había entendido el filtro.
+//   + El `intencion` que se devuelve en `parserInfo` ya viene
+//     con el fallback aplicado (la UI muestra "count" en vez de
+//     "unknown").
+//
 // v1.6 (FASE 7.4):
 //   + `parserInfo` suma `jugadorAmbiguo`, `jugadorAviso` y
-//     `jugadorCandidatos` para que la UI muestre el aviso de
-//     desambiguación.
+//     `jugadorCandidatos`.
 //
 // v1.5 (FASE 7.4 — problema C: fase por punto):
-//   + Se calcula `fasesPorPunto = calcularFasesPorPunto(universo)`
-//     UNA SOLA VEZ sobre el universo completo.
-//   + Se pasa al `ContextoRespuesta` para que
-//     `aplicarCondicionesExtra` filtre PUNTOS completos por fase
-//     (no acciones sueltas).
+//   + Se calcula `fasesPorPunto` UNA SOLA VEZ sobre el universo.
 //
 // v1.4 (FASE 6 — Opción A, familia cruces):
-//   + `crucesPorPunto` se calcula sobre el universo COMPLETO y
-//     se pasa al contextoAgrupacion (para groupBy cruces /
-//     duracion_rally).
+//   + `crucesPorPunto` sobre el universo completo.
 //
 // v1.3 (FASE 6 — Rondas 1.3 + 2):
 //   + crucesMinimos + salidaRol volcados al filtro final.
@@ -71,15 +78,43 @@ export interface ResultadoConsultaExtendido extends ResultadoConsulta {
     sugerencias: string[];
     filtro: BloqueTriggerFiltro;
     intencion: IntencionQuery;
-    /** FASE 7.4: ¿el jugador detectado matchea con más de uno? */
     jugadorAmbiguo: boolean;
-    /** FASE 7.4: aviso legible cuando `jugadorAmbiguo` es true. */
     jugadorAviso: string | null;
-    /** FASE 7.4: candidatos cuando hay ambigüedad. */
     jugadorCandidatos: JugadorParaResolver[];
   };
   accionesFiltradas: number;
   accionesUniverso: number;
+}
+
+// ------------------------------------------------------------
+// FALLBACK DE INTENCIÓN
+// ------------------------------------------------------------
+// Si el parser detectó filtros (tipo, jugador, sets, etc.)
+// pero NO una intención de cálculo (count / % / avg / etc.),
+// asumimos `count`.
+//
+// El parser detecta `aplicado = true` cuando al menos uno de
+// estos está presente: tipo, resultado, jugador, recepción
+// símbolo, sets, puntos, partidos, roles, zonas, rotaciones,
+// velocidad, tipo de saque, previa, racha, top, vs promedio,
+// contexto, toque de segunda, secuencia, inferencia.
+//
+// Es un caso muy típico: "quiero ver los ataques de mariano",
+// "los saques de joaco", "ataques después de errar". El
+// usuario espera el TOTAL, no un mensaje de "no entendí".
+// ------------------------------------------------------------
+
+function aplicarFallbackCount(
+  intencion: IntencionQuery,
+  aplicado: boolean
+): IntencionQuery {
+  if (intencion.tipo !== "unknown") return intencion;
+  if (!aplicado) return intencion;
+  return {
+    ...intencion,
+    tipo: "count",
+    agregacion: "count",
+  };
 }
 
 // ------------------------------------------------------------
@@ -531,15 +566,21 @@ export function ejecutarConsulta(
   };
   const parsed = parsearBusqueda(texto, contextoParser);
 
+  // ============================================================
+  // 1.b) FALLBACK: si el parser entendió los filtros pero NO
+  // la intención, asumimos `count`.
+  // ============================================================
+  const intencion = aplicarFallbackCount(parsed.intencion, parsed.aplicado);
+
   // 2) Time filter (acciones + puntos).
   let accionesConTiempo = filtrarPorTiempo(
     universo,
-    parsed.intencion,
+    intencion,
     contexto.partidos
   );
   let puntosConTiempo = filtrarPuntosPorTiempo(
     universoPuntos,
-    parsed.intencion,
+    intencion,
     contexto.partidos
   );
 
@@ -549,7 +590,7 @@ export function ejecutarConsulta(
   const puntosPermitidosPorCruces = filtrarPuntosPorCruces(
     universo,
     crucesPorPunto,
-    parsed.intencion
+    intencion
   );
 
   if (puntosPermitidosPorCruces) {
@@ -580,7 +621,7 @@ export function ejecutarConsulta(
   const ctxRespuesta: ContextoRespuesta = {
     acciones: accionesFiltradas,
     puntos: puntosConTiempo,
-    intencion: parsed.intencion,
+    intencion,
     contextoAgrupacion: {
       nombreDeJugador: contexto.jugadores
         ? (id) => {
@@ -652,7 +693,9 @@ export function ejecutarConsulta(
       aplicado: parsed.aplicado,
       sugerencias: parsed.sugerencias,
       filtro: filtroFinal,
-      intencion: parsed.intencion,
+      // OJO: `intencion` (no `parsed.intencion`), para que el
+      // fallback de count se vea reflejado en la UI.
+      intencion,
       jugadorAmbiguo: parsed.jugadorAmbiguo,
       jugadorAviso: parsed.jugadorAviso,
       jugadorCandidatos: parsed.jugadorCandidatos,
