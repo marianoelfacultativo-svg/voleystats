@@ -10,40 +10,20 @@
 //      El caller lo resuelve con `resolverJugador()` y lo
 //      inyecta en `filtro.jugadorId`.
 //
-// El caller (UI o API route) hace:
-//   const conversion = llmToIntencion(consultaLLM, texto);
-//   if (conversion.tipo === "clarification") → mostrar pregunta
-//   if (conversion.tipo === "error") → mostrar error
-//   // ok:
-//   const filtro = resolverJugadorEnFiltro(conversion, jugadores);
-//   const accionesFiltradas = aplicarFiltro(universo, filtro);
-//   const resultado = construirRespuesta({
-//     acciones: accionesFiltradas,
-//     puntos, puntosUniverso,
-//     intencion: conversion.intencion,
-//     ...
-//   });
-//
-// CAMBIOS v2.1 (fix tipos + desglose):
-//   + `ResultadoConversion` (rama "ok") suma
-//     `tipoExplicito: TipoDisparador | null`. Es el tipo que el
-//     LLM pidió EXPLÍCITAMENTE (no inferido, no default).
-//     `ejecutarConsultaLLM.ts` lo usa para post-filtrar acciones
-//     cuando `aplicarFiltro` se considera "vacío" (que ocurre
-//     siempre que el tipo es "ataque", por cómo está armado
-//     `BLOQUE_TRIGGER_VACIO` en el motor viejo).
-//   + Se ELIMINA el bloque que aproximaba `desglose` con
-//     `groupBy: "subtipo"`. Ese era el que producía 34 filas con
-//     subtipos crudos en vez de 3 filas (positivo / negativo /
-//     neutro). Ahora `desglose` se resuelve en
-//     `ejecutarConsultaLLM.ts` post-ejecución, usando
-//     `clasificarResultado()` para agrupar.
+// CAMBIOS v2.2 (fix desglose vs groupBy redundante):
+//   + Cuando el LLM pide `desglose` Y `groupBy` es
+//     EXACTAMENTE `["subtipo"]`, se IGNORA el `groupBy`. El
+//     `desglose` ya ES el agrupamiento (pos/neg/neu); el
+//     `groupBy: "subtipo"` es redundante y venía del ejemplo
+//     del `SYSTEM_PROMPT` (que actualizaremos en otro paso).
+//   + El resto del comportamiento es idéntico a v2.1.
 //
 // LIMITACIONES CONOCIDAS (documentadas como TODO):
 //   1. `desglose` — el motor NO lo resuelve acá. Lo resuelve
 //      `ejecutarConsultaLLM.ts` DESPUÉS de aplicar filtro. Si
-//      hay `groupBy` también, se prioriza el `groupBy` y se
-//      ignora el `desglose` (con aviso).
+//      hay `groupBy` también (que NO sea `["subtipo"]`), se
+//      prioriza el `groupBy` y se ignora el `desglose` (con
+//      aviso).
 //   2. `groupBy` múltiple — `IntencionQuery.groupBy` es un solo
 //      valor. Se usa el PRIMERO y se descarta el resto (con
 //      aviso).
@@ -138,21 +118,24 @@ function normalizarTiempoTipo(tipo: TiempoTipoLLM): TiempoTipo {
   return tipo as TiempoTipo;
 }
 
+/**
+ * ¿El `groupBy` pedido por el LLM es exactamente `["subtipo"]`?
+ * Es el caso redundante con `desglose` (viene del ejemplo del
+ * SYSTEM_PROMPT). Si es ese caso y hay `desglose`, ignoramos el
+ * `groupBy`.
+ */
+function esGroupBySubtipoRedundante(
+  groupBy: GroupByLLM[] | undefined,
+  desglose: ConsultaLLM["desglose"]
+): boolean {
+  if (!groupBy || groupBy.length !== 1) return false;
+  if (groupBy[0] !== "subtipo") return false;
+  if (!desglose || desglose.length === 0) return false;
+  return true;
+}
+
 // ------------------------------------------------------------
 // INFERENCIA DEL TIPO DE INTENCIÓN
-// ------------------------------------------------------------
-// El LLM NO devuelve `tipo` ni `agregacion`. Hay que inferirlo
-// a partir de lo que devolvió (metrica, groupBy, orden, limite).
-//
-// Reglas (en orden):
-//   1. limite=1 + orden       → max (desc) / min (asc)
-//   2. orden + groupBy        → ranking
-//   3. groupBy (sin orden)    → distribution
-//   4. metrica === "count"    → count
-//   5. metrica puntos_ganados → count
-//   6. metrica %/efficiency   → percentage (avg)
-//   7. tiempo con n_partidos  → trend
-//   8. default                → count
 // ------------------------------------------------------------
 
 function inferirTipo(consulta: ConsultaLLM): {
@@ -322,7 +305,6 @@ export function llmToIntencion(
     if (consulta.tiempo.diaSemana != null) {
       t!.diaSemana = consulta.tiempo.diaSemana as DiaSemana;
     }
-    // Fusionar filtros.set si el tipo de tiempo lo permite
     if (
       setDesdeFiltros != null &&
       t!.set == null &&
@@ -336,15 +318,30 @@ export function llmToIntencion(
   }
 
   // ----------------------------------------------------------
-  // 5) GroupBy (solo el primero, limitación del motor)
+  // 5) GroupBy (con guard de redundancia con desglose)
+  // ----------------------------------------------------------
+  // FIX v2.2: si el LLM devolvió `["subtipo"]` + `desglose`, es
+  // redundante (el desglose YA ES el agrupamiento en
+  // pos/neg/neu). Ignoramos el `groupBy` para que el desglose
+  // tome el control.
   // ----------------------------------------------------------
   if (consulta.groupBy && consulta.groupBy.length > 0) {
-    intencion.groupBy = consulta.groupBy[0] as GroupBy;
-    if (consulta.groupBy.length > 1) {
-      avisos.push(
-        `El LLM pidió ${consulta.groupBy.length} agrupaciones; ` +
-          `el motor solo soporta una. Se usa "${consulta.groupBy[0]}".`
-      );
+    const esRedundante = esGroupBySubtipoRedundante(
+      consulta.groupBy,
+      consulta.desglose
+    );
+
+    if (esRedundante) {
+      // Ignorar el groupBy: el desglose lo reemplaza.
+      // No agregamos aviso (es el comportamiento esperado).
+    } else {
+      intencion.groupBy = consulta.groupBy[0] as GroupBy;
+      if (consulta.groupBy.length > 1) {
+        avisos.push(
+          `El LLM pidió ${consulta.groupBy.length} agrupaciones; ` +
+            `el motor solo soporta una. Se usa "${consulta.groupBy[0]}".`
+        );
+      }
     }
   }
 
@@ -353,11 +350,8 @@ export function llmToIntencion(
   // ----------------------------------------------------------
   // El `desglose` lo resuelve `ejecutarConsultaLLM.ts` DESPUÉS
   // de aplicar filtro, agrupando por `clasificarResultado()`
-  // (pos / neg / neu). Acá NO se toca `groupBy` (era el bug:
-  // aproximar con `groupBy: "subtipo"` producía 34 filas).
-  //
-  // Si el LLM pidió `desglose` Y `groupBy`, el ejecutor prioriza
-  // `groupBy` y avisa que el `desglose` se ignora.
+  // (pos / neg / neu). Acá NO se toca `groupBy` (el guard de
+  // redundancia en el paso 5 ya limpió el caso problemático).
   // ----------------------------------------------------------
   if (
     consulta.desglose &&
@@ -375,8 +369,6 @@ export function llmToIntencion(
   // ----------------------------------------------------------
   // 7) Métrica
   // ----------------------------------------------------------
-  // "count" no es una métrica del motor (es tipo de intención).
-  // Otras métricas (puntos_ganados, kill_pct, etc.) sí lo son.
   const metricaLLM: MetricaLLM | undefined = consulta.metrica;
   if (metricaLLM && metricaLLM !== "count") {
     intencion.metrica = metricaLLM;
@@ -415,15 +407,7 @@ export function llmToIntencion(
 // ------------------------------------------------------------
 // HELPERS DE APOYO PARA EL CALLER
 // ------------------------------------------------------------
-// `inyectarJugadorEnFiltro` se llama después de resolver el
-// nombre del jugador (con `resolverJugador()`), porque este
-// archivo no tiene acceso a la lista de jugadores.
-// ------------------------------------------------------------
 
-/**
- * Inyecta el ID del jugador ya resuelto en el filtro.
- * Devuelve una copia del filtro con `jugadorId` seteado.
- */
 export function inyectarJugadorEnFiltro(
   filtro: BloqueTriggerFiltro,
   jugadorId: string | null
