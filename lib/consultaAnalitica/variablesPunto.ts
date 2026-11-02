@@ -21,6 +21,22 @@
 //   - lib/contextoRally.ts (v4) → puntosParaCerrarSet, esSetTerminado
 //   - lib/clasificacionV2.ts → ganadorDelPunto
 //   - lib/mapeoV2.ts → zonaCrudaDeCelda
+//
+// v1.1 (FASE 7.5 — fixes B2, prepara B4):
+//   + `VariablesPunto` suma `setGanado: boolean`.
+//     Indica si MI equipo ganó el set ACTUAL.
+//     · true  → el set actual lo ganó mi equipo.
+//     · false → el set actual lo perdió (o no terminó / no se sabe).
+//   + `calcularVariablesPunto` calcula setsPropios / setsRivales
+//     INTERNAMENTE. Antes dependía de `resultadosSet` (que el
+//     ejecutor nunca le pasa) → los setsPropios quedaban en 0.
+//     Ahora hay fallback: si no hay `resultadosSet`, se deriva del
+//     marcador final del set (marcadorPropios > marcadorRivales
+//     cuando esSetTerminado).
+//   + `setGanado` se propaga a TODOS los VariablesPunto del set
+//     (post-procesado). Así "en sets ganados" puede compilar a
+//     `setGanado === true` en vez del bug original
+//     `setsPropios > setsRivales` (que era acumulado de partido).
 // ============================================================
 
 import type {
@@ -56,6 +72,16 @@ export interface VariablesPunto {
   puntosParaCerrarSetRival: number; // cuántos le faltan al RIVAL
   esTieBreak: boolean;
   setTerminado: boolean; // ¿el set ya terminó con este punto?
+  /**
+   * ¿Mi equipo ganó el set ACTUAL?
+   * - true: el set actual lo ganó mi equipo.
+   * - false: el set actual lo perdió (o no terminó / no se sabe).
+   *
+   * Es del SET ACTUAL, no del partido. Para "el partido" ya están
+   * `setsPropios` / `setsRivales` (acumulado hasta este set
+   * inclusive).
+   */
+  setGanado: boolean;
 
   // --- Sets (partido) ---
   setsPropios: number; // sets ganados por MI equipo hasta este set (inclusive)
@@ -258,12 +284,13 @@ export interface OpcionesVariablesPunto {
   /**
    * Resultado de cada partido (para saber setsPropios / setsRivales).
    * Clave: partido_id. Valor: "ganado" | "perdido" | null.
-   * Si no se pasa, setsPropios/setsRivales quedan en 0.
+   * Si no se pasa, se deriva del marcador de cada set.
    */
   resultadosPartido?: Map<string, "ganado" | "perdido" | null>;
   /**
    * Resultado de cada set (para saber qué sets ganó cada equipo).
    * Clave: "partido|set". Valor: true (propio) | false (rival) | null.
+   * Si no se pasa, se deriva del marcador final de cada set.
    */
   resultadosSet?: Map<string, boolean | null>;
 }
@@ -274,7 +301,6 @@ export function calcularVariablesPunto(
 ): Map<string, VariablesPunto> {
   const {
     formatoPartido = "bo3",
-    resultadosPartido,
     resultadosSet,
   } = opciones;
 
@@ -334,8 +360,12 @@ export function calcularVariablesPunto(
     const target = targetDelSet(setNumero, formatoPartido);
     const esTieBreak = target === 15;
 
-    // Resultado de ESTE set (para saber si el set terminó)
+    // Resultado de ESTE set (dato opcional de la DB)
     const resultadoSet = resultadosSet?.get(`${partidoId}|${setNumero}`);
+
+    // Guardamos las claves del set para post-procesar `setGanado`
+    // cuando ya sepamos el resultado final del set.
+    const clavesDelSet: string[] = [];
 
     for (const p of ordenados) {
       const clave = claveDePunto(p);
@@ -429,6 +459,9 @@ export function calcularVariablesPunto(
           setNumero,
           formatoPartido
         ),
+        // Placeholder: se post-procesa abajo cuando sepamos el
+        // resultado final del set (necesitamos el marcador final).
+        setGanado: false,
 
         setsPropios: setsPropiosAcum,
         setsRivales: setsRivalesAcum,
@@ -459,23 +492,80 @@ export function calcularVariablesPunto(
       };
 
       out.set(clave, vars);
+      clavesDelSet.push(clave);
 
       // Silenciar variables no usadas pero disponibles para debug
       void propiosAntes;
       void rivalesAntes;
     }
 
-    // Al terminar el set: actualizar sets acumulados si el set terminó
-    if (resultadoSet !== null && resultadoSet !== undefined) {
-      if (resultadoSet === true) {
-        setsPropiosAcum += 1;
+    // ------------------------------------------------------------
+    // CIERRE DE SET — calcular setGanado + actualizar sets acumulados
+    // ------------------------------------------------------------
+    // `setGanadoFinal` responde: ¿MI equipo ganó el set completo?
+    //
+    // Orden de prioridad:
+    //   1. `resultadosSet` (dato de DB): si viene true/false, manda.
+    //   2. Fallback: derivado del marcador final del set.
+    //      · setTerminado && marcadorPropios > marcadorRivales → true
+    //      · cualquier otro caso                          → false
+    //
+    // El fallback cubre el caso de que el ejecutor no pase
+    // `resultadosSet` (que es lo que pasa hoy), así que B2 se cierra
+    // sin depender de cambios en el ejecutor.
+    // ------------------------------------------------------------
+    const setTerminadoAhora = esSetTerminado(
+      marcadorPropios,
+      marcadorRivales,
+      setNumero,
+      formatoPartido
+    );
+
+    let setGanadoFinal: boolean;
+    let setParaSumar: "propio" | "rival" | null = null;
+
+    if (resultadoSet === true) {
+      setGanadoFinal = true;
+      setParaSumar = "propio";
+    } else if (resultadoSet === false) {
+      setGanadoFinal = false;
+      setParaSumar = "rival";
+    } else if (setTerminadoAhora) {
+      if (marcadorPropios > marcadorRivales) {
+        setGanadoFinal = true;
+        setParaSumar = "propio";
       } else {
-        setsRivalesAcum += 1;
+        setGanadoFinal = false;
+        setParaSumar = "rival";
       }
+    } else {
+      // El set no terminó (partido cortado, datos incompletos).
+      // No se puede saber si se ganó. Por defecto false, sin sumar.
+      setGanadoFinal = false;
+    }
+
+    // Actualizar sets acumulados SOLO si sabemos que el set cerró.
+    if (setParaSumar === "propio") {
+      setsPropiosAcum += 1;
       setsGanadosPorPartido.set(partidoId, {
         propios: setsPropiosAcum,
         rivales: setsRivalesAcum,
       });
+    } else if (setParaSumar === "rival") {
+      setsRivalesAcum += 1;
+      setsGanadosPorPartido.set(partidoId, {
+        propios: setsPropiosAcum,
+        rivales: setsRivalesAcum,
+      });
+    }
+
+    // Post-procesar: setear `setGanado` en TODOS los VariablesPunto
+    // del set recién procesado.
+    for (const clave of clavesDelSet) {
+      const vars = out.get(clave);
+      if (vars) {
+        vars.setGanado = setGanadoFinal;
+      }
     }
 
     // Actualizar racha al final del set

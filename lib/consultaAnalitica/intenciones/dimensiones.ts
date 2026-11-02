@@ -9,28 +9,24 @@
 //   - DIAS_SEMANA + SINONIMOS_ULTIMOS / TEMPORADA / ESPECIFICOS
 //   - SINONIMOS_CONDICION
 //
+// v1.3 (FASE 7.5 — fix B12):
+//   + SINONIMOS_METRICA suma la entrada `reception_perfecta_pct`
+//     ANTES de `reception_pct` (perfecta / total).
+//   + Se quita "porcentaje de recepcion perfecta" de
+//     `reception_pct` (queda solo en la nueva entrada).
+//   + El resto del archivo es idéntico a v1.2.
+//
 // v1.2 (FASE 7.1 — contexto de partido como dato de primera clase):
-//   + SINONIMOS_GROUPBY:
-//       - nueva entrada "resultado_set".
-//       - se amplía la entrada "resultado_partido" con patrones
-//         de "por sets ganados/perdidos" y "en partidos ganados/
-//         perdidos".
-//   + SINONIMOS_METRICA:
-//       - 7 entradas nuevas al principio:
-//         sets_jugados, sets_ganados, sets_perdidos,
-//         puntos_por_set_ganado, puntos_por_set_perdido,
-//         sideout_pct_en_sets_ganados,
-//         sideout_pct_en_sets_perdidos.
-//   + SINONIMOS_CONDICION: strings nuevos ("en sets ganados",
-//     "en sets perdidos", "en partidos ganados", "en partidos
-//     perdidos") para dejar documentada la intención que el
-//     parserIntencion va a leer.
+//   + SINONIMOS_GROUPBY: "resultado_set" + patrones de
+//     "por sets ganados/perdidos" y "en partidos ganados/
+//     perdidos" para "resultado_partido".
+//   + SINONIMOS_METRICA: 7 entradas nuevas al principio.
+//   + SINONIMOS_CONDICION: strings nuevos documentales.
 //
 // v1.1 (FASE 6 — Opción A, familia cruces):
-//   + Métricas nuevas en SINONIMOS_METRICA:
-//       cruces_promedio, cruces_total, cruces_max,
-//       rallys_largos, rallys_cortos, rallys_medios.
-//     Van al PRINCIPIO del array (el parser las matchea primero).
+//   + Métricas nuevas al principio: cruces_promedio,
+//     cruces_total, cruces_max, rallys_largos, rallys_cortos,
+//     rallys_medios.
 //   + GroupBy nuevos: cruces, duracion_rally.
 //
 // v1.0: versión inicial del refactor.
@@ -170,13 +166,12 @@ export const SINONIMOS_GROUPBY: { patrones: string[]; groupBy: GroupBy }[] = [
   },
 
   // ------------------------------------------------------------
-  // RESULTADO DEL PARTIDO (ampliado en FASE 7.1)
+  // RESULTADO DEL PARTIDO
   // ------------------------------------------------------------
   {
     patrones: [
       "por resultado del partido", "por resultado de partido",
       "por resultado de los partidos",
-      // FASE 7.1: agregamos los "por partidos ganados/perdidos".
       "por partidos ganados", "por partidos perdidos",
       "por partido ganado", "por partido perdido",
       "agrupado por resultado del partido",
@@ -187,7 +182,7 @@ export const SINONIMOS_GROUPBY: { patrones: string[]; groupBy: GroupBy }[] = [
   },
 
   // ------------------------------------------------------------
-  // RESULTADO DEL SET (NUEVO en FASE 7.1)
+  // RESULTADO DEL SET
   // ------------------------------------------------------------
   {
     patrones: [
@@ -293,7 +288,6 @@ export const SINONIMOS_GROUPBY: { patrones: string[]; groupBy: GroupBy }[] = [
   // ------------------------------------------------------------
   // FASE 6 — familia cruces
   // ------------------------------------------------------------
-
   {
     patrones: [
       "por cantidad de cruces",
@@ -656,7 +650,7 @@ export const SINONIMOS_METRICA: { patrones: string[]; metrica: string }[] = [
   // Resto de métricas
   // ============================================================
 
-  // ---- % de puntos ganados (bloque A.2) ----
+  // ---- % de puntos ganados ----
   {
     patrones: [
       "porcentaje de puntos ganados",
@@ -737,6 +731,36 @@ export const SINONIMOS_METRICA: { patrones: string[]; metrica: string }[] = [
     metrica: "acciones_punto",
   },
 
+  // ============================================================
+  // B12 (v1.3): recepciones perfectas / total
+  // ============================================================
+  // ANTES de reception_pct para que gane el match cuando el
+  // usuario dice "porcentaje de recepciones perfectas".
+  //
+  // El bug original: reception_pct = (perfecta + positiva) / total,
+  // así que "porcentaje de recepciones perfectas" devolvía el %
+  // combinado, no el % de perfectas solas.
+  // ============================================================
+  {
+    patrones: [
+      "porcentaje de recepciones perfectas",
+      "porcentaje de recepcion perfecta",
+      "porcentaje de recepciones r#",
+      "% de recepciones perfectas",
+      "% de recepcion perfecta",
+      "% de recepciones r#",
+      "porcentaje de r# en recepcion",
+      "tasa de recepciones perfectas",
+      "tasa de recepcion perfecta",
+      "recepciones perfectas %",
+      "recepcion perfecta %",
+      "que porcentaje de recepciones perfectas",
+      "que % de recepciones perfectas",
+      "cuanto por ciento de recepciones perfectas",
+    ],
+    metrica: "reception_perfecta_pct",
+  },
+
   // ---- v1.4 (las 12 originales) ----
   {
     patrones: [
@@ -787,7 +811,7 @@ export const SINONIMOS_METRICA: { patrones: string[]; metrica: string }[] = [
     patrones: [
       "recepcion %", "porcentaje de recepcion", "calidad de recepcion",
       "calidad de recepciones",
-      "porcentaje de recepcion positiva", "porcentaje de recepcion perfecta",
+      "porcentaje de recepcion positiva",
       "porcentaje de recepción", "calidad de recepción",
       "calidad de recepciones",
     ],

@@ -1,6 +1,16 @@
 // ============================================================
 // INTENCIONES · FASE DEL RALLY
 // ============================================================
+// v1.3 (FASE 7.5 — fix B14):
+//   + La entrada CONTRAATAQUE (que cubre break-point) suma
+//     patrones para "estamos sacando": "sacando", "al saque",
+//     "desde el saque", "desde nuestro saque", "en nuestro saque",
+//     "en saque propio", "cuando sacamos", "cuando saca el
+//     equipo".
+//   + SIN agregar "sacamos" suelto, "en el saque" ni "en saque"
+//     solos, para no colisionar con `SINONIMOS_TIPO.saque` ni con
+//     la métrica `break_point_pct`.
+//
 // v1.2 (FASE 7.5 — ampliación coloquial + reorg):
 //   + K1, K2, K3 y FREE-BALL ganan patrones coloquiales de la
 //     jerga de vóley latinoamericana.
@@ -9,11 +19,6 @@
 //   + Comentarios por bloque explicando cuándo aplica cada uno.
 //   + K3 suma "pelota que vuelve del bloqueo" / "rebote del
 //     bloqueo" (semánticamente es cobertura tras ataque bloqueado).
-//
-// v1.1 (FASE 7.4 cierre — red ampliada):
-//   + Sinónimos ampliados con variantes coloquiales:
-//     "primer ataque", "después de defender", "tras cubrir",
-//     "re play", "re-break", etc.
 //
 // NOTAS DE USO:
 //   - El parser normaliza ANTES de matchear (lowercase + NFD +
@@ -198,11 +203,21 @@ export const SINONIMOS_FASE: { patrones: string[]; fase: string }[] = [
   },
 
   // ----------------------------------------------------------
-  // CONTRAATAQUE — GENÉRICO
+  // CONTRAATAQUE — GENÉRICO (incluye break-point)
   // ----------------------------------------------------------
   // Cualquier ataque que ocurre SIN recepción previa: K2, K3,
   // break-point, después de un bloqueo, etc. Va AL FINAL para
   // que K1/K2/K3 específicos ganen primero.
+  //
+  // B14 (v1.3): break-point es "el que saca gana el punto".
+  // Los patrones "sacando", "al saque", "desde el saque", etc.
+  // describen EXACTAMENTE la situación de break-point desde la
+  // perspectiva del equipo que mira. Antes no estaban y la
+  // frase "cuántos puntos ganamos sacando" caía en `fase: null`.
+  //
+  // IMPORTANTE: no agregar "sacamos" suelto (colisiona con
+  // SINONIMOS_TIPO.saque), ni "en el saque" / "en saque" solos
+  // (colisionan con la métrica break_point_pct).
   // ----------------------------------------------------------
   {
     patrones: [
@@ -233,6 +248,23 @@ export const SINONIMOS_FASE: { patrones: string[]; fase: string }[] = [
       "despues de bloquear", "después de bloquear",
       "despues de un bloqueo", "después de un bloqueo",
       "tras bloquear", "tras un bloqueo",
+
+      // ----------------------------------------------------------
+      // B14 (v1.3) — break-point desde la perspectiva de "sacando"
+      // ----------------------------------------------------------
+      // Estas formas describen la situación de break-point sin
+      // mencionar el resultado (ace, error, etc.), por eso no
+      // colisionan con `break_point_pct` (que es una MÉTRICA,
+      // no un filtro de fase).
+      // ----------------------------------------------------------
+      "sacando",
+      "al saque",
+      "desde el saque",
+      "desde nuestro saque",
+      "en nuestro saque",
+      "en saque propio",
+      "cuando sacamos",
+      "cuando saca el equipo",
     ],
     fase: "contraataque",
   },

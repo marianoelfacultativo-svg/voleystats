@@ -1,6 +1,17 @@
 // ============================================================
-// PARSER DE BÚSQUEDA — v4.1
-// Fix (FASE 7.4 cierre):
+// PARSER DE BÚSQUEDA — v4.2
+// Fix (FASE 7.5 — paso 7/10):
+//   + B17: se agregan patrones de "gol" a SINONIMOS_TIPO_RESULTADO
+//     (ataque + gorro_ataque). Se evita el patrón "gol" solo
+//     (colisionaría con "golpe"). Se agregan frases completas:
+//     "hizo gol", "hizo goles", "recibio gol", "recibio goles",
+//     "metio gol", "metio goles", "fue gol", "goles" suelto.
+//   + B30: `extraerPrevia` acepta "con <tipo> [<resultado>]"
+//     ("con recepcion positiva", "con defensa", "con bloqueo
+//     negativa", etc.). Antes solo matcheaba "despues de",
+//     "tras", "luego de" y "viene de".
+//
+// v4.1 (FASE 7.4 cierre):
 //   + Wording del aviso de ambigüedad cambiado de
 //     "Hay varios jugadores que matchean… Especificá cuál…"
 //     a "Ambigüedad: "X" coincide con varios jugadores. …".
@@ -369,6 +380,13 @@ const SINONIMOS_TIPO: Record<TipoDisparador, string[]> = {
 // ------------------------------------------------------------
 // SINÓNIMOS QUE IMPLICAN TIPO + RESULTADO (FASE 7.4)
 // ------------------------------------------------------------
+// v4.2 (FASE 7.5 — B17):
+//   + Se agregan "goles" y las frases "hizo gol", "hizo goles",
+//     "recibio gol", "recibio goles", "metio gol", "metio goles",
+//     "fue gol" al primer bloque (ataque + gorro_ataque).
+//   + NO se agrega "gol" solo, porque `includes("gol")` también
+//     matchearía "golpe" (que es otro concepto).
+// ------------------------------------------------------------
 
 interface SinonimoTipoResultado {
   patrones: string[];
@@ -385,6 +403,13 @@ const SINONIMOS_TIPO_RESULTADO: SinonimoTipoResultado[] = [
       "techada", "techadas", "techado", "techados",
       "lo techó", "lo techno", "lo techó el rival",
       "me lo taparon", "nos taparon",
+      // B17 (v4.2): frases de "gol". No incluye "gol" solo para
+      // no colisionar con "golpe".
+      "goles",
+      "hizo gol", "hizo goles",
+      "recibio gol", "recibio goles",
+      "metio gol", "metio goles",
+      "fue gol",
     ],
     tipo: "ataque",
     resultado: "gorro_ataque",
@@ -1569,6 +1594,20 @@ function extraerTipoSaque(
   return null;
 }
 
+// ============================================================
+// v4.2: extraerPrevia con soporte para "con <tipo> [<resultado>]"
+// ============================================================
+// Prioridad:
+//   1. Trigger explícito ("despues de", "tras", "luego de", "viene
+//      de") + tipo detectado en el texto (lógica original).
+//   2. Si NO hay trigger explícito, buscar "con <tipo>". Acepta:
+//        "con recepcion" / "con recepcion positiva"
+//        "con defensa" / "con bloqueo" / "con armado" / "con saque"
+//        "con ataque" / "con libre"
+//      El resultado asociado se busca en SINONIMOS_RESULTADO[tipo]
+//      (mismo mecanismo que el caso explícito).
+// ============================================================
+
 function extraerPrevia(
   st: ExtractionState,
   tipoDetectado: TipoDisparador | null
@@ -1588,8 +1627,79 @@ function extraerPrevia(
       break;
     }
   }
-  if (!encontrado) return null;
 
+  // ------------------------------------------------------------
+  // B30 (v4.2) — "con <tipo> [<resultado>]"
+  // ------------------------------------------------------------
+  // Solo se ejecuta si NO hay trigger explícito. Si lo hay, gana
+  // el trigger (el usuario dijo "después de X" explícitamente).
+  // ------------------------------------------------------------
+  if (!encontrado) {
+    const mCon =
+      /\bcon\s+(recepcion|recepciones|defensas?|bloqueos?|armados?|saques?|ataques?|libres?)\b/.exec(
+        texto
+      );
+    if (mCon) {
+      const tipoRaw = mCon[1];
+      let tipoCon: TipoDisparador;
+      if (tipoRaw.startsWith("recepcion")) tipoCon = "recepcion";
+      else if (tipoRaw.startsWith("defensa")) tipoCon = "defensa";
+      else if (tipoRaw.startsWith("bloqueo")) tipoCon = "bloqueo";
+      else if (tipoRaw.startsWith("armado")) tipoCon = "armado";
+      else if (tipoRaw.startsWith("saque")) tipoCon = "saque";
+      else if (tipoRaw.startsWith("ataque")) tipoCon = "ataque";
+      else tipoCon = "libre";
+
+      // Buscar resultado asociado en el texto (opcional).
+      let resultadoCon: string | null = null;
+      let fragmentoResultado: string | null = null;
+      const mapa = SINONIMOS_RESULTADO[tipoCon];
+      if (mapa) {
+        for (const [valor, sinonimos] of Object.entries(mapa)) {
+          const ordenados = ordenarPorLargoDesc(sinonimos);
+          for (const s of ordenados) {
+            if (texto.includes(s)) {
+              resultadoCon = valor;
+              fragmentoResultado = s;
+              break;
+            }
+          }
+          if (resultadoCon) break;
+        }
+      }
+
+      for (const t of mCon[0].split(" ")) {
+        if (t.length >= 3) st.tokensConsumidos.add(t);
+      }
+      if (fragmentoResultado) {
+        for (const t of fragmentoResultado.split(" ")) {
+          if (t.length >= 3) st.tokensConsumidos.add(t);
+        }
+      }
+
+      agregarMatch(
+        st,
+        "previa",
+        `${tipoCon}${resultadoCon ? `·${resultadoCon}` : ""}`,
+        "previa",
+        mCon[0]
+      );
+
+      return {
+        ...FILTRO_ACCION_HISTORICA_VACIO,
+        tipos: [tipoCon],
+        resultados: resultadoCon ? [resultadoCon] : [],
+        relacionJugador: "mismo",
+      };
+    }
+
+    // Ni trigger explícito ni "con <tipo>": no hay previa.
+    return null;
+  }
+
+  // ------------------------------------------------------------
+  // Trigger explícito: lógica original.
+  // ------------------------------------------------------------
   let previaTipo: TipoDisparador | null = null;
   let mejorIdx = Infinity;
   for (const [tipo, sinonimos] of Object.entries(SINONIMOS_TIPO) as [
@@ -2254,9 +2364,6 @@ export function parsearBusqueda(
 
   // ============================================================
   // FASE 7.4 cierre — Wording "Ambigüedad"
-  // ============================================================
-  // Antes: "Hay varios jugadores que matchean "X". Especificá cuál: …"
-  // Ahora: "Ambigüedad: "X" coincide con varios jugadores. Candidatos: …"
   // ============================================================
   const jugadorAviso = jugadorAmbiguo
     ? `Ambigüedad: "${resolucionJugador.match ?? ""}" coincide con varios jugadores. ` +

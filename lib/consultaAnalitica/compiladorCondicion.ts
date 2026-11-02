@@ -4,26 +4,34 @@
 // Convierte una frase en lenguaje natural (castellano) en una
 // `Expr` del AST que el motor puede evaluar punto por punto.
 //
-// v1.1 (FASE 7.5 — fixes de bugs reportados):
-//   + Auto-marcado de `compararConBaseline=true` cuando hay
-//     filtro + métrica (aunque el texto no diga "como varia").
-//     → Arregla "cuando al rival le faltan 5 puntos, cuántos
-//       puntos ganamos", "en racha de 3+, cómo varía...", etc.
-//   + Regla "en sets ganados/perdidos" devuelve ahora un filtro
-//     real sobre `setsPropios` vs `setsRivales`. Antes se
-//     colaba como métrica `sets_ganados` (no implementada).
-//   + Regla "cuando ganamos/perdimos" más robusta.
-//   + Regla de cruces: la del caso "más de N cruces" ya no se
-//     pisa con la de "N o más".
-//   + `detectarCompareToBaseline` exportada (para que
-//     `parserIntencion` pueda reusarla).
-//   + `pareceCondicionCompleja` reescrita:
-//       · `tieneMetrica && tieneFiltro` → true (auto-baseline)
-//       · "cuando" + cualquier regla → true
-//       · "en sets ganados/perdidos" → true
-//       · "racha de N" → true
-//   + Regla "más de N cruces" corregida (antes "N o más"
-//     capturaba "más de 4" y devolvía >=4 en vez de >=5).
+// v1.3 (FASE 7.5 — fix B38):
+//   + Nueva regla "marcador exacto": detecta "20-18" / "20 a 18"
+//     / "20 al 18" y compila a
+//     `puntosPropios == 20 AND puntosRivales == 18`.
+//     El parser viejo arma `cond.marcador = "20-18"` (string) pero
+//     el ejecutor nunca lo leía. Con esta regla, el compilador
+//     produce el `expr` correcto y el filtro funciona.
+//   + `pareceCondicionCompleja` reconoce el patrón "N-M" para
+//     disparar la compilación.
+//
+// v1.2 (FASE 7.5 — fixes B1, B4, B5, B13):
+//   + B1: `compararConBaseline` SOLO si el texto dice "cómo varía"
+//     / "respecto a" / "cambia" / etc. Se elimina el
+//     auto-marcado por filtro+métrica que rompía
+//     "cuando X, cuántos Y".
+//   + B4: "en sets ganados" filtra por `setGanado` (del set
+//     ACTUAL) en vez de `setsPropios > setsRivales` (que era
+//     acumulado de partido). "en sets perdidos" usa `not setGanado`.
+//     "en partidos ganados/perdidos" sigue con el criterio de
+//     sets acumulados (2+).
+//   + B5: la regla "en side-out" / "en k1" / "en k2" / "en k3" /
+//     "en free-ball" ahora EXIGE la preposición "en" ("en
+//     side-out", "en el k2"). Antes matcheaba "side-out %" y
+//     "k2 %" sueltos y metía un filtro incorrecto.
+//   + B13: `ignorarMetricaParser` ahora solo se activa si el
+//     compilador produjo (a) un filtro Y (b) una métrica propia.
+//   + B13 (bonus): `detectarMetrica` normaliza los patrones del
+//     semantic layer (sin tildes, lowercase) antes de matchear.
 //
 // Determinista: si la frase no matchea ninguna regla, devuelve
 // `null` y el parser hace lo de siempre. Si matchea, la `Expr`
@@ -45,7 +53,6 @@ import {
 } from "./expresiones";
 import {
   buscarMultiplicador,
-  buscarMetricaDef,
   METRICAS,
   type MetricaDef,
 } from "./semanticLayer";
@@ -63,9 +70,11 @@ export interface ResultadoCompilacion {
   compararConBaseline: boolean;
   /**
    * Si true, `parserIntencion` debe IGNORAR la métrica detectada
-   * por `extraerMetrica` y usar la del compilador (o ninguna).
-   * Se usa para casos como "en sets ganados" que el parser
-   * confunde con la métrica `sets_ganados`.
+   * por `extraerMetrica` y usar la del compilador.
+   *
+   * Solo se activa si el compilador tiene métrica propia Y filtro
+   * propio (B13): si solo tiene filtro, la métrica del parser es
+   * legítima y debe pasar.
    */
   ignorarMetricaParser: boolean;
   /** Fragmentos que matchearon. */
@@ -114,6 +123,12 @@ function parsearNumero(s: string): number | null {
 // ------------------------------------------------------------
 // DETECCIÓN DE MÉTRICA
 // ------------------------------------------------------------
+// B13 (bonus): normalizar el patrón del semantic layer antes de
+// matchear. El texto que llega acá ya viene normalizado (sin
+// tildes, lowercase). Si los patrones del semantic layer tienen
+// tildes ("recepción %"), la comparación fallaba. Normalizando el
+// patrón en runtime, "recepción %" matchea contra "recepcion %".
+// ------------------------------------------------------------
 
 function detectarMetrica(textoNorm: string): {
   metrica: MetricaDef;
@@ -122,7 +137,8 @@ function detectarMetrica(textoNorm: string): {
   for (const m of METRICAS) {
     const patrones = ordenarPorLargoDesc(m.patrones);
     for (const p of patrones) {
-      if (textoNorm.includes(p)) {
+      const pNorm = normalizar(p);
+      if (pNorm.length > 0 && textoNorm.includes(pNorm)) {
         return { metrica: m, fragmento: p };
       }
     }
@@ -156,6 +172,45 @@ export function detectarCompareToBaseline(textoNorm: string): boolean {
 }
 
 // ------------------------------------------------------------
+// DETECCIÓN DE MARCADOR EXACTO
+// ------------------------------------------------------------
+// B38: parsear "20-18", "20 a 18", "20 al 18".
+// Cuidados:
+//   - Descartar si hay indicio de fecha / tiempo ("hace 5-10 años").
+//   - Exigir contexto de marcador ("cuando", "está", "marcador", etc.)
+//     para no matchear "partidos 20-18" (raro pero posible).
+//   - Descartar números absurdos (> 30) que no pueden ser marcador.
+// ------------------------------------------------------------
+
+const PATRONES_FECHA = /\b(?:hace|hacia|anos|años|dias|días|meses|semanas|horas|minutos|kilometros|kilómetros)\b/;
+const PATRONES_CONTEXTO_MARCADOR =
+  /\b(?:cuando|marcador|estando|esta|está|con|empatad|ganand|perdiend|arriba|abajo|ventaja|desventaja)\b/;
+
+function detectarMarcadorExacto(
+  textoNorm: string
+): { propios: number; rivales: number; fragmento: string } | null {
+  // Buscar "N-M", "N a M", "N al M"
+  const m = /\b(\d{1,2})\s*(?:-|a|al)\s*(\d{1,2})\b/.exec(textoNorm);
+  if (!m) return null;
+
+  // Descartar fechas / distancias
+  if (PATRONES_FECHA.test(textoNorm)) return null;
+
+  // Exigir contexto de marcador
+  if (!PATRONES_CONTEXTO_MARCADOR.test(textoNorm)) return null;
+
+  const a = parseInt(m[1], 10);
+  const b = parseInt(m[2], 10);
+  if (isNaN(a) || isNaN(b)) return null;
+  // Descartar números absurdos para un set
+  if (a > 30 || b > 30) return null;
+  // Descartar 0-0 (no es marcador útil en vóley)
+  if (a === 0 && b === 0) return null;
+
+  return { propios: a, rivales: b, fragmento: `${a}-${b}` };
+}
+
+// ------------------------------------------------------------
 // REGLAS DE COMPILACIÓN
 // ------------------------------------------------------------
 // Cada regla devuelve una `Expr` o null. Se evalúan en orden
@@ -167,7 +222,8 @@ export function detectarCompareToBaseline(textoNorm: string): boolean {
 type ReglaCompiladora = (texto: string) => {
   filtro: Expr;
   fragmentos: string[];
-  /** Si true, `parserIntencion` debe ignorar `extraerMetrica`. */
+  /** Si true, `parserIntencion` debe ignorar `extraerMetrica`
+   *  (solo cuando el compilador tenga métrica propia). */
   ignorarMetricaParser?: boolean;
 } | null;
 
@@ -259,17 +315,35 @@ const REGLAS: ReglaCompiladora[] = [
   },
 
   // ----------------------------------------------------------
+  // MARCADOR EXACTO: "cuando está 20-18" (B38)
+  // ----------------------------------------------------------
+  // Esta regla va DESPUÉS de las reglas de "faltan N puntos" para
+  // no colisionar con "cuando al rival le faltan 5-3 puntos" (raro
+  // pero posible). Como esas reglas ya matchean "faltan N", acá
+  // solo llega lo que no matcheó antes.
+  // ----------------------------------------------------------
+  (texto) => {
+    const marcador = detectarMarcadorExacto(texto);
+    if (!marcador) return null;
+    return {
+      filtro: y(
+        igual(variable("puntosPropios"), numero(marcador.propios)),
+        igual(variable("puntosRivales"), numero(marcador.rivales))
+      ),
+      fragmentos: [`marcador ${marcador.fragmento}`],
+    };
+  },
+
+  // ----------------------------------------------------------
   // "en sets ganados" / "en sets perdidos" (FILTRO, no métrica)
   // ----------------------------------------------------------
-  // Se marca `ignorarMetricaParser: true` para que `parserIntencion`
-  // no confunda esto con la métrica `sets_ganados`.
   (texto) => {
     if (
       /en\s+sets?\s+ganados?/.test(texto) ||
       /en\s+los\s+sets\s+que\s+ganamos/.test(texto)
     ) {
       return {
-        filtro: mayor(variable("setsPropios"), variable("setsRivales")),
+        filtro: variable("setGanado"),
         fragmentos: ["en sets ganados"],
         ignorarMetricaParser: true,
       };
@@ -279,7 +353,7 @@ const REGLAS: ReglaCompiladora[] = [
       /en\s+los\s+sets\s+que\s+perdimos/.test(texto)
     ) {
       return {
-        filtro: mayor(variable("setsRivales"), variable("setsPropios")),
+        filtro: no(variable("setGanado")),
         fragmentos: ["en sets perdidos"],
         ignorarMetricaParser: true,
       };
@@ -331,14 +405,6 @@ const REGLAS: ReglaCompiladora[] = [
   // ----------------------------------------------------------
   // CRUCES (orden de evaluación importa)
   // ----------------------------------------------------------
-  // 1. "entre N y M cruces"
-  // 2. "exactamente N cruces"
-  // 3. "más de N cruces"      → > N (estricto)
-  // 4. "menos de N cruces"    → < N (estricto)
-  // 5. "hasta N cruces"       → <= N
-  // 6. "N o más / al menos N" → >= N
-  // 7. "N cruces" (suelto)    → == N
-  // ----------------------------------------------------------
   (texto) => {
     const NUM =
       "(\\d{1,2}|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)";
@@ -376,7 +442,6 @@ const REGLAS: ReglaCompiladora[] = [
     }
 
     // 3. "más de N" → > N (estricto)
-    // OJO: matchear "más de" ANTES que "N o más" para no confundir.
     const mMasDe = new RegExp(
       `\\b(?:mas|más)\\s+de\\s+${NUM}\\s+(?:cruces?|pelotazos?|intercambios?)`
     ).exec(texto);
@@ -492,31 +557,37 @@ const REGLAS: ReglaCompiladora[] = [
   },
 
   // ----------------------------------------------------------
-  // "en side-out" / "en k2" / "en k3" / "en free-ball"
+  // "en side-out" / "en k2" / "en k3" / "en free-ball" (B5)
   // ----------------------------------------------------------
   (texto) => {
-    if (/side[\s-]?out|en\s+k1/.test(texto)) {
+    if (
+      /\ben\s+(?:el\s+)?side[\s-]?out\b/.test(texto) ||
+      /\ben\s+(?:el\s+)?k1\b/.test(texto)
+    ) {
       return {
         filtro: contiene("tiposPresentes", "recepcion"),
-        fragmentos: ["side-out"],
+        fragmentos: ["en side-out"],
       };
     }
-    if (/en\s+k2/.test(texto)) {
+    if (/\ben\s+(?:el\s+)?k2\b/.test(texto)) {
       return {
         filtro: contiene("tiposPresentes", "defensa"),
-        fragmentos: ["k2"],
+        fragmentos: ["en k2"],
       };
     }
-    if (/en\s+k3/.test(texto)) {
+    if (/\ben\s+(?:el\s+)?k3\b/.test(texto)) {
       return {
         filtro: contiene("tiposPresentes", "defensa"),
-        fragmentos: ["k3"],
+        fragmentos: ["en k3"],
       };
     }
-    if (/free[\s-]?ball|pelota\s+libre/.test(texto)) {
+    if (
+      /\ben\s+(?:el\s+)?free[\s-]?ball\b/.test(texto) ||
+      /\ben\s+(?:la\s+)?pelota\s+libre\b/.test(texto)
+    ) {
       return {
         filtro: contiene("tiposPresentes", "libre"),
-        fragmentos: ["free-ball"],
+        fragmentos: ["en free-ball"],
       };
     }
     return null;
@@ -587,20 +658,16 @@ export function compilarCondicion(
     res.filtro = acc;
   }
 
-  // 5. Auto-marcado de compare_to_baseline:
-  //    - Si el texto dice "como varia" / "respecto a" → true.
-  //    - Si hay filtro + métrica → true (auto).
-  //    Esto resuelve "cuando X, cuántos Y" / "en racha de 3+, cómo
-  //    varía Z" / "más de N cruces, cuántos W".
+  // 5. Compare-to-baseline (B1): SOLO si el texto lo pide
+  //    explícitamente.
   if (compareExplicito) {
     res.compararConBaseline = true;
     res.fragmentos.push("compare_to_baseline");
-  } else if (res.filtro !== null && res.metrica !== null) {
-    res.compararConBaseline = true;
   }
 
-  // 6. Si alguna regla marcó ignorarMetricaParser, respetarlo.
-  if (algunFiltroMarcaIgnorar) {
+  // 6. ignorarMetricaParser (B13): SOLO si el compilador produjo
+  //    (a) filtro Y (b) métrica propia.
+  if (algunFiltroMarcaIgnorar && res.filtro !== null && res.metrica !== null) {
     res.ignorarMetricaParser = true;
   }
 
@@ -622,12 +689,18 @@ export function pareceCondicionCompleja(textoOriginal: string): boolean {
   if (!texto) return false;
 
   const tieneMetrica = METRICAS.some((m) =>
-    m.patrones.some((p) => texto.includes(p))
+    m.patrones.some((p) => {
+      const pNorm = normalizar(p);
+      return pNorm.length > 0 && texto.includes(pNorm);
+    })
   );
   const tieneCompare = detectarCompareToBaseline(texto);
 
   // Métrica + conector de comparación
   if (tieneMetrica && tieneCompare) return true;
+
+  // B38: marcador exacto "20-18" / "20 a 18" / "20 al 18"
+  if (detectarMarcadorExacto(texto) !== null) return true;
 
   // "cuando" + alguna regla
   if (/\bcuando\b/.test(texto)) {
@@ -643,8 +716,12 @@ export function pareceCondicionCompleja(textoOriginal: string): boolean {
   if (/racha\s+de\s+\d/.test(texto)) return true;
 
   // "más/menos/hasta/exactamente N cruces"
-  if (/\b(?:mas|más|menos|hasta|exactamente|al\s+menos)\s+(?:\d+|un)/.test(texto) &&
-      /(?:cruces?|pelotazos?|intercambios?)/.test(texto)) {
+  if (
+    /\b(?:mas|más|menos|hasta|exactamente|al\s+menos)\s+(?:\d+|un)/.test(
+      texto
+    ) &&
+    /(?:cruces?|pelotazos?|intercambios?)/.test(texto)
+  ) {
     return true;
   }
 
@@ -654,8 +731,12 @@ export function pareceCondicionCompleja(textoOriginal: string): boolean {
   // "en tie-break"
   if (/tie\s*-?\s*break/.test(texto)) return true;
 
-  // "en side-out" / "en k2" / "en k3" / "en free-ball"
-  if (/\ben\s+(?:side[\s-]?out|k1|k2|k3|free[\s-]?ball)\b/.test(texto)) {
+  // "en side-out" / "en k1" / "en k2" / "en k3" / "en free-ball"
+  if (
+    /\ben\s+(?:el\s+)?(?:side[\s-]?out|k1|k2|k3|free[\s-]?ball)\b/.test(
+      texto
+    )
+  ) {
     return true;
   }
 
