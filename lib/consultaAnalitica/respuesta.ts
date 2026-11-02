@@ -1,6 +1,18 @@
 // ============================================================
 // RESPUESTA — response builder
 // ============================================================
+// v2.2 (FASE 7.5 — mini-paso 10.b, cierre de B9):
+//   + `ContextoRespuesta` suma `puntosUniverso?: PuntoConAcciones[]`.
+//     Lo setea `ejecutor.ts` con el universo de puntos pre-cruces,
+//     pre-tiempo. Se usa SOLO para `puntosTotales` y para el
+//     baseline general; NUNCA para la métrica filtrada (que sigue
+//     usando `puntos` post-tiempo).
+//   + `ejecutarComparacionBaseline` usa la nueva cadena de fallback
+//     para `puntosTotales`:
+//       1. ctxBaseline.puntosUniverso (pre-fase).
+//       2. ctxBaseline.puntos (fallback histórico).
+//       3. puntosUniverso local (mínimo garantizado).
+//
 // v2.1 (FASE 7.5 — fixes):
 //   + `ejecutarMetricaConGroupBy`: cuando hay métrica Y groupBy,
 //     construye tabla (una fila por grupo). Antes solo devolvía
@@ -9,6 +21,10 @@
 //     NO `compararConBaseline`, filtra puntos por expr y aplica
 //     dispatch normal. Fix de "cuando ganamos" / "en tie-break"
 //     / "más de N cruces" sin baseline.
+//   + B3: `filtrarContextoPorExpr` INTERSECTA en vez de reemplazar.
+//   + B7: baseline general = ctxBaseline (universo real), no post-fase.
+//   + B9 (parte): primer intento de `puntosTotales` = universo real
+//     (usa ctxBaseline.puntos como fallback).
 //
 // v2.0 (FASE 7.5 — AST compilado):
 //   + `ejecutarComparacionBaseline`.
@@ -123,6 +139,13 @@ import { evaluarBooleano } from "./expresiones";
 export interface ContextoRespuesta {
   acciones: AccionVisual[];
   puntos?: PuntoConAcciones[];
+  /**
+   * B9: universo de puntos ANTES de aplicar filtros de tiempo/cruces.
+   * Lo setea `ejecutor.ts`. Si no está, se cae al fallback de `puntos`
+   * (comportamiento anterior). Nunca se usa para la métrica filtrada,
+   * solo para `puntosTotales` y para el baseline general.
+   */
+  puntosUniverso?: PuntoConAcciones[];
   intencion: IntencionQuery;
   contextoAgrupacion?: ContextoAgrupacion;
   contextoRally?: Map<string, ContextoRally>;
@@ -742,10 +765,9 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
 }
 
 // ------------------------------------------------------------
-// MÉTRICA CON GROUPBY (fix A)
+// MÉTRICA CON GROUPBY
 // ------------------------------------------------------------
 // Si hay `groupBy`, ejecuta la métrica por grupo y devuelve tabla.
-// Antes solo devolvía el valor global. Fix de "recepción % por set".
 // ------------------------------------------------------------
 
 function ejecutarMetricaConGroupBy(
@@ -875,12 +897,17 @@ function ejecutarComparacionBaseline(
     );
   }
 
-  // B9: puntosTotales = universo real (ctxBaseline.puntos), no el
-  // post-fase (ctx.puntos). Fallback al post-fase si el llamador no
-  // pasó puntos del universo.
+  // B9 (mini-paso 10.b): puntosTotales = universo real, en este
+  // orden de prioridad:
+  //   1. ctxBaseline.puntosUniverso (pre-cruces, pre-tiempo). Lo
+  //      setea `ejecutor.ts` en el `ctxRespuesta` y en `ctxOriginal`.
+  //   2. ctxBaseline.puntos (fallback histórico).
+  //   3. puntosUniverso local (mínimo garantizado).
   const puntosQueCumplen = clavesFiltradas.size;
   const puntosTotales =
-    ctxBaseline.puntos && ctxBaseline.puntos.length > 0
+    ctxBaseline.puntosUniverso && ctxBaseline.puntosUniverso.length > 0
+      ? ctxBaseline.puntosUniverso.length
+      : ctxBaseline.puntos && ctxBaseline.puntos.length > 0
       ? ctxBaseline.puntos.length
       : puntosUniverso.length;
 
