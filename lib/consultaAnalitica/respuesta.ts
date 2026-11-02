@@ -69,6 +69,7 @@ import {
   rallysLargos,
   rallysMedios,
   receptionPct,
+  receptionPerfectaPct,
   serveErrorPct,
   sideoutPct,
   type MetricaResultado,
@@ -340,14 +341,23 @@ function filtrarContextoPorExpr(
     }
   }
 
+  // B3: INTERSECCIÓN, no reemplazo.
+  // Las acciones finales son las que YA venían filtradas por el
+  // parser (tipo=ataque, resultado=punto, jugadorId, etc.) Y que
+  // además pertenecen a un punto que cumple el expr. No agregamos
+  // acciones nuevas de esos puntos (eso perdía los filtros del
+  // parser: por ejemplo "cuando ganamos, cuántos ataques punto"
+  // pasaba a contar TODAS las acciones del punto, perdiendo
+  // tipo=ataque y resultado=punto).
+  const accionesFiltradas = ctx.acciones.filter((a) => {
+    const pid = a.partido_id || "";
+    const k = `${pid}|${a.set_numero}|${a.punto_numero}`;
+    return clavesFiltradas.has(k);
+  });
+
   const puntosFiltrados = puntos.filter((p) =>
     clavesFiltradas.has(claveDePuntoDesdePunto(p))
   );
-
-  const accionesFiltradas: AccionVisual[] = [];
-  for (const p of puntosFiltrados) {
-    for (const a of p.acciones) accionesFiltradas.push(a);
-  }
 
   return {
     ...ctx,
@@ -690,6 +700,8 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
       return metricaAPorcentaje(hittingPct(acciones));
     case "reception_pct":
       return metricaAPorcentaje(receptionPct(acciones));
+    case "reception_perfecta_pct":
+      return metricaAPorcentaje(receptionPerfectaPct(acciones));
     case "ace_pct":
       return metricaAPorcentaje(acePct(acciones));
     case "serve_error_pct":
@@ -784,7 +796,8 @@ function ejecutarMetricaConGroupBy(
 // ------------------------------------------------------------
 
 function ejecutarComparacionBaseline(
-  ctx: ContextoRespuesta
+  ctx: ContextoRespuesta,
+  ctxBaseline: ContextoRespuesta
 ): RespuestaConsulta {
   const cond = ctx.intencion.condicion;
   const metrica = ctx.intencion.metrica;
@@ -817,31 +830,41 @@ function ejecutarComparacionBaseline(
       if (evaluarBooleano(cond.expr, vars)) {
         clavesFiltradas.add(clave);
       }
-    } catch {}
-  }
-
-  const accionesFiltradas: AccionVisual[] = [];
-  for (const p of puntosUniverso) {
-    if (clavesFiltradas.has(claveDePuntoDesdePunto(p))) {
-      for (const a of p.acciones) accionesFiltradas.push(a);
+    } catch {
+      // Ignorar puntos que fallan.
     }
   }
+
+  // B3: INTERSECCIÓN (mismo criterio que filtrarContextoPorExpr).
+  // Las acciones filtradas son las que ya venían del parser Y que
+  // pertenecen a un punto que cumple el expr.
+  const accionesFiltradas = ctx.acciones.filter((a) => {
+    const pid = a.partido_id || "";
+    const k = `${pid}|${a.set_numero}|${a.punto_numero}`;
+    return clavesFiltradas.has(k);
+  });
+
+  const puntosFiltrados = puntosUniverso.filter((p) =>
+    clavesFiltradas.has(claveDePuntoDesdePunto(p))
+  );
 
   const ctxFiltrado: ContextoRespuesta = {
     ...ctx,
     acciones: accionesFiltradas,
-    puntos: puntosUniverso.filter((p) =>
-      clavesFiltradas.has(claveDePuntoDesdePunto(p))
-    ),
+    puntos: puntosFiltrados,
   };
 
-  // Si hay groupBy, aplicar tabla sobre el ctx filtrado
   const gb = groupByEfectivo(ctxFiltrado);
-  const respFiltrada = gb && !esGroupByPorPunto(gb)
-    ? ejecutarMetricaConGroupBy(ctxFiltrado, gb)
-    : ejecutarMetrica(ctxFiltrado);
+  const respFiltrada =
+    gb && !esGroupByPorPunto(gb)
+      ? ejecutarMetricaConGroupBy(ctxFiltrado, gb)
+      : ejecutarMetrica(ctxFiltrado);
 
-  const respGeneral = ejecutarMetrica(ctx);
+  // B7: baseline general = universo REAL (ctxBaseline), no el
+  // ctx post-aplicarCondicionesExtra. Así "en side-out, cómo
+  // varía X respecto al general" compara side-out (filtro) contra
+  // todos los puntos, no side-out contra side-out.
+  const respGeneral = ejecutarMetrica(ctxBaseline);
 
   const numFiltrada = extraerNumeroDeRespuesta(respFiltrada);
   const numGeneral = extraerNumeroDeRespuesta(respGeneral);
@@ -852,13 +875,20 @@ function ejecutarComparacionBaseline(
     );
   }
 
+  // B9: puntosTotales = universo real (ctxBaseline.puntos), no el
+  // post-fase (ctx.puntos). Fallback al post-fase si el llamador no
+  // pasó puntos del universo.
   const puntosQueCumplen = clavesFiltradas.size;
-  const puntosTotales = puntosUniverso.length;
+  const puntosTotales =
+    ctxBaseline.puntos && ctxBaseline.puntos.length > 0
+      ? ctxBaseline.puntos.length
+      : puntosUniverso.length;
 
   const detalle =
     `${puntosQueCumplen} de ${puntosTotales} puntos cumplen la condición. ` +
     `Filtrada: ${redondear(numFiltrada, 2)} · General: ${redondear(
-      numGeneral, 2
+      numGeneral,
+      2
     )} · Diferencia: ${
       numFiltrada - numGeneral >= 0 ? "+" : ""
     }${redondear(numFiltrada - numGeneral, 2)}.`;
@@ -1382,7 +1412,7 @@ export function construirRespuesta(
     ctxBase.intencion.condicion?.expr &&
     ctxBase.intencion.metrica
   ) {
-    const resp = ejecutarComparacionBaseline(ctxBase);
+    const resp = ejecutarComparacionBaseline(ctxBase, ctxOriginal);
     return {
       respuesta: agregarAvisoAmbiguedad(resp, ctxBase.intencion),
       meta: metaFinal,

@@ -279,6 +279,28 @@ export function receptionPct(
   return pct(buenas, recepciones.length);
 }
 
+/**
+ * Recepciones PERFECTAS / total × 100.
+ *
+ * A diferencia de `receptionPct` (que suma perfectas + positivas
+ * en el numerador), esta métrica cuenta SOLO las perfectas (R#).
+ *
+ * Cierra B12: "porcentaje de recepciones perfectas" antes
+ * matcheaba `reception_pct` y devolvía el % combinado. Ahora
+ * tiene su propia métrica y `dimensiones.ts` la prioriza.
+ */
+export function receptionPerfectaPct(
+  acciones: AccionVisual[]
+): MetricaResultado {
+  const recepciones = acciones.filter(esRecepcion);
+  if (recepciones.length === 0) return vacio();
+  let perfectas = 0;
+  for (const a of recepciones) {
+    if (sub(a) === "perfecta") perfectas += 1;
+  }
+  return pct(perfectas, recepciones.length);
+}
+
 // ------------------------------------------------------------
 // SAQUE
 // ------------------------------------------------------------
@@ -690,6 +712,8 @@ export function resolverMetrica(
       return hittingPct;
     case "reception_pct":
       return receptionPct;
+    case "reception_perfecta_pct":
+      return receptionPerfectaPct;
     case "ace_pct":
       return acePct;
     case "serve_error_pct":
