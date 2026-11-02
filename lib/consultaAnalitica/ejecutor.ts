@@ -3,49 +3,30 @@
 // ============================================================
 // FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
 //
+// v2.2 (FASE 7.5 — paso 2.4.b):
+//   + `filtrarPorTiempo` y `filtrarPuntosPorTiempo` pasan a ser
+//     `export` para reutilizarlas desde `ejecutarConsultaLLM.ts`
+//     (flujo LLM). Antes eran privadas. Sin cambios de
+//     comportamiento.
+//
+// v2.1 (FASE 7.5 — paso 2.4.a):
+//   + `aplicarFiltro` pasa a ser `export`.
+//
 // v2.0 (FASE 7.5 — paso 10/10):
-//   + B6: `variablesPunto` se calcula UNA SOLA VEZ acá (única
-//     fuente de verdad) y se pasa a `construirRespuesta` en
-//     `ctxRespuesta.variablesPunto`. `respuesta.ts` la reutiliza
-//     (ya lo hacía v1.9). Se documenta explícitamente para que
-//     no se recalcule en el futuro.
-//   + B31: `totalUniverso` se setea SIEMPRE en `ctxRespuesta`
-//     (universo completo, pre-cruces, pre-tiempo). Cuando el
-//     caller no provee acciones, queda en 0.
-//   + B9: nuevo campo `puntosUniverso: universoPuntos` en
-//     `ctxRespuesta`. Permite que `respuesta.ts` use el universo
-//     real de puntos (pre-cruces, pre-tiempo) para `puntosTotales`
-//     y para el baseline general, sin perder el filtro de tiempo
-//     en la métrica filtrada (que sigue usando `puntosConTiempo`).
-//     NOTA: la parte de consumo de `puntosUniverso` en
-//     `respuesta.ts` se hace en un mini-paso posterior (10.b),
-//     porque `respuesta.ts` hoy usa `ctxBaseline.puntos.length`
-//     como fallback. Con este ejecutor seteando `puntosUniverso`,
-//     el mini-paso 10.b solo agrega el lookup.
+//   + B6: `variablesPunto` se calcula UNA SOLA VEZ acá y se pasa
+//     a `construirRespuesta` en `ctxRespuesta.variablesPunto`.
+//   + B31: `totalUniverso` se setea SIEMPRE en `ctxRespuesta`.
+//   + B9: nuevo campo `puntosUniverso` en `ctxRespuesta`.
 //
-// v1.9 (FASE 7.5 — fixes del AST compilado):
-//   + `necesitaVariables` ahora se dispara si hay `condicion.expr`
-//     (sin importar `compararConBaseline`). Antes solo se calculaba
-//     para compare, así que los filtros sueltos ("cuando ganamos",
-//     "en tie-break", "más de N cruces", "en racha de 3+") llegaban
-//     al motor sin variables y no filtraban nada.
-//   + Se pasan los `puntos` con tiempo y el `variablesPunto` a
-//     `construirRespuesta`.
-//
-// v1.8 (FASE 7.5 — AST compilado):
-//   + Calcula `variablesPunto` sobre `puntosConTiempo` para
-//     `ejecutarComparacionBaseline`.
-//
-// v1.7 (FASE 7.4 cierre — fallback a count):
-//   + Si el parser detectó filtros válidos (`parsed.aplicado`)
-//     pero NO una intención de cálculo, asumimos `count`.
-//
-// v1.6 (FASE 7.4): parserInfo suma jugadorAmbiguo/jugadorAviso/candidatos.
-// v1.5 (FASE 7.4 — problema C): fasesPorPunto sobre el universo.
-// v1.4 (FASE 6 — Opción A): crucesPorPunto sobre el universo.
-// v1.3 (FASE 6 — Rondas 1.3 + 2): crucesMinimos + salidaRol.
-// v1.2 (FASE 6 — bloque A.1): resultadosPunto sobre el universo.
-// v1.1 (FASE 6): filtro de tiempo también sobre puntos.
+// v1.9: `necesitaVariables` se dispara si hay `condicion.expr`.
+// v1.8: calcula `variablesPunto` sobre `puntosConTiempo`.
+// v1.7: fallback a count si hay filtros válidos.
+// v1.6: parserInfo suma jugadorAmbiguo/jugadorAviso/candidatos.
+// v1.5: fasesPorPunto sobre el universo.
+// v1.4: crucesPorPunto sobre el universo.
+// v1.3: crucesMinimos + salidaRol.
+// v1.2: resultadosPunto sobre el universo.
+// v1.1: filtro de tiempo también sobre puntos.
 // ============================================================
 
 import type {
@@ -116,10 +97,10 @@ function aplicarFallbackCount(
 }
 
 // ------------------------------------------------------------
-// FILTRO DE TIEMPO (acciones)
+// FILTRO DE TIEMPO (acciones) — EXPORTADO en v2.2
 // ------------------------------------------------------------
 
-function filtrarPorTiempo(
+export function filtrarPorTiempo(
   acciones: AccionVisual[],
   intencion: IntencionQuery,
   partidos: { id: string; fecha?: string }[] | undefined
@@ -241,10 +222,10 @@ function filtrarPorTiempo(
 }
 
 // ------------------------------------------------------------
-// FILTRO DE TIEMPO (puntos)
+// FILTRO DE TIEMPO (puntos) — EXPORTADO en v2.2
 // ------------------------------------------------------------
 
-function filtrarPuntosPorTiempo(
+export function filtrarPuntosPorTiempo(
   puntos: PuntoConAcciones[],
   intencion: IntencionQuery,
   partidos: { id: string; fecha?: string }[] | undefined
@@ -377,10 +358,10 @@ function filtrarPuntosPorTiempo(
 }
 
 // ------------------------------------------------------------
-// FILTRO POR BloqueTriggerFiltro
+// FILTRO POR BloqueTriggerFiltro — EXPORTADO en v2.1
 // ------------------------------------------------------------
 
-function aplicarFiltro(
+export function aplicarFiltro(
   universo: AccionVisual[],
   filtro: BloqueTriggerFiltro
 ): AccionVisual[] {
@@ -564,11 +545,10 @@ export function ejecutarConsulta(
   };
   const parsed = parsearBusqueda(texto, contextoParser);
 
-  // 1.b) FALLBACK: si el parser entendió los filtros pero NO
-  // la intención, asumimos `count`.
+  // 1.b) FALLBACK
   const intencion = aplicarFallbackCount(parsed.intencion, parsed.aplicado);
 
-  // 2) Time filter (acciones + puntos).
+  // 2) Time filter
   let accionesConTiempo = filtrarPorTiempo(
     universo,
     intencion,
@@ -580,7 +560,7 @@ export function ejecutarConsulta(
     contexto.partidos
   );
 
-  // 3) Cruces de red — sobre el UNIVERSO COMPLETO.
+  // 3) Cruces de red
   const crucesPorPunto = calcularCrucesPorPunto(universo);
 
   const puntosPermitidosPorCruces = filtrarPuntosPorCruces(
@@ -601,37 +581,19 @@ export function ejecutarConsulta(
     });
   }
 
-  // 4) Filtro por BloqueTriggerFiltro (solo acciones).
+  // 4) Filtro por BloqueTriggerFiltro
   const accionesFiltradas = aplicarFiltro(
     accionesConTiempo,
     parsed.filtro
   );
 
-  // 5) Resultado del punto — sobre el UNIVERSO COMPLETO.
+  // 5) Resultado del punto
   const resultadosPunto = calcularResultadosPunto(universo);
 
-  // 6) FASE 7.4 — Fase de cada punto, sobre el UNIVERSO COMPLETO.
+  // 6) Fases por punto
   const fasesPorPunto = calcularFasesPorPunto(universo);
 
-  // ============================================================
-  // 6.b) FASE 7.5 — Variables por punto (B6)
-  // ============================================================
-  // v2.0 (B6): `variablesPunto` se calcula ACÁ, UNA SOLA VEZ, y
-  // se pasa a `construirRespuesta` en `ctxRespuesta.variablesPunto`.
-  // `respuesta.ts` la reutiliza (ya lo hacía v1.9). No se debe
-  // recalcular downstream.
-  //
-  // v1.9: se calculan si hay `condicion.expr` (con o sin baseline).
-  // Antes solo se calculaban para `compararConBaseline === true`,
-  // así que los filtros sueltos ("cuando ganamos", "en tie-break",
-  // "más de N cruces", "en racha de 3+") no filtraban.
-  //
-  // Se calculan sobre `puntosConTiempo` (el universo que el usuario
-  // ve), así los conteos son consistentes.
-  //
-  // NOTA: `formatoPartido` queda en "bo3" (default) hasta que
-  // `partidos` tenga columna `formato`. Ver deuda técnica #0.3.
-  // ============================================================
+  // 6.b) Variables por punto
   const necesitaVariables =
     intencion.condicion?.expr !== undefined &&
     intencion.condicion?.expr !== null;
@@ -642,16 +604,7 @@ export function ejecutarConsulta(
       })
     : undefined;
 
-  // 7) Construir respuesta.
-  //
-  // B31: `totalUniverso` se setea SIEMPRE con el universo completo
-  // (pre-cruces, pre-tiempo). Cuando el caller no provee acciones,
-  // queda en 0.
-  //
-  // B9: `puntosUniverso` se setea con `universoPuntos` (pre-cruces,
-  // pre-tiempo). `respuesta.ts` lo usa para `puntosTotales` y para
-  // el baseline general cuando `ctxBaseline.puntos` no está
-  // disponible. El mini-paso 10.b agrega el lookup en `respuesta.ts`.
+  // 7) Contexto de respuesta
   const ctxRespuesta: ContextoRespuesta = {
     acciones: accionesFiltradas,
     puntos: puntosConTiempo,
@@ -689,7 +642,7 @@ export function ejecutarConsulta(
 
   const resultado = construirRespuesta(ctxRespuesta);
 
-  // 8) Volcar filtros extra al filtro final.
+  // 8) Volcar filtros extra
   let filtroFinal: BloqueTriggerFiltro = parsed.filtro;
   if (parsed.intencion.condicion?.salidaRol !== undefined) {
     filtroFinal = {
@@ -722,15 +675,13 @@ export function ejecutarConsulta(
     };
   }
 
-  // 9) Extender con info del parser y contadores.
+  // 9) Extender con info del parser
   return {
     ...resultado,
     parserInfo: {
       aplicado: parsed.aplicado,
       sugerencias: parsed.sugerencias,
       filtro: filtroFinal,
-      // OJO: `intencion` (no `parsed.intencion`), para que el
-      // fallback de count se vea reflejado en la UI.
       intencion,
       jugadorAmbiguo: parsed.jugadorAmbiguo,
       jugadorAviso: parsed.jugadorAviso,
