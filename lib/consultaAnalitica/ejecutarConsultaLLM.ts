@@ -9,6 +9,22 @@
 //     `GROQ_API_KEY`. Nunca importar desde un componente
 //     "use client".
 //
+// CAMBIOS v2.1 (fix tipos + desglose):
+//   + Post-filtro de tipo: si `conversion.tipoExplicito` no
+//     es null, filtramos accionesFiltradas por ese tipo. Esto
+//     cierra el bug de "el tipo no filtra" (que se dispara
+//     siempre que el tipo es "ataque", porque
+//     `BLOQUE_TRIGGER_VACIO.tipo === "ataque"`).
+//   + `desglose`: si el LLM pidió `desglose` y NO hay
+//     `groupBy`, armamos una `RespuestaTabla` con las
+//     categorías pedidas (Positivo / Negativo / Neutro) usando
+//     `clasificarResultado()`. Devolvemos esa tabla sin pasar
+//     por `construirRespuesta`. Si hay `groupBy` también, se
+//     prioriza `groupBy` (con aviso ya emitido por
+//     `llmToIntencion`).
+//   + `DebugConsultaLLM` suma `tipoExplicitoAplicado` y
+//     `desgloseAplicado` (opcionales).
+//
 // Uso:
 //   const r = await ejecutarConsultaLLM("cómo atacan en k1", {
 //     acciones, puntos, jugadores, partidos,
@@ -17,10 +33,6 @@
 //   if (r.tipo === "clarification") { ... r.pregunta ... }
 //   if (r.tipo === "ambiguo") { ... r.candidatos ... }
 //   if (r.tipo === "error") { ... r.mensaje ... }
-//
-// Este archivo NO reemplaza `ejecutarConsulta()` (flujo por
-// parser viejo). Conviven: `ejecutarConsulta` usa el parser
-// de diccionarios; `ejecutarConsultaLLM` usa Groq.
 // ============================================================
 
 import type {
@@ -28,12 +40,21 @@ import type {
   PuntoConAcciones,
 } from "../../app/equipo/adaptadorUnificadoV2";
 import type {
+  FilaTabla,
   MetaConsulta,
   RespuestaConsulta,
 } from "./tipos";
+import { respuestaTabla } from "./tipos";
 import type { IntencionQuery } from "./intenciones";
-import type { BloqueTriggerFiltro } from "../analisis/tipos";
-import type { ConsultaLLM } from "./llmSchema";
+import type {
+  BloqueTriggerFiltro,
+  TipoDisparador,
+} from "../analisis/tipos";
+import { clasificarResultado } from "../analisis/clasificacion";
+import type {
+  ConsultaLLM,
+  DesgloseLLM,
+} from "./llmSchema";
 import type { JugadorParaResolver } from "./resolverJugador";
 import { resolverJugador } from "./resolverJugador";
 import { traducirPrompt } from "./llmTranslator";
@@ -74,6 +95,10 @@ export interface DebugConsultaLLM {
   accionesFiltradas: number;
   accionesUniverso: number;
   conversion: ResultadoConversion | null;
+  /** v2.1: tipo que se post-filtró (si hubo). */
+  tipoExplicitoAplicado: TipoDisparador | null;
+  /** v2.1: ¿se armó tabla de desglose? */
+  desgloseAplicado: boolean;
 }
 
 export type ResultadoConsultaLLM =
@@ -109,6 +134,118 @@ export type ResultadoConsultaLLM =
 
 function contarVisibles(acciones: AccionVisual[]): number {
   return acciones.filter((a) => !a.oculta).length;
+}
+
+/** ¿El usuario pidió desglose y NO hay groupBy? Solo en ese caso armamos la tabla. */
+function debeAplicarDesglose(
+  consulta: ConsultaLLM,
+  intencion: IntencionQuery
+): boolean {
+  const tieneDesglose =
+    !!consulta.desglose && consulta.desglose.length > 0;
+  if (!tieneDesglose) return false;
+  if (intencion.groupBy) return false;
+  return true;
+}
+
+/**
+ * Convierte `DesgloseLLM[]` a las 3 categorías canónicas
+ * (`punto` = Positivo, `error` = Negativo, `neutro` = Neutro)
+ * sin duplicar.
+ */
+function normalizarCategorias(
+  desglose: DesgloseLLM[]
+): ("punto" | "error" | "neutro")[] {
+  const out: ("punto" | "error" | "neutro")[] = [];
+  for (const d of desglose) {
+    if (d === "positivo" || d === "punto") {
+      if (!out.includes("punto")) out.push("punto");
+    } else if (d === "negativo" || d === "error") {
+      if (!out.includes("error")) out.push("error");
+    } else if (d === "neutro") {
+      if (!out.includes("neutro")) out.push("neutro");
+    }
+  }
+  return out;
+}
+
+/**
+ * Construye una `RespuestaTabla` con las categorías pedidas,
+ * contando acciones por `clasificarResultado()`.
+ *
+ * IMPORTANTE: asume que `acciones` ya viene filtrado por
+ * `aplicarFiltro` + post-filtro de tipo. NO vuelve a filtrar.
+ */
+function construirRespuestaDesglose(
+  acciones: AccionVisual[],
+  desglose: DesgloseLLM[],
+  intencion: IntencionQuery,
+  totalUniverso: number
+): { respuesta: RespuestaConsulta; meta: MetaConsulta } {
+  const categorias = normalizarCategorias(desglose);
+
+  const labelPorCat: Record<"punto" | "error" | "neutro", string> = {
+    punto: "Positivo",
+    error: "Negativo",
+    neutro: "Neutro",
+  };
+
+  const visibles = acciones.filter((a) => !a.oculta);
+  const total = visibles.length;
+
+  const conteos: Record<"punto" | "error" | "neutro", number> = {
+    punto: 0,
+    error: 0,
+    neutro: 0,
+  };
+
+  for (const a of visibles) {
+    const cat = clasificarResultado(a);
+    conteos[cat]++;
+  }
+
+  const filas: FilaTabla[] = categorias.map((cat) => ({
+    key: cat,
+    label: labelPorCat[cat],
+    count: conteos[cat],
+    base: total > 0 ? total : null,
+    valor: conteos[cat],
+    porcentaje:
+      total > 0 ? Math.round((conteos[cat] / total) * 1000) / 10 : 0,
+    extra: null,
+  }));
+
+  const totalFila: FilaTabla = {
+    key: "TOTAL",
+    label: "TOTAL",
+    count: total,
+    base: total > 0 ? total : null,
+    valor: total,
+    porcentaje: total > 0 ? 100 : 0,
+    extra: null,
+  };
+
+  const respuesta = respuestaTabla(
+    filas,
+    null,
+    "count",
+    totalFila,
+    `Desglose en ${categorias.length} categoría${
+      categorias.length !== 1 ? "s" : ""
+    } sobre ${total} acción${total !== 1 ? "es" : ""}.`
+  );
+
+  const meta: MetaConsulta = {
+    original: intencion.original,
+    intencion: intencion.tipo,
+    agregacion: "count",
+    groupBy: null,
+    metrica: intencion.metrica,
+    totalAcciones: total,
+    totalUniverso,
+  };
+
+  return { respuesta, meta };
 }
 
 // ------------------------------------------------------------
@@ -226,10 +363,69 @@ export async function ejecutarConsultaLLM(
   // ----------------------------------------------------------
   // 5) Aplicar filtro (tipo, resultado, jugador, rotación, etc.)
   // ----------------------------------------------------------
-  const accionesFiltradas = aplicarFiltro(accionesConTiempo, filtro);
+  let accionesFiltradas = aplicarFiltro(accionesConTiempo, filtro);
 
   // ----------------------------------------------------------
-  // 6) Construir respuesta
+  // 5.b) FIX v2.1: post-filtro de tipo
+  // ----------------------------------------------------------
+  // `aplicarFiltro` del motor viejo devuelve TODO si considera
+  // el filtro "vacío", y eso pasa siempre que `filtro.tipo`
+  // coincide con `BLOQUE_TRIGGER_VACIO.tipo` (= "ataque"). Así
+  // que si el LLM pidió un tipo explícito, forzamos el filtro
+  // acá.
+  // ----------------------------------------------------------
+  if (conversion.tipoExplicito) {
+    accionesFiltradas = accionesFiltradas.filter(
+      (a) => a.tipo === conversion.tipoExplicito
+    );
+  }
+
+  // ----------------------------------------------------------
+  // 6) Desglose (fix v2.1)
+  // ----------------------------------------------------------
+  // Si el LLM pidió `desglose` Y no hay `groupBy`, armamos una
+  // tabla con las categorías pedidas (Positivo / Negativo /
+  // Neutro) y devolvemos directo, SIN pasar por
+  // `construirRespuesta`.
+  // ----------------------------------------------------------
+  const desgloseAplicado = debeAplicarDesglose(
+    traduccion.consulta,
+    conversion.intencion
+  );
+
+  if (desgloseAplicado) {
+    const totalUniverso = contarVisibles(universoAcciones);
+    const { respuesta, meta } = construirRespuestaDesglose(
+      accionesFiltradas,
+      traduccion.consulta.desglose!,
+      conversion.intencion,
+      totalUniverso
+    );
+
+    return {
+      tipo: "ok",
+      respuesta,
+      meta,
+      fragmentos: conversion.intencion.fragmentos,
+      avisos: conversion.avisos,
+      debug: {
+        promptOriginal: prompt,
+        consultaLLM: traduccion.consulta,
+        intentosTraduccion: traduccion.intentos,
+        intencionFinal: conversion.intencion,
+        filtroFinal: filtro,
+        jugadorResuelto,
+        accionesFiltradas: contarVisibles(accionesFiltradas),
+        accionesUniverso: totalUniverso,
+        conversion,
+        tipoExplicitoAplicado: conversion.tipoExplicito,
+        desgloseAplicado: true,
+      },
+    };
+  }
+
+  // ----------------------------------------------------------
+  // 7) Construir respuesta (flujo normal)
   // ----------------------------------------------------------
   const crucesPorPunto = calcularCrucesPorPunto(universoAcciones);
   const resultadosPunto = calcularResultadosPunto(universoAcciones);
@@ -269,7 +465,7 @@ export async function ejecutarConsultaLLM(
   const resultado = construirRespuesta(ctxRespuesta);
 
   // ----------------------------------------------------------
-  // 7) Devolver
+  // 8) Devolver
   // ----------------------------------------------------------
   return {
     tipo: "ok",
@@ -287,6 +483,8 @@ export async function ejecutarConsultaLLM(
       accionesFiltradas: contarVisibles(accionesFiltradas),
       accionesUniverso: contarVisibles(universoAcciones),
       conversion,
+      tipoExplicitoAplicado: conversion.tipoExplicito,
+      desgloseAplicado: false,
     },
   };
 }

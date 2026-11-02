@@ -24,16 +24,30 @@
 //     ...
 //   });
 //
+// CAMBIOS v2.1 (fix tipos + desglose):
+//   + `ResultadoConversion` (rama "ok") suma
+//     `tipoExplicito: TipoDisparador | null`. Es el tipo que el
+//     LLM pidió EXPLÍCITAMENTE (no inferido, no default).
+//     `ejecutarConsultaLLM.ts` lo usa para post-filtrar acciones
+//     cuando `aplicarFiltro` se considera "vacío" (que ocurre
+//     siempre que el tipo es "ataque", por cómo está armado
+//     `BLOQUE_TRIGGER_VACIO` en el motor viejo).
+//   + Se ELIMINA el bloque que aproximaba `desglose` con
+//     `groupBy: "subtipo"`. Ese era el que producía 34 filas con
+//     subtipos crudos en vez de 3 filas (positivo / negativo /
+//     neutro). Ahora `desglose` se resuelve en
+//     `ejecutarConsultaLLM.ts` post-ejecución, usando
+//     `clasificarResultado()` para agrupar.
+//
 // LIMITACIONES CONOCIDAS (documentadas como TODO):
-//   1. `desglose` — el motor no tiene desglose. Por ahora:
-//      · Si hay groupBy, se ignora el desglose.
-//      · Si NO hay groupBy pero hay desglose, se usa
-//        `groupBy: "subtipo"` como aproximación.
+//   1. `desglose` — el motor NO lo resuelve acá. Lo resuelve
+//      `ejecutarConsultaLLM.ts` DESPUÉS de aplicar filtro. Si
+//      hay `groupBy` también, se prioriza el `groupBy` y se
+//      ignora el `desglose` (con aviso).
 //   2. `groupBy` múltiple — `IntencionQuery.groupBy` es un solo
-//      valor. Se usa el PRIMERO y se descarta el resto.
-//   3. `tipo` de intención — se infiere con heurística
-//      (`inferirTipo`). Cubre los casos comunes.
-//   4. Filtro de rival / equipo — no implementado aún.
+//      valor. Se usa el PRIMERO y se descarta el resto (con
+//      aviso).
+//   3. Filtro de rival / equipo — no implementado aún.
 // ============================================================
 
 import {
@@ -69,6 +83,19 @@ export type ResultadoConversion =
       filtro: BloqueTriggerFiltro;
       /** Nombre/apodo que hay que resolver en el caller. */
       jugadorTexto: string | null;
+      /**
+       * Tipo de acción que el LLM pidió EXPLÍCITAMENTE.
+       * - null → no lo pidió, no lo pidió claro, o lo inferimos
+       *          del resultado. `ejecutarConsultaLLM` NO post-filtra
+       *          en este caso.
+       * - TipoDisparador → el LLM dijo `tipoAccion: "..."`. El caller
+       *          DEBE post-filtrar acciones por ese tipo. Necesario
+       *          porque `aplicarFiltro` del motor viejo devuelve
+       *          TODO si el filtro se considera vacío, y eso pasa
+       *          siempre que el tipo es "ataque" (default de
+       *          `BLOQUE_TRIGGER_VACIO.tipo`).
+       */
+      tipoExplicito: TipoDisparador | null;
       /** Avisos no bloqueantes (ej. aproximaciones aplicadas). */
       avisos: string[];
     }
@@ -235,8 +262,11 @@ export function llmToIntencion(
   );
 
   let tipoFinal: TipoDisparador = "ataque";
+  let tipoExplicito: TipoDisparador | null = null;
+
   if (!esCualquiera(tipoLLM)) {
     tipoFinal = tipoLLM as TipoDisparador;
+    tipoExplicito = tipoLLM as TipoDisparador;
   } else if (tipoInferido) {
     tipoFinal = tipoInferido;
     avisos.push(
@@ -319,21 +349,26 @@ export function llmToIntencion(
   }
 
   // ----------------------------------------------------------
-  // 6) Desglose (TODO: el motor no lo soporta todavía)
+  // 6) Desglose
   // ----------------------------------------------------------
-  // Aproximación: si pidió desglose y no hay groupBy, usamos
-  // `subtipo` como groupBy (lo más parecido a "positivo/negativo/
-  // neutro" que el motor sabe hacer). Es una aproximación, no es
-  // lo mismo.
+  // El `desglose` lo resuelve `ejecutarConsultaLLM.ts` DESPUÉS
+  // de aplicar filtro, agrupando por `clasificarResultado()`
+  // (pos / neg / neu). Acá NO se toca `groupBy` (era el bug:
+  // aproximar con `groupBy: "subtipo"` producía 34 filas).
+  //
+  // Si el LLM pidió `desglose` Y `groupBy`, el ejecutor prioriza
+  // `groupBy` y avisa que el `desglose` se ignora.
+  // ----------------------------------------------------------
   if (
     consulta.desglose &&
     consulta.desglose.length > 0 &&
-    !intencion.groupBy
+    intencion.groupBy
   ) {
-    intencion.groupBy = "subtipo";
     avisos.push(
-      `El desglose (${consulta.desglose.join(", ")}) no está soportado ` +
-        `todavía por el motor. Se aproxima con groupBy: "subtipo".`
+      `Pediste desglose (${consulta.desglose.join(", ")}) y también ` +
+        `agrupación por "${intencion.groupBy}". El motor prioriza la ` +
+        `agrupación y NO aplica el desglose. Si querés el desglose, ` +
+        `quitá el "por ..." del pedido.`
     );
   }
 
@@ -372,6 +407,7 @@ export function llmToIntencion(
     intencion,
     filtro,
     jugadorTexto,
+    tipoExplicito,
     avisos,
   };
 }
@@ -379,7 +415,7 @@ export function llmToIntencion(
 // ------------------------------------------------------------
 // HELPERS DE APOYO PARA EL CALLER
 // ------------------------------------------------------------
-// `resolverJugadorEnFiltro` se llama después de resolver el
+// `inyectarJugadorEnFiltro` se llama después de resolver el
 // nombre del jugador (con `resolverJugador()`), porque este
 // archivo no tiene acceso a la lista de jugadores.
 // ------------------------------------------------------------
@@ -412,6 +448,7 @@ export function describirConversion(r: ResultadoConversion): string {
   if (r.intencion.groupBy) parts.push(`groupBy=${r.intencion.groupBy}`);
   if (r.intencion.tiempo) parts.push(`tiempo=${r.intencion.tiempo.tipo}`);
   if (r.jugadorTexto) parts.push(`jugador="${r.jugadorTexto}"`);
+  if (r.tipoExplicito) parts.push(`tipoExpl=${r.tipoExplicito}`);
   if (r.avisos.length > 0) parts.push(`avisos=${r.avisos.length}`);
   return parts.join(" | ");
 }
