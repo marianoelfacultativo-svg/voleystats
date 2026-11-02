@@ -12,6 +12,10 @@
 
 import type { AccionVisual } from "../../app/equipo/adaptadorUnificadoV2";
 import type { CategoriaResultado, UbicacionFiltro } from "./tipos";
+import {
+  clasificarSubtipo,
+  puntajeDeSubtipo,
+} from "./catalogoSubtipos";
 
 export function baseSubtipo(a: AccionVisual): string {
   const s = a.subtipo !== null && a.subtipo !== undefined ? String(a.subtipo) : "";
@@ -22,54 +26,29 @@ export function clasificarResultado(a: AccionVisual): CategoriaResultado {
   const sub = baseSubtipo(a).toLowerCase();
   const tipo = a.tipo;
 
+  // Override explícito del DataEntry: si está marcado como error, es error.
   if (a.es_error) return "error";
 
+  // Mapear "armado" (singular, viene de AccionVisual) a "armados" (catálogo).
+  const fundamento = tipo === "armado" ? "armados" : tipo;
+
+  const cat = clasificarSubtipo(fundamento, sub);
+  if (cat !== null) return cat;
+
+  // Fallback defensivo para subtipos no catalogados.
+  // Replica el comportamiento viejo para no romper nada raro.
   if (tipo === "ataque") {
-    if (
-      sub === "punto" ||
-      sub === "punto_directo_ataque" ||
-      sub === "punto_desviado_ataque" ||
-      sub === "use_rival_ataque"
-    )
-      return "punto";
-
-    if (
-      sub.includes("error") ||
-      sub.includes("gorro") ||
-      sub === "error_red_ataque" ||
-      sub === "error_afuera_ataque"
-    )
-      return "error";
-
+    if (sub.includes("error") || sub.includes("gorro")) return "error";
     return "neutro";
   }
-
-  if (tipo === "saque") {
-    if (sub === "ace") return "punto";
-    if (sub === "negativo" || sub.includes("error")) return "error";
-    return "neutro";
-  }
-
-  if (tipo === "bloqueo") {
-    if (sub === "punto") return "punto";
-    if (sub === "red" || sub === "use_rival") return "error";
-    return "neutro";
-  }
-
   if (tipo === "recepcion") {
     if (sub === "ace_contra" || sub === "error_directo") return "error";
-    if (sub === "perfecta" || sub === "2x_positiva" || sub === "positiva") return "punto";
+    if (sub === "perfecta" || sub === "2x_positiva" || sub === "positiva")
+      return "punto";
     return "neutro";
   }
-
-  if (tipo === "defensa") {
-    if (sub === "error_def" || sub === "errores_graves" || sub === "mala_libre") return "error";
-    if (sub === "gran_def" || sub === "toque_positiva" || sub === "cobertura_positiva") return "punto";
-    return "neutro";
-  }
-
-  if (sub.includes("punto") || sub === "ace") return "punto";
-  if (sub.includes("error") || sub === "horrible" || sub === "malo") return "error";
+  if (sub.includes("punto")) return "punto";
+  if (sub.includes("error")) return "error";
   return "neutro";
 }
 
@@ -82,96 +61,7 @@ export function ubicacionDeZona(zona: number | null): UbicacionFiltro {
 
 export function puntajeDeAccion(a: AccionVisual): number | null {
   const sub = baseSubtipo(a);
-
-  if (a.tipo === "saque") {
-    switch (sub) {
-      case "ace": return 10;
-      case "positivo_mas": return 8;
-      case "positivo": return 6;
-      case "neutro": return 5;
-      case "negativo": return 2;
-      default: return null;
-    }
-  }
-
-  if (a.tipo === "recepcion") {
-    switch (sub) {
-      case "perfecta": return 10;
-      case "positiva": return 8;
-      case "intermedia": return 5;
-      case "negativa": return 4;
-      case "doble_negativa": return 2;
-      case "overpass": return 1;
-      case "error_directo": return 0;
-      default: return null;
-    }
-  }
-
-  if (a.tipo === "armado") {
-    if (sub === "R") return 5;
-    const n = parseInt(sub, 10);
-    if (isNaN(n)) return null;
-    switch (n) {
-      case 6: return 10;
-      case 5: return 8;
-      case 4: return 6;
-      case 3: return 3;
-      case 2: return 1;
-      case 1: return 0;
-      default: return null;
-    }
-  }
-
-  if (a.tipo === "ataque") {
-    switch (sub) {
-      case "punto":
-      case "punto_directo_ataque":
-      case "punto_desviado_ataque":
-      case "use_rival_ataque":
-        return 10;
-      case "neutro":
-      case "neutro_bloqueo_cobertura_ataque":
-      case "neutro_desvio_bloqueo_defensa_ataque":
-      case "neutro_defensa_ataque":
-        return 2;
-      case "error":
-      case "error_red_ataque":
-      case "error_afuera_ataque":
-      case "gorro_ataque":
-        return 0;
-      default: return null;
-    }
-  }
-
-  if (a.tipo === "bloqueo") {
-    switch (sub) {
-      case "punto": return 10;
-      case "positivo_mas": return 8;
-      case "positivo": return 6;
-      case "neutro": return 5;
-      case "use_rival": return 3;
-      case "filtrada": return 2;
-      case "red": return 0;
-      default: return null;
-    }
-  }
-
-  if (a.tipo === "defensa") {
-    switch (sub) {
-      case "gran_def":
-      case "toque_positiva":
-      case "cobertura_positiva":
-        return 10;
-      case "neutro": return 5;
-      case "toque_negativa":
-      case "error_def":
-      case "cobertura_negativa":
-      case "errores_graves":
-        return 0;
-      case "mala_libre": return -2;
-      default: return null;
-    }
-  }
-
-  return null;
+  const tipo = a.tipo;
+  const fundamento = tipo === "armado" ? "armados" : tipo;
+  return puntajeDeSubtipo(fundamento, sub);
 }

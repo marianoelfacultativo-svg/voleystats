@@ -35,6 +35,10 @@ import {
   clasificarResultado,
   ubicacionDeZona,
 } from "../analisis/clasificacion";
+import {
+  clasificarSubtipo,
+  puntajeDeSubtipo,
+} from "../analisis/catalogoSubtipos";
 import { redondear } from "./agregador";
 import type { GroupBy } from "./intenciones";
 import {
@@ -158,7 +162,9 @@ function calcularCrucesDePunto(lista: AccionVisual[]): number {
 export function killPct(acciones: AccionVisual[]): MetricaResultado {
   const ataques = acciones.filter(esAtaque);
   if (ataques.length === 0) return vacio();
-  const kills = ataques.filter((a) => sub(a) === "punto").length;
+  const kills = ataques.filter(
+    (a) => clasificarSubtipo("ataque", sub(a)) === "punto"
+  ).length;
   return pct(kills, ataques.length);
 }
 
@@ -170,16 +176,9 @@ export function attackEfficiency(
   let kills = 0;
   let errores = 0;
   for (const a of ataques) {
-    const s = sub(a);
-    if (s === "punto") kills += 1;
-    else if (
-      s === "error" ||
-      s === "error_afuera_ataque" ||
-      s === "error_red_ataque" ||
-      s === "gorro_ataque"
-    ) {
-      errores += 1;
-    }
+    const cat = clasificarSubtipo("ataque", sub(a));
+    if (cat === "punto") kills += 1;
+    else if (cat === "error") errores += 1;
   }
   return eff(kills - errores, ataques.length);
 }
@@ -478,10 +477,11 @@ export function accionesPunto(
 
   let cuenta = 0;
   for (const a of visibles) {
-    const s = sub(a);
-    if (a.tipo === "saque" && !a.es_rival && s === "ace") cuenta += 1;
-    else if (a.tipo === "ataque" && !a.es_rival && s === "punto") cuenta += 1;
-    else if (a.tipo === "bloqueo" && !a.es_rival && s === "punto") cuenta += 1;
+    if (a.es_rival) continue;
+    const fundamento = a.tipo === "armado" ? "armados" : a.tipo;
+    if (clasificarSubtipo(fundamento, sub(a)) === "punto") {
+      cuenta += 1;
+    }
   }
 
   return conteo(cuenta, visibles.length, "acciones");

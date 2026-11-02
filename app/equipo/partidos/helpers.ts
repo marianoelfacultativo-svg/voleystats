@@ -15,7 +15,6 @@ import {
   calcularEstadisticasEquipo,
   calcularEstadisticasJugador,
   calcularMaxAccionesPorFundamento,
-  VALORES_RECEPCION,
   type EstadisticasJugador,
   type PromedioRecepcionSet,
 } from "@/lib/estadisticas";
@@ -25,6 +24,7 @@ import {
   type Jugador,
   type Partido,
 } from "./types";
+import { puntajeDeSubtipo } from "../../lib/analisis/catalogoSubtipos";
 
 // ------------------------------------------------------------
 // ADAPTER: AccionDB[] → AccionVisual[]
@@ -132,7 +132,7 @@ export function calcularPromediosRecepcionEquipo(
     let suma = 0;
     let total = 0;
     for (const a of delSet) {
-      const v = VALORES_RECEPCION[a.valoracion] ?? 0;
+      const v = puntajeDeSubtipo("recepcion", a.valoracion) ?? 0;
       suma += v * a.cantidad;
       total += a.cantidad;
     }
@@ -335,7 +335,7 @@ export function seriesRecepcionDePartidos(
       let suma = 0;
       let total = 0;
       for (const a of delSet) {
-        const v = VALORES_RECEPCION[a.valoracion] ?? 0;
+        const v = puntajeDeSubtipo("recepcion", a.valoracion) ?? 0;
         suma += v * a.cantidad;
         total += a.cantidad;
       }

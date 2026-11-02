@@ -125,18 +125,16 @@ function calcularBarrasPorFundamento(
       if (v === "punto") cat = "positivas";
       else if (v === "error") cat = "negativas";
     } else if (fund === "recepcion") {
-      if (v === "positiva" || v === "2x_positiva" || v === "perfecta")
-        cat = "positivas";
+      if (v === "perfecta" || v === "positiva") cat = "positivas";
       else if (
         v === "negativa" ||
-        v === "2x_negativa" ||
-        v === "3x_negativa" ||
-        v === "ace_contra" ||
         v === "doble_negativa" ||
         v === "overpass" ||
-        v === "error_directo"
+        v === "error_directo" ||
+        v === "ace_contra"
       )
         cat = "negativas";
+      // intermedia → se queda en neutras
     } else if (fund === "bloqueo") {
       if (v === "punto" || v === "positivo_mas" || v === "positivo")
         cat = "positivas";

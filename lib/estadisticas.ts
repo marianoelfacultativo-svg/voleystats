@@ -3,6 +3,8 @@
 // Sistema de puntaje: escala -2 a 10 (neutro 5)
 // ============================================
 
+import { CATALOGO, puntajeDeSubtipo } from "./analisis/catalogoSubtipos";
+
 export interface AccionDB {
   jugador_id: string;
   partido_id?: string;
@@ -43,61 +45,26 @@ export interface AccionDB {
   resultado_partido?: "ganado" | "perdido" | null;
 }
 
-export const BASE_SCORES: Record<string, Record<string, number>> = {
-  saque: {
-    ace: 10,
-    positivo_mas: 8,
-    positivo: 6,
-    neutro: 5,
-    negativo: 2,
-  },
-  recepcion: {
-    "2x_positiva": 10,
-    positiva: 8,
-    negativa: 5,
-    "2x_negativa": 3,
-    "3x_negativa": 1,
-    ace_contra: 0,
-  },
-  ataque: {
-    punto: 10,
-    neutro: 2,
-    error: 0,
-  },
-  bloqueo: {
-    punto: 10,
-    positivo_mas: 8,
-    positivo: 6,
-    neutro: 5,
-    use_rival: 3,
-    filtrada: 2,
-    red: 0,
-  },
-  defensa: {
-    gran_def: 10,
-    toque_positiva: 10,
-    cobertura_positiva: 10,
-    toque_negativa: 0,
-    cobertura_negativa: 0,
-    error_def: 0,
-    errores_graves: 0,
-    mala_libre: -2,
-    neutro: 5,
-  },
-  armados: {
-    genial: 10,
-    perfecto: 8,
-    correcto: 6,
-    flojo: 3,
-    malo: 1,
-    horrible: 0,
-  },
-  toque: {
-    punto: 10,
-    neutro: 5,
-    error: 0,
-  },
-};
+export const BASE_SCORES: Record<string, Record<string, number>> = (() => {
+  const FUNDAMENTOS = [
+    "saque",
+    "recepcion",
+    "ataque",
+    "bloqueo",
+    "defensa",
+    "armados",
+    "toque",
+  ] as const;
+  const out: Record<string, Record<string, number>> = {};
+  for (const fund of FUNDAMENTOS) {
+    const mapa = CATALOGO[fund] ?? {};
+    out[fund] = {};
+    for (const [subtipo, info] of Object.entries(mapa)) {
+      out[fund][subtipo] = info.puntaje;
+    }
+  }
+  return out;
+})();
 
 export const PUNTAJE_NEUTRO = 5;
 export const PUNTAJE_MIN = -2;
@@ -109,10 +76,7 @@ export function puntajeBase(
   fundamento: string,
   valoracion: string
 ): number | null {
-  const f = BASE_SCORES[fundamento];
-  if (!f) return null;
-  const v = f[valoracion];
-  return v === undefined ? null : v;
+  return puntajeDeSubtipo(fundamento, valoracion);
 }
 
 export function ajustarPorContexto(
@@ -136,7 +100,7 @@ export const VALORES_POR_FUNDAMENTO = BASE_SCORES;
 
 const ACCIONES_POSITIVAS: Record<string, string[]> = {
   saque: ["ace", "positivo_mas", "positivo"],
-  recepcion: ["2x_positiva", "positiva"],
+  recepcion: ["perfecta", "positiva"],
   ataque: ["punto"],
   bloqueo: ["punto", "positivo_mas", "positivo"],
   defensa: ["toque_positiva", "gran_def", "cobertura_positiva"],
@@ -144,7 +108,7 @@ const ACCIONES_POSITIVAS: Record<string, string[]> = {
 
 const ACCIONES_NEGATIVAS: Record<string, string[]> = {
   saque: ["negativo"],
-  recepcion: ["negativa", "2x_negativa", "3x_negativa", "ace_contra"],
+  recepcion: ["negativa", "doble_negativa", "overpass", "error_directo", "ace_contra"],
   ataque: ["error"],
   bloqueo: ["use_rival", "red"],
   defensa: [
@@ -167,7 +131,7 @@ const DISPLAY_PUNTOS: Record<string, string[]> = {
 
 const DISPLAY_ERRORES: Record<string, string[]> = {
   saque: ["negativo"],
-  recepcion: ["ace_contra"],
+  recepcion: ["ace_contra", "error_directo"],
   ataque: ["error"],
   bloqueo: ["use_rival", "red"],
   defensa: ["error_def", "errores_graves"],
@@ -185,7 +149,7 @@ const SALDO_POSITIVOS: Record<string, string[]> = {
 
 const SALDO_NEGATIVOS: Record<string, string[]> = {
   saque: ["negativo"],
-  recepcion: ["ace_contra"],
+  recepcion: ["ace_contra", "error_directo"],
   ataque: ["error"],
   bloqueo: ["red"],
   defensa: [],
@@ -242,6 +206,11 @@ export const ETIQUETAS_VALORACION: Record<string, string> = {
   "2x_negativa": "2x Negativa",
   "3x_negativa": "3x Negativa",
   ace_contra: "Ace en contra",
+  perfecta: "Perfecta",
+  intermedia: "Intermedia",
+  doble_negativa: "Doble negativa",
+  overpass: "Overpass",
+  error_directo: "Error directo",
   punto: "Punto",
   error: "Error",
   use_rival: "Use Rival",
