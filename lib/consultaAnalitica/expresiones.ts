@@ -23,6 +23,10 @@
 //
 // Alias: `numero` es equivalente a `num` (compatibilidad con
 // consumidores que usan la forma larga).
+//
+// v1.1 (FASE 7.5 — fix B2):
+//   + CAMPOS_BOOLEANOS suma "setGanado" para que el filtro
+//     "en sets ganados" compile como comparación de booleano.
 // ============================================================
 
 import type { VariablesPunto } from "./variablesPunto";
@@ -107,6 +111,7 @@ const CAMPOS_BOOLEANOS: Set<string> = new Set([
   "ganoPropio",
   "esTieBreak",
   "setTerminado",
+  "setGanado",
 ]);
 
 const CAMPOS_ARRAY: Set<string> = new Set([

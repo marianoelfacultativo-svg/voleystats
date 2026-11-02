@@ -1,37 +1,25 @@
 // ============================================================
 // PARSER DE INTENCIÓN — FASE 1
 // ============================================================
-// Convierte una frase en lenguaje natural ("¿cuántos ataques erró
-// Juan en los últimos 3 partidos?") en un IntencionQuery tipado
-// (tipo, agregación, groupBy, métrica, tiempo, condición, etc.).
+// Convierte una frase en lenguaje natural en un IntencionQuery.
 //
-// NO resuelve el QUÉ (eso lo hace FASE 2 con el filtro extendido)
-// ni el CÓMO (eso lo hace FASE 3 con el motor de cálculo).
-// Solo detecta la INTENCIÓN de la consulta.
+// v1.3 (FASE 7.5 — fixes de prioridad):
+//   + El compilador (capa 4) corre ANTES que `extraerMetrica`
+//     cuando `pareceCondicionCompleja` es true. Su métrica gana.
+//   + Si el compilador marca `ignorarMetricaParser`, se descarta
+//     la métrica detectada por `extraerMetrica` (fix "en sets
+//     ganados" que daba `sets_ganados`).
+//   + `expr` y `compararConBaseline` se propagan a `condicion`.
+//   + Fix de "quiero ver como fueron X": si el texto empieza con
+//     verbo de acción (quiero/mostrame/dame/listame/decime/
+//     contame/muestrame/etc.) y hay `tipo: "trend"`, se degrada a
+//     `count`. Así "quiero ver como fueron los ataques" no cae en
+//     trend.
+//   + `extraerMetrica` se ignora si el compilador ya decidió
+//     `ignorarMetricaParser: true`.
 //
 // v1.2 (FASE 7.5 — AST compilado):
-//   + Llama a `compilarCondicion()` cuando `pareceCondicionCompleja()`
-//     detecta que la frase tiene lógica (cuando X, compare_to_baseline,
-//     en sets ganados, racha de N+, cruces, etc.).
-//   + Si el compilador devuelve un `filtro` (Expr) → lo guarda en
-//     `condicion.expr`.
-//   + Si devuelve `compararConBaseline=true` → lo guarda en
-//     `condicion.compararConBaseline`.
-//   + Si devuelve `metrica` y el parser no detectó una, la asigna.
-//   + Los fragmentos del compilador se suman a `resultado.fragmentos`.
-//   + El resto del comportamiento (sinónimos de siempre) NO cambia.
-//     Si el compilador no matchea, el parser sigue funcionando igual.
-//
-// v1.1 (FASE 6 — Rondas 1.3 y 2):
-//   + `extraerCondicion` detecta `salidaRol` (Cat. 3) usando
-//     SINONIMOS_SALIDA_ROL.
-//   + `extraerCondicion` detecta `crucesMinimos` (Cat. 6) usando
-//     extraerCrucesDeTexto.
-//   + `extraerCondicion` usa el diccionario externo SINONIMOS_FASE
-//     (Cat. 5) en lugar del array local que tenía embebido.
-//
-// v1.0:
-//   + Versión inicial del refactor: parser puro de intención.
+//   + Llama a `compilarCondicion()` cuando `pareceCondicionCompleja()`.
 // ============================================================
 
 import {
@@ -74,53 +62,83 @@ function ordenarPorLargoDesc(arr: string[]): string[] {
   return [...arr].sort((a, b) => b.length - a.length);
 }
 
-/**
- * Convierte "1", "un", "dos", "tres"… en un número.
- * Devuelve null si no es parseable.
- */
 function parsearNumero(s: string): number | null {
   const n = s.toLowerCase().trim();
   const mapa: Record<string, number> = {
-    un: 1,
-    uno: 1,
-    una: 1,
-    dos: 2,
-    tres: 3,
-    cuatro: 4,
-    cinco: 5,
-    seis: 6,
-    siete: 7,
-    ocho: 8,
-    nueve: 9,
-    diez: 10,
-    once: 11,
-    doce: 12,
+    un: 1, uno: 1, una: 1,
+    dos: 2, tres: 3, cuatro: 4, cinco: 5,
+    seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10,
+    once: 11, doce: 12,
   };
   if (mapa[n] !== undefined) return mapa[n];
   const num = parseInt(n, 10);
   return isNaN(num) ? null : num;
 }
 
-/** "malo" → 2, "perfecto" → 5, "genial" → 6, etc. */
 function palabraACalidad(palabra: string): number | null {
   const mapa: Record<string, number> = {
-    horrible: 1,
-    pesimo: 1,
-    desastre: 1,
-    malo: 2,
-    impreciso: 2,
-    flojo: 3,
-    regular: 3,
-    aceptable: 3,
-    correcto: 4,
-    bueno: 4,
-    perfecto: 5,
-    excelente: 5,
-    genial: 6,
-    impecable: 6,
-    espectacular: 6,
+    horrible: 1, pesimo: 1, desastre: 1,
+    malo: 2, impreciso: 2,
+    flojo: 3, regular: 3, aceptable: 3,
+    correcto: 4, bueno: 4,
+    perfecto: 5, excelente: 5,
+    genial: 6, impecable: 6, espectacular: 6,
   };
   return mapa[palabra] ?? null;
+}
+
+// ------------------------------------------------------------
+// VERBOS DE ACCIÓN (fix "quiero ver como fueron X")
+// ------------------------------------------------------------
+// Si la frase empieza con un verbo así, el usuario QUIERE VER
+// las acciones, no un análisis de tendencia. Forzamos count si
+// el parser cae en `trend`.
+// ------------------------------------------------------------
+
+const VERBOS_ACCION = [
+  "quiero ver",
+  "quiero saber",
+  "quiero listar",
+  "quiero mostrar",
+  "quiero conocer",
+  "mostrame",
+  "mostranos",
+  "mostrame los",
+  "mostrame las",
+  "muestrame",
+  "muestrame los",
+  "muestrame las",
+  "dame",
+  "danos",
+  "dame los",
+  "dame las",
+  "listame",
+  "listame los",
+  "listame las",
+  "decime",
+  "decime los",
+  "decime las",
+  "contame",
+  "contame los",
+  "contame las",
+  "pasame",
+  "pasame los",
+  "pasame las",
+  "mostrame como",
+  "mostrame cuando",
+  "mostrame donde",
+  "decime como",
+  "decime cuando",
+  "contame como",
+  "contame cuando",
+];
+
+function esVerboDeAccion(textoNorm: string): boolean {
+  const t = textoNorm.trim();
+  for (const v of VERBOS_ACCION) {
+    if (t.startsWith(v)) return true;
+  }
+  return false;
 }
 
 // ------------------------------------------------------------
@@ -192,7 +210,6 @@ function extraerMetrica(
 function extraerTiempo(
   texto: string
 ): { tiempo: TiempoFiltro; fragmentos: string[] } | null {
-  // --- Día de la semana ("el lunes", "los sábados", "un martes") ---
   const diaRe =
     /\b(?:el|los|un|alg[uú]n|este|ese)\s+(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/;
   const mDia = texto.match(diaRe);
@@ -206,7 +223,6 @@ function extraerTiempo(
     }
   }
 
-  // --- Últimos N partidos / sets / jugadas ---
   const ultimosRe =
     /\b(?:los\s+|las\s+)?(?:ultimos|ultimas|ultimo|ultima|pasados|pasadas|pasado|pasada|recientes?|anteriores?)\s+(\d{1,2}|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+(partidos?|sets?|jugadas?|puntos?|acciones?|juegos?)\b/;
   const mUlt = texto.match(ultimosRe);
@@ -222,7 +238,6 @@ function extraerTiempo(
     return { tiempo: { tipo, n }, fragmentos: [mUlt[0]] };
   }
 
-  // --- Último partido / set / punto (sin número) ---
   const ultimoRe =
     /\b(?:el\s+|la\s+)?(ultimo|ultima)\s+(partido|set|juego|punto|semana|temporada)\b/;
   const mUlt2 = texto.match(ultimoRe);
@@ -260,7 +275,6 @@ function extraerTiempo(
     }
   }
 
-  // --- Esta temporada / semana / mes / año ---
   const mapaTemporada: { patron: RegExp; tipo: TiempoTipo }[] = [
     { patron: /\besta\s+temporada\b/, tipo: "esta_temporada" },
     { patron: /\btemporada\s+actual\b/, tipo: "esta_temporada" },
@@ -280,7 +294,6 @@ function extraerTiempo(
     if (m) return { tiempo: { tipo }, fragmentos: [m[0]] };
   }
 
-  // --- Set específico ("en el set 3", "set 2") ---
   const setRe = /\b(?:en\s+el\s+)?set\s+(\d)\b/;
   const mSet = texto.match(setRe);
   if (mSet) {
@@ -290,7 +303,6 @@ function extraerTiempo(
     };
   }
 
-  // --- Punto específico ("en el punto 5", "punto 12") ---
   const puntoRe = /\b(?:en\s+el\s+)?punto\s+(\d{1,3})\b/;
   const mPunto = texto.match(puntoRe);
   if (mPunto) {
@@ -300,7 +312,6 @@ function extraerTiempo(
     };
   }
 
-  // --- Partido específico (sin resolver el rival todavía) ---
   const partidoRe = /\b(?:en\s+el\s+partido|en\s+el\s+encuentro)\b/;
   const mPartido = texto.match(partidoRe);
   if (mPartido) {
@@ -316,15 +327,6 @@ function extraerTiempo(
 // ------------------------------------------------------------
 // 5) CONDICIÓN
 // ------------------------------------------------------------
-// v1.1:
-//   + Fase del rally usa SINONIMOS_FASE.
-//   + Detecta salidaRol (Cat. 3).
-//   + Detecta crucesMinimos (Cat. 6).
-//
-// v1.2:
-//   + Al final, si la frase parece compleja, llama a
-//     compilarCondicion() y vuelca `expr` + `compararConBaseline`.
-// ------------------------------------------------------------
 
 function extraerCondicion(
   texto: string
@@ -332,7 +334,6 @@ function extraerCondicion(
   const cond: CondicionFiltro = {};
   const fragmentos: string[] = [];
 
-  // --- Marcador exacto: "20-18", "20 a 18", "20 al 18" ---
   const marcadorRe = /(\d{1,2})\s*(?:-|a|al)\s*(\d{1,2})/;
   const mMarc = texto.match(marcadorRe);
   if (mMarc) {
@@ -342,7 +343,6 @@ function extraerCondicion(
     fragmentos.push(mMarc[0]);
   }
 
-  // --- Diferencia de marcador: "por 2 puntos", "de 3 puntos" ---
   const difRe =
     /\b(?:por|de)\s+(un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d{1,2})\s+puntos?\b/;
   const mDif = texto.match(difRe);
@@ -354,7 +354,6 @@ function extraerCondicion(
     }
   }
 
-  // --- Punto crítico ---
   if (
     /\b(?:punto|puntos)\s+(?:critico|criticos)\b/.test(texto) ||
     /\b(?:match\s*point|punto\s+de\s+(?:partido|set))\b/.test(texto)
@@ -363,7 +362,6 @@ function extraerCondicion(
     fragmentos.push("punto crítico");
   }
 
-  // --- Racha mínima: "racha de 3", "3 puntos seguidos" ---
   const rachaRe =
     /\bracha\s+(?:de\s+)?(\d{1,2}|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b/;
   const mRacha = texto.match(rachaRe);
@@ -386,7 +384,6 @@ function extraerCondicion(
     }
   }
 
-  // --- Fase del rally (diccionario externo, Cat. 5) ---
   for (const entrada of SINONIMOS_FASE) {
     const patrones = ordenarPorLargoDesc(entrada.patrones);
     let match: string | null = null;
@@ -403,7 +400,6 @@ function extraerCondicion(
     }
   }
 
-  // --- Toques mínimos del equipo ---
   const toquesRe = /\bcon\s+(1|2|3|4)\s+toques?\b/;
   const mToques = texto.match(toquesRe);
   if (mToques) {
@@ -411,7 +407,6 @@ function extraerCondicion(
     fragmentos.push(mToques[0]);
   }
 
-  // --- Calidad de armado previo ---
   const calidadRe =
     /\b(?:con\s+)?(?:armado|calidad)\s+(?:de\s+)?(\d|malo|regular|flojo|bueno|correcto|excelente|perfecto|genial|horrible|pesimo|impreciso|aceptable|impecable|espectacular|desastre)\b/;
   const mCalidad = texto.match(calidadRe);
@@ -424,7 +419,6 @@ function extraerCondicion(
     }
   }
 
-  // --- Error previo ---
   if (
     /\b(?:despues|tras|luego)\s+de\s+(?:errar|un\s+error|errores|fallar|fallo)\b/.test(
       texto
@@ -435,7 +429,6 @@ function extraerCondicion(
     fragmentos.push("con error previo");
   }
 
-  // --- Acierto previo ---
   if (
     /\b(?:despues|tras|luego)\s+de\s+(?:un\s+punto|un\s+acierto|acertar|anotar|un\s+kill)\b/.test(
       texto
@@ -446,7 +439,6 @@ function extraerCondicion(
     fragmentos.push("con acierto previo");
   }
 
-  // --- Ubicación (delantero / zaguero / líbero) ---
   for (const { patrones, ubicacion } of SINONIMOS_UBICACION) {
     const ordenados = ordenarPorLargoDesc(patrones);
     let encontrado = false;
@@ -461,7 +453,6 @@ function extraerCondicion(
     if (encontrado) break;
   }
 
-  // --- Zona del jugador (solo si NO es un "por zona") ---
   const esPorZona = /\bpor\s+(?:zona|z)\s*[1-6]\b/.test(texto);
   if (!esPorZona) {
     const zonaRe = /\b(?:en\s+)?(?:zona|z)\s*([1-6])\b/;
@@ -472,7 +463,6 @@ function extraerCondicion(
     }
   }
 
-  // --- Cambio de jugador ---
   const cambioOrdenados = ordenarPorLargoDesc(SINONIMOS_CAMBIO);
   for (const patron of cambioOrdenados) {
     if (!texto.includes(patron)) continue;
@@ -491,7 +481,6 @@ function extraerCondicion(
     break;
   }
 
-  // --- Salida por rol (Cat. 3) ---
   for (const entrada of SINONIMOS_SALIDA_ROL) {
     const patrones = ordenarPorLargoDesc(entrada.patrones);
     let match: string | null = null;
@@ -508,7 +497,6 @@ function extraerCondicion(
     }
   }
 
-  // --- Cruces mínimos de red (Cat. 6) ---
   const cruces = extraerCrucesDeTexto(texto);
   if (cruces) {
     cond.crucesMinimos = cruces.crucesMinimos;
@@ -561,7 +549,7 @@ function extraerOrdenamiento(
 }
 
 // ------------------------------------------------------------
-// 8) LÍMITE (top N, los N mejores, etc.)
+// 8) LÍMITE
 // ------------------------------------------------------------
 
 function extraerLimite(
@@ -593,19 +581,53 @@ export function parsearIntencion(textoOriginal: string): IntencionQuery {
 
   const texto = normalizar(original);
 
-  // --- GroupBy primero (antes que intención, para no perder "por X") ---
+  // ============================================================
+  // 0. COMPILADOR (capa 4) — corre PRIMERO si la frase es compleja
+  // ============================================================
+  // Esto garantiza que:
+  //   - "en sets ganados" no se confunda con métrica `sets_ganados`.
+  //   - "cuando X, cómo varía Y" produzca `expr` + baseline.
+  //   - "en racha de 3+" produzca el filtro de racha.
+  //   - "más de N cruces" produzca el filtro de cruces.
+  //
+  // El compilador puede decidir:
+  //   - `filtro`: Expr del AST → va a `condicion.expr`.
+  //   - `metrica`: MetricaDef → gana sobre `extraerMetrica`.
+  //   - `compararConBaseline`: bool → va a `condicion.compararConBaseline`.
+  //   - `ignorarMetricaParser`: bool → descartar `extraerMetrica`.
+  //
+  // Si la frase NO es compleja, no se llama al compilador y todo
+  // sigue igual que v1.2.
+  // ============================================================
+  const compilado = pareceCondicionCompleja(texto)
+    ? compilarCondicion(texto)
+    : null;
+
+  // --- GroupBy primero ---
   const gb = extraerGroupBy(texto);
   if (gb) {
     resultado.groupBy = gb.groupBy;
     resultado.fragmentos.push(gb.fragmento);
   }
 
-  // --- Métrica específica (ej "kill %", "sideout %", "puntos por set") ---
-  const met = extraerMetrica(texto);
-  if (met) {
-    resultado.metrica = met.metrica;
-    resultado.fragmentos.push(met.fragmento);
+  // --- Métrica del parser ---
+  // Si el compilador dijo "ignorarMetricaParser", la descartamos.
+  // Si el compilador tiene métrica propia, esa gana.
+  let metricaFinal: string | null = null;
+  if (compilado && compilado.metrica) {
+    metricaFinal = compilado.metrica.nombre;
+    resultado.fragmentos.push(...compilado.fragmentos);
+  } else if (compilado && compilado.ignorarMetricaParser) {
+    // No asignar métrica del parser.
+    resultado.fragmentos.push(...compilado.fragmentos);
+  } else {
+    const met = extraerMetrica(texto);
+    if (met) {
+      metricaFinal = met.metrica;
+      resultado.fragmentos.push(met.fragmento);
+    }
   }
+  resultado.metrica = metricaFinal;
 
   // --- Intención (count / percentage / average / etc.) ---
   const int = detectarIntencion(texto);
@@ -615,7 +637,27 @@ export function parsearIntencion(textoOriginal: string): IntencionQuery {
     resultado.fragmentos.push(int.fragmento);
   }
 
-  // --- Comparación (solo si hay vs/versus/contra/frente a) ---
+  // ============================================================
+  // FIX v1.3: "quiero ver como fueron X"
+  // ============================================================
+  // Si la frase empieza con un verbo de acción ("quiero ver",
+  // "mostrame", etc.) y el parser cayó en `trend` por "como
+  // fueron", degradamos a `count` porque el usuario quiere ver
+  // las acciones, no la evolución.
+  // ============================================================
+  if (
+    esVerboDeAccion(texto) &&
+    resultado.tipo === "trend"
+  ) {
+    resultado.tipo = "count";
+    resultado.agregacion = "count";
+    // Sacar "trend" de los fragmentos para que no confunda al usuario.
+    resultado.fragmentos = resultado.fragmentos.filter(
+      (f) => f !== "como viene" && f !== "evolucion" && f !== "tendencia"
+    );
+  }
+
+  // --- Comparación ---
   const comp = extraerComparacion(texto);
   if (comp) {
     resultado.comparacion = { a: comp.a, b: comp.b };
@@ -623,60 +665,38 @@ export function parsearIntencion(textoOriginal: string): IntencionQuery {
     resultado.fragmentos.push(comp.fragmento);
   }
 
-  // --- Tiempo (días, últimos N, set N, etc.) ---
+  // --- Tiempo ---
   const tmp = extraerTiempo(texto);
   if (tmp) {
     resultado.tiempo = tmp.tiempo;
     resultado.fragmentos.push(...tmp.fragmentos);
   }
 
-  // --- Condición (marcador, racha, ubicación, cambio, fase, salida, cruces) ---
+  // --- Condición (parser) ---
   const cond = extraerCondicion(texto);
-
-  // ============================================================
-  // FASE 7.5 — AST compilado (capa 4)
-  // ============================================================
-  // Si la frase tiene lógica compleja ("cuando X, cómo varía Y",
-  // "en sets ganados", "racha de 3+", "en la mitad de puntos que...",
-  // etc.), el compilador produce una Expr booleana y opcionalmente
-  // detecta una métrica + baseline.
-  //
-  // El compilador NO reemplaza al parser: se suma. Si el compilador
-  // no matchea nada, todo sigue como antes.
-  // ============================================================
   let condFinal: CondicionFiltro | null = cond ? cond.condicion : null;
   const fragmentosCond: string[] = cond ? [...cond.fragmentos] : [];
 
-  if (pareceCondicionCompleja(texto)) {
-    const compilado = compilarCondicion(texto);
-
-    if (compilado.metrica) {
-      // Si el parser no detectó una métrica, el compilador decide.
-      if (!resultado.metrica) {
-        resultado.metrica = compilado.metrica.nombre;
-        resultado.fragmentos.push(...compilado.fragmentos);
-      }
-    } else if (compilado.fragmentos.length > 0) {
-      resultado.fragmentos.push(...compilado.fragmentos);
-    }
-
-    // Si el compilador produjo un filtro (Expr), lo guardamos.
+  // ============================================================
+  // MERGE con el compilador (capa 4)
+  // ============================================================
+  if (compilado) {
+    // 1. Filtro del compilador → `condicion.expr`.
     if (compilado.filtro) {
       if (!condFinal) condFinal = {};
       condFinal.expr = compilado.filtro;
-      fragmentosCond.push(...compilado.fragmentos);
+      fragmentosCond.push("expr: " + compilado.fragmentos.join(" | "));
     }
 
-    // Si la frase pide comparar contra baseline, lo marcamos.
+    // 2. Comparación contra baseline.
     if (compilado.compararConBaseline) {
       if (!condFinal) condFinal = {};
       condFinal.compararConBaseline = true;
     }
 
-    // Si compiló con error, lo dejamos pasar como fragmento de debug
-    if (compilado.error) {
-      resultado.fragmentos.push(`[compilador] ${compilado.error}`);
-    }
+    // 3. Métrica del compilador (si ya la asignamos arriba, no
+    //    hace falta repetir).
+    // 4. Ignorar métrica del parser ya se resolvió arriba.
   }
 
   if (condFinal && Object.keys(condFinal).length > 0) {
@@ -684,7 +704,7 @@ export function parsearIntencion(textoOriginal: string): IntencionQuery {
     resultado.fragmentos.push(...fragmentosCond);
   }
 
-  // --- Ordenamiento (de mayor a menor / ascendente / top N) ---
+  // --- Ordenamiento ---
   const ord = extraerOrdenamiento(texto);
   if (ord) {
     resultado.ordenamiento = ord;
@@ -693,7 +713,7 @@ export function parsearIntencion(textoOriginal: string): IntencionQuery {
     );
   }
 
-  // --- Límite (top 5, los 3 mejores, etc.) ---
+  // --- Límite ---
   const lim = extraerLimite(texto);
   if (lim) {
     resultado.limite = lim.valor;

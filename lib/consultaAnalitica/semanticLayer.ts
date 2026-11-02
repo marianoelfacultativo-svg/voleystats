@@ -14,6 +14,19 @@
 //   1) Definirla en `variablesPunto.ts` (calcularla).
 //   2) Agregar su entrada a `VARIABLES` (abajo).
 //   → Todo el motor la puede usar sin tocar nada más.
+//
+// v1.1 (FASE 7.5 — fixes B11, B12):
+//   + `attack_efficiency.patrones` suma "efectividad" sola y
+//     variantes ("efectividad general", "efectividad en ataque").
+//     Cierra B11: "cuando X, cómo varía la efectividad".
+//   + `attack_efficiency` se MUEVE al final del array `METRICAS`
+//     para que "efectividad recibiendo/sacando/bloqueando/
+//     defendiendo" matcheen primero `sideout_pct`, `break_point_pct`,
+//     `block_efficiency` y `dig_efficiency` respectivamente.
+//   + Nueva métrica `reception_perfecta_pct` (perfecta / total).
+//     Cierra B12 cuando también se edite `dimensiones.ts` para que
+//     "porcentaje de recepciones perfectas" deje de matchear
+//     `reception_pct` en el parser viejo.
 // ============================================================
 
 import {
@@ -219,6 +232,14 @@ export function buscarVariableDef(path: string): VariableDef | null {
 // Las métricas NO se calculan por punto. Se calculan sobre un
 // CONJUNTO de acciones (filtradas). Se resuelven en `respuesta.ts`
 // con el motor de métricas existente.
+//
+// ORDEN IMPORTANTE (v1.1):
+//   `attack_efficiency` va AL FINAL porque su patrón "efectividad"
+//   (solo) es el más genérico de todos los que contienen esa
+//   palabra. Las métricas con patrones más específicos
+//   ("efectividad recibiendo" → sideout, "efectividad sacando" →
+//   break_point, "efectividad de bloqueo" → block, "efectividad
+//   de defensa" → dig) van ANTES para que ganen el match.
 // ------------------------------------------------------------
 
 export interface MetricaDef {
@@ -228,18 +249,6 @@ export interface MetricaDef {
 }
 
 export const METRICAS: MetricaDef[] = [
-  {
-    nombre: "attack_efficiency",
-    patrones: [
-      "efectividad de ataque",
-      "eficiencia de ataque",
-      "attack efficiency",
-      "efectividad atacando",
-      "eficiencia atacando",
-      "ataque eficiente",
-    ],
-    ayuda: "(puntos - errores) / intentos × 100",
-  },
   {
     nombre: "puntos_ganados_pct",
     patrones: [
@@ -257,7 +266,7 @@ export const METRICAS: MetricaDef[] = [
   },
   {
     nombre: "break_point_pct",
-    patrones: ["break point", "break-point", "efectividad sacando"],
+    patrones: ["break point", "break-point", "efectividad sacando", "efectividad en saque"],
     ayuda: "Puntos ganados sacando / total sacando × 100",
   },
   {
@@ -269,6 +278,40 @@ export const METRICAS: MetricaDef[] = [
       "recepción %",
     ],
     ayuda: "Recepciones positivas / total × 100",
+  },
+  // ------------------------------------------------------------
+  // NUEVA (v1.1, B12): recepciones perfectas / total.
+  //
+  // Antes esta frase ("porcentaje de recepciones perfectas") caía
+  // en `reception_pct` y sumaba perfectas + positivas en el
+  // numerador. Con esta métrica dedicada el numerador son SOLO
+  // las perfectas (R#).
+  //
+  // IMPORTANTE: cerrar B12 requiere ADEMÁS quitar
+  // "porcentaje de recepcion perfecta" de `SINONIMOS_METRICA.
+  // reception_pct` en `dimensiones.ts`, porque el parser viejo
+  // matchea antes que este semantic layer cuando la frase no es
+  // "compleja" (pareceCondicionCompleja = false).
+  // ------------------------------------------------------------
+  {
+    nombre: "reception_perfecta_pct",
+    patrones: [
+      "porcentaje de recepciones perfectas",
+      "porcentaje de recepcion perfecta",
+      "porcentaje de recepciones r#",
+      "% de recepciones perfectas",
+      "% de recepcion perfecta",
+      "% de recepciones r#",
+      "porcentaje de r# en recepcion",
+      "tasa de recepciones perfectas",
+      "tasa de recepcion perfecta",
+      "recepciones perfectas %",
+      "recepcion perfecta %",
+      "que porcentaje de recepciones perfectas",
+      "que % de recepciones perfectas",
+      "cuanto por ciento de recepciones perfectas",
+    ],
+    ayuda: "Recepciones perfectas (R#) / total de recepciones × 100",
   },
   {
     nombre: "kill_pct",
@@ -294,6 +337,32 @@ export const METRICAS: MetricaDef[] = [
     nombre: "dig_efficiency",
     patrones: ["eficiencia de defensa", "efectividad de defensa"],
     ayuda: "Defensas positivas / total × 100",
+  },
+  // ------------------------------------------------------------
+  // ATTACK_EFFICIENCY va AL FINAL (v1.1, B11)
+  // ------------------------------------------------------------
+  // "efectividad" sola es el patrón más genérico de todos los que
+  // contienen esa palabra. Va al final para que "efectividad
+  // recibiendo" (sideout), "efectividad sacando" (break_point),
+  // "efectividad de bloqueo" (block) y "efectividad de defensa"
+  // (dig) ganen primero.
+  //
+  // "cómo varía la efectividad" (sola) cae hasta acá.
+  // ------------------------------------------------------------
+  {
+    nombre: "attack_efficiency",
+    patrones: [
+      "efectividad de ataque",
+      "eficiencia de ataque",
+      "attack efficiency",
+      "efectividad atacando",
+      "eficiencia atacando",
+      "ataque eficiente",
+      "efectividad en ataque",
+      "efectividad general",
+      "efectividad",
+    ],
+    ayuda: "(puntos - errores) / intentos × 100",
   },
 ];
 

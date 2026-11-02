@@ -1,23 +1,20 @@
 // ============================================================
 // RESPUESTA — response builder
 // ============================================================
-// FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
+// v2.1 (FASE 7.5 — fixes):
+//   + `ejecutarMetricaConGroupBy`: cuando hay métrica Y groupBy,
+//     construye tabla (una fila por grupo). Antes solo devolvía
+//     el valor global. Fix de "recepción % por set".
+//   + `filtrarContextoPorExpr`: cuando hay `condicion.expr` pero
+//     NO `compararConBaseline`, filtra puntos por expr y aplica
+//     dispatch normal. Fix de "cuando ganamos" / "en tie-break"
+//     / "más de N cruces" sin baseline.
 //
 // v2.0 (FASE 7.5 — AST compilado):
-//   + Nuevo path `ejecutarComparacionBaseline(ctx)`:
-//       · si `condicion.compararConBaseline === true` y hay
-//         `condicion.expr` y hay `intencion.metrica`,
-//       · calcula VariablesPunto sobre el universo,
-//       · filtra los puntos que cumplen `expr`,
-//       · calcula la métrica sobre las acciones de esos puntos,
-//       · calcula la métrica sobre TODAS las acciones (baseline),
-//       · devuelve `RespuestaComparacionBaseline`.
-//   + `ContextoRespuesta` suma `variablesPunto?` (opcional, para
-//     que el ejecutor lo precálcule y no recalculamos dos veces).
+//   + `ejecutarComparacionBaseline`.
 //
 // v1.9 (FASE 7.4 — "Sin datos" → 0):
-//   + Los 3 helpers de métrica (porcentaje / promedio / número)
-//     devuelven 0 cuando el denominador es 0.
+//   + Helpers de métrica devuelven 0 cuando denominador = 0.
 // ============================================================
 
 import type {
@@ -41,12 +38,14 @@ import {
   redondear,
 } from "./agregador";
 import {
+  agruparAcciones,
   construirDistribucion,
   construirHabit,
   construirRanking,
   construirSerie,
   construirTabla,
   contarVisibles,
+  etiquetaDeGrupo,
   type ContextoAgrupacion,
 } from "./groupBy";
 import {
@@ -130,7 +129,6 @@ export interface ContextoRespuesta {
   jugadores?: JugadorParaResolver[];
   partidos?: { id: string; nombre: string }[];
   totalUniverso?: number;
-  /** FASE 7.5 — Variables por punto precálculadas (opcional). */
   variablesPunto?: Map<string, VariablesPunto>;
 }
 
@@ -228,7 +226,7 @@ function agregarAvisoAmbiguedad(
 }
 
 // ------------------------------------------------------------
-// APLICAR CONDICIONES EXTRA
+// CLAVES DE PUNTO
 // ------------------------------------------------------------
 
 function claveDePunto(a: AccionVisual): string {
@@ -240,6 +238,10 @@ function claveDePuntoDesdePunto(p: PuntoConAcciones): string {
     p.acciones.find((a) => a.partido_id)?.partido_id ?? "";
   return `${pid}|${p.set_numero}|${p.punto_numero}`;
 }
+
+// ------------------------------------------------------------
+// APLICAR CONDICIONES EXTRA (fase + salidaRol)
+// ------------------------------------------------------------
 
 function aplicarCondicionesExtra(
   ctx: ContextoRespuesta
@@ -280,7 +282,6 @@ function aplicarCondicionesExtra(
       }
 
       acciones = acciones.filter((a) => clavesOk.has(claveDePunto(a)));
-
       puntos = puntosFiltrados;
     } else {
       const mapaRally =
@@ -300,11 +301,59 @@ function aplicarCondicionesExtra(
     );
   }
 
+  return { ...ctx, acciones, puntos, contextoRally };
+}
+
+// ------------------------------------------------------------
+// FILTRAR CONTEXTO POR EXPR (sin baseline)
+// ------------------------------------------------------------
+// Si hay `condicion.expr` pero NO `compararConBaseline`, se filtra
+// el universo de puntos por la expresión y se devuelve un ctx con
+// solo los puntos y acciones que cumplen.
+//
+// Se usa en `construirRespuesta` ANTES del dispatch normal.
+// ------------------------------------------------------------
+
+function filtrarContextoPorExpr(
+  ctx: ContextoRespuesta
+): ContextoRespuesta {
+  const expr = ctx.intencion.condicion?.expr;
+  if (!expr) return ctx;
+
+  const puntos = ctx.puntos ?? [];
+  if (puntos.length === 0) {
+    return { ...ctx, acciones: [], puntos: [] };
+  }
+
+  const variables =
+    ctx.variablesPunto ??
+    calcularVariablesPunto(puntos, { formatoPartido: "bo3" });
+
+  const clavesFiltradas = new Set<string>();
+  for (const [clave, vars] of variables) {
+    try {
+      if (evaluarBooleano(expr, vars)) {
+        clavesFiltradas.add(clave);
+      }
+    } catch {
+      // Si falla la evaluación de un punto, se ignora.
+    }
+  }
+
+  const puntosFiltrados = puntos.filter((p) =>
+    clavesFiltradas.has(claveDePuntoDesdePunto(p))
+  );
+
+  const accionesFiltradas: AccionVisual[] = [];
+  for (const p of puntosFiltrados) {
+    for (const a of p.acciones) accionesFiltradas.push(a);
+  }
+
   return {
     ...ctx,
-    acciones,
-    puntos,
-    contextoRally,
+    acciones: accionesFiltradas,
+    puntos: puntosFiltrados,
+    variablesPunto: variables,
   };
 }
 
@@ -361,6 +410,18 @@ function metricaANumero(
   return respuestaNumero(m.valor, unidad, m.descripcion);
 }
 
+function extraerNumeroDeRespuesta(r: RespuestaConsulta): number | null {
+  switch (r.tipo) {
+    case "numero":
+    case "porcentaje":
+    case "promedio":
+    case "frecuencia":
+      return r.valor;
+    default:
+      return null;
+  }
+}
+
 // ------------------------------------------------------------
 // CONVERSIÓN PuntoDimension → FilaTabla
 // ------------------------------------------------------------
@@ -379,7 +440,7 @@ function puntosDimensionAFilas(dist: PuntoDimension[]): FilaTabla[] {
 }
 
 // ------------------------------------------------------------
-// DIMENSIONES QUE SE PUEDEN CONTAR POR PUNTOS
+// DIMENSIONES POR PUNTOS
 // ------------------------------------------------------------
 
 const DIMENSIONES_POR_PUNTOS: GroupBy[] = [
@@ -556,7 +617,7 @@ function calcularDistribucionPorPuntos(
 }
 
 // ------------------------------------------------------------
-// MÉTRICAS DE VÓLEY
+// MÉTRICAS DE VÓLEY (por acciones)
 // ------------------------------------------------------------
 
 function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
@@ -565,71 +626,46 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
 
   const acciones = ctx.acciones;
 
-  // FAMILIA CRUCES
   if (metrica === "cruces_promedio") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
-      return metricaAPromedio({
-        valor: 0,
-        numerador: 0,
-        denominador: 0,
-        descripcion: "",
-      });
+      return metricaAPromedio({ valor: 0, numerador: 0, denominador: 0, descripcion: "" });
     }
     return metricaAPromedio(crucesPromedio(ctx.puntos));
   }
   if (metrica === "cruces_total") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
-      return metricaANumero(
-        { valor: 0, numerador: 0, denominador: 0, descripcion: "" },
-        "cruces"
-      );
+      return metricaANumero({ valor: 0, numerador: 0, denominador: 0, descripcion: "" }, "cruces");
     }
     return metricaANumero(crucesTotal(ctx.puntos), "cruces");
   }
   if (metrica === "cruces_max") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
-      return metricaANumero(
-        { valor: 0, numerador: 0, denominador: 0, descripcion: "" },
-        "cruces"
-      );
+      return metricaANumero({ valor: 0, numerador: 0, denominador: 0, descripcion: "" }, "cruces");
     }
     return metricaANumero(crucesMax(ctx.puntos), "cruces");
   }
   if (metrica === "rallys_largos") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
-      return metricaANumero(
-        { valor: 0, numerador: 0, denominador: 0, descripcion: "" },
-        "rallys largos"
-      );
+      return metricaANumero({ valor: 0, numerador: 0, denominador: 0, descripcion: "" }, "rallys largos");
     }
     return metricaANumero(rallysLargos(ctx.puntos), "rallys largos");
   }
   if (metrica === "rallys_cortos") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
-      return metricaANumero(
-        { valor: 0, numerador: 0, denominador: 0, descripcion: "" },
-        "rallys cortos"
-      );
+      return metricaANumero({ valor: 0, numerador: 0, denominador: 0, descripcion: "" }, "rallys cortos");
     }
     return metricaANumero(rallysCortos(ctx.puntos), "rallys cortos");
   }
   if (metrica === "rallys_medios") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
-      return metricaANumero(
-        { valor: 0, numerador: 0, denominador: 0, descripcion: "" },
-        "rallys medios"
-      );
+      return metricaANumero({ valor: 0, numerador: 0, denominador: 0, descripcion: "" }, "rallys medios");
     }
     return metricaANumero(rallysMedios(ctx.puntos), "rallys medios");
   }
 
-  // PUNTOS GANADOS
   if (metrica === "puntos_ganados") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
-      return metricaANumero(
-        { valor: 0, numerador: 0, denominador: 0, descripcion: "" },
-        "puntos"
-      );
+      return metricaANumero({ valor: 0, numerador: 0, denominador: 0, descripcion: "" }, "puntos");
     }
     const m = puntosGanados(ctx.puntos);
     return metricaANumero(m, "puntos");
@@ -637,12 +673,7 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
 
   if (metrica === "puntos_ganados_pct") {
     if (!ctx.puntos || ctx.puntos.length === 0) {
-      return metricaAPorcentaje({
-        valor: 0,
-        numerador: 0,
-        denominador: 0,
-        descripcion: "",
-      });
+      return metricaAPorcentaje({ valor: 0, numerador: 0, denominador: 0, descripcion: "" });
     }
     const m = puntosGanadosPct(ctx.puntos);
     return metricaAPorcentaje(m);
@@ -671,23 +702,13 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
       return metricaANumero(accionesPunto(acciones), "acciones en punto");
     case "puntos_por_set": {
       if (!ctx.puntos || ctx.puntos.length === 0) {
-        return metricaAPromedio({
-          valor: 0,
-          numerador: 0,
-          denominador: 0,
-          descripcion: "",
-        });
+        return metricaAPromedio({ valor: 0, numerador: 0, denominador: 0, descripcion: "" });
       }
       return metricaAPromedio(puntosPorSet(ctx.puntos));
     }
     case "puntos_por_rotacion": {
       if (!ctx.puntos || ctx.puntos.length === 0) {
-        return metricaAPromedio({
-          valor: 0,
-          numerador: 0,
-          denominador: 0,
-          descripcion: "",
-        });
+        return metricaAPromedio({ valor: 0, numerador: 0, denominador: 0, descripcion: "" });
       }
       return metricaAPromedio(puntosPorRotacion(ctx.puntos));
     }
@@ -709,15 +730,57 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
 }
 
 // ------------------------------------------------------------
-// COMPARE-TO-BASELINE (FASE 7.5 — capa 4)
+// MÉTRICA CON GROUPBY (fix A)
 // ------------------------------------------------------------
-// Se dispara cuando `condicion.compararConBaseline === true` y
-// hay `condicion.expr`. Calcula:
-//   - variablesPunto sobre el universo,
-//   - filtra los puntos que cumplen expr,
-//   - calcula la métrica sobre las acciones de esos puntos,
-//   - calcula la métrica sobre TODAS las acciones (baseline),
-//   - devuelve `RespuestaComparacionBaseline`.
+// Si hay `groupBy`, ejecuta la métrica por grupo y devuelve tabla.
+// Antes solo devolvía el valor global. Fix de "recepción % por set".
+// ------------------------------------------------------------
+
+function ejecutarMetricaConGroupBy(
+  ctx: ContextoRespuesta,
+  gb: GroupBy
+): RespuestaConsulta {
+  const grupos = agruparAcciones(ctx.acciones, gb, ctx.contextoAgrupacion);
+  const totalAcciones = ctx.acciones.filter((a) => !a.oculta).length;
+
+  const filas: FilaTabla[] = [];
+  for (const [key, accionesGrupo] of grupos) {
+    const ctxGrupo: ContextoRespuesta = { ...ctx, acciones: accionesGrupo };
+    const respGrupo = ejecutarMetrica(ctxGrupo);
+    const valor = extraerNumeroDeRespuesta(respGrupo) ?? 0;
+    const count = accionesGrupo.filter((a) => !a.oculta).length;
+    filas.push({
+      key,
+      label: etiquetaDeGrupo(gb, key, ctx.contextoAgrupacion),
+      count,
+      base: totalAcciones > 0 ? totalAcciones : null,
+      valor,
+      porcentaje:
+        totalAcciones > 0
+          ? redondear((count / totalAcciones) * 100, 1)
+          : 0,
+      extra: null,
+    });
+  }
+
+  // Ordenar: para "set" por número ascendente, resto por valor desc
+  if (gb === "set") {
+    filas.sort((a, b) => parseInt(a.key, 10) - parseInt(b.key, 10));
+  } else {
+    filas.sort((a, b) => b.valor - a.valor);
+  }
+
+  return respuestaTabla(
+    filas,
+    gb,
+    "avg",
+    null,
+    `Métrica "${ctx.intencion.metrica}" por ${gb}.`
+  );
+}
+
+// ------------------------------------------------------------
+// COMPARE-TO-BASELINE
 // ------------------------------------------------------------
 
 function ejecutarComparacionBaseline(
@@ -740,35 +803,23 @@ function ejecutarComparacionBaseline(
   const puntosUniverso = ctx.puntos ?? [];
   if (puntosUniverso.length === 0) {
     return respuestaComparacionBaseline(
-      metrica,
-      0,
-      0,
-      0,
-      0,
-      "Sin puntos en el universo."
+      metrica, 0, 0, 0, 0, "Sin puntos en el universo."
     );
   }
 
-  // 1. Variables por punto (usar precálculo si existe)
   const variables =
     ctx.variablesPunto ??
-    calcularVariablesPunto(puntosUniverso, {
-      formatoPartido: "bo3",
-    });
+    calcularVariablesPunto(puntosUniverso, { formatoPartido: "bo3" });
 
-  // 2. Filtrar puntos por expr
   const clavesFiltradas = new Set<string>();
   for (const [clave, vars] of variables) {
     try {
       if (evaluarBooleano(cond.expr, vars)) {
         clavesFiltradas.add(clave);
       }
-    } catch {
-      // Si la evaluación falla, se ignora el punto.
-    }
+    } catch {}
   }
 
-  // 3. Acciones filtradas (las que están en puntos filtrados)
   const accionesFiltradas: AccionVisual[] = [];
   for (const p of puntosUniverso) {
     if (clavesFiltradas.has(claveDePuntoDesdePunto(p))) {
@@ -776,7 +827,6 @@ function ejecutarComparacionBaseline(
     }
   }
 
-  // 4. Métrica filtrada: reusar ejecutarMetrica con contexto parcial
   const ctxFiltrado: ContextoRespuesta = {
     ...ctx,
     acciones: accionesFiltradas,
@@ -784,12 +834,15 @@ function ejecutarComparacionBaseline(
       clavesFiltradas.has(claveDePuntoDesdePunto(p))
     ),
   };
-  const respFiltrada = ejecutarMetrica(ctxFiltrado);
 
-  // 5. Métrica general (baseline)
+  // Si hay groupBy, aplicar tabla sobre el ctx filtrado
+  const gb = groupByEfectivo(ctxFiltrado);
+  const respFiltrada = gb && !esGroupByPorPunto(gb)
+    ? ejecutarMetricaConGroupBy(ctxFiltrado, gb)
+    : ejecutarMetrica(ctxFiltrado);
+
   const respGeneral = ejecutarMetrica(ctx);
 
-  // 6. Extraer números de cada respuesta
   const numFiltrada = extraerNumeroDeRespuesta(respFiltrada);
   const numGeneral = extraerNumeroDeRespuesta(respGeneral);
 
@@ -805,8 +858,7 @@ function ejecutarComparacionBaseline(
   const detalle =
     `${puntosQueCumplen} de ${puntosTotales} puntos cumplen la condición. ` +
     `Filtrada: ${redondear(numFiltrada, 2)} · General: ${redondear(
-      numGeneral,
-      2
+      numGeneral, 2
     )} · Diferencia: ${
       numFiltrada - numGeneral >= 0 ? "+" : ""
     }${redondear(numFiltrada - numGeneral, 2)}.`;
@@ -819,18 +871,6 @@ function ejecutarComparacionBaseline(
     puntosTotales,
     detalle
   );
-}
-
-function extraerNumeroDeRespuesta(r: RespuestaConsulta): number | null {
-  switch (r.tipo) {
-    case "numero":
-    case "porcentaje":
-    case "promedio":
-    case "frecuencia":
-      return r.valor;
-    default:
-      return null;
-  }
 }
 
 // ------------------------------------------------------------
@@ -1075,15 +1115,7 @@ function ejecutarMaxMin(
     if (dist.length === 0) {
       return respuestaMaxMin(
         tipo,
-        {
-          key: "_none",
-          label: "Sin datos",
-          count: 0,
-          base: 0,
-          valor: 0,
-          porcentaje: 0,
-          extra: null,
-        },
+        { key: "_none", label: "Sin datos", count: 0, base: 0, valor: 0, porcentaje: 0, extra: null },
         DETALLE_SIN_DATOS
       );
     }
@@ -1098,15 +1130,7 @@ function ejecutarMaxMin(
   if (filas.length === 0) {
     return respuestaMaxMin(
       tipo,
-      {
-        key: "_none",
-        label: "Sin datos",
-        count: 0,
-        base: 0,
-        valor: 0,
-        porcentaje: 0,
-        extra: null,
-      },
+      { key: "_none", label: "Sin datos", count: 0, base: 0, valor: 0, porcentaje: 0, extra: null },
       DETALLE_SIN_DATOS
     );
   }
@@ -1285,22 +1309,12 @@ function ejecutarTrend(ctx: ContextoRespuesta): RespuestaConsulta {
     ctx.contextoAgrupacion
   );
   if (puntos.length === 0) {
-    return respuestaSerie(
-      eje,
-      [],
-      ctx.intencion.agregacion,
-      DETALLE_SIN_DATOS
-    );
+    return respuestaSerie(eje, [], ctx.intencion.agregacion, DETALLE_SIN_DATOS);
   }
 
   const tendencia = analizarTendencia(puntos);
   const detalle = describirTendencia(tendencia);
-  return respuestaSerie(
-    eje,
-    puntos,
-    ctx.intencion.agregacion,
-    detalle
-  );
+  return respuestaSerie(eje, puntos, ctx.intencion.agregacion, detalle);
 }
 
 function ejecutarHabit(ctx: ContextoRespuesta): RespuestaConsulta {
@@ -1353,35 +1367,56 @@ function ejecutarHabit(ctx: ContextoRespuesta): RespuestaConsulta {
 export function construirRespuesta(
   ctxOriginal: ContextoRespuesta
 ): ResultadoConsulta {
-  const ctx = aplicarCondicionesExtra(ctxOriginal);
+  const ctxBase = aplicarCondicionesExtra(ctxOriginal);
 
-  const totalAcciones = ctx.acciones.filter((a) => !a.oculta).length;
-  const fragmentos: string[] = [...ctx.intencion.fragmentos];
+  const totalAcciones = ctxBase.acciones.filter((a) => !a.oculta).length;
+  const fragmentos: string[] = [...ctxBase.intencion.fragmentos];
   const noReconocidas: string[] = [];
-  const metaFinal = meta(ctx, totalAcciones);
+  const metaFinal = meta(ctxBase, totalAcciones);
 
   // ============================================================
-  // FASE 7.5 — comparación filtrada vs baseline
-  // ============================================================
-  // Si la intención pide `compararConBaseline` Y hay métrica Y
-  // hay `expr`, dispatch a `ejecutarComparacionBaseline`.
-  // Esto es prioritario sobre el dispatch normal de métricas.
+  // 1. Comparación vs baseline (prioritario)
   // ============================================================
   if (
-    ctx.intencion.condicion?.compararConBaseline === true &&
-    ctx.intencion.condicion?.expr &&
-    ctx.intencion.metrica
+    ctxBase.intencion.condicion?.compararConBaseline === true &&
+    ctxBase.intencion.condicion?.expr &&
+    ctxBase.intencion.metrica
   ) {
-    const resp = ejecutarComparacionBaseline(ctx);
+    const resp = ejecutarComparacionBaseline(ctxBase);
     return {
-      respuesta: agregarAvisoAmbiguedad(resp, ctx.intencion),
+      respuesta: agregarAvisoAmbiguedad(resp, ctxBase.intencion),
       meta: metaFinal,
       fragmentos,
       noReconocidas,
     };
   }
 
+  // ============================================================
+  // 2. Filtro expr SIN baseline: filtrar puntos y dispatch normal
+  // ============================================================
+  const ctx =
+    ctxBase.intencion.condicion?.expr && ctxBase.puntos
+      ? filtrarContextoPorExpr(ctxBase)
+      : ctxBase;
+
+  // ============================================================
+  // 3. Métrica (con o sin groupBy)
+  // ============================================================
   if (ctx.intencion.metrica) {
+    const gb = groupByEfectivo(ctx);
+
+    // 3a. Métrica + groupBy: tabla
+    if (gb && !esGroupByPorPunto(gb)) {
+      const resp = ejecutarMetricaConGroupBy(ctx, gb);
+      return {
+        respuesta: agregarAvisoAmbiguedad(resp, ctx.intencion),
+        meta: metaFinal,
+        fragmentos,
+        noReconocidas,
+      };
+    }
+
+    // 3b. Métrica sola: número
     const resp = ejecutarMetrica(ctx);
     return {
       respuesta: agregarAvisoAmbiguedad(resp, ctx.intencion),
@@ -1391,6 +1426,9 @@ export function construirRespuesta(
     };
   }
 
+  // ============================================================
+  // 4. Dispatch normal
+  // ============================================================
   let resp: RespuestaConsulta;
   switch (ctx.intencion.tipo) {
     case "count":

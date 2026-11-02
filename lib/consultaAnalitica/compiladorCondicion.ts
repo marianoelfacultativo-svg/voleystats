@@ -4,23 +4,35 @@
 // Convierte una frase en lenguaje natural (castellano) en una
 // `Expr` del AST que el motor puede evaluar punto por punto.
 //
-// Se usa desde `parserIntencion.ts` para dos cosas:
-//   1) Detectar condiciones que el parser "de sinónimos" no
-//      entiende ("cuando al rival le faltan la mitad de puntos",
-//      "en racha de 3+", etc.).
-//   2) Producir una `Expr` que el ejecutor aplica sobre
-//      `VariablesPunto` antes de calcular la métrica.
+// v1.1 (FASE 7.5 — fixes de bugs reportados):
+//   + Auto-marcado de `compararConBaseline=true` cuando hay
+//     filtro + métrica (aunque el texto no diga "como varia").
+//     → Arregla "cuando al rival le faltan 5 puntos, cuántos
+//       puntos ganamos", "en racha de 3+, cómo varía...", etc.
+//   + Regla "en sets ganados/perdidos" devuelve ahora un filtro
+//     real sobre `setsPropios` vs `setsRivales`. Antes se
+//     colaba como métrica `sets_ganados` (no implementada).
+//   + Regla "cuando ganamos/perdimos" más robusta.
+//   + Regla de cruces: la del caso "más de N cruces" ya no se
+//     pisa con la de "N o más".
+//   + `detectarCompareToBaseline` exportada (para que
+//     `parserIntencion` pueda reusarla).
+//   + `pareceCondicionCompleja` reescrita:
+//       · `tieneMetrica && tieneFiltro` → true (auto-baseline)
+//       · "cuando" + cualquier regla → true
+//       · "en sets ganados/perdidos" → true
+//       · "racha de N" → true
+//   + Regla "más de N cruces" corregida (antes "N o más"
+//     capturaba "más de 4" y devolvía >=4 en vez de >=5).
 //
 // Determinista: si la frase no matchea ninguna regla, devuelve
 // `null` y el parser hace lo de siempre. Si matchea, la `Expr`
 // producida es la única respuesta posible.
-//
-// NO ejecuta: solo compila. La evaluación la hace
-// `expresiones.evaluarBooleano(expr, vars)`.
 // ============================================================
 
 import {
   igual,
+  mayor,
   mayorIgual,
   menorIgual,
   variable,
@@ -49,6 +61,13 @@ export interface ResultadoCompilacion {
   metrica: MetricaDef | null;
   /** ¿La frase pide comparar contra un baseline general? */
   compararConBaseline: boolean;
+  /**
+   * Si true, `parserIntencion` debe IGNORAR la métrica detectada
+   * por `extraerMetrica` y usar la del compilador (o ninguna).
+   * Se usa para casos como "en sets ganados" que el parser
+   * confunde con la métrica `sets_ganados`.
+   */
+  ignorarMetricaParser: boolean;
   /** Fragmentos que matchearon. */
   fragmentos: string[];
   /** Texto que NO se reconoció. */
@@ -82,24 +101,58 @@ function ordenarPorLargoDesc(arr: string[]): string[] {
 function parsearNumero(s: string): number | null {
   const n = s.toLowerCase().trim();
   const mapa: Record<string, number> = {
-    un: 1,
-    uno: 1,
-    una: 1,
-    dos: 2,
-    tres: 3,
-    cuatro: 4,
-    cinco: 5,
-    seis: 6,
-    siete: 7,
-    ocho: 8,
-    nueve: 9,
-    diez: 10,
-    once: 11,
-    doce: 12,
+    un: 1, uno: 1, una: 1,
+    dos: 2, tres: 3, cuatro: 4, cinco: 5,
+    seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10,
+    once: 11, doce: 12,
   };
   if (mapa[n] !== undefined) return mapa[n];
   const num = parseInt(n, 10);
   return isNaN(num) ? null : num;
+}
+
+// ------------------------------------------------------------
+// DETECCIÓN DE MÉTRICA
+// ------------------------------------------------------------
+
+function detectarMetrica(textoNorm: string): {
+  metrica: MetricaDef;
+  fragmento: string;
+} | null {
+  for (const m of METRICAS) {
+    const patrones = ordenarPorLargoDesc(m.patrones);
+    for (const p of patrones) {
+      if (textoNorm.includes(p)) {
+        return { metrica: m, fragmento: p };
+      }
+    }
+  }
+  return null;
+}
+
+// ------------------------------------------------------------
+// DETECCIÓN DE COMPARE_TO_BASELINE
+// ------------------------------------------------------------
+
+const PATRONES_COMPARE = [
+  "como varia",
+  "como cambia",
+  "respecto a",
+  "respecto de",
+  "comparado con",
+  "comparado a",
+  "en comparacion con",
+  "vs el general",
+  "vs general",
+  "contra el general",
+  "contra la general",
+];
+
+export function detectarCompareToBaseline(textoNorm: string): boolean {
+  for (const p of PATRONES_COMPARE) {
+    if (textoNorm.includes(p)) return true;
+  }
+  return false;
 }
 
 // ------------------------------------------------------------
@@ -114,15 +167,15 @@ function parsearNumero(s: string): number | null {
 type ReglaCompiladora = (texto: string) => {
   filtro: Expr;
   fragmentos: string[];
+  /** Si true, `parserIntencion` debe ignorar `extraerMetrica`. */
+  ignorarMetricaParser?: boolean;
 } | null;
 
 const REGLAS: ReglaCompiladora[] = [
   // ----------------------------------------------------------
   // "cuando al rival le faltan [factor] de puntos que a nosotros"
   // ----------------------------------------------------------
-  // → puntosParaCerrarSetRival == factor * puntosParaCerrarSetPropio
   (texto) => {
-    // Detectar "al rival le faltan" o "al otro le faltan"
     const mAlRival =
       /(?:cuando\s+)?(?:al\s+)?rival\s+(?:le\s+)?faltan\s+(.+?)(?:\s+de\s+puntos|\s+puntos|\s+para\s+cerrar|,|$)/.exec(
         texto
@@ -135,7 +188,7 @@ const REGLAS: ReglaCompiladora[] = [
 
     const cola = mAlRival[1];
 
-    // Factor explícito: "la mitad", "el doble", "un tercio", etc.
+    // Factor explícito: "la mitad", "el doble", etc.
     const factor = buscarMultiplicador(cola);
     if (factor !== null) {
       return {
@@ -152,7 +205,7 @@ const REGLAS: ReglaCompiladora[] = [
       };
     }
 
-    // Número explícito: "5 puntos" → comparar contra constante
+    // Número explícito
     const numMatch = cola.match(
       /\b(\d{1,2}|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)\b/
     );
@@ -170,9 +223,8 @@ const REGLAS: ReglaCompiladora[] = [
   },
 
   // ----------------------------------------------------------
-  // "cuando al rival le faltan X puntos"
+  // "cuando al rival le faltan X puntos" (forma directa)
   // ----------------------------------------------------------
-  // → puntosParaCerrarSetRival <= X
   (texto) => {
     const m =
       /rival\s+(?:le\s+)?faltan\s+(\d{1,2}|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+puntos?/.exec(
@@ -190,7 +242,6 @@ const REGLAS: ReglaCompiladora[] = [
   // ----------------------------------------------------------
   // "cuando nos faltan X puntos" / "para cerrar"
   // ----------------------------------------------------------
-  // → puntosParaCerrarSetPropio <= X
   (texto) => {
     const m =
       /(?:nos\s+)?faltan\s+(\d{1,2}|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+puntos?/.exec(
@@ -208,30 +259,29 @@ const REGLAS: ReglaCompiladora[] = [
   },
 
   // ----------------------------------------------------------
-  // "en sets ganados" / "en sets perdidos"
+  // "en sets ganados" / "en sets perdidos" (FILTRO, no métrica)
   // ----------------------------------------------------------
-  // → setsPropios > setsRivales (o al revés)
+  // Se marca `ignorarMetricaParser: true` para que `parserIntencion`
+  // no confunda esto con la métrica `sets_ganados`.
   (texto) => {
-    if (/en\s+sets\s+ganados/.test(texto) || /set\s+ganado/.test(texto)) {
+    if (
+      /en\s+sets?\s+ganados?/.test(texto) ||
+      /en\s+los\s+sets\s+que\s+ganamos/.test(texto)
+    ) {
       return {
-        filtro: {
-          kind: "cmp",
-          op: ">",
-          l: variable("setsPropios"),
-          r: variable("setsRivales"),
-        },
+        filtro: mayor(variable("setsPropios"), variable("setsRivales")),
         fragmentos: ["en sets ganados"],
+        ignorarMetricaParser: true,
       };
     }
-    if (/en\s+sets\s+perdidos/.test(texto) || /set\s+perdido/.test(texto)) {
+    if (
+      /en\s+sets?\s+perdidos?/.test(texto) ||
+      /en\s+los\s+sets\s+que\s+perdimos/.test(texto)
+    ) {
       return {
-        filtro: {
-          kind: "cmp",
-          op: "<",
-          l: variable("setsPropios"),
-          r: variable("setsRivales"),
-        },
+        filtro: mayor(variable("setsRivales"), variable("setsPropios")),
         fragmentos: ["en sets perdidos"],
+        ignorarMetricaParser: true,
       };
     }
     return null;
@@ -240,29 +290,19 @@ const REGLAS: ReglaCompiladora[] = [
   // ----------------------------------------------------------
   // "en partidos ganados" / "en partidos perdidos"
   // ----------------------------------------------------------
-  // → no hay una variable directa, pero podemos usar setsPropios vs setsRivales
-  //    del partido actual. Si el usuario quiere "en partidos ganados" a nivel
-  //    histórico, eso se resuelve en `ejecutor` con `resultadosPartido`.
-  //    Por ahora: si en el punto actual ya se cerró el partido a favor, aplica.
   (texto) => {
     if (/en\s+partidos?\s+ganados?/.test(texto)) {
-      // Aproximación: setsPropios ya alcanzaron para ganar
       return {
-        filtro: mayorIgual(
-          {
-            kind: "op",
-            op: "+",
-            l: variable("setsPropios"),
-            r: numero(0),
-          },
-          {
-            kind: "op",
-            op: "-",
-            l: numero(2),
-            r: numero(0),
-          }
-        ),
+        filtro: mayorIgual(variable("setsPropios"), numero(2)),
         fragmentos: ["en partidos ganados"],
+        ignorarMetricaParser: true,
+      };
+    }
+    if (/en\s+partidos?\s+perdidos?/.test(texto)) {
+      return {
+        filtro: mayorIgual(variable("setsRivales"), numero(2)),
+        fragmentos: ["en partidos perdidos"],
+        ignorarMetricaParser: true,
       };
     }
     return null;
@@ -271,7 +311,6 @@ const REGLAS: ReglaCompiladora[] = [
   // ----------------------------------------------------------
   // "en racha de N+" / "racha de N o mas"
   // ----------------------------------------------------------
-  // → rachaGanadosActual >= N OR rachaPerdidosActual >= N
   (texto) => {
     const m =
       /racha\s+(?:de\s+)?(\d{1,2}|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s*(?:\+|o\s+mas|o\s+más|seguidos|consecutivos)?/.exec(
@@ -290,44 +329,99 @@ const REGLAS: ReglaCompiladora[] = [
   },
 
   // ----------------------------------------------------------
-  // "con N+ cruces" / "mas de N cruces" / "menos de N cruces"
+  // CRUCES (orden de evaluación importa)
+  // ----------------------------------------------------------
+  // 1. "entre N y M cruces"
+  // 2. "exactamente N cruces"
+  // 3. "más de N cruces"      → > N (estricto)
+  // 4. "menos de N cruces"    → < N (estricto)
+  // 5. "hasta N cruces"       → <= N
+  // 6. "N o más / al menos N" → >= N
+  // 7. "N cruces" (suelto)    → == N
   // ----------------------------------------------------------
   (texto) => {
-    // "más de N cruces"
-    const mMas =
-      /(?:mas|más)\s+de\s+(\d{1,2}|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+(?:cruces?|pelotazos?)/.exec(
-        texto
-      );
-    if (mMas) {
-      const n = parsearNumero(mMas[1]);
+    const NUM =
+      "(\\d{1,2}|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)";
+
+    // 1. entre N y M
+    const mEntre = new RegExp(
+      `\\bentre\\s+${NUM}\\s+y\\s+${NUM}\\s+(?:cruces?|pelotazos?|intercambios?)`
+    ).exec(texto);
+    if (mEntre) {
+      const n = parsearNumero(mEntre[1]);
+      const m = parsearNumero(mEntre[2]);
+      if (n !== null && m !== null && n <= m) {
+        return {
+          filtro: y(
+            mayorIgual(variable("cruces"), numero(n)),
+            menorIgual(variable("cruces"), numero(m))
+          ),
+          fragmentos: [`cruces entre ${n} y ${m}`],
+        };
+      }
+    }
+
+    // 2. exactamente N
+    const mExacto = new RegExp(
+      `\\bexactamente\\s+${NUM}\\s+(?:cruces?|pelotazos?|intercambios?)`
+    ).exec(texto);
+    if (mExacto) {
+      const n = parsearNumero(mExacto[1]);
       if (n !== null) {
         return {
-          filtro: mayorIgual(variable("cruces"), numero(n + 1)),
+          filtro: igual(variable("cruces"), numero(n)),
+          fragmentos: [`cruces ==${n}`],
+        };
+      }
+    }
+
+    // 3. "más de N" → > N (estricto)
+    // OJO: matchear "más de" ANTES que "N o más" para no confundir.
+    const mMasDe = new RegExp(
+      `\\b(?:mas|más)\\s+de\\s+${NUM}\\s+(?:cruces?|pelotazos?|intercambios?)`
+    ).exec(texto);
+    if (mMasDe) {
+      const n = parsearNumero(mMasDe[1]);
+      if (n !== null) {
+        return {
+          filtro: mayor(variable("cruces"), numero(n)),
           fragmentos: [`cruces >${n}`],
         };
       }
     }
 
-    // "menos de N cruces"
-    const mMenos =
-      /menos\s+de\s+(\d{1,2}|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+(?:cruces?|pelotazos?)/.exec(
-        texto
-      );
-    if (mMenos) {
-      const n = parsearNumero(mMenos[1]);
-      if (n !== null && n >= 1) {
+    // 4. "menos de N" → < N (estricto)
+    const mMenosDe = new RegExp(
+      `\\bmenos\\s+de\\s+${NUM}\\s+(?:cruces?|pelotazos?|intercambios?)`
+    ).exec(texto);
+    if (mMenosDe) {
+      const n = parsearNumero(mMenosDe[1]);
+      if (n !== null) {
         return {
-          filtro: menorIgual(variable("cruces"), numero(n - 1)),
+          filtro: menorIgual(variable("cruces"), numero(Math.max(0, n - 1))),
           fragmentos: [`cruces <${n}`],
         };
       }
     }
 
-    // "N o más cruces"
-    const mNoMas =
-      /(\d{1,2}|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s*(?:o\s+(?:mas|más))?\s+(?:cruces?|pelotazos?)/.exec(
-        texto
-      );
+    // 5. "hasta N" → <= N
+    const mHasta = new RegExp(
+      `\\bhasta\\s+${NUM}\\s+(?:cruces?|pelotazos?|intercambios?)`
+    ).exec(texto);
+    if (mHasta) {
+      const n = parsearNumero(mHasta[1]);
+      if (n !== null) {
+        return {
+          filtro: menorIgual(variable("cruces"), numero(n)),
+          fragmentos: [`cruces <=${n}`],
+        };
+      }
+    }
+
+    // 6. "N o más" / "al menos N" → >= N
+    const mNoMas = new RegExp(
+      `\\b(?:al\\s+menos\\s+)?${NUM}\\s*(?:o\\s+(?:mas|más))?\\s+(?:cruces?|pelotazos?|intercambios?)`
+    ).exec(texto);
     if (mNoMas) {
       const n = parsearNumero(mNoMas[1]);
       if (n !== null) {
@@ -338,7 +432,7 @@ const REGLAS: ReglaCompiladora[] = [
       }
     }
 
-    // "en racha corta / larga"
+    // 7. "rally corto" / "rally largo"
     if (/rally\s+corto|punto\s+corto/.test(texto)) {
       return {
         filtro: menorIgual(variable("cruces"), numero(2)),
@@ -369,14 +463,14 @@ const REGLAS: ReglaCompiladora[] = [
   },
 
   // ----------------------------------------------------------
-  // "cuando ganamos" / "cuando perdimos" / "puntos ganados"
+  // "cuando ganamos" / "cuando perdimos"
   // ----------------------------------------------------------
   (texto) => {
     if (
-      /cuando\s+(?:ganamos|ganó\s+el\s+punto|ganamos\s+el\s+punto)/.test(
-        texto
-      ) ||
-      /puntos?\s+que\s+ganamos/.test(texto)
+      /cuando\s+ganamos/.test(texto) ||
+      /cuando\s+(?:ganamos|ganó)\s+el\s+punto/.test(texto) ||
+      /puntos?\s+que\s+ganamos/.test(texto) ||
+      /cuando\s+ganamos\s+el\s+rally/.test(texto)
     ) {
       return {
         filtro: igual(variable("ganoPropio"), numero(1)),
@@ -384,9 +478,10 @@ const REGLAS: ReglaCompiladora[] = [
       };
     }
     if (
-      /cuando\s+(?:perdimos|perdió\s+el\s+punto|perdimos\s+el\s+punto)/.test(
-        texto
-      )
+      /cuando\s+perdimos/.test(texto) ||
+      /cuando\s+(?:perdimos|perdió)\s+el\s+punto/.test(texto) ||
+      /puntos?\s+que\s+perdimos/.test(texto) ||
+      /cuando\s+perdimos\s+el\s+rally/.test(texto)
     ) {
       return {
         filtro: no(igual(variable("ganoPropio"), numero(1))),
@@ -429,51 +524,6 @@ const REGLAS: ReglaCompiladora[] = [
 ];
 
 // ------------------------------------------------------------
-// DETECCIÓN DE MÉTRICA
-// ------------------------------------------------------------
-
-function detectarMetrica(textoNorm: string): {
-  metrica: MetricaDef;
-  fragmento: string;
-} | null {
-  // Buscar por METRICAS (los patrones más largos primero)
-  for (const m of METRICAS) {
-    const patrones = ordenarPorLargoDesc(m.patrones);
-    for (const p of patrones) {
-      if (textoNorm.includes(p)) {
-        return { metrica: m, fragmento: p };
-      }
-    }
-  }
-  return null;
-}
-
-// ------------------------------------------------------------
-// DETECCIÓN DE COMPARE_TO_BASELINE
-// ------------------------------------------------------------
-
-const PATRONES_COMPARE = [
-  "como varia",
-  "como cambia",
-  "respecto a",
-  "respecto de",
-  "comparado con",
-  "comparado a",
-  "en comparacion con",
-  "vs el general",
-  "vs general",
-  "contra el general",
-  "contra la general",
-];
-
-function detectarCompareToBaseline(textoNorm: string): boolean {
-  for (const p of PATRONES_COMPARE) {
-    if (textoNorm.includes(p)) return true;
-  }
-  return false;
-}
-
-// ------------------------------------------------------------
 // API PÚBLICA
 // ------------------------------------------------------------
 
@@ -486,6 +536,7 @@ export function compilarCondicion(
     filtro: null,
     metrica: null,
     compararConBaseline: false,
+    ignorarMetricaParser: false,
     fragmentos: [],
     noReconocidas: [],
     error: null,
@@ -493,30 +544,29 @@ export function compilarCondicion(
 
   if (!texto) return res;
 
-  // 1. Métrica (primero, para que el compilador sepa si la frase
-  //    habla de "efectividad" o "porcentaje", etc.)
+  // 1. Métrica (primero, para saber si la frase habla de una).
   const met = detectarMetrica(texto);
   if (met) {
     res.metrica = met.metrica;
     res.fragmentos.push(met.fragmento);
   }
 
-  // 2. Compare-to-baseline
-  if (detectarCompareToBaseline(texto)) {
-    res.compararConBaseline = true;
-    res.fragmentos.push("compare_to_baseline");
-  }
+  // 2. Compare-to-baseline EXPLÍCITO en el texto.
+  const compareExplicito = detectarCompareToBaseline(texto);
 
-  // 3. Filtros (reglas en orden)
+  // 3. Filtros (reglas en orden).
   const filtros: Expr[] = [];
   let textoRestante = texto;
+  let algunFiltroMarcaIgnorar = false;
 
   for (const regla of REGLAS) {
     const r = regla(textoRestante);
     if (!r) continue;
     filtros.push(r.filtro);
+    if (r.ignorarMetricaParser) {
+      algunFiltroMarcaIgnorar = true;
+    }
     res.fragmentos.push(...r.fragmentos);
-    // Quitar el fragmento del texto para no matchear dos veces
     for (const f of r.fragmentos) {
       const idx = textoRestante.indexOf(f);
       if (idx >= 0) {
@@ -526,7 +576,7 @@ export function compilarCondicion(
     }
   }
 
-  // 4. Componer filtros con AND
+  // 4. Componer filtros con AND.
   if (filtros.length === 1) {
     res.filtro = filtros[0];
   } else if (filtros.length > 1) {
@@ -537,7 +587,23 @@ export function compilarCondicion(
     res.filtro = acc;
   }
 
-  // 5. Devolver
+  // 5. Auto-marcado de compare_to_baseline:
+  //    - Si el texto dice "como varia" / "respecto a" → true.
+  //    - Si hay filtro + métrica → true (auto).
+  //    Esto resuelve "cuando X, cuántos Y" / "en racha de 3+, cómo
+  //    varía Z" / "más de N cruces, cuántos W".
+  if (compareExplicito) {
+    res.compararConBaseline = true;
+    res.fragmentos.push("compare_to_baseline");
+  } else if (res.filtro !== null && res.metrica !== null) {
+    res.compararConBaseline = true;
+  }
+
+  // 6. Si alguna regla marcó ignorarMetricaParser, respetarlo.
+  if (algunFiltroMarcaIgnorar) {
+    res.ignorarMetricaParser = true;
+  }
+
   return res;
 }
 
@@ -555,25 +621,50 @@ export function pareceCondicionCompleja(textoOriginal: string): boolean {
   const texto = normalizar(textoOriginal);
   if (!texto) return false;
 
-  // Menciona métrica + conector de comparación
   const tieneMetrica = METRICAS.some((m) =>
     m.patrones.some((p) => texto.includes(p))
   );
   const tieneCompare = detectarCompareToBaseline(texto);
+
+  // Métrica + conector de comparación
   if (tieneMetrica && tieneCompare) return true;
 
-  // Menciona "cuando" + algún patrón de filtro conocido
+  // "cuando" + alguna regla
   if (/\bcuando\b/.test(texto)) {
     for (const regla of REGLAS) {
       if (regla(texto)) return true;
     }
   }
 
-  // Menciona "en sets ganados/perdidos"
+  // "en sets ganados/perdidos"
   if (/en\s+sets?\s+(ganado|perdido)/.test(texto)) return true;
 
-  // Menciona "racha de N"
+  // "racha de N"
   if (/racha\s+de\s+\d/.test(texto)) return true;
+
+  // "más/menos/hasta/exactamente N cruces"
+  if (/\b(?:mas|más|menos|hasta|exactamente|al\s+menos)\s+(?:\d+|un)/.test(texto) &&
+      /(?:cruces?|pelotazos?|intercambios?)/.test(texto)) {
+    return true;
+  }
+
+  // "N o más cruces"
+  if (/\b\d+\s+o\s+(?:mas|más)\s+cruces?/.test(texto)) return true;
+
+  // "en tie-break"
+  if (/tie\s*-?\s*break/.test(texto)) return true;
+
+  // "en side-out" / "en k2" / "en k3" / "en free-ball"
+  if (/\ben\s+(?:side[\s-]?out|k1|k2|k3|free[\s-]?ball)\b/.test(texto)) {
+    return true;
+  }
+
+  // Métrica + alguna regla (aunque no haya "cuando")
+  if (tieneMetrica) {
+    for (const regla of REGLAS) {
+      if (regla(texto)) return true;
+    }
+  }
 
   return false;
 }

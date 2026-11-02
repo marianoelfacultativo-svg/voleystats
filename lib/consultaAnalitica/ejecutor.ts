@@ -3,19 +3,22 @@
 // ============================================================
 // FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
 //
+// v1.9 (FASE 7.5 — fixes del AST compilado):
+//   + `necesitaVariables` ahora se dispara si hay `condicion.expr`
+//     (sin importar `compararConBaseline`). Antes solo se calculaba
+//     para compare, así que los filtros sueltos ("cuando ganamos",
+//     "en tie-break", "más de N cruces", "en racha de 3+") llegaban
+//     al motor sin variables y no filtraban nada.
+//   + Se pasan los `puntos` con tiempo y el `variablesPunto` a
+//     `construirRespuesta`.
+//
 // v1.8 (FASE 7.5 — AST compilado):
-//   + Calcula `variablesPunto` sobre `puntosConTiempo` UNA SOLA VEZ
-//     y lo pasa a `ContextoRespuesta.variablesPunto`.
-//   + `ejecutarComparacionBaseline` (en respuesta.ts) lo usa para
-//     filtrar los puntos que cumplen `condicion.expr` y comparar
-//     contra el baseline general.
-//   + Se calcula SOLO si la intención pide `compararConBaseline`
-//     (para no penalizar consultas normales).
+//   + Calcula `variablesPunto` sobre `puntosConTiempo` para
+//     `ejecutarComparacionBaseline`.
 //
 // v1.7 (FASE 7.4 cierre — fallback a count):
 //   + Si el parser detectó filtros válidos (`parsed.aplicado`)
-//     pero NO una intención de cálculo (`intencion.tipo ===
-//     "unknown"`), asumimos `count`.
+//     pero NO una intención de cálculo, asumimos `count`.
 //
 // v1.6 (FASE 7.4): parserInfo suma jugadorAmbiguo/jugadorAviso/candidatos.
 // v1.5 (FASE 7.4 — problema C): fasesPorPunto sobre el universo.
@@ -593,17 +596,20 @@ export function ejecutarConsulta(
   // ============================================================
   // 6.b) FASE 7.5 — Variables por punto
   // ============================================================
-  // Solo se calculan si la intención pide comparar contra baseline.
+  // v1.9: se calculan si hay `condicion.expr` (con o sin baseline).
+  // Antes solo se calculaban para `compararConBaseline === true`,
+  // así que los filtros sueltos ("cuando ganamos", "en tie-break",
+  // "más de N cruces", "en racha de 3+") no filtraban.
+  //
   // Se calculan sobre `puntosConTiempo` (el universo que el usuario
-  // ve), así los conteos de `puntosQueCumplen` / `puntosTotales`
-  // son consistentes con lo que está mirando.
+  // ve), así los conteos son consistentes.
   //
   // NOTA: `formatoPartido` queda en "bo3" (default) hasta que
   // `partidos` tenga columna `formato`. Ver deuda técnica #0.3.
   // ============================================================
   const necesitaVariables =
-    intencion.condicion?.compararConBaseline === true &&
-    !!intencion.condicion?.expr;
+    intencion.condicion?.expr !== undefined &&
+    intencion.condicion?.expr !== null;
 
   const variablesPunto = necesitaVariables
     ? calcularVariablesPunto(puntosConTiempo, {
