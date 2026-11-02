@@ -4,18 +4,17 @@
 // Extraído de lib/analisisConsecuencias.ts (v9).
 //
 // Funciones puras:
-//   - clasificarResultado(a): punto / error / neutro.
-//   - baseSubtipo(a): saca el prefijo "toque:" del subtipo.
-//   - ubicacionDeZona(zona): delantero / zaguero / otro.
-//   - puntajeDeAccion(a): puntaje 0..10 para top% y vsPromedio.
+// - clasificarResultado(a): punto / error / neutro.
+// - baseSubtipo(a): saca el prefijo "toque:" del subtipo.
+// - ubicacionDeZona(zona): delantero / zaguero / otro.
+// - puntajeDeAccion(a): puntaje 0..10 para top% y vsPromedio.
 // ============================================================
 
 import type { AccionVisual } from "../../app/equipo/adaptadorUnificadoV2";
 import type { CategoriaResultado, UbicacionFiltro } from "./tipos";
 
 export function baseSubtipo(a: AccionVisual): string {
-  const s =
-    a.subtipo !== null && a.subtipo !== undefined ? String(a.subtipo) : "";
+  const s = a.subtipo !== null && a.subtipo !== undefined ? String(a.subtipo) : "";
   return s.startsWith("toque:") ? s.slice(6) : s;
 }
 
@@ -26,15 +25,22 @@ export function clasificarResultado(a: AccionVisual): CategoriaResultado {
   if (a.es_error) return "error";
 
   if (tipo === "ataque") {
-    if (sub === "punto") return "punto";
+    if (
+      sub === "punto" ||
+      sub === "punto_directo_ataque" ||
+      sub === "punto_desviado_ataque" ||
+      sub === "use_rival_ataque"
+    )
+      return "punto";
+
     if (
       sub.includes("error") ||
       sub.includes("gorro") ||
-      sub === "use_rival_ataque" ||
       sub === "error_red_ataque" ||
       sub === "error_afuera_ataque"
     )
       return "error";
+
     return "neutro";
   }
 
@@ -52,30 +58,18 @@ export function clasificarResultado(a: AccionVisual): CategoriaResultado {
 
   if (tipo === "recepcion") {
     if (sub === "ace_contra" || sub === "error_directo") return "error";
-    if (sub === "perfecta" || sub === "2x_positiva" || sub === "positiva")
-      return "punto";
+    if (sub === "perfecta" || sub === "2x_positiva" || sub === "positiva") return "punto";
     return "neutro";
   }
 
   if (tipo === "defensa") {
-    if (
-      sub === "error_def" ||
-      sub === "errores_graves" ||
-      sub === "mala_libre"
-    )
-      return "error";
-    if (
-      sub === "gran_def" ||
-      sub === "toque_positiva" ||
-      sub === "cobertura_positiva"
-    )
-      return "punto";
+    if (sub === "error_def" || sub === "errores_graves" || sub === "mala_libre") return "error";
+    if (sub === "gran_def" || sub === "toque_positiva" || sub === "cobertura_positiva") return "punto";
     return "neutro";
   }
 
   if (sub.includes("punto") || sub === "ace") return "punto";
-  if (sub.includes("error") || sub === "horrible" || sub === "malo")
-    return "error";
+  if (sub.includes("error") || sub === "horrible" || sub === "malo") return "error";
   return "neutro";
 }
 
@@ -88,6 +82,7 @@ export function ubicacionDeZona(zona: number | null): UbicacionFiltro {
 
 export function puntajeDeAccion(a: AccionVisual): number | null {
   const sub = baseSubtipo(a);
+
   if (a.tipo === "saque") {
     switch (sub) {
       case "ace": return 10;
@@ -98,6 +93,7 @@ export function puntajeDeAccion(a: AccionVisual): number | null {
       default: return null;
     }
   }
+
   if (a.tipo === "recepcion") {
     switch (sub) {
       case "perfecta": return 10;
@@ -110,6 +106,7 @@ export function puntajeDeAccion(a: AccionVisual): number | null {
       default: return null;
     }
   }
+
   if (a.tipo === "armado") {
     if (sub === "R") return 5;
     const n = parseInt(sub, 10);
@@ -124,6 +121,7 @@ export function puntajeDeAccion(a: AccionVisual): number | null {
       default: return null;
     }
   }
+
   if (a.tipo === "ataque") {
     switch (sub) {
       case "punto":
@@ -144,6 +142,7 @@ export function puntajeDeAccion(a: AccionVisual): number | null {
       default: return null;
     }
   }
+
   if (a.tipo === "bloqueo") {
     switch (sub) {
       case "punto": return 10;
@@ -156,6 +155,7 @@ export function puntajeDeAccion(a: AccionVisual): number | null {
       default: return null;
     }
   }
+
   if (a.tipo === "defensa") {
     switch (sub) {
       case "gran_def":
@@ -172,5 +172,6 @@ export function puntajeDeAccion(a: AccionVisual): number | null {
       default: return null;
     }
   }
+
   return null;
 }
