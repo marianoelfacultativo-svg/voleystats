@@ -31,6 +31,7 @@ import {
 import TablaEstadisticasCrudas from "./TablaEstadisticasCrudas";
 import IconoVoley from "./IconoVoley";
 import ConsultaPanel from "./analisisConsecuencias/ConsultaPanel";
+import ConsultaPanelLLM from "./ConsultaPanelLLM";
 import { descargarComoPDF } from "@/lib/exportarPDF";
 
 interface Partido {
@@ -256,7 +257,7 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
       j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
   }
 
-  // FASE 7.4 — pasar apodo y número al ConsultaPanel
+  // FASE 7.4 — pasar apodo y número al ConsultaPanel viejo (no usado hoy)
   const jugadoresParaConsulta = jugadores.map((j) => ({
     id: j.id,
     nombre: j.nombre + (j.numero !== null ? ` #${j.numero}` : ""),
@@ -301,7 +302,7 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* ============ CONSULTAS ANALÍTICAS ============ */}
+      {/* ============ CONSULTAS ANALÍTICAS (LLM) ============ */}
       <section
         data-pdf-ignorar
         className="rounded-2xl p-4 sm:p-5"
@@ -312,11 +313,8 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
             "0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(14,165,201,0.15)",
         }}
       >
-        <ConsultaPanel
-          acciones={accionesVisuales}
-          puntos={puntosCompletos}
-          jugadores={jugadoresParaConsulta}
-          partidos={partidosParaConsulta}
+        <ConsultaPanelLLM
+          equipoId={equipoId}
           nombreDeJugador={nombreDe}
         />
       </section>

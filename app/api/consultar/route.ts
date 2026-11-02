@@ -1,27 +1,23 @@
 // ============================================================
 // API ROUTE — POST /api/consultar
 // ============================================================
-// Orquesta el flujo completo del lado del servidor:
-//   1. Recibe { prompt, partidoId?, equipoId }
-//   2. Carga los datos necesarios desde Supabase:
-//        · Acciones + puntos (cargarAccionesUnificadas)
-//        · Jugadores del equipo
-//        · Partidos del equipo
-//   3. Llama a ejecutarConsultaLLM(prompt, contexto)
-//   4. Devuelve el ResultadoConsultaLLM
+// Server-side. Carga Supabase + llama a ejecutarConsultaLLM.
+// La GROQ_API_KEY nunca sale del server.
 //
-// ⚠️  SERVER-SIDE ONLY. Importa ejecutarConsultaLLM que usa la
-//     GROQ_API_KEY. La key NUNCA sale del servidor.
+// Body: { prompt: string, equipoId: string, partidoId?: string | null }
+//   · partidoId null/undefined → consulta sobre TODOS los partidos del equipo.
+//   · partidoId string         → consulta sobre ESE partido.
 //
-// Si `partidoId` viene, la consulta es sobre ESE partido.
-// Si `partidoId` es null/undefined, la consulta es sobre TODOS
-// los partidos del equipo (agregado).
+// Devuelve: ResultadoConsultaLLM (ver ejecutarConsultaLLM.ts)
 // ============================================================
 
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { cargarAccionesUnificadas } from "@/app/equipo/adaptadorUnificadoV2";
-import type { AccionVisual, PuntoConAcciones } from "@/app/equipo/adaptadorUnificadoV2";
+import type {
+  AccionVisual,
+  PuntoConAcciones,
+} from "@/app/equipo/adaptadorUnificadoV2";
 import type { JugadorParaResolver } from "@/lib/consultaAnalitica/resolverJugador";
 import { ejecutarConsultaLLM } from "@/lib/consultaAnalitica/ejecutarConsultaLLM";
 
@@ -42,7 +38,7 @@ interface Body {
 // ------------------------------------------------------------
 
 export async function POST(req: Request) {
-  // ---- 1) Parsear body ----
+  // 1) Parsear body
   let body: Body;
   try {
     body = await req.json();
@@ -74,9 +70,9 @@ export async function POST(req: Request) {
       ? body.partidoId
       : null;
 
-  // ---- 2) Cargar datos desde Supabase ----
+  // 2) Cargar datos desde Supabase
   try {
-    // 2.a) Partidos (del equipo, o uno solo)
+    // 2.a) Partidos (uno solo, o todos los del equipo)
     const { data: partidosRaw, error: errPartidos } = partidoId
       ? await supabase
           .from("partidos")
@@ -90,7 +86,10 @@ export async function POST(req: Request) {
 
     if (errPartidos) {
       return NextResponse.json(
-        { tipo: "error", mensaje: `Error cargando partidos: ${errPartidos.message}` },
+        {
+          tipo: "error",
+          mensaje: `Error cargando partidos: ${errPartidos.message}`,
+        },
         { status: 500 }
       );
     }
@@ -108,7 +107,9 @@ export async function POST(req: Request) {
       .eq("equipo_id", equipoId)
       .eq("activo", true);
 
-    const idsJugadores = (jeRaw ?? []).map((x: any) => x.jugador_id as string);
+    const idsJugadores = (jeRaw ?? []).map(
+      (x: any) => x.jugador_id as string
+    );
 
     let jugadores: JugadorParaResolver[] = [];
     if (idsJugadores.length > 0) {
@@ -124,17 +125,15 @@ export async function POST(req: Request) {
       }));
     }
 
-    // 2.c) Acciones + puntos (del partido específico, o de todos)
+    // 2.c) Acciones + puntos (del partido específico o de todos)
     let acciones: AccionVisual[] = [];
     let puntos: PuntoConAcciones[] = [];
 
     if (partidoId) {
-      // Un partido específico
       const r = await cargarAccionesUnificadas(partidoId, equipoId);
       acciones = r.acciones;
       puntos = r.puntos;
     } else {
-      // Todos los partidos del equipo: cargar en paralelo y concatenar
       const partidosIds = partidos.map((p) => p.id);
       if (partidosIds.length > 0) {
         const results = await Promise.all(
@@ -145,7 +144,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // ---- 3) Ejecutar consulta LLM ----
+    // 3) Ejecutar consulta LLM
     const resultado = await ejecutarConsultaLLM(prompt, {
       acciones,
       puntos,
@@ -153,7 +152,7 @@ export async function POST(req: Request) {
       partidos,
     });
 
-    // ---- 4) Devolver ----
+    // 4) Devolver
     return NextResponse.json(resultado);
   } catch (e) {
     return NextResponse.json(
