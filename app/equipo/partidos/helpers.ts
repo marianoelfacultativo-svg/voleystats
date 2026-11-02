@@ -24,7 +24,7 @@ import {
   type Jugador,
   type Partido,
 } from "./types";
-import { puntajeDeSubtipo } from "../../lib/analisis/catalogoSubtipos";
+import { puntajeDeSubtipo } from "@/lib/analisis/catalogoSubtipos";
 
 // ------------------------------------------------------------
 // ADAPTER: AccionDB[] → AccionVisual[]
