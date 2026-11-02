@@ -3,23 +3,37 @@
 // ============================================================
 // Convierte una frase en lenguaje natural en un IntencionQuery.
 //
-// v1.3 (FASE 7.5 — fixes de prioridad):
-//   + El compilador (capa 4) corre ANTES que `extraerMetrica`
-//     cuando `pareceCondicionCompleja` es true. Su métrica gana.
-//   + Si el compilador marca `ignorarMetricaParser`, se descarta
-//     la métrica detectada por `extraerMetrica` (fix "en sets
-//     ganados" que daba `sets_ganados`).
-//   + `expr` y `compararConBaseline` se propagan a `condicion`.
-//   + Fix de "quiero ver como fueron X": si el texto empieza con
-//     verbo de acción (quiero/mostrame/dame/listame/decime/
-//     contame/muestrame/etc.) y hay `tipo: "trend"`, se degrada a
-//     `count`. Así "quiero ver como fueron los ataques" no cae en
-//     trend.
-//   + `extraerMetrica` se ignora si el compilador ya decidió
-//     `ignorarMetricaParser: true`.
+// v1.4 (FASE 7.5 — paso 9/10):
+//   + B8:  `extraerCondicion` NO matchea "cuando ganamos" ni
+//          "cuando perdimos". Lo deja al compilador (que ya lo
+//          hacía vía regla y produce `expr`). Antes el parser
+//          duplicaba el filtro.
+//   + B10: `extraerTiempo` ya NO corta en el primer match. Recolecta
+//          TODO (día, últimos_n_X, temporada, set N, punto N,
+//          partido) y los combina. Antes "el set 3 del último
+//          mes" descartaba uno.
+//   + B15: idem B10 para "aceptar set 3 + últimos 5 partidos" en
+//          el mismo `TiempoFiltro` sin perder ninguno.
+//   + B16: "cuántos puntos" (sin "ganó", "perdió", "hizo", "%",
+//          "promedio", "por") → se infiere `metrica = "puntos_ganados"`.
+//          Antes caía en `count` de acciones (~5x el valor real).
+//   + B21: `extraerComparacion` rechaza "vs RIVAL" cuando el texto
+//          contiene un verbo de consulta a la izquierda
+//          ("cuántos X vs Boca", "dig efficiency en el partido vs
+//          Boca"). Solo cuenta como comparación si ambos lados
+//          parecen entidades comparables.
+//   + B23: `extraerComparacion` acepta "entre X y Y" (X, Y no
+//          numéricos).
+//   + B24: `extraerComparacion` acepta "quién/quiénes es/son
+//          mejor(es)/peor(es), X o Y" y "cuál es mejor, X o Y".
+//   + B27: `extraerComparacion` acepta "comparar X con Y" y
+//          "comparar a X con Y".
 //
-// v1.2 (FASE 7.5 — AST compilado):
-//   + Llama a `compilarCondicion()` cuando `pareceCondicionCompleja()`.
+// v1.3:
+//   + Compilador corre primero. Su métrica gana.
+//   + Si el compilador marca `ignorarMetricaParser`, se descarta
+//     `extraerMetrica`.
+//   + Fix de "quiero ver como fueron X": degrada trend a count.
 // ============================================================
 
 import {
@@ -90,54 +104,22 @@ function palabraACalidad(palabra: string): number | null {
 // ------------------------------------------------------------
 // VERBOS DE ACCIÓN (fix "quiero ver como fueron X")
 // ------------------------------------------------------------
-// Si la frase empieza con un verbo así, el usuario QUIERE VER
-// las acciones, no un análisis de tendencia. Forzamos count si
-// el parser cae en `trend`.
-// ------------------------------------------------------------
 
 const VERBOS_ACCION = [
-  "quiero ver",
-  "quiero saber",
-  "quiero listar",
-  "quiero mostrar",
-  "quiero conocer",
-  "mostrame",
-  "mostranos",
-  "mostrame los",
-  "mostrame las",
-  "muestrame",
-  "muestrame los",
-  "muestrame las",
-  "dame",
-  "danos",
-  "dame los",
-  "dame las",
-  "listame",
-  "listame los",
-  "listame las",
-  "decime",
-  "decime los",
-  "decime las",
-  "contame",
-  "contame los",
-  "contame las",
-  "pasame",
-  "pasame los",
-  "pasame las",
-  "mostrame como",
-  "mostrame cuando",
-  "mostrame donde",
-  "decime como",
-  "decime cuando",
-  "contame como",
-  "contame cuando",
+  "quiero ver", "quiero saber", "quiero listar", "quiero mostrar",
+  "quiero conocer", "mostrame", "mostranos", "mostrame los",
+  "mostrame las", "muestrame", "muestrame los", "muestrame las",
+  "dame", "danos", "dame los", "dame las", "listame",
+  "listame los", "listame las", "decime", "decime los",
+  "decime las", "contame", "contame los", "contame las",
+  "pasame", "pasame los", "pasame las", "mostrame como",
+  "mostrame cuando", "mostrame donde", "decime como",
+  "decime cuando", "contame como", "contame cuando",
 ];
 
 function esVerboDeAccion(textoNorm: string): boolean {
   const t = textoNorm.trim();
-  for (const v of VERBOS_ACCION) {
-    if (t.startsWith(v)) return true;
-  }
+  for (const v of VERBOS_ACCION) if (t.startsWith(v)) return true;
   return false;
 }
 
@@ -186,8 +168,23 @@ function extraerGroupBy(
 }
 
 // ------------------------------------------------------------
-// 3) MÉTRICA ESPECÍFICA
+// 3) MÉTRICA ESPECÍFICA + B16
 // ------------------------------------------------------------
+// Primero busca en SINONIMOS_METRICA (más específico).
+// Si no encuentra nada y el texto dice "cuántos puntos" sin
+// contexto de %, promedio, "por set", etc., infiere
+// `puntos_ganados`.
+// ------------------------------------------------------------
+
+function inferirPuntosGanados(texto: string): boolean {
+  if (!/cuant[oa]s?\s+puntos?\b/.test(texto)) return false;
+  if (/\bpuntos?\s+por\b/.test(texto)) return false;
+  if (/\bporcentaje\b/.test(texto)) return false;
+  if (/%/.test(texto)) return false;
+  if (/\bpromedio\b/.test(texto)) return false;
+  if (/\btasa\b/.test(texto)) return false;
+  return true;
+}
 
 function extraerMetrica(
   texto: string
@@ -200,132 +197,164 @@ function extraerMetrica(
       }
     }
   }
+  // B16: fallback "cuántos puntos"
+  if (inferirPuntosGanados(texto)) {
+    return { metrica: "puntos_ganados", fragmento: "cuántos puntos" };
+  }
   return null;
 }
 
 // ------------------------------------------------------------
-// 4) TIEMPO
+// 4) TIEMPO — B10, B15
+// ------------------------------------------------------------
+// Combina MÚLTIPLES time filters. Antes cortaba en el primero.
+//
+// Prioridad si hay varios:
+//   - Si hay `ultimos_n_X` y `set_especifico`, devuelve el tipo
+//     dominante pero guarda el `set` como campo extra.
+//   - Si hay `ultimos_n_X` y `ultimos_n_Y`, combina con el más
+//     específico (sets dentro de partidos).
+//   - Si hay `dia_semana` + otro, combina el día con el resto.
 // ------------------------------------------------------------
 
-function extraerTiempo(
-  texto: string
-): { tiempo: TiempoFiltro; fragmentos: string[] } | null {
+interface TiempoExtraido {
+  tiempo: TiempoFiltro;
+  fragmentos: string[];
+}
+
+function extraerTiempo(texto: string): TiempoExtraido | null {
+  const fragmentos: string[] = [];
+  let tiempoBase: TiempoFiltro | null = null;
+
+  // -- Día de la semana --
   const diaRe =
-    /\b(?:el|los|un|alg[uú]n|este|ese)\s+(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/;
+    /\b(?:el|los|un|alg[uú]n|este|ese|del)\s+(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/;
   const mDia = texto.match(diaRe);
-  if (mDia) {
-    const dia = mDia[1];
-    if (DIAS_SEMANA.includes(dia as DiaSemana)) {
-      return {
-        tiempo: { tipo: "dia_semana", diaSemana: dia as DiaSemana },
-        fragmentos: [mDia[0]],
-      };
-    }
+  if (mDia && DIAS_SEMANA.includes(mDia[1] as DiaSemana)) {
+    tiempoBase = {
+      tipo: "dia_semana",
+      diaSemana: mDia[1] as DiaSemana,
+    };
+    fragmentos.push(mDia[0]);
   }
 
+  // -- Últimos N X --
   const ultimosRe =
-    /\b(?:los\s+|las\s+)?(?:ultimos|ultimas|ultimo|ultima|pasados|pasadas|pasado|pasada|recientes?|anteriores?)\s+(\d{1,2}|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+(partidos?|sets?|jugadas?|puntos?|acciones?|juegos?)\b/;
+    /\b(?:los\s+|las\s+)?(?:ultimos|ultimas|ultimo|ultima|pasados|pasadas|pasado|pasada|recientes?|anteriores?)\s+(\d{1,2}|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+(partidos?|sets?|jugadas?|puntos?|acciones?|juegos?|meses?|mes|semanas?|semana|anos?|ano|anios?|anio)\b/;
   const mUlt = texto.match(ultimosRe);
   if (mUlt) {
     const n = parsearNumero(mUlt[1]) ?? 1;
     const unidad = mUlt[2].replace(/s$/, "");
-    const tipo: TiempoTipo =
-      unidad === "partido"
-        ? "ultimos_n_partidos"
-        : unidad === "set" || unidad === "juego"
-        ? "ultimos_n_sets"
-        : "ultimos_n_jugadas";
-    return { tiempo: { tipo, n }, fragmentos: [mUlt[0]] };
+    let tipo: TiempoTipo;
+    if (unidad === "partido") tipo = "ultimos_n_partidos";
+    else if (unidad === "set" || unidad === "juego") tipo = "ultimos_n_sets";
+    else if (unidad === "mes" || unidad === "semana" || unidad === "ano" || unidad === "anio")
+      tipo = "este_mes"; // aproximación
+    else tipo = "ultimos_n_jugadas";
+
+    if (!tiempoBase) tiempoBase = { tipo, n };
+    fragmentos.push(mUlt[0]);
   }
 
-  const ultimoRe =
-    /\b(?:el\s+|la\s+)?(ultimo|ultima)\s+(partido|set|juego|punto|semana|temporada)\b/;
-  const mUlt2 = texto.match(ultimoRe);
-  if (mUlt2) {
-    const unidad = mUlt2[2];
-    if (unidad === "partido") {
-      return {
-        tiempo: { tipo: "ultimos_n_partidos", n: 1 },
-        fragmentos: [mUlt2[0]],
-      };
-    }
-    if (unidad === "set" || unidad === "juego") {
-      return {
-        tiempo: { tipo: "ultimos_n_sets", n: 1 },
-        fragmentos: [mUlt2[0]],
-      };
-    }
-    if (unidad === "punto") {
-      return {
-        tiempo: { tipo: "punto_especifico" },
-        fragmentos: [mUlt2[0]],
-      };
-    }
-    if (unidad === "semana") {
-      return {
-        tiempo: { tipo: "esta_semana" },
-        fragmentos: [mUlt2[0]],
-      };
-    }
-    if (unidad === "temporada") {
-      return {
-        tiempo: { tipo: "temporada_pasada" },
-        fragmentos: [mUlt2[0]],
-      };
+  // -- Último / última X --
+  if (!tiempoBase) {
+    const ultimoRe =
+      /\b(?:el\s+|la\s+)?(ultimo|ultima)\s+(partido|set|juego|punto|semana|mes|temporada|ano|anio|torneo)\b/;
+    const mUlt2 = texto.match(ultimoRe);
+    if (mUlt2) {
+      const unidad = mUlt2[2];
+      if (unidad === "partido") tiempoBase = { tipo: "ultimos_n_partidos", n: 1 };
+      else if (unidad === "set" || unidad === "juego") tiempoBase = { tipo: "ultimos_n_sets", n: 1 };
+      else if (unidad === "punto") tiempoBase = { tipo: "punto_especifico" };
+      else if (unidad === "semana") tiempoBase = { tipo: "esta_semana" };
+      else if (unidad === "mes") tiempoBase = { tipo: "este_mes" };
+      else if (unidad === "ano" || unidad === "anio") tiempoBase = { tipo: "este_ano" };
+      else if (unidad === "temporada") tiempoBase = { tipo: "temporada_pasada" };
+      else if (unidad === "torneo") tiempoBase = { tipo: "esta_temporada" };
+      if (tiempoBase) fragmentos.push(mUlt2[0]);
     }
   }
 
-  const mapaTemporada: { patron: RegExp; tipo: TiempoTipo }[] = [
-    { patron: /\besta\s+temporada\b/, tipo: "esta_temporada" },
-    { patron: /\btemporada\s+actual\b/, tipo: "esta_temporada" },
-    { patron: /\btemporada\s+en\s+curso\b/, tipo: "esta_temporada" },
-    { patron: /\besta\s+semana\b/, tipo: "esta_semana" },
-    { patron: /\bsemana\s+actual\b/, tipo: "esta_semana" },
-    { patron: /\beste\s+mes\b/, tipo: "este_mes" },
-    { patron: /\bmes\s+actual\b/, tipo: "este_mes" },
-    { patron: /\beste\s+ano\b/, tipo: "este_ano" },
-    { patron: /\beste\s+anio\b/, tipo: "este_ano" },
-    { patron: /\bano\s+actual\b/, tipo: "este_ano" },
-    { patron: /\btemporada\s+pasada\b/, tipo: "temporada_pasada" },
-    { patron: /\btemporada\s+anterior\b/, tipo: "temporada_pasada" },
-  ];
-  for (const { patron, tipo } of mapaTemporada) {
-    const m = texto.match(patron);
-    if (m) return { tiempo: { tipo }, fragmentos: [m[0]] };
+  // -- Temporada actual / pasada --
+  if (!tiempoBase) {
+    const mapaTemporada: { patron: RegExp; tipo: TiempoTipo }[] = [
+      { patron: /\besta\s+temporada\b/, tipo: "esta_temporada" },
+      { patron: /\btemporada\s+actual\b/, tipo: "esta_temporada" },
+      { patron: /\btemporada\s+en\s+curso\b/, tipo: "esta_temporada" },
+      { patron: /\besta\s+semana\b/, tipo: "esta_semana" },
+      { patron: /\bsemana\s+actual\b/, tipo: "esta_semana" },
+      { patron: /\beste\s+mes\b/, tipo: "este_mes" },
+      { patron: /\bmes\s+actual\b/, tipo: "este_mes" },
+      { patron: /\beste\s+ano\b/, tipo: "este_ano" },
+      { patron: /\beste\s+anio\b/, tipo: "este_ano" },
+      { patron: /\bano\s+actual\b/, tipo: "este_ano" },
+      { patron: /\bano\s+pasado\b/, tipo: "temporada_pasada" },
+      { patron: /\banio\s+pasado\b/, tipo: "temporada_pasada" },
+      { patron: /\btemporada\s+pasada\b/, tipo: "temporada_pasada" },
+      { patron: /\btemporada\s+anterior\b/, tipo: "temporada_pasada" },
+    ];
+    for (const { patron, tipo } of mapaTemporada) {
+      const m = texto.match(patron);
+      if (m) {
+        tiempoBase = { tipo };
+        fragmentos.push(m[0]);
+        break;
+      }
+    }
   }
 
-  const setRe = /\b(?:en\s+el\s+)?set\s+(\d)\b/;
+  // -- Set específico (SIEMPRE agrega el campo `set` aunque haya otro) --
+  const setRe = /\b(?:en\s+el\s+|del\s+|el\s+)?set\s+(\d)\b/;
   const mSet = texto.match(setRe);
   if (mSet) {
-    return {
-      tiempo: { tipo: "set_especifico", set: parseInt(mSet[1], 10) },
-      fragmentos: [mSet[0]],
-    };
+    const setNum = parseInt(mSet[1], 10);
+    if (tiempoBase) {
+      if (tiempoBase.tipo === "ultimos_n_partidos" || tiempoBase.tipo === "ultimos_n_sets") {
+        tiempoBase = { ...tiempoBase, set: setNum };
+      } else if (tiempoBase.tipo === "esta_temporada" || tiempoBase.tipo === "esta_semana" || tiempoBase.tipo === "este_mes" || tiempoBase.tipo === "este_ano") {
+        // Preferimos el set específico sobre el rango amplio
+        tiempoBase = { tipo: "set_especifico", set: setNum };
+      }
+    } else {
+      tiempoBase = { tipo: "set_especifico", set: setNum };
+    }
+    fragmentos.push(mSet[0]);
   }
 
-  const puntoRe = /\b(?:en\s+el\s+)?punto\s+(\d{1,3})\b/;
-  const mPunto = texto.match(puntoRe);
-  if (mPunto) {
-    return {
-      tiempo: { tipo: "punto_especifico", punto: parseInt(mPunto[1], 10) },
-      fragmentos: [mPunto[0]],
-    };
+  // -- Punto específico --
+  if (!tiempoBase) {
+    const puntoRe = /\b(?:en\s+el\s+|del\s+)?punto\s+(\d{1,3})\b/;
+    const mPunto = texto.match(puntoRe);
+    if (mPunto) {
+      tiempoBase = {
+        tipo: "punto_especifico",
+        punto: parseInt(mPunto[1], 10),
+      };
+      fragmentos.push(mPunto[0]);
+    }
   }
 
-  const partidoRe = /\b(?:en\s+el\s+partido|en\s+el\s+encuentro)\b/;
-  const mPartido = texto.match(partidoRe);
-  if (mPartido) {
-    return {
-      tiempo: { tipo: "partido_especifico" },
-      fragmentos: [mPartido[0]],
-    };
+  // -- "en el partido" / "en el encuentro" (partido específico) --
+  if (!tiempoBase) {
+    const partidoRe = /\b(?:en\s+el\s+partido|en\s+el\s+encuentro)\b/;
+    const mPartido = texto.match(partidoRe);
+    if (mPartido) {
+      tiempoBase = { tipo: "partido_especifico" };
+      fragmentos.push(mPartido[0]);
+    }
   }
 
-  return null;
+  if (!tiempoBase) return null;
+  return { tiempo: tiempoBase, fragmentos };
 }
 
 // ------------------------------------------------------------
-// 5) CONDICIÓN
+// 5) CONDICIÓN — B8
+// ------------------------------------------------------------
+// B8: NO matchear "cuando ganamos/perdimos" acá.
+// El compilador ya produce `expr` para "cuando ganamos". Antes
+// el parser duplicaba el filtro con `ganamos: bool` en
+// `CondicionFiltro`, generando conflictos.
 // ------------------------------------------------------------
 
 function extraerCondicion(
@@ -337,9 +366,7 @@ function extraerCondicion(
   const marcadorRe = /(\d{1,2})\s*(?:-|a|al)\s*(\d{1,2})/;
   const mMarc = texto.match(marcadorRe);
   if (mMarc) {
-    const a = parseInt(mMarc[1], 10);
-    const b = parseInt(mMarc[2], 10);
-    cond.marcador = `${a}-${b}`;
+    cond.marcador = `${parseInt(mMarc[1], 10)}-${parseInt(mMarc[2], 10)}`;
     fragmentos.push(mMarc[0]);
   }
 
@@ -420,9 +447,7 @@ function extraerCondicion(
   }
 
   if (
-    /\b(?:despues|tras|luego)\s+de\s+(?:errar|un\s+error|errores|fallar|fallo)\b/.test(
-      texto
-    ) ||
+    /\b(?:despues|tras|luego)\s+de\s+(?:errar|un\s+error|errores|fallar|fallo)\b/.test(texto) ||
     /\bcon\s+error\s+previo\b/.test(texto)
   ) {
     cond.conErrorPrevio = true;
@@ -430,9 +455,7 @@ function extraerCondicion(
   }
 
   if (
-    /\b(?:despues|tras|luego)\s+de\s+(?:un\s+punto|un\s+acierto|acertar|anotar|un\s+kill)\b/.test(
-      texto
-    ) ||
+    /\b(?:despues|tras|luego)\s+de\s+(?:un\s+punto|un\s+acierto|acertar|anotar|un\s+kill)\b/.test(texto) ||
     /\bcon\s+acierto\s+previo\b/.test(texto)
   ) {
     cond.conAciertoPrevio = true;
@@ -466,10 +489,7 @@ function extraerCondicion(
   const cambioOrdenados = ordenarPorLargoDesc(SINONIMOS_CAMBIO);
   for (const patron of cambioOrdenados) {
     if (!texto.includes(patron)) continue;
-    if (
-      /despues|tras|luego/.test(patron) &&
-      patron.includes("cambio")
-    ) {
+    if (/despues|tras|luego/.test(patron) && patron.includes("cambio")) {
       cond.despuesDeCambio = true;
       cond.cambioEnPunto = true;
     } else if (patron.startsWith("sin ")) {
@@ -508,19 +528,91 @@ function extraerCondicion(
 }
 
 // ------------------------------------------------------------
-// 6) COMPARACIÓN (X vs Y)
+// 6) COMPARACIÓN — B21, B23, B24, B27
 // ------------------------------------------------------------
+// 5 formas soportadas:
+//   a) X vs / versus / contra / frente a Y  (con guard B21)
+//   b) entre X y Y                          (B23)
+//   c) comparar X con Y / comparar a X con Y (B27)
+//   d) quién es mejor, X o Y / cuál es mejor, X o Y (B24)
+//   e) X es mejor/peor que Y
+// ------------------------------------------------------------
+
+// Verbos de consulta que NO deben confundirse con comparación.
+const VERBOS_CONSULTA =
+  /\b(cuant[oa]s?|porcentaje|promedio|media|tasa|distribucion|evolucion|tendencia|ranking|top|frecuencia|cada\s+cuanto|mejor|peor|maximo|minimo|total)\b/;
+
+// Conector de comparación suelto "vs X" seguido de una entidad
+// (nombre, equipo). Solo es comparación si el lado izq. NO es
+// una consulta.
+function pareceConsultaNoComparacion(a: string): boolean {
+  return VERBOS_CONSULTA.test(a);
+}
 
 function extraerComparacion(
   texto: string
 ): { a: string; b: string; fragmento: string } | null {
-  const re = /\s+(?:vs\.?|versus|contra|frente\s+a)\s+/;
-  const m = texto.match(re);
-  if (!m || m.index === undefined) return null;
-  const a = texto.slice(0, m.index).trim();
-  const b = texto.slice(m.index + m[0].length).trim();
-  if (!a || !b) return null;
-  return { a, b, fragmento: `${a} vs ${b}` };
+  // (a) X vs Y — con guard B21
+  const reVs = /\s+(?:vs\.?|versus|contra|frente\s+a)\s+/;
+  const mVs = texto.match(reVs);
+  if (mVs && mVs.index !== undefined) {
+    const a = texto.slice(0, mVs.index).trim();
+    const b = texto.slice(mVs.index + mVs[0].length).trim();
+    // B21: si `a` es una consulta (cuántos/porcentaje/promedio), NO
+    // es comparación. Es filtro de rival.
+    if (a && b && !pareceConsultaNoComparacion(a)) {
+      return { a, b, fragmento: `${a} vs ${b}` };
+    }
+  }
+
+  // (b) entre X y Y — B23 (solo si X, Y no son números)
+  const reEntre = /\bentre\s+([A-Za-zÁÉÍÓÚáéíóúñÑ][^,]*?)\s+y\s+([A-Za-zÁÉÍÓÚáéíóúñÑ][^,]*?)(?:$|[.,;?])/;
+  const mEntre = texto.match(reEntre);
+  if (mEntre) {
+    const a = mEntre[1].trim();
+    const b = mEntre[2].trim();
+    if (a && b && !/^\d/.test(a) && !/^\d/.test(b)) {
+      return { a, b, fragmento: `entre ${a} y ${b}` };
+    }
+  }
+
+  // (c) comparar X con Y — B27
+  const reComparar =
+    /\bcompar(?:ar|ando|a|e|en|emos)\s+(?:a\s+|al\s+|la\s+|el\s+)?(.+?)\s+con\s+(.+?)(?:$|[.,;?]|\s+en\s+|\s+por\s+)/;
+  const mComparar = texto.match(reComparar);
+  if (mComparar) {
+    const a = mComparar[1].trim();
+    const b = mComparar[2].trim();
+    if (a && b) {
+      return { a, b, fragmento: `comparar ${a} con ${b}` };
+    }
+  }
+
+  // (d) quién/quiénes es/son mejor(es)/peor(es), X o Y — B24
+  const reQuienMejor =
+    /\b(?:quien|quienes|cu[aá]l|cu[aá]les)\s+(?:es|son)\s+(?:mejor|peor)(?:es)?,?\s+(.+?)\s+o\s+(.+?)(?:$|[.,;?])/;
+  const mQuienMejor = texto.match(reQuienMejor);
+  if (mQuienMejor) {
+    const a = mQuienMejor[1].trim();
+    const b = mQuienMejor[2].trim();
+    if (a && b) {
+      return { a, b, fragmento: `${a} o ${b}` };
+    }
+  }
+
+  // (e) X es mejor/peor que Y
+  const reEsMejor =
+    /(.+?)\s+(?:es|fue|resulta)\s+(?:mejor|peor)\s+que\s+(.+?)(?:$|[.,;?])/;
+  const mEsMejor = texto.match(reEsMejor);
+  if (mEsMejor) {
+    const a = mEsMejor[1].trim();
+    const b = mEsMejor[2].trim();
+    if (a && b) {
+      return { a, b, fragmento: `${a} mejor/peor que ${b}` };
+    }
+  }
+
+  return null;
 }
 
 // ------------------------------------------------------------
@@ -581,24 +673,7 @@ export function parsearIntencion(textoOriginal: string): IntencionQuery {
 
   const texto = normalizar(original);
 
-  // ============================================================
-  // 0. COMPILADOR (capa 4) — corre PRIMERO si la frase es compleja
-  // ============================================================
-  // Esto garantiza que:
-  //   - "en sets ganados" no se confunda con métrica `sets_ganados`.
-  //   - "cuando X, cómo varía Y" produzca `expr` + baseline.
-  //   - "en racha de 3+" produzca el filtro de racha.
-  //   - "más de N cruces" produzca el filtro de cruces.
-  //
-  // El compilador puede decidir:
-  //   - `filtro`: Expr del AST → va a `condicion.expr`.
-  //   - `metrica`: MetricaDef → gana sobre `extraerMetrica`.
-  //   - `compararConBaseline`: bool → va a `condicion.compararConBaseline`.
-  //   - `ignorarMetricaParser`: bool → descartar `extraerMetrica`.
-  //
-  // Si la frase NO es compleja, no se llama al compilador y todo
-  // sigue igual que v1.2.
-  // ============================================================
+  // 0. COMPILADOR (capa 4) corre PRIMERO si la frase es compleja.
   const compilado = pareceCondicionCompleja(texto)
     ? compilarCondicion(texto)
     : null;
@@ -610,15 +685,12 @@ export function parsearIntencion(textoOriginal: string): IntencionQuery {
     resultado.fragmentos.push(gb.fragmento);
   }
 
-  // --- Métrica del parser ---
-  // Si el compilador dijo "ignorarMetricaParser", la descartamos.
-  // Si el compilador tiene métrica propia, esa gana.
+  // --- Métrica del parser (con B16) ---
   let metricaFinal: string | null = null;
   if (compilado && compilado.metrica) {
     metricaFinal = compilado.metrica.nombre;
     resultado.fragmentos.push(...compilado.fragmentos);
   } else if (compilado && compilado.ignorarMetricaParser) {
-    // No asignar métrica del parser.
     resultado.fragmentos.push(...compilado.fragmentos);
   } else {
     const met = extraerMetrica(texto);
@@ -629,7 +701,7 @@ export function parsearIntencion(textoOriginal: string): IntencionQuery {
   }
   resultado.metrica = metricaFinal;
 
-  // --- Intención (count / percentage / average / etc.) ---
+  // --- Intención ---
   const int = detectarIntencion(texto);
   if (int) {
     resultado.tipo = int.tipo;
@@ -637,27 +709,16 @@ export function parsearIntencion(textoOriginal: string): IntencionQuery {
     resultado.fragmentos.push(int.fragmento);
   }
 
-  // ============================================================
-  // FIX v1.3: "quiero ver como fueron X"
-  // ============================================================
-  // Si la frase empieza con un verbo de acción ("quiero ver",
-  // "mostrame", etc.) y el parser cayó en `trend` por "como
-  // fueron", degradamos a `count` porque el usuario quiere ver
-  // las acciones, no la evolución.
-  // ============================================================
-  if (
-    esVerboDeAccion(texto) &&
-    resultado.tipo === "trend"
-  ) {
+  // FIX v1.3: "quiero ver como fueron X" → degrada trend a count
+  if (esVerboDeAccion(texto) && resultado.tipo === "trend") {
     resultado.tipo = "count";
     resultado.agregacion = "count";
-    // Sacar "trend" de los fragmentos para que no confunda al usuario.
     resultado.fragmentos = resultado.fragmentos.filter(
       (f) => f !== "como viene" && f !== "evolucion" && f !== "tendencia"
     );
   }
 
-  // --- Comparación ---
+  // --- Comparación (con B21, B23, B24, B27) ---
   const comp = extraerComparacion(texto);
   if (comp) {
     resultado.comparacion = { a: comp.a, b: comp.b };
@@ -665,38 +726,29 @@ export function parsearIntencion(textoOriginal: string): IntencionQuery {
     resultado.fragmentos.push(comp.fragmento);
   }
 
-  // --- Tiempo ---
+  // --- Tiempo (con B10, B15) ---
   const tmp = extraerTiempo(texto);
   if (tmp) {
     resultado.tiempo = tmp.tiempo;
     resultado.fragmentos.push(...tmp.fragmentos);
   }
 
-  // --- Condición (parser) ---
+  // --- Condición (con B8: NO matchea "cuando ganamos/perdimos") ---
   const cond = extraerCondicion(texto);
   let condFinal: CondicionFiltro | null = cond ? cond.condicion : null;
   const fragmentosCond: string[] = cond ? [...cond.fragmentos] : [];
 
-  // ============================================================
-  // MERGE con el compilador (capa 4)
-  // ============================================================
+  // --- MERGE con el compilador (capa 4) ---
   if (compilado) {
-    // 1. Filtro del compilador → `condicion.expr`.
     if (compilado.filtro) {
       if (!condFinal) condFinal = {};
       condFinal.expr = compilado.filtro;
       fragmentosCond.push("expr: " + compilado.fragmentos.join(" | "));
     }
-
-    // 2. Comparación contra baseline.
     if (compilado.compararConBaseline) {
       if (!condFinal) condFinal = {};
       condFinal.compararConBaseline = true;
     }
-
-    // 3. Métrica del compilador (si ya la asignamos arriba, no
-    //    hace falta repetir).
-    // 4. Ignorar métrica del parser ya se resolvió arriba.
   }
 
   if (condFinal && Object.keys(condFinal).length > 0) {

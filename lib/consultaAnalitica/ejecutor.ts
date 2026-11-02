@@ -3,6 +3,26 @@
 // ============================================================
 // FASE 4 + FASE 6 del plan "Consultas Analíticas Libres".
 //
+// v2.0 (FASE 7.5 — paso 10/10):
+//   + B6: `variablesPunto` se calcula UNA SOLA VEZ acá (única
+//     fuente de verdad) y se pasa a `construirRespuesta` en
+//     `ctxRespuesta.variablesPunto`. `respuesta.ts` la reutiliza
+//     (ya lo hacía v1.9). Se documenta explícitamente para que
+//     no se recalcule en el futuro.
+//   + B31: `totalUniverso` se setea SIEMPRE en `ctxRespuesta`
+//     (universo completo, pre-cruces, pre-tiempo). Cuando el
+//     caller no provee acciones, queda en 0.
+//   + B9: nuevo campo `puntosUniverso: universoPuntos` en
+//     `ctxRespuesta`. Permite que `respuesta.ts` use el universo
+//     real de puntos (pre-cruces, pre-tiempo) para `puntosTotales`
+//     y para el baseline general, sin perder el filtro de tiempo
+//     en la métrica filtrada (que sigue usando `puntosConTiempo`).
+//     NOTA: la parte de consumo de `puntosUniverso` en
+//     `respuesta.ts` se hace en un mini-paso posterior (10.b),
+//     porque `respuesta.ts` hoy usa `ctxBaseline.puntos.length`
+//     como fallback. Con este ejecutor seteando `puntosUniverso`,
+//     el mini-paso 10.b solo agrega el lookup.
+//
 // v1.9 (FASE 7.5 — fixes del AST compilado):
 //   + `necesitaVariables` ahora se dispara si hay `condicion.expr`
 //     (sin importar `compararConBaseline`). Antes solo se calculaba
@@ -594,8 +614,13 @@ export function ejecutarConsulta(
   const fasesPorPunto = calcularFasesPorPunto(universo);
 
   // ============================================================
-  // 6.b) FASE 7.5 — Variables por punto
+  // 6.b) FASE 7.5 — Variables por punto (B6)
   // ============================================================
+  // v2.0 (B6): `variablesPunto` se calcula ACÁ, UNA SOLA VEZ, y
+  // se pasa a `construirRespuesta` en `ctxRespuesta.variablesPunto`.
+  // `respuesta.ts` la reutiliza (ya lo hacía v1.9). No se debe
+  // recalcular downstream.
+  //
   // v1.9: se calculan si hay `condicion.expr` (con o sin baseline).
   // Antes solo se calculaban para `compararConBaseline === true`,
   // así que los filtros sueltos ("cuando ganamos", "en tie-break",
@@ -618,9 +643,19 @@ export function ejecutarConsulta(
     : undefined;
 
   // 7) Construir respuesta.
+  //
+  // B31: `totalUniverso` se setea SIEMPRE con el universo completo
+  // (pre-cruces, pre-tiempo). Cuando el caller no provee acciones,
+  // queda en 0.
+  //
+  // B9: `puntosUniverso` se setea con `universoPuntos` (pre-cruces,
+  // pre-tiempo). `respuesta.ts` lo usa para `puntosTotales` y para
+  // el baseline general cuando `ctxBaseline.puntos` no está
+  // disponible. El mini-paso 10.b agrega el lookup en `respuesta.ts`.
   const ctxRespuesta: ContextoRespuesta = {
     acciones: accionesFiltradas,
     puntos: puntosConTiempo,
+    puntosUniverso: universoPuntos,
     intencion,
     contextoAgrupacion: {
       nombreDeJugador: contexto.jugadores
