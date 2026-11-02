@@ -1,30 +1,27 @@
 // ============================================================
 // RESPUESTA — response builder
 // ============================================================
+// v2.3 (FASE 7.5 — fix desglose con fase):
+//   + `aplicarCondicionesExtra` pasa a ser `export`. Lo
+//     necesita `ejecutarConsultaLLM.ts` para aplicar el filtro
+//     de fase (side-out / k2 / k3) y salidaRol ANTES de armar
+//     la tabla de desglose, sin duplicar lógica.
+//   + Sin cambios de comportamiento. Todo lo demás idéntico.
+//
 // v2.2 (FASE 7.5 — mini-paso 10.b, cierre de B9):
 //   + `ContextoRespuesta` suma `puntosUniverso?: PuntoConAcciones[]`.
-//     Lo setea `ejecutor.ts` con el universo de puntos pre-cruces,
-//     pre-tiempo. Se usa SOLO para `puntosTotales` y para el
-//     baseline general; NUNCA para la métrica filtrada (que sigue
-//     usando `puntos` post-tiempo).
 //   + `ejecutarComparacionBaseline` usa la nueva cadena de fallback
-//     para `puntosTotales`:
-//       1. ctxBaseline.puntosUniverso (pre-fase).
-//       2. ctxBaseline.puntos (fallback histórico).
-//       3. puntosUniverso local (mínimo garantizado).
+//     para `puntosTotales`.
 //
 // v2.1 (FASE 7.5 — fixes):
 //   + `ejecutarMetricaConGroupBy`: cuando hay métrica Y groupBy,
-//     construye tabla (una fila por grupo). Antes solo devolvía
-//     el valor global. Fix de "recepción % por set".
+//     construye tabla (una fila por grupo).
 //   + `filtrarContextoPorExpr`: cuando hay `condicion.expr` pero
 //     NO `compararConBaseline`, filtra puntos por expr y aplica
-//     dispatch normal. Fix de "cuando ganamos" / "en tie-break"
-//     / "más de N cruces" sin baseline.
+//     dispatch normal.
 //   + B3: `filtrarContextoPorExpr` INTERSECTA en vez de reemplazar.
 //   + B7: baseline general = ctxBaseline (universo real), no post-fase.
-//   + B9 (parte): primer intento de `puntosTotales` = universo real
-//     (usa ctxBaseline.puntos como fallback).
+//   + B9 (parte): primer intento de `puntosTotales` = universo real.
 //
 // v2.0 (FASE 7.5 — AST compilado):
 //   + `ejecutarComparacionBaseline`.
@@ -139,12 +136,6 @@ import { evaluarBooleano } from "./expresiones";
 export interface ContextoRespuesta {
   acciones: AccionVisual[];
   puntos?: PuntoConAcciones[];
-  /**
-   * B9: universo de puntos ANTES de aplicar filtros de tiempo/cruces.
-   * Lo setea `ejecutor.ts`. Si no está, se cae al fallback de `puntos`
-   * (comportamiento anterior). Nunca se usa para la métrica filtrada,
-   * solo para `puntosTotales` y para el baseline general.
-   */
   puntosUniverso?: PuntoConAcciones[];
   intencion: IntencionQuery;
   contextoAgrupacion?: ContextoAgrupacion;
@@ -266,8 +257,12 @@ function claveDePuntoDesdePunto(p: PuntoConAcciones): string {
 // ------------------------------------------------------------
 // APLICAR CONDICIONES EXTRA (fase + salidaRol)
 // ------------------------------------------------------------
+// v2.3: EXPORTADA. `ejecutarConsultaLLM.ts` la llama antes de
+// armar la tabla de desglose, así el desglose respeta la fase
+// del rally (k1 / k2 / k3) y la salida por rol.
+// ------------------------------------------------------------
 
-function aplicarCondicionesExtra(
+export function aplicarCondicionesExtra(
   ctx: ContextoRespuesta
 ): ContextoRespuesta {
   const cond = ctx.intencion.condicion;
@@ -331,12 +326,6 @@ function aplicarCondicionesExtra(
 // ------------------------------------------------------------
 // FILTRAR CONTEXTO POR EXPR (sin baseline)
 // ------------------------------------------------------------
-// Si hay `condicion.expr` pero NO `compararConBaseline`, se filtra
-// el universo de puntos por la expresión y se devuelve un ctx con
-// solo los puntos y acciones que cumplen.
-//
-// Se usa en `construirRespuesta` ANTES del dispatch normal.
-// ------------------------------------------------------------
 
 function filtrarContextoPorExpr(
   ctx: ContextoRespuesta
@@ -364,14 +353,6 @@ function filtrarContextoPorExpr(
     }
   }
 
-  // B3: INTERSECCIÓN, no reemplazo.
-  // Las acciones finales son las que YA venían filtradas por el
-  // parser (tipo=ataque, resultado=punto, jugadorId, etc.) Y que
-  // además pertenecen a un punto que cumple el expr. No agregamos
-  // acciones nuevas de esos puntos (eso perdía los filtros del
-  // parser: por ejemplo "cuando ganamos, cuántos ataques punto"
-  // pasaba a contar TODAS las acciones del punto, perdiendo
-  // tipo=ataque y resultado=punto).
   const accionesFiltradas = ctx.acciones.filter((a) => {
     const pid = a.partido_id || "";
     const k = `${pid}|${a.set_numero}|${a.punto_numero}`;
@@ -767,8 +748,6 @@ function ejecutarMetrica(ctx: ContextoRespuesta): RespuestaConsulta {
 // ------------------------------------------------------------
 // MÉTRICA CON GROUPBY
 // ------------------------------------------------------------
-// Si hay `groupBy`, ejecuta la métrica por grupo y devuelve tabla.
-// ------------------------------------------------------------
 
 function ejecutarMetricaConGroupBy(
   ctx: ContextoRespuesta,
@@ -797,7 +776,6 @@ function ejecutarMetricaConGroupBy(
     });
   }
 
-  // Ordenar: para "set" por número ascendente, resto por valor desc
   if (gb === "set") {
     filas.sort((a, b) => parseInt(a.key, 10) - parseInt(b.key, 10));
   } else {
@@ -857,9 +835,6 @@ function ejecutarComparacionBaseline(
     }
   }
 
-  // B3: INTERSECCIÓN (mismo criterio que filtrarContextoPorExpr).
-  // Las acciones filtradas son las que ya venían del parser Y que
-  // pertenecen a un punto que cumple el expr.
   const accionesFiltradas = ctx.acciones.filter((a) => {
     const pid = a.partido_id || "";
     const k = `${pid}|${a.set_numero}|${a.punto_numero}`;
@@ -882,10 +857,6 @@ function ejecutarComparacionBaseline(
       ? ejecutarMetricaConGroupBy(ctxFiltrado, gb)
       : ejecutarMetrica(ctxFiltrado);
 
-  // B7: baseline general = universo REAL (ctxBaseline), no el
-  // ctx post-aplicarCondicionesExtra. Así "en side-out, cómo
-  // varía X respecto al general" compara side-out (filtro) contra
-  // todos los puntos, no side-out contra side-out.
   const respGeneral = ejecutarMetrica(ctxBaseline);
 
   const numFiltrada = extraerNumeroDeRespuesta(respFiltrada);
@@ -897,12 +868,6 @@ function ejecutarComparacionBaseline(
     );
   }
 
-  // B9 (mini-paso 10.b): puntosTotales = universo real, en este
-  // orden de prioridad:
-  //   1. ctxBaseline.puntosUniverso (pre-cruces, pre-tiempo). Lo
-  //      setea `ejecutor.ts` en el `ctxRespuesta` y en `ctxOriginal`.
-  //   2. ctxBaseline.puntos (fallback histórico).
-  //   3. puntosUniverso local (mínimo garantizado).
   const puntosQueCumplen = clavesFiltradas.size;
   const puntosTotales =
     ctxBaseline.puntosUniverso && ctxBaseline.puntosUniverso.length > 0
@@ -1462,7 +1427,6 @@ export function construirRespuesta(
   if (ctx.intencion.metrica) {
     const gb = groupByEfectivo(ctx);
 
-    // 3a. Métrica + groupBy: tabla
     if (gb && !esGroupByPorPunto(gb)) {
       const resp = ejecutarMetricaConGroupBy(ctx, gb);
       return {
@@ -1473,7 +1437,6 @@ export function construirRespuesta(
       };
     }
 
-    // 3b. Métrica sola: número
     const resp = ejecutarMetrica(ctx);
     return {
       respuesta: agregarAvisoAmbiguedad(resp, ctx.intencion),

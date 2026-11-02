@@ -9,21 +9,24 @@
 //     `GROQ_API_KEY`. Nunca importar desde un componente
 //     "use client".
 //
+// CAMBIOS v2.2 (fix desglose con fase):
+//   + En la rama de desglose, se aplica `aplicarCondicionesExtra`
+//     (fase del rally + salidaRol) ANTES de armar la tabla.
+//     Antes el desglose se armaba con `accionesFiltradas` que
+//     solo tenía tipo aplicado, así que "k1", "k2" y "k3"
+//     devolvían los mismos conteos. Ahora respeta la fase.
+//   + `aplicarCondicionesExtra` viene importada de `./respuesta`
+//     (fue exportada en v2.3 de ese archivo).
+//
 // CAMBIOS v2.1 (fix tipos + desglose):
 //   + Post-filtro de tipo: si `conversion.tipoExplicito` no
-//     es null, filtramos accionesFiltradas por ese tipo. Esto
-//     cierra el bug de "el tipo no filtra" (que se dispara
-//     siempre que el tipo es "ataque", porque
-//     `BLOQUE_TRIGGER_VACIO.tipo === "ataque"`).
+//     es null, filtramos accionesFiltradas por ese tipo.
 //   + `desglose`: si el LLM pidió `desglose` y NO hay
 //     `groupBy`, armamos una `RespuestaTabla` con las
 //     categorías pedidas (Positivo / Negativo / Neutro) usando
-//     `clasificarResultado()`. Devolvemos esa tabla sin pasar
-//     por `construirRespuesta`. Si hay `groupBy` también, se
-//     prioriza `groupBy` (con aviso ya emitido por
-//     `llmToIntencion`).
+//     `clasificarResultado()`.
 //   + `DebugConsultaLLM` suma `tipoExplicitoAplicado` y
-//     `desgloseAplicado` (opcionales).
+//     `desgloseAplicado`.
 //
 // Uso:
 //   const r = await ejecutarConsultaLLM("cómo atacan en k1", {
@@ -72,7 +75,11 @@ import {
   calcularCrucesPorPunto,
   calcularResultadosPunto,
 } from "./groupBy";
-import { construirRespuesta, type ContextoRespuesta } from "./respuesta";
+import {
+  aplicarCondicionesExtra,
+  construirRespuesta,
+  type ContextoRespuesta,
+} from "./respuesta";
 
 // ------------------------------------------------------------
 // TIPOS
@@ -174,7 +181,8 @@ function normalizarCategorias(
  * contando acciones por `clasificarResultado()`.
  *
  * IMPORTANTE: asume que `acciones` ya viene filtrado por
- * `aplicarFiltro` + post-filtro de tipo. NO vuelve a filtrar.
+ * `aplicarFiltro` + post-filtro de tipo + `aplicarCondicionesExtra`
+ * (fase / salidaRol). NO vuelve a filtrar.
  */
 function construirRespuestaDesglose(
   acciones: AccionVisual[],
@@ -368,12 +376,6 @@ export async function ejecutarConsultaLLM(
   // ----------------------------------------------------------
   // 5.b) FIX v2.1: post-filtro de tipo
   // ----------------------------------------------------------
-  // `aplicarFiltro` del motor viejo devuelve TODO si considera
-  // el filtro "vacío", y eso pasa siempre que `filtro.tipo`
-  // coincide con `BLOQUE_TRIGGER_VACIO.tipo` (= "ataque"). Así
-  // que si el LLM pidió un tipo explícito, forzamos el filtro
-  // acá.
-  // ----------------------------------------------------------
   if (conversion.tipoExplicito) {
     accionesFiltradas = accionesFiltradas.filter(
       (a) => a.tipo === conversion.tipoExplicito
@@ -381,12 +383,12 @@ export async function ejecutarConsultaLLM(
   }
 
   // ----------------------------------------------------------
-  // 6) Desglose (fix v2.1)
+  // 6) Desglose (fix v2.2: aplicar fase/salidaRol antes)
   // ----------------------------------------------------------
-  // Si el LLM pidió `desglose` Y no hay `groupBy`, armamos una
-  // tabla con las categorías pedidas (Positivo / Negativo /
-  // Neutro) y devolvemos directo, SIN pasar por
-  // `construirRespuesta`.
+  // `aplicarCondicionesExtra` filtra por fase del rally
+  // (side-out / k2 / k3) y salidaRol. En el flujo normal ya lo
+  // hace `construirRespuesta` internamente. Acá, como armamos la
+  // tabla directo, hay que llamarlo a mano.
   // ----------------------------------------------------------
   const desgloseAplicado = debeAplicarDesglose(
     traduccion.consulta,
@@ -394,9 +396,19 @@ export async function ejecutarConsultaLLM(
   );
 
   if (desgloseAplicado) {
+    const ctxDesglose: ContextoRespuesta = {
+      acciones: accionesFiltradas,
+      puntos: puntosConTiempo,
+      intencion: conversion.intencion,
+      totalUniverso: contarVisibles(universoAcciones),
+    };
+
+    const ctxConFase = aplicarCondicionesExtra(ctxDesglose);
+    const accionesDesglose = ctxConFase.acciones;
+
     const totalUniverso = contarVisibles(universoAcciones);
     const { respuesta, meta } = construirRespuestaDesglose(
-      accionesFiltradas,
+      accionesDesglose,
       traduccion.consulta.desglose!,
       conversion.intencion,
       totalUniverso
@@ -415,7 +427,7 @@ export async function ejecutarConsultaLLM(
         intencionFinal: conversion.intencion,
         filtroFinal: filtro,
         jugadorResuelto,
-        accionesFiltradas: contarVisibles(accionesFiltradas),
+        accionesFiltradas: contarVisibles(accionesDesglose),
         accionesUniverso: totalUniverso,
         conversion,
         tipoExplicitoAplicado: conversion.tipoExplicito,
