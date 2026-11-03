@@ -243,6 +243,7 @@ function calcularFaseRally(idx: number, lineas: AccionVisual[]): FaseRally {
     const l = lineas[i];
     if (l.es_rival) continue;
     if (l.tipo === "bloqueo") continue;
+    if (l.tipo === "saque") continue;
     primerToquePropioIdx = i;
     break;
   }
@@ -500,6 +501,7 @@ export function calcularFaseDePunto(
     const a = visibles[i];
     if (a.es_rival) continue;
     if (a.tipo === "bloqueo") continue;
+    if (a.tipo === "saque") continue;
     primerToquePropio = a;
     idxPrimerToquePropio = i;
     break;

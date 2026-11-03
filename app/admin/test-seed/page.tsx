@@ -168,65 +168,64 @@ export default function TestSeedPage() {
     const inserts: { punto: number; res: { ok: boolean; error?: string } }[] = [];
 
     try {
-      // P1: K1 + Ataque punto
-      inserts.push({ punto: 1, res: await guardarPuntoV2(partidoId, puntoData(1, "propio", "saque", "propio"), [
-        accion(1, "saque", "positivo", false, "propio", null, "F4-C3", null, "flotado"),
-        accion(2, "recepcion", "perfecta", true, "rival", null, "F2-C3"),
+      // P1: K1 punto — saque rival inicia, recepción propia, ataque punto
+      inserts.push({ punto: 1, res: await guardarPuntoV2(partidoId, puntoData(1, "rival", "recepcion", "propio"), [
+        accion(1, "saque", "positivo", true, "rival", "F4-C3", "F1-C3", null, "flotado"),
+        accion(2, "recepcion", "positiva", false, "propio", "F1-C3", "F2-C3"),
         accion(3, "armado", 5, false, "propio", null, "F1-C2", 1),
         accion(4, "ataque", "punto_directo_ataque", false, "propio", "F1-C2", "F4-C3"),
       ])});
 
-      // P2: K1 + Ataque error
-      inserts.push({ punto: 2, res: await guardarPuntoV2(partidoId, puntoData(2, "propio", "saque", "rival"), [
-        accion(1, "saque", "positivo", false, "propio", null, "F4-C3", null, "flotado"),
-        accion(2, "recepcion", "perfecta", true, "rival", null, "F2-C3"),
+      // P2: K1 error — saque rival inicia, ataque propio error afuera
+      inserts.push({ punto: 2, res: await guardarPuntoV2(partidoId, puntoData(2, "rival", "recepcion", "rival"), [
+        accion(1, "saque", "positivo", true, "rival", "F4-C3", "F1-C3", null, "flotado"),
+        accion(2, "recepcion", "positiva", false, "propio", "F1-C3", "F2-C3"),
         accion(3, "armado", 5, false, "propio", null, "F1-C2", 1),
         accion(4, "ataque", "error_afuera_ataque", false, "propio", "F1-C2", "FUERA-ARR-C3"),
       ])});
 
-      // P3: K1 + Ataque neutro
-      inserts.push({ punto: 3, res: await guardarPuntoV2(partidoId, puntoData(3, "propio", "saque", "propio"), [
-        accion(1, "saque", "positivo", false, "propio", null, "F4-C3", null, "flotado"),
-        accion(2, "recepcion", "perfecta", true, "rival", null, "F2-C3"),
+      // P3: K1 neutro — saque rival inicia, ataque propio neutro, defensa rival toque_positiva
+      inserts.push({ punto: 3, res: await guardarPuntoV2(partidoId, puntoData(3, "rival", "recepcion", "propio"), [
+        accion(1, "saque", "positivo", true, "rival", "F4-C3", "F1-C3", null, "flotado"),
+        accion(2, "recepcion", "positiva", false, "propio", "F1-C3", "F2-C3"),
         accion(3, "armado", 5, false, "propio", null, "F1-C2", 1),
         accion(4, "ataque", "neutro_defensa_ataque", false, "propio", "F1-C2", "F5-C3"),
         accion(5, "defensa", "toque_positiva", true, "rival", "F5-C3", "F5-C3"),
       ])});
 
-      // P4: K2
-      inserts.push({ punto: 4, res: await guardarPuntoV2(partidoId, puntoData(4, "rival", "recepcion", "propio"), [
-        accion(1, "saque", "positivo", true, "rival", "F4-C3", "F1-C3", null, "flotado"),
-        accion(2, "recepcion", "negativa", false, "propio", "F1-C3", "F1-C3"),
-        accion(3, "armado", 4, false, "propio", null, "F1-C2", 2),
-        accion(4, "ataque", "neutro", true, "rival", "F1-C2", "F4-C3"),
-        accion(5, "defensa", "toque_positiva", false, "propio", "F1-C2", "F1-C2"),
+      // P4: K2 punto — saque propio inicia, defensa propia toque_positiva es primer toque propio no-saque
+      inserts.push({ punto: 4, res: await guardarPuntoV2(partidoId, puntoData(4, "propio", "saque", "propio"), [
+        accion(1, "saque", "positivo", false, "propio", null, "F4-C3", null, "flotado"),
+        accion(2, "recepcion", "positiva", true, "rival", "F4-C3", "F5-C3"),
+        accion(3, "armado", 5, true, "rival", null, "F4-C2", 1),
+        accion(4, "ataque", "neutro", true, "rival", "F4-C2", "F1-C3"),
+        accion(5, "defensa", "toque_positiva", false, "propio", "F1-C3", "F1-C2"),
         accion(6, "armado", 5, false, "propio", null, "F1-C1", 1),
         accion(7, "ataque", "punto_directo_ataque", false, "propio", "F1-C1", "F4-C3"),
       ])});
 
-      // P5: K3
+      // P5: K3 punto — saque propio inicia, bloqueo propio, cobertura_positiva es primer toque propio no-saque ni bloqueo
       inserts.push({ punto: 5, res: await guardarPuntoV2(partidoId, puntoData(5, "propio", "saque", "propio"), [
         accion(1, "saque", "positivo", false, "propio", null, "F4-C3", null, "flotado"),
-        accion(2, "recepcion", "perfecta", true, "rival", null, "F2-C3"),
-        accion(3, "armado", 5, false, "propio", null, "F1-C2", 1),
-        accion(4, "ataque", "gorro_ataque", false, "propio", "F1-C2", "F2-C2", null, null),
-        accion(5, "defensa", "cobertura_positiva", false, "propio", "F2-C2", "F2-C2"),
-        accion(6, "armado", 5, false, "propio", null, "F1-C4", 1),
-        accion(7, "ataque", "punto_directo_ataque", false, "propio", "F1-C4", "F4-C2"),
+        accion(2, "recepcion", "positiva", true, "rival", "F4-C3", "F5-C3"),
+        accion(3, "armado", 5, true, "rival", null, "F4-C2", 1),
+        accion(4, "ataque", "neutro", true, "rival", "F4-C2", "F1-C2"),
+        accion(5, "bloqueo", "positivo", false, "propio", "F1-C2", "F2-C2"),
+        accion(6, "defensa", "cobertura_positiva", false, "propio", "F2-C2", "F2-C2"),
+        accion(7, "armado", 5, false, "propio", null, "F1-C4", 1),
+        accion(8, "ataque", "punto_directo_ataque", false, "propio", "F1-C4", "F4-C2"),
       ])});
 
-      // P6: Free-ball
-      inserts.push({ punto: 6, res: await guardarPuntoV2(partidoId, puntoData(6, "rival", "recepcion", "propio"), [
-        accion(1, "saque", "positivo", true, "rival", "F4-C3", "F1-C3", null, "flotado"),
-        accion(2, "recepcion", "doble_negativa", false, "propio", "F1-C3", "F1-C3"),
-        accion(3, "armado", 4, false, "propio", null, "F1-C2", 5),
-        accion(4, "ataque", "neutro", true, "rival", "F1-C2", "F4-C3"),
-        accion(5, "defensa", "toque_positiva", false, "propio", "F1-C2", "F1-C2"),
-        accion(6, "armado", 5, false, "propio", null, "F1-C4", 1),
-        accion(7, "ataque", "neutro", true, "rival", "F1-C4", "F4-C2"),
-        accion(8, "defensa", "libre", false, "propio", "F1-C4", "F1-C4"),
-        accion(9, "armado", 5, false, "propio", null, "F1-C2", 1),
-        accion(10, "ataque", "punto_directo_ataque", false, "propio", "F1-C2", "F4-C3"),
+      // P6: free-ball punto — saque propio inicia, rival manda libre, recepción propia es primer toque propio
+      inserts.push({ punto: 6, res: await guardarPuntoV2(partidoId, puntoData(6, "propio", "saque", "propio"), [
+        accion(1, "saque", "positivo", false, "propio", null, "F4-C3", null, "flotado"),
+        accion(2, "recepcion", "positiva", true, "rival", "F4-C3", "F5-C3"),
+        accion(3, "armado", 5, true, "rival", null, "F4-C2", 1),
+        accion(4, "ataque", "neutro", true, "rival", "F4-C2", "F1-C3"),
+        accion(5, "libre", "libre", true, "rival", "F1-C3", "F2-C3"),
+        accion(6, "recepcion", "positiva", false, "propio", "F2-C3", "F1-C2"),
+        accion(7, "armado", 5, false, "propio", null, "F1-C1", 1),
+        accion(8, "ataque", "punto_directo_ataque", false, "propio", "F1-C1", "F4-C3"),
       ])});
 
       const errores = inserts.filter((x) => !x.res.ok);
@@ -570,7 +569,7 @@ export default function TestSeedPage() {
         {!noHayPartido && !mensaje && (
           <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
             <p className="text-sm text-slate-600">
-              Seleccioná una acción arriba. Los puntos se insertan con equipo_id = "TEST_SEED"
+              Seleccioná una acción arriba. Los puntos se insertan con set_numero = {TEST_SET}
               para poder borrarlos sin tocar datos reales.
             </p>
           </div>
