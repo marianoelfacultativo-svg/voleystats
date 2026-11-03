@@ -31,6 +31,7 @@ export default function TestE2EPage() {
   // ------------------------------------------------------------
   const [equipos, setEquipos] = useState<Equipo[]>([]);
   const [equipoId, setEquipoId] = useState("");
+  const [jugadores, setJugadores] = useState<Jugador[]>([]);
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: MensajeTipo } | null>(null);
   const [cargando, setCargando] = useState(false);
 
@@ -46,12 +47,26 @@ export default function TestE2EPage() {
   }, []);
 
   // ------------------------------------------------------------
+  // Cargar jugadores del equipo seleccionado
+  // ------------------------------------------------------------
+  useEffect(() => {
+    if (!equipoId) {
+      setJugadores([]);
+      return;
+    }
+    supabase
+      .from("jugadores")
+      .select("*")
+      .order("nombre")
+      .then(({ data }) => data && setJugadores(data));
+  }, [equipoId]);
+
+  // ------------------------------------------------------------
   // Helpers
   // ------------------------------------------------------------
-  const primerJugador = (jugadores: Jugador[]): string | null =>
-    jugadores.length > 0 ? jugadores[0].id : null;
+  const primerJugador = jugadores.length > 0 ? jugadores[0].id : null;
 
-  const accion = (
+  const accionConJugador = (
     orden: number,
     tipo: string,
     subtipo: string | number | null,
@@ -65,7 +80,7 @@ export default function TestE2EPage() {
     tipo,
     subtipo,
     es_rival: esRival,
-    jugador_id: null,
+    jugador_id: primerJugador,
     lado: esRival ? "rival" : "propio",
     origen_celda: origen,
     origen_mini: null,
@@ -75,6 +90,24 @@ export default function TestE2EPage() {
     zona: null,
     velocidad: velocidad ?? null,
     tipo_saque: tipoSaque ?? null,
+    equipo_id: null,
+  });
+
+  const puntoData = (
+    setNumero: number,
+    saqueEquipo: "propio" | "rival",
+    situacion: "saque" | "recepcion",
+    ganador: "propio" | "rival" | null,
+  ): PuntoV2Data => ({
+    set_numero: setNumero,
+    punto_numero: 1,
+    saque_equipo: saqueEquipo,
+    situacion,
+    ganador,
+    rotacion: rotacionVacia(1, setNumero, 1, saqueEquipo) as unknown as Record<string, unknown>,
+    liberos: [],
+    cambios: [],
+    posiciones_punto: {},
     equipo_id: null,
   });
 
