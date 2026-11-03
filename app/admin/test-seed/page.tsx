@@ -2,11 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { obtenerSesion, type Sesion } from "@/lib/auth";
+import { obtenerSesion } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { guardarPuntoV2, borrarTodosV2, cargarPuntosV2, type PuntoV2Data, type AccionV2Data } from "@/lib/dbV2";
+import {
+  guardarPuntoV2,
+  cargarPuntosV2,
+  type PuntoV2Data,
+  type AccionV2Data,
+} from "@/lib/dbV2";
 import { calcularFaseDePunto } from "@/lib/contextoRally";
 import { clasificarSubtipo } from "@/lib/analisis/catalogoSubtipos";
+import { rotacionVacia } from "@/lib/rotaciones";
+
+const TEST_SET = 99;
 
 interface Equipo { id: string; nombre: string }
 interface Partido { id: string; equipo_id: string; rival: string; fecha: string }
@@ -24,7 +32,6 @@ export default function TestSeedPage() {
     const s = obtenerSesion();
     if (!s || s.tipo !== "admin") {
       router.push("/");
-      return;
     }
   }, [router]);
 
@@ -122,7 +129,7 @@ export default function TestSeedPage() {
     zona: null,
     velocidad: velocidad ?? null,
     tipo_saque: tipoSaque ?? null,
-    equipo_id: "TEST_SEED",
+    equipo_id: null,
   });
 
   const puntoData = (
@@ -131,16 +138,16 @@ export default function TestSeedPage() {
     situacion: "saque" | "recepcion",
     ganador: "propio" | "rival" | null,
   ): PuntoV2Data => ({
-    set_numero: 1,
+    set_numero: TEST_SET,
     punto_numero: puntoNumero,
     saque_equipo: saqueEquipo,
     situacion,
     ganador,
-    rotacion: null,
+    rotacion: rotacionVacia(1, TEST_SET, puntoNumero, saqueEquipo) as unknown as Record<string, unknown>,
     liberos: [],
     cambios: [],
     posiciones_punto: {},
-    equipo_id: "TEST_SEED",
+    equipo_id: null,
   });
 
   // ------------------------------------------------------------
@@ -153,39 +160,41 @@ export default function TestSeedPage() {
     }
     setCargando(true);
     setMensaje(null);
+    setVerificacion(null);
 
-    // Borrar TEST_SEED existentes (idempotente)
-    await supabase.from("acciones_v2").delete().eq("partido_id", partidoId).eq("equipo_id", "TEST_SEED");
-    await supabase.from("puntos_v2").delete().eq("partido_id", partidoId).eq("equipo_id", "TEST_SEED");
+    await supabase.from("acciones_v2").delete().eq("partido_id", partidoId).eq("set_numero", TEST_SET);
+    await supabase.from("puntos_v2").delete().eq("partido_id", partidoId).eq("set_numero", TEST_SET);
+
+    const inserts: { punto: number; res: { ok: boolean; error?: string } }[] = [];
 
     try {
-      // ---------- Punto 1: K1 + Ataque punto ----------
-      await guardarPuntoV2(partidoId, puntoData(1, "propio", "saque", "propio"), [
+      // P1: K1 + Ataque punto
+      inserts.push({ punto: 1, res: await guardarPuntoV2(partidoId, puntoData(1, "propio", "saque", "propio"), [
         accion(1, "saque", "positivo", false, "propio", null, "F4-C3", null, "flotado"),
         accion(2, "recepcion", "perfecta", true, "rival", null, "F2-C3"),
         accion(3, "armado", 5, false, "propio", null, "F1-C2", 1),
         accion(4, "ataque", "punto_directo_ataque", false, "propio", "F1-C2", "F4-C3"),
-      ]);
+      ])});
 
-      // ---------- Punto 2: K1 + Ataque error ----------
-      await guardarPuntoV2(partidoId, puntoData(2, "propio", "saque", "rival"), [
+      // P2: K1 + Ataque error
+      inserts.push({ punto: 2, res: await guardarPuntoV2(partidoId, puntoData(2, "propio", "saque", "rival"), [
         accion(1, "saque", "positivo", false, "propio", null, "F4-C3", null, "flotado"),
         accion(2, "recepcion", "perfecta", true, "rival", null, "F2-C3"),
         accion(3, "armado", 5, false, "propio", null, "F1-C2", 1),
         accion(4, "ataque", "error_afuera_ataque", false, "propio", "F1-C2", "FUERA-ARR-C3"),
-      ]);
+      ])});
 
-      // ---------- Punto 3: K1 + Ataque neutro ----------
-      await guardarPuntoV2(partidoId, puntoData(3, "propio", "saque", "propio"), [
+      // P3: K1 + Ataque neutro
+      inserts.push({ punto: 3, res: await guardarPuntoV2(partidoId, puntoData(3, "propio", "saque", "propio"), [
         accion(1, "saque", "positivo", false, "propio", null, "F4-C3", null, "flotado"),
         accion(2, "recepcion", "perfecta", true, "rival", null, "F2-C3"),
         accion(3, "armado", 5, false, "propio", null, "F1-C2", 1),
         accion(4, "ataque", "neutro_defensa_ataque", false, "propio", "F1-C2", "F5-C3"),
         accion(5, "defensa", "toque_positiva", true, "rival", "F5-C3", "F5-C3"),
-      ]);
+      ])});
 
-      // ---------- Punto 4: K2 (contraataque desde defensa) ----------
-      await guardarPuntoV2(partidoId, puntoData(4, "rival", "recepcion", "propio"), [
+      // P4: K2
+      inserts.push({ punto: 4, res: await guardarPuntoV2(partidoId, puntoData(4, "rival", "recepcion", "propio"), [
         accion(1, "saque", "positivo", true, "rival", "F4-C3", "F1-C3", null, "flotado"),
         accion(2, "recepcion", "negativa", false, "propio", "F1-C3", "F1-C3"),
         accion(3, "armado", 4, false, "propio", null, "F1-C2", 2),
@@ -193,10 +202,10 @@ export default function TestSeedPage() {
         accion(5, "defensa", "toque_positiva", false, "propio", "F1-C2", "F1-C2"),
         accion(6, "armado", 5, false, "propio", null, "F1-C1", 1),
         accion(7, "ataque", "punto_directo_ataque", false, "propio", "F1-C1", "F4-C3"),
-      ]);
+      ])});
 
-      // ---------- Punto 5: K3 (contraataque desde cobertura) ----------
-      await guardarPuntoV2(partidoId, puntoData(5, "propio", "saque", "propio"), [
+      // P5: K3
+      inserts.push({ punto: 5, res: await guardarPuntoV2(partidoId, puntoData(5, "propio", "saque", "propio"), [
         accion(1, "saque", "positivo", false, "propio", null, "F4-C3", null, "flotado"),
         accion(2, "recepcion", "perfecta", true, "rival", null, "F2-C3"),
         accion(3, "armado", 5, false, "propio", null, "F1-C2", 1),
@@ -204,10 +213,10 @@ export default function TestSeedPage() {
         accion(5, "defensa", "cobertura_positiva", false, "propio", "F2-C2", "F2-C2"),
         accion(6, "armado", 5, false, "propio", null, "F1-C4", 1),
         accion(7, "ataque", "punto_directo_ataque", false, "propio", "F1-C4", "F4-C2"),
-      ]);
+      ])});
 
-      // ---------- Punto 6: Free-ball ----------
-      await guardarPuntoV2(partidoId, puntoData(6, "rival", "recepcion", "propio"), [
+      // P6: Free-ball
+      inserts.push({ punto: 6, res: await guardarPuntoV2(partidoId, puntoData(6, "rival", "recepcion", "propio"), [
         accion(1, "saque", "positivo", true, "rival", "F4-C3", "F1-C3", null, "flotado"),
         accion(2, "recepcion", "doble_negativa", false, "propio", "F1-C3", "F1-C3"),
         accion(3, "armado", 4, false, "propio", null, "F1-C2", 5),
@@ -218,22 +227,26 @@ export default function TestSeedPage() {
         accion(8, "defensa", "libre", false, "propio", "F1-C4", "F1-C4"),
         accion(9, "armado", 5, false, "propio", null, "F1-C2", 1),
         accion(10, "ataque", "punto_directo_ataque", false, "propio", "F1-C2", "F4-C3"),
-      ]);
+      ])});
 
-      setCargando(false);
-      setMensaje({
-        texto: "✅ 6 puntos insertados. Ahora andá a Partidos → detalle del partido → Consecuencias y verificá las fases esperadas.",
-        tipo: "success",
-      });
+      const errores = inserts.filter((x) => !x.res.ok);
+      if (errores.length > 0) {
+        const detalle = errores
+          .map((e) => `P${e.punto}: ${e.res.error ?? "sin error"}`)
+          .join(" | ");
+        setMensaje({ texto: `❌ ${errores.length}/6 fallaron. ${detalle}`, tipo: "error" });
+      } else {
+        setMensaje({ texto: "✅ 6 puntos insertados correctamente. Ahora apretá 'Verificar'.", tipo: "success" });
+      }
     } catch (err: any) {
-      setMensaje({ texto: `❌ Error: ${err.message ?? "desconocido"}`, tipo: "error" });
+      setMensaje({ texto: `❌ Error: ${err?.message ?? "desconocido"}`, tipo: "error" });
     } finally {
       setCargando(false);
     }
   };
 
   // ------------------------------------------------------------
-  // BORRAR PUNTOS DE TEST (solo equipo_id = "TEST_SEED")
+  // BORRAR PUNTOS DE TEST (solo set_numero = TEST_SET)
   // ------------------------------------------------------------
   const borrarPuntosDeTest = async () => {
     if (!partidoId) {
@@ -242,13 +255,14 @@ export default function TestSeedPage() {
     }
     setCargando(true);
     setMensaje(null);
+    setVerificacion(null);
 
     try {
       const { data: puntos, error: errBuscar } = await supabase
         .from("puntos_v2")
         .select("id")
         .eq("partido_id", partidoId)
-        .eq("equipo_id", "TEST_SEED");
+        .eq("set_numero", TEST_SET);
 
       if (errBuscar) throw errBuscar;
 
@@ -268,9 +282,9 @@ export default function TestSeedPage() {
         if (errPuntos) throw errPuntos;
       }
 
-      setMensaje({ texto: "✅ Puntos de test borrados.", tipo: "success" });
+      setMensaje({ texto: `✅ ${ids.length} puntos de test borrados.`, tipo: "success" });
     } catch (err: any) {
-      setMensaje({ texto: `❌ Error borrando: ${err.message ?? "desconocido"}`, tipo: "error" });
+      setMensaje({ texto: `❌ Error borrando: ${err?.message ?? "desconocido"}`, tipo: "error" });
     } finally {
       setCargando(false);
     }
@@ -286,6 +300,7 @@ export default function TestSeedPage() {
     }
     setCargando(true);
     setMensaje(null);
+    setVerificacion(null);
 
     try {
       const res = await cargarPuntosV2(partidoId);
@@ -294,7 +309,7 @@ export default function TestSeedPage() {
         return;
       }
 
-      const testPuntos = res.puntos.filter((p) => p.equipo_id === "TEST_SEED");
+      const testPuntos = res.puntos.filter((p) => p.set_numero === TEST_SET);
       if (testPuntos.length === 0) {
         setMensaje({ texto: "No hay puntos de test. Insertalos primero.", tipo: "error" });
         return;
@@ -335,7 +350,7 @@ export default function TestSeedPage() {
           x2: false,
           posicion_inicial_celda: null,
           posicion_inicial_mini: null,
-          equipo_id: a.equipo_id,
+          equipo_id: null,
           es_error: false,
           zona_origen: null,
           zona_destino: null,
@@ -381,9 +396,10 @@ export default function TestSeedPage() {
         };
       });
 
+      resultados.sort((a, b) => a.punto - b.punto);
       setVerificacion(resultados);
     } catch (err: any) {
-      setMensaje({ texto: `❌ Error verificando: ${err.message ?? "desconocido"}`, tipo: "error" });
+      setMensaje({ texto: `❌ Error verificando: ${err?.message ?? "desconocido"}`, tipo: "error" });
     } finally {
       setCargando(false);
     }
@@ -405,9 +421,9 @@ export default function TestSeedPage() {
             >
               ← Volver al panel
             </button>
-            <h1 className="text-3xl font-bold text-slate-900">🧪 Seed de test (temporal)</h1>
+            <h1 className="text-3xl font-bold text-slate-900">🧪 Seed de test</h1>
             <p className="text-slate-600 text-sm">
-              Esta página es temporal. Solo para validar el refactor de catalogoSubtipos. Borrar cuando termines.
+              Inserta 6 puntos con set_numero = {TEST_SET} para validar el refactor.
             </p>
           </div>
           <button
@@ -469,7 +485,7 @@ export default function TestSeedPage() {
                 <span className="text-xs text-slate-500 animate-pulse">Cargando...</span>
               )}
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button
                 onClick={insertarPuntosDeTest}
                 disabled={cargando}
@@ -535,7 +551,7 @@ export default function TestSeedPage() {
 
         {mensaje && (
           <div
-            className={`p-4 rounded-lg border ${
+            className={`mt-4 p-4 rounded-lg border whitespace-pre-wrap ${
               mensaje.tipo === "success"
                 ? "bg-emerald-50 border-emerald-200 text-emerald-800"
                 : "bg-rose-50 border-rose-200 text-rose-800"
