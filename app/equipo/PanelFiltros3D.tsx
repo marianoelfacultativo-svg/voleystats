@@ -15,6 +15,7 @@ import {
 } from "@/lib/filtrosTacticos";
 import FiltrosTacticos from "./FiltrosTacticos";
 import PanelPresetsFiltros from "./PanelPresetsFiltros";
+import { valoracionVisualDeAccion } from "@/lib/analisis/valoracionVisual";
 
 // ------------------------------------------------------------
 // TIPO DE FILTROS
@@ -183,78 +184,7 @@ function nivelValoracion(
   tipo: string,
   sub: string
 ): "pos" | "neu" | "neg" {
-  if (tipo === "saque") {
-    if (sub === "ace" || sub === "positivo_mas" || sub === "positivo")
-      return "pos";
-    if (sub === "negativo" || sub === "error_rival") return "neg";
-    return "neu";
-  }
-  if (tipo === "recepcion") {
-    if (sub === "perfecta" || sub === "positiva") return "pos";
-    if (
-      sub === "negativa" ||
-      sub === "doble_negativa" ||
-      sub === "overpass" ||
-      sub === "error_directo"
-    ) {
-      return "neg";
-    }
-    return "neu";
-  }
-  if (tipo === "armado") {
-    if (sub === "R") return "neu";
-    const n = parseInt(sub, 10);
-    if (!isNaN(n)) {
-      if (n >= 5) return "pos";
-      if (n <= 3) return "neg";
-    }
-    return "neu";
-  }
-  if (tipo === "ataque") {
-    if (
-      sub === "punto" ||
-      sub === "punto_directo_ataque" ||
-      sub === "punto_desviado_ataque" ||
-      sub === "use_rival_ataque" ||
-      sub === "buena_rival" ||
-      sub === "peligroso"
-    ) {
-      return "pos";
-    }
-    if (
-      sub === "error" ||
-      sub === "error_red_ataque" ||
-      sub === "error_afuera_ataque" ||
-      sub === "gorro_ataque" ||
-      sub === "error_rival"
-    ) {
-      return "neg";
-    }
-    return "neu";
-  }
-  if (tipo === "bloqueo") {
-    if (sub === "punto" || sub === "positivo_mas" || sub === "positivo")
-      return "pos";
-    if (sub === "red" || sub === "filtrada" || sub === "use_rival")
-      return "neg";
-    return "neu";
-  }
-  if (tipo === "defensa") {
-    if (sub.includes("positiva") || sub === "gran_def") return "pos";
-    if (
-      sub.includes("negativa") ||
-      sub === "error_def" ||
-      sub === "mala_libre" ||
-      sub === "errores_graves"
-    )
-      return "neg";
-    return "neu";
-  }
-  if (tipo === "roce-red") {
-    if (sub === "roce-red-rival") return "pos";
-    return "neg";
-  }
-  return "neu";
+  return valoracionVisualDeAccion(tipo, sub);
 }
 
 const CHIP_INACTIVO: Record<"pos" | "neu" | "neg", string> = {

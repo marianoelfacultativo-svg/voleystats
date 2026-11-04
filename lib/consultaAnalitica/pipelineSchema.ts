@@ -3,37 +3,15 @@
 // ============================================================
 
 export type EntidadBase = "acciones" | "puntos";
-
-export type Operador =
-  | "eq" | "neq" | "in" | "nin" | "gt" | "gte" | "lt" | "lte" | "between" | "contains";
-
+export type Operador = "eq" | "neq" | "in" | "nin" | "gt" | "gte" | "lt" | "lte" | "between" | "contains";
 export type TipoMetrica = "count" | "sum" | "avg" | "percentage" | "efficiency";
 export type DesenlaceAccion = "punto" | "error" | "en_juego";
 export type ValoracionAccion = "pos" | "neu" | "neg";
 
-export interface InfoSubtipo {
-  desenlace: DesenlaceAccion;
-  valoracion: ValoracionAccion;
-  puntaje: number;
-}
-
-export interface Filtro {
-  campo: string;
-  operador: Operador;
-  valor: string | number | boolean | Array<string | number | boolean>;
-}
-
-export interface Metrica {
-  tipo: TipoMetrica;
-  campo?: string;
-  filtros_numerador?: Filtro[];
-  filtros_denominador_negativo?: Filtro[];
-}
-
-export interface Agrupacion {
-  campo: string;
-}
-
+export interface InfoSubtipo { desenlace: DesenlaceAccion; valoracion: ValoracionAccion; puntaje: number; }
+export interface Filtro { campo: string; operador: Operador; valor: string | number | boolean | Array<string | number | boolean>; }
+export interface Metrica { tipo: TipoMetrica; campo?: string; filtros_numerador?: Filtro[]; filtros_denominador_negativo?: Filtro[]; }
+export interface Agrupacion { campo: string; }
 export interface ConsultaPipeline {
   entidad_base: EntidadBase;
   filtros?: Filtro[];
@@ -71,86 +49,50 @@ export const CATALOGO_PIPELINE: Record<string, Record<string, InfoSubtipo>> = {
     negativo: { desenlace: "error", valoracion: "neg", puntaje: 2 },
   },
   recepcion: {
-    perfecta: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
-    positiva: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
-    intermedia: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 },
-    negativa: { desenlace: "en_juego", valoracion: "neg", puntaje: 4 },
-    doble_negativa: { desenlace: "en_juego", valoracion: "neg", puntaje: 2 },
-    overpass: { desenlace: "en_juego", valoracion: "neg", puntaje: 1 },
-    error_directo: { desenlace: "error", valoracion: "neg", puntaje: 0 },
-    ace_contra: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    perfecta: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 }, positiva: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
+    intermedia: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 }, negativa: { desenlace: "en_juego", valoracion: "neg", puntaje: 4 },
+    doble_negativa: { desenlace: "en_juego", valoracion: "neg", puntaje: 2 }, overpass: { desenlace: "en_juego", valoracion: "neg", puntaje: 1 },
+    error_directo: { desenlace: "error", valoracion: "neg", puntaje: 0 }, ace_contra: { desenlace: "error", valoracion: "neg", puntaje: 0 },
   },
   ataque: {
-    punto_directo_ataque: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
-    punto_desviado_ataque: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
-    use_rival_ataque: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
-    neutro_defensa_ataque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
-    neutro_bloqueo_cobertura_ataque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
-    neutro_desvio_bloqueo_defensa_ataque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
-    error_red_ataque: { desenlace: "error", valoracion: "neg", puntaje: 0 },
-    error_afuera_ataque: { desenlace: "error", valoracion: "neg", puntaje: 0 },
-    gorro_ataque: { desenlace: "error", valoracion: "neg", puntaje: 0 },
-    buena_rival: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
-    error_rival: { desenlace: "error", valoracion: "neg", puntaje: 0 },
-    simple: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
-    peligroso: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
-    toque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
-    libre: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
-    punto: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
-    error: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    punto_directo_ataque: { desenlace: "punto", valoracion: "pos", puntaje: 10 }, punto_desviado_ataque: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
+    use_rival_ataque: { desenlace: "punto", valoracion: "pos", puntaje: 10 }, neutro_defensa_ataque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
+    neutro_bloqueo_cobertura_ataque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 }, neutro_desvio_bloqueo_defensa_ataque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
+    error_red_ataque: { desenlace: "error", valoracion: "neg", puntaje: 0 }, error_afuera_ataque: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    gorro_ataque: { desenlace: "error", valoracion: "neg", puntaje: 0 }, buena_rival: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
+    error_rival: { desenlace: "error", valoracion: "neg", puntaje: 0 }, simple: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
+    peligroso: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 }, toque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
+    libre: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 }, punto: { desenlace: "punto", valoracion: "pos", puntaje: 10 }, error: { desenlace: "error", valoracion: "neg", puntaje: 0 },
   },
   bloqueo: {
-    punto: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
-    positivo_mas: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
-    positivo: { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
-    neutro: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 },
-    filtrada: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
-    use_rival: { desenlace: "en_juego", valoracion: "neg", puntaje: 3 },
-    red: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    punto: { desenlace: "punto", valoracion: "pos", puntaje: 10 }, positivo_mas: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
+    positivo: { desenlace: "en_juego", valoracion: "pos", puntaje: 6 }, neutro: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 },
+    filtrada: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 }, use_rival: { desenlace: "en_juego", valoracion: "neg", puntaje: 3 }, red: { desenlace: "error", valoracion: "neg", puntaje: 0 },
   },
   defensa: {
-    gran_def: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
-    toque_positiva: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
-    cobertura_positiva: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
-    neutro: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 },
-    toque_negativa: { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
-    cobertura_negativa: { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
-    error_def: { desenlace: "error", valoracion: "neg", puntaje: 0 },
-    errores_graves: { desenlace: "error", valoracion: "neg", puntaje: 0 },
-    mala_libre: { desenlace: "error", valoracion: "neg", puntaje: -2 },
+    gran_def: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 }, toque_positiva: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
+    cobertura_positiva: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 }, neutro: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 },
+    toque_negativa: { desenlace: "en_juego", valoracion: "neg", puntaje: 0 }, cobertura_negativa: { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
+    error_def: { desenlace: "error", valoracion: "neg", puntaje: 0 }, errores_graves: { desenlace: "error", valoracion: "neg", puntaje: 0 }, mala_libre: { desenlace: "error", valoracion: "neg", puntaje: -2 },
   },
   armado: {
-    genial: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
-    "6": { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
-    perfecto: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
-    "5": { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
-    correcto: { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
-    "4": { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
-    flojo: { desenlace: "en_juego", valoracion: "neu", puntaje: 3 },
-    "3": { desenlace: "en_juego", valoracion: "neu", puntaje: 3 },
-    malo: { desenlace: "en_juego", valoracion: "neg", puntaje: 1 },
-    "2": { desenlace: "en_juego", valoracion: "neg", puntaje: 1 },
-    horrible: { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
-    "1": { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
+    genial: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 }, "6": { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
+    perfecto: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 }, "5": { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
+    correcto: { desenlace: "en_juego", valoracion: "pos", puntaje: 6 }, "4": { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
+    flojo: { desenlace: "en_juego", valoracion: "neu", puntaje: 3 }, "3": { desenlace: "en_juego", valoracion: "neu", puntaje: 3 },
+    malo: { desenlace: "en_juego", valoracion: "neg", puntaje: 1 }, "2": { desenlace: "en_juego", valoracion: "neg", puntaje: 1 },
+    horrible: { desenlace: "en_juego", valoracion: "neg", puntaje: 0 }, "1": { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
   },
   armados: {
-    genial: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
-    "6": { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
-    perfecto: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
-    "5": { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
-    correcto: { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
-    "4": { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
-    flojo: { desenlace: "en_juego", valoracion: "neu", puntaje: 3 },
-    "3": { desenlace: "en_juego", valoracion: "neu", puntaje: 3 },
-    malo: { desenlace: "en_juego", valoracion: "neg", puntaje: 1 },
-    "2": { desenlace: "en_juego", valoracion: "neg", puntaje: 1 },
-    horrible: { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
-    "1": { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
+    genial: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 }, "6": { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
+    perfecto: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 }, "5": { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
+    correcto: { desenlace: "en_juego", valoracion: "pos", puntaje: 6 }, "4": { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
+    flojo: { desenlace: "en_juego", valoracion: "neu", puntaje: 3 }, "3": { desenlace: "en_juego", valoracion: "neu", puntaje: 3 },
+    malo: { desenlace: "en_juego", valoracion: "neg", puntaje: 1 }, "2": { desenlace: "en_juego", valoracion: "neg", puntaje: 1 },
+    horrible: { desenlace: "en_juego", valoracion: "neg", puntaje: 0 }, "1": { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
   },
   toque: {
-    punto: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
-    neutro: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 },
-    error: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    punto: { desenlace: "punto", valoracion: "pos", puntaje: 10 }, neutro: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 }, error: { desenlace: "error", valoracion: "neg", puntaje: 0 },
   },
 };
 
@@ -178,27 +120,15 @@ export function infoDeSubtipoPipeline(
   return { desenlace: "en_juego", valoracion: "neu", puntaje: 5 };
 }
 
-export function desenlaceDeAccion(
-  tipo: string | null | undefined,
-  subtipo: unknown,
-  esError = false
-): DesenlaceAccion {
+export function desenlaceDeAccion(tipo: string | null | undefined, subtipo: unknown, esError = false): DesenlaceAccion {
   return infoDeSubtipoPipeline(tipo, subtipo, esError).desenlace;
 }
 
-export function valoracionDeAccion(
-  tipo: string | null | undefined,
-  subtipo: unknown,
-  esError = false
-): ValoracionAccion {
+export function valoracionDeAccion(tipo: string | null | undefined, subtipo: unknown, esError = false): ValoracionAccion {
   return infoDeSubtipoPipeline(tipo, subtipo, esError).valoracion;
 }
 
-export function puntajeDeAccionPipeline(
-  tipo: string | null | undefined,
-  subtipo: unknown,
-  esError = false
-): number {
+export function puntajeDeAccionPipeline(tipo: string | null | undefined, subtipo: unknown, esError = false): number {
   return infoDeSubtipoPipeline(tipo, subtipo, esError).puntaje;
 }
 
@@ -276,34 +206,83 @@ REGLAS DE ORO:
    - "cuántos ataques en k2" → filtros: tipo=ataque, fase_rally=k2, es_rival=false
    - "cuántos aces" → filtros: tipo=saque, subtipo=ace, es_rival=false
    - "cuántas recepciones" → filtros: tipo=recepcion, es_rival=false
-
-   Excepciones (NO agregar es_rival=false):
-   - Si el usuario dice "rivales", "del rival", "contrincante", "otro equipo" → usar es_rival=true.
+   Excepciones:
+   - Si dice "rivales", "del rival", "contrincante", "otro equipo" → usar es_rival=true.
    - Si dice "de los dos equipos", "todos", "ambos" → NO agregar el filtro (cuenta las dos).
+   Entidad "puntos": NO lleva es_rival (se define por ganador="propio"|"rival").
 
-   Entidad "puntos": NO lleva es_rival (los puntos ya son propios o rivales según "ganador").
+10. "PUNTOS" COMO ACCIÓN vs COMO RALLY:
+Hay DOS formas válidas de contar "puntos":
+A) "cuántos puntos hizo X" → ACCIONES con desenlace=punto (aces, ataques punto, bloqueos punto, toques punto).
+   - entidad_base: "acciones", filtros: jugador_id=X, desenlace=punto, es_rival=false, metrica: count.
+B) "cuántos puntos ganamos en k1" / "cuántos puntos ganó el equipo" → RALLIES cerrados a favor del equipo.
+   - entidad_base: "puntos", filtros: ganador=propio [+ fase, set, etc.], metrica: count.
+Regla práctica:
+- Si dice "el jugador" / "Fulano" / nombre propio → (A).
+- Si dice "el equipo" / "nosotros" / "ganamos" → (B).
+
+11. MÉTRICAS ESPECIALES:
+- "kill %" (porcentaje de kill / punto de ataque):
+  entidad_base: "acciones", filtros: tipo=ataque, es_rival=false
+  metrica: { tipo: "percentage", filtros_numerador: [{ campo: "desenlace", operador: "eq", valor: "punto" }] }
+- "side-out %" / "efectividad recibiendo" (k1):
+  entidad_base: "puntos", filtros: fase=side-out
+  metrica: { tipo: "percentage", filtros_numerador: [{ campo: "ganador", operador: "eq", valor: "propio" }] }
+- "efectividad sacando" / "break point %":
+  entidad_base: "puntos", filtros: fase IN ["k2","k3","contraataque"]
+  metrica: { tipo: "percentage", filtros_numerador: [{ campo: "ganador", operador: "eq", valor: "propio" }] }
+- "eficiencia de ataque" / "attack efficiency":
+  entidad_base: "acciones", filtros: tipo=ataque, es_rival=false, metrica: { tipo: "efficiency" }
+- "porcentaje de recepciones perfectas":
+  entidad_base: "acciones", filtros: tipo=recepcion, es_rival=false
+  metrica: { tipo: "percentage", filtros_numerador: [{ campo: "subtipo", operador: "eq", valor: "perfecta" }] }
+- "calidad de recepción" / "% de recepciones positivas":
+  entidad_base: "acciones", filtros: tipo=recepcion, es_rival=false
+  metrica: { tipo: "percentage", filtros_numerador: [{ campo: "valoracion", operador: "eq", valor: "pos" }] }
+
+12. FILTROS ESPECÍFICOS:
+- "errores de X" → tipo=X, desenlace=error, es_rival=false
+- "positivos de X" → tipo=X, valoracion=pos, es_rival=false
+- "puntos de X (fundamento)" → tipo=X, desenlace=punto, es_rival=false
+- "neutros de X" → tipo=X, valoracion=neu, es_rival=false
+- "en k1" / "en side-out" → fase_rally=side-out (acciones) o fase=side-out (puntos).
+- "en k2" → k2. "en k3" → k3. "en free ball" → free-ball.
 
 EJEMPLOS:
-Prompt: "cuántos ataques en k2"
+Prompt: "kill % del punta 1"
 JSON:
 {
   "entidad_base": "acciones",
   "filtros": [
     { "campo": "tipo", "operador": "eq", "valor": "ataque" },
-    { "campo": "fase_rally", "operador": "eq", "valor": "k2" },
+    { "campo": "rol_jugador", "operador": "eq", "valor": "P1" },
     { "campo": "es_rival", "operador": "eq", "valor": false }
   ],
-  "metrica": { "tipo": "count" }
+  "metrica": {
+    "tipo": "percentage",
+    "filtros_numerador": [{ "campo": "desenlace", "operador": "eq", "valor": "punto" }]
+  }
 }
 
-Prompt: "cuántos aces rivales"
+Prompt: "efectividad recibiendo"
+JSON:
+{
+  "entidad_base": "puntos",
+  "filtros": [{ "campo": "fase", "operador": "eq", "valor": "side-out" }],
+  "metrica": {
+    "tipo": "percentage",
+    "filtros_numerador": [{ "campo": "ganador", "operador": "eq", "valor": "propio" }]
+  }
+}
+
+Prompt: "cuántos puntos hizo Mariano"
 JSON:
 {
   "entidad_base": "acciones",
   "filtros": [
-    { "campo": "tipo", "operador": "eq", "valor": "saque" },
-    { "campo": "subtipo", "operador": "eq", "valor": "ace" },
-    { "campo": "es_rival", "operador": "eq", "valor": true }
+    { "campo": "jugador_id", "operador": "eq", "valor": "Mariano" },
+    { "campo": "desenlace", "operador": "eq", "valor": "punto" },
+    { "campo": "es_rival", "operador": "eq", "valor": false }
   ],
   "metrica": { "tipo": "count" }
 }
@@ -319,70 +298,28 @@ JSON:
   "metrica": { "tipo": "count" }
 }
 
-Prompt: "cuántos aces"
+Prompt: "cuántas recepciones perfectas"
 JSON:
 {
   "entidad_base": "acciones",
   "filtros": [
-    { "campo": "tipo", "operador": "eq", "valor": "saque" },
-    { "campo": "subtipo", "operador": "eq", "valor": "ace" },
+    { "campo": "tipo", "operador": "eq", "valor": "recepcion" },
+    { "campo": "subtipo", "operador": "eq", "valor": "perfecta" },
     { "campo": "es_rival", "operador": "eq", "valor": false }
   ],
   "metrica": { "tipo": "count" }
 }
 
-Prompt: "cuántos positivos de saque"
+Prompt: "errores de recepción"
 JSON:
 {
   "entidad_base": "acciones",
   "filtros": [
-    { "campo": "tipo", "operador": "eq", "valor": "saque" },
-    { "campo": "valoracion", "operador": "eq", "valor": "pos" },
-    { "campo": "es_rival", "operador": "eq", "valor": false }
-  ],
-  "metrica": { "tipo": "count" }
-}
-
-Prompt: "distribución de errores por rotación"
-JSON:
-{
-  "entidad_base": "acciones",
-  "filtros": [
+    { "campo": "tipo", "operador": "eq", "valor": "recepcion" },
     { "campo": "desenlace", "operador": "eq", "valor": "error" },
     { "campo": "es_rival", "operador": "eq", "valor": false }
   ],
-  "agrupacion": { "campo": "rotacion_numero" },
   "metrica": { "tipo": "count" }
-}
-
-Prompt: "kill % del punta 1"
-JSON:
-{
-  "entidad_base": "acciones",
-  "filtros": [
-    { "campo": "tipo", "operador": "eq", "valor": "ataque" },
-    { "campo": "rol_jugador", "operador": "eq", "valor": "P1" },
-    { "campo": "es_rival", "operador": "eq", "valor": false }
-  ],
-  "metrica": {
-    "tipo": "percentage",
-    "filtros_numerador": [
-      { "campo": "desenlace", "operador": "eq", "valor": "punto" }
-    ]
-  }
-}
-
-Prompt: "ranking de jugadores por puntos"
-JSON:
-{
-  "entidad_base": "acciones",
-  "filtros": [
-    { "campo": "desenlace", "operador": "eq", "valor": "punto" },
-    { "campo": "es_rival", "operador": "eq", "valor": false }
-  ],
-  "agrupacion": { "campo": "jugador_id" },
-  "metrica": { "tipo": "count" },
-  "orden": "desc"
 }
 
 Prompt: "promedio de puntaje de recepción por jugador"
@@ -395,4 +332,42 @@ JSON:
   ],
   "agrupacion": { "campo": "jugador_id" },
   "metrica": { "tipo": "avg", "campo": "puntaje" }
+}
+
+Prompt: "top 3 jugadores por puntos"
+JSON:
+{
+  "entidad_base": "acciones",
+  "filtros": [
+    { "campo": "desenlace", "operador": "eq", "valor": "punto" },
+    { "campo": "es_rival", "operador": "eq", "valor": false }
+  ],
+  "agrupacion": { "campo": "jugador_id" },
+  "metrica": { "tipo": "count" },
+  "orden": "desc",
+  "limite": 3
+}
+
+Prompt: "distribución de ataques por zona destino"
+JSON:
+{
+  "entidad_base": "acciones",
+  "filtros": [
+    { "campo": "tipo", "operador": "eq", "valor": "ataque" },
+    { "campo": "es_rival", "operador": "eq", "valor": false }
+  ],
+  "agrupacion": { "campo": "zona_destino" },
+  "metrica": { "tipo": "count" }
+}
+
+Prompt: "cuántos aces rivales"
+JSON:
+{
+  "entidad_base": "acciones",
+  "filtros": [
+    { "campo": "tipo", "operador": "eq", "valor": "saque" },
+    { "campo": "subtipo", "operador": "eq", "valor": "ace" },
+    { "campo": "es_rival", "operador": "eq", "valor": true }
+  ],
+  "metrica": { "tipo": "count" }
 }`;

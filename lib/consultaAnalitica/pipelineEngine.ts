@@ -2,31 +2,21 @@
 // PIPELINE ENGINE — Motor de ejecución de consultas analíticas
 // ============================================================
 
-import type {
-  AccionVisual,
-  PuntoConAcciones,
-} from "../../app/equipo/adaptadorUnificadoV2";
-import type {
-  ConsultaPipeline,
-  Filtro,
-  InfoSubtipo,
-} from "./pipelineSchema";
+import type { AccionVisual, PuntoConAcciones } from "../../app/equipo/adaptadorUnificadoV2";
+import type { ConsultaPipeline, Filtro, InfoSubtipo } from "./pipelineSchema";
 import { infoDeSubtipoPipeline } from "./pipelineSchema";
 import { calcularFasesPorPunto } from "../contextoRally";
+import type { JugadorParaResolver } from "./resolverJugador";
+import { resolverJugador } from "./resolverJugador";
 import type {
-  FilaTabla,
-  RespuestaConsulta,
-  RespuestaNumero,
-  RespuestaPorcentaje,
-  RespuestaPromedio,
-  RespuestaRanking,
-  RespuestaTabla,
+  FilaTabla, RespuestaConsulta, RespuestaNumero, RespuestaPorcentaje,
+  RespuestaPromedio, RespuestaRanking, RespuestaTabla, RespuestaVacia,
 } from "./tipos";
 
 export interface ContextoPipeline {
   acciones: AccionVisual[];
   puntos?: PuntoConAcciones[];
-  jugadores?: Array<{ id: string; nombre: string; apodo?: string | null; numero?: number | null }>;
+  jugadores?: JugadorParaResolver[];
   partidos?: Array<{ id: string; nombre: string; fecha?: string }>;
 }
 
@@ -140,12 +130,10 @@ function coincideValor(campoVal: unknown, filtroVal: unknown, op: string): boole
   switch (op) {
     case "eq":
       return typeof filtroVal === "number" || typeof filtroVal === "boolean"
-        ? campoVal === filtroVal
-        : strC === String(filtroVal).trim().toLowerCase();
+        ? campoVal === filtroVal : strC === String(filtroVal).trim().toLowerCase();
     case "neq":
       return typeof filtroVal === "number" || typeof filtroVal === "boolean"
-        ? campoVal !== filtroVal
-        : strC !== String(filtroVal).trim().toLowerCase();
+        ? campoVal !== filtroVal : strC !== String(filtroVal).trim().toLowerCase();
     case "in":
       return Array.isArray(filtroVal) && filtroVal.some((v) => String(v).trim().toLowerCase() === strC);
     case "nin":
@@ -177,16 +165,62 @@ export function ejecutarPipeline(
   consulta: ConsultaPipeline,
   contexto: ContextoPipeline
 ): RespuestaConsulta {
+  // Resolver jugadores por texto antes de filtrar
+  let filtrosResueltos: Filtro[] = consulta.filtros ?? [];
+  if (contexto.jugadores && contexto.jugadores.length > 0) {
+    const resolverFiltro = (f: Filtro): { ok: true; filtro: Filtro } | { ok: false; mensaje: string } => {
+      if (f.campo !== "jugador_id") return { ok: true, filtro: f };
+      const esUUID = (v: unknown): boolean =>
+        typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
+      if (f.operador === "eq") {
+        if (esUUID(f.valor)) return { ok: true, filtro: f };
+        const r = resolverJugador(String(f.valor), contexto.jugadores!);
+        if (r.motivo === "unico") return { ok: true, filtro: { ...f, valor: r.ids[0] } };
+        if (r.motivo === "ambiguo") {
+          const cands = r.candidatos.map((c) => `${c.nombre}${c.numero ? ` #${c.numero}` : ""}`).join(" | ");
+          return { ok: false, mensaje: `"${f.valor}" coincide con varios jugadores: ${cands}. Probá con nombre completo, apodo o #número.` };
+        }
+        return { ok: false, mensaje: `No encontré a "${f.valor}" en la lista de jugadores.` };
+      }
+
+      if (f.operador === "in" && Array.isArray(f.valor)) {
+        const nuevosIds: string[] = [];
+        for (const v of f.valor) {
+          if (esUUID(v)) { nuevosIds.push(String(v)); continue; }
+          const r = resolverJugador(String(v), contexto.jugadores!);
+          if (r.motivo === "unico") { nuevosIds.push(r.ids[0]); continue; }
+          if (r.motivo === "ambiguo") {
+            const cands = r.candidatos.map((c) => `${c.nombre}${c.numero ? ` #${c.numero}` : ""}`).join(" | ");
+            return { ok: false, mensaje: `"${v}" coincide con varios jugadores: ${cands}.` };
+          }
+          return { ok: false, mensaje: `No encontré a "${v}" en la lista de jugadores.` };
+        }
+        return { ok: true, filtro: { ...f, valor: nuevosIds } };
+      }
+
+      return { ok: true, filtro: f };
+    };
+
+    const resueltos: Filtro[] = [];
+    for (const f of filtrosResueltos) {
+      const r = resolverFiltro(f);
+      if (!r.ok) {
+        return { tipo: "vacio", mensaje: r.mensaje } as RespuestaVacia;
+      }
+      resueltos.push(r.filtro);
+    }
+    filtrosResueltos = resueltos;
+  }
+
   const acciones = contexto.acciones ?? [];
   const fasesPorPunto = calcularFasesPorPunto(acciones);
-
   const universo: Array<Record<string, unknown>> =
     consulta.entidad_base === "puntos"
       ? construirPuntos(acciones, contexto.puntos, fasesPorPunto)
       : enriquecerAcciones(acciones, fasesPorPunto);
 
-  const filtradas = universo.filter((fila) => cumpleFiltros(fila, consulta.filtros));
-
+  const filtradas = universo.filter((fila) => cumpleFiltros(fila, filtrosResueltos));
   const mapaJugadores = new Map<string, string>();
   if (contexto.jugadores) {
     for (const j of contexto.jugadores) mapaJugadores.set(j.id, j.nombre);
@@ -201,7 +235,6 @@ export function ejecutarPipeline(
   // 1. SIN AGRUPACIÓN
   if (!consulta.agrupacion?.campo) {
     const total = filtradas.length;
-
     if (consulta.metrica.tipo === "count") {
       return {
         tipo: "numero",
@@ -210,7 +243,6 @@ export function ejecutarPipeline(
         detalle: null,
       } as RespuestaNumero;
     }
-
     if (consulta.metrica.tipo === "avg") {
       const campo = consulta.metrica.campo ?? "puntaje";
       const suma = filtradas.reduce((acc, f) => acc + (Number(f[campo]) || 0), 0);
@@ -221,7 +253,6 @@ export function ejecutarPipeline(
         detalle: `Promedio de ${campo}`,
       } as RespuestaPromedio;
     }
-
     if (consulta.metrica.tipo === "percentage") {
       const num = filtradas.filter((f) => cumpleFiltros(f, consulta.metrica.filtros_numerador)).length;
       return {
@@ -232,7 +263,6 @@ export function ejecutarPipeline(
         detalle: null,
       } as RespuestaPorcentaje;
     }
-
     if (consulta.metrica.tipo === "efficiency") {
       const num = filtradas.filter((f) =>
         cumpleFiltros(f, consulta.metrica.filtros_numerador ?? [{ campo: "desenlace", operador: "eq", valor: "punto" }])
@@ -248,7 +278,6 @@ export function ejecutarPipeline(
         detalle: `Eficiencia (${num} pts - ${denNeg} err) / ${total}`,
       } as RespuestaPorcentaje;
     }
-
     return {
       tipo: "numero",
       valor: total,
@@ -260,7 +289,6 @@ export function ejecutarPipeline(
   // 2. CON AGRUPACIÓN
   const campoAgrup = consulta.agrupacion.campo;
   const grupos = new Map<string, Array<Record<string, unknown>>>();
-
   for (const fila of filtradas) {
     const rawVal = fila[campoAgrup];
     const key = rawVal === null || rawVal === undefined ? "null" : String(rawVal);

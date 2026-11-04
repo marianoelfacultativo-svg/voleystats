@@ -33,6 +33,7 @@ import MapaCalorJugador from "./MapaCalorJugador";
 import AnalisisConsecuencias from "./AnalisisConsecuencias";
 import IconoVoley from "./IconoVoley";
 import { descargarComoPDF } from "@/lib/exportarPDF";
+import { valoracionVisualDeAccion } from "@/lib/analisis/valoracionVisual";
 
 // ============================================================
 // v1.1 (FASE 7.4 cierre — propagación de apodo):
@@ -114,50 +115,10 @@ function calcularBarrasPorFundamento(
     if (jugadorId && a.jugador_id !== jugadorId) continue;
     const fund = a.fundamento;
     if (!out[fund]) continue;
-
-    let cat: "positivas" | "neutras" | "negativas" = "neutras";
-    const v = a.valoracion;
-
-    if (fund === "saque") {
-      if (v === "ace") cat = "positivas";
-      else if (v === "negativo") cat = "negativas";
-    } else if (fund === "ataque") {
-      if (v === "punto") cat = "positivas";
-      else if (v === "error") cat = "negativas";
-    } else if (fund === "recepcion") {
-      if (v === "perfecta" || v === "positiva") cat = "positivas";
-      else if (
-        v === "negativa" ||
-        v === "doble_negativa" ||
-        v === "overpass" ||
-        v === "error_directo" ||
-        v === "ace_contra"
-      )
-        cat = "negativas";
-      // intermedia → se queda en neutras
-    } else if (fund === "bloqueo") {
-      if (v === "punto" || v === "positivo_mas" || v === "positivo")
-        cat = "positivas";
-      else if (v === "use_rival" || v === "red" || v === "filtrada")
-        cat = "negativas";
-    } else if (fund === "defensa") {
-      if (
-        v === "gran_def" ||
-        v === "toque_positiva" ||
-        v === "cobertura_positiva"
-      )
-        cat = "positivas";
-      else if (
-        v === "toque_negativa" ||
-        v === "mala_libre" ||
-        v === "error_def" ||
-        v === "errores_graves" ||
-        v === "cobertura_negativa"
-      )
-        cat = "negativas";
-    }
-
-    out[fund][cat] += a.cantidad;
+    const v = valoracionVisualDeAccion(fund, a.valoracion);
+    if (v === "pos") out[fund].positivas += a.cantidad;
+    else if (v === "neg") out[fund].negativas += a.cantidad;
+    else out[fund].neutras += a.cantidad;
   }
 
   return out;

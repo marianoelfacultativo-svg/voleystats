@@ -11,6 +11,7 @@ import {
   Cell,
 } from "recharts";
 import type { AccionDB } from "@/lib/estadisticas";
+import { valoracionVisualDeAccion } from "@/lib/analisis/valoracionVisual";
 
 // ------------------------------------------------------------
 // Clasificación de valoraciones en Pos / Neu / Neg.
@@ -20,60 +21,7 @@ export function clasificarValoracion(
   fundamento: string,
   valoracion: string
 ): "pos" | "neu" | "neg" {
-  if (fundamento === "saque") {
-    if (valoracion === "ace") return "pos";
-    if (valoracion === "negativo") return "neg";
-    return "neu";
-  }
-  if (fundamento === "ataque") {
-    if (valoracion === "punto") return "pos";
-    if (valoracion === "error") return "neg";
-    return "neu";
-  }
-  if (fundamento === "recepcion") {
-    if (valoracion === "perfecta" || valoracion === "positiva") return "pos";
-    if (
-      valoracion === "negativa" ||
-      valoracion === "doble_negativa" ||
-      valoracion === "overpass" ||
-      valoracion === "error_directo"
-    )
-      return "neg";
-    return "neu";
-  }
-  if (fundamento === "bloqueo") {
-    if (
-      valoracion === "punto" ||
-      valoracion === "positivo_mas" ||
-      valoracion === "positivo"
-    )
-      return "pos";
-    if (
-      valoracion === "use_rival" ||
-      valoracion === "red" ||
-      valoracion === "filtrada"
-    )
-      return "neg";
-    return "neu";
-  }
-  if (fundamento === "defensa") {
-    if (
-      valoracion === "gran_def" ||
-      valoracion === "toque_positiva" ||
-      valoracion === "cobertura_positiva"
-    )
-      return "pos";
-    if (
-      valoracion === "toque_negativa" ||
-      valoracion === "mala_libre" ||
-      valoracion === "error_def" ||
-      valoracion === "errores_graves" ||
-      valoracion === "cobertura_negativa"
-    )
-      return "neg";
-    return "neu";
-  }
-  return "neu";
+  return valoracionVisualDeAccion(fundamento, valoracion);
 }
 
 export interface ConteoBarras {
