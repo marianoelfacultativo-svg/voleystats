@@ -1,40 +1,22 @@
 // ============================================================
-// LLM TRANSLATOR — llamada a Groq + validación
+// LLM TRANSLATOR — llamada a Groq + validación de ConsultaPipeline
 // ============================================================
-// Traduce el prompt del usuario a `ConsultaLLM` (JSON tipado)
-// llamando a Groq con el `SYSTEM_PROMPT` de `llmSchema.ts`.
+// Traduce el prompt del usuario a `ConsultaPipeline` (JSON tipado)
+// llamando a Groq con el `SYSTEM_PROMPT_PIPELINE` de `pipelineSchema.ts`.
 //
-// ⚠️  SERVER-SIDE ONLY. Usa `GROQ_API_KEY` (no debe exponerse
-//     al cliente). Nunca importar este archivo desde un
-//     componente "use client".
-//
-// API pública:
-//   traducirPrompt(texto) → Promise<ResultadoTraduccion>
-//   traducirPromptConHistorial(texto, historial) → Promise<ResultadoTraduccion>
-//
-// El historial es para el feedback loop ("No es lo que pedí"):
-//   - Cada turno tiene { role, content }.
-//   - El LLM ve la conversación completa y devuelve el JSON
-//     corregido en vez de reinterpretar desde cero.
+// ⚠️  SERVER-SIDE ONLY. Usa `GROQ_API_KEY`. Nunca importar este
+//     archivo desde un componente "use client".
 // ============================================================
 
 import {
-  esConsultaLLMValida,
-  SYSTEM_PROMPT,
-  type ConsultaLLM,
-} from "./llmSchema";
-
-// ------------------------------------------------------------
-// CONSTANTES
-// ------------------------------------------------------------
+  esConsultaPipelineValida,
+  SYSTEM_PROMPT_PIPELINE,
+  type ConsultaPipeline,
+} from "./pipelineSchema";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_MODEL = "openai/gpt-oss-120b";
-const MAX_INTENTOS = 2; // 1 intento + 1 reintento si JSON inválido
-
-// ------------------------------------------------------------
-// TIPOS
-// ------------------------------------------------------------
+const MAX_INTENTOS = 2;
 
 export interface MensajeHistorial {
   role: "user" | "assistant";
@@ -42,12 +24,8 @@ export interface MensajeHistorial {
 }
 
 export type ResultadoTraduccion =
-  | { ok: true; consulta: ConsultaLLM; intentos: number }
+  | { ok: true; pipeline: ConsultaPipeline; intentos: number }
   | { ok: false; error: string; intentos: number; raw?: string };
-
-// ------------------------------------------------------------
-// LLAMADA A GROQ
-// ------------------------------------------------------------
 
 async function llamarGroq(
   messages: Array<{ role: string; content: string }>,
@@ -61,7 +39,7 @@ async function llamarGroq(
   const body: Record<string, unknown> = {
     model: GROQ_MODEL,
     messages,
-    temperature: 0, // determinístico para JSON
+    temperature: 0,
     max_completion_tokens: 2048,
     top_p: 1,
   };
@@ -106,13 +84,9 @@ async function llamarGroq(
   return { ok: true, content };
 }
 
-// ------------------------------------------------------------
-// PARSEO + VALIDACIÓN
-// ------------------------------------------------------------
-
 function parsearYValidar(
   raw: string
-): { ok: true; consulta: ConsultaLLM } | { ok: false; error: string } {
+): { ok: true; pipeline: ConsultaPipeline } | { ok: false; error: string } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -120,19 +94,15 @@ function parsearYValidar(
     return { ok: false, error: "El output no es JSON válido." };
   }
 
-  if (!esConsultaLLMValida(parsed)) {
+  if (!esConsultaPipelineValida(parsed)) {
     return {
       ok: false,
-      error: "El JSON no cumple el schema esperado (faltan campos o tipos mal).",
+      error: "El JSON no cumple el schema de ConsultaPipeline esperado.",
     };
   }
 
-  return { ok: true, consulta: parsed };
+  return { ok: true, pipeline: parsed };
 }
-
-// ------------------------------------------------------------
-// API PÚBLICA
-// ------------------------------------------------------------
 
 export async function traducirPrompt(
   texto: string
@@ -154,19 +124,18 @@ export async function traducirPromptConHistorial(
 
   for (let intento = 1; intento <= MAX_INTENTOS; intento++) {
     const messages: Array<{ role: string; content: string }> = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: SYSTEM_PROMPT_PIPELINE },
       ...historial.map((m) => ({ role: m.role, content: m.content })),
       { role: "user", content: textoLimpio },
     ];
 
-    // En el reintento, agregamos un mensaje de corrección al system.
     if (intento > 1) {
       messages.unshift({
         role: "system",
         content:
           "ATENCIÓN: en el intento anterior devolviste un JSON inválido. " +
-          "Respondé SOLO con JSON que cumpla el schema. Sin texto extra, " +
-          "sin markdown, sin comentarios.",
+          "Respondé SOLO con JSON que cumpla el schema ConsultaPipeline. " +
+          "Sin markdown, sin comentarios.",
       });
     }
 
@@ -177,12 +146,11 @@ export async function traducirPromptConHistorial(
     }
 
     ultimoRaw = llamada.content;
-
     const validado = parsearYValidar(llamada.content);
     if (validado.ok) {
       return {
         ok: true,
-        consulta: validado.consulta,
+        pipeline: validado.pipeline,
         intentos: intento,
       };
     }
