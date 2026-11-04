@@ -5,24 +5,9 @@
 export type EntidadBase = "acciones" | "puntos";
 
 export type Operador =
-  | "eq"
-  | "neq"
-  | "in"
-  | "nin"
-  | "gt"
-  | "gte"
-  | "lt"
-  | "lte"
-  | "between"
-  | "contains";
+  | "eq" | "neq" | "in" | "nin" | "gt" | "gte" | "lt" | "lte" | "between" | "contains";
 
-export type TipoMetrica =
-  | "count"
-  | "sum"
-  | "avg"
-  | "percentage"
-  | "efficiency";
-
+export type TipoMetrica = "count" | "sum" | "avg" | "percentage" | "efficiency";
 export type DesenlaceAccion = "punto" | "error" | "en_juego";
 export type ValoracionAccion = "pos" | "neu" | "neg";
 
@@ -111,7 +96,6 @@ export const CATALOGO_PIPELINE: Record<string, Record<string, InfoSubtipo>> = {
     peligroso: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
     toque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
     libre: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
-    // Alias directos
     punto: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
     error: { desenlace: "error", valoracion: "neg", puntaje: 0 },
   },
@@ -189,16 +173,8 @@ export function infoDeSubtipoPipeline(
   const t = (tipo ?? "").toLowerCase();
   const s = normalizarSubtipoParaPipeline(subtipo);
   const entradaTipo = CATALOGO_PIPELINE[t];
-
-  if (entradaTipo && s && entradaTipo[s]) {
-    return entradaTipo[s];
-  }
-
-  if (esErrorFallback) {
-    return { desenlace: "error", valoracion: "neg", puntaje: 0 };
-  }
-
-  // Fallback seguro
+  if (entradaTipo && s && entradaTipo[s]) return entradaTipo[s];
+  if (esErrorFallback) return { desenlace: "error", valoracion: "neg", puntaje: 0 };
   return { desenlace: "en_juego", valoracion: "neu", puntaje: 5 };
 }
 
@@ -233,16 +209,10 @@ export function puntajeDeAccionPipeline(
 export function esConsultaPipelineValida(v: unknown): v is ConsultaPipeline {
   if (!v || typeof v !== "object") return false;
   const c = v as Record<string, unknown>;
-
-  if (c.needsClarification === true) {
-    return typeof c.preguntaClarificacion === "string";
-  }
-
-  if (c.entidad_base !== "acciones" && c.entidad_base !== "puntos") {
-    return false;
-  }
-
+  if (c.needsClarification === true) return typeof c.preguntaClarificacion === "string";
+  if (c.entidad_base !== "acciones" && c.entidad_base !== "puntos") return false;
   if (!c.metrica || typeof c.metrica !== "object") return false;
+
   const m = c.metrica as Record<string, unknown>;
   const metricasValidas: TipoMetrica[] = ["count", "sum", "avg", "percentage", "efficiency"];
   if (!metricasValidas.includes(m.tipo as TipoMetrica)) return false;
@@ -251,8 +221,9 @@ export function esConsultaPipelineValida(v: unknown): v is ConsultaPipeline {
     if (!Array.isArray(c.filtros)) return false;
     for (const f of c.filtros) {
       if (!f || typeof f !== "object") return false;
-      if (typeof f.campo !== "string" || typeof f.operador !== "string") return false;
-      if (f.valor === undefined) return false;
+      if (typeof f.campo !== "string" || typeof f.operador !== "string" || f.valor === undefined) {
+        return false;
+      }
     }
   }
 
@@ -298,6 +269,19 @@ REGLAS DE ORO:
    - "efficiency": eficiencia ((puntos - errores) / total * 100).
 8. SI LA PREGUNTA ES AMBIGUA O FALTA DATO CRÍTICO:
    { "needsClarification": true, "preguntaClarificacion": "¿Podrías especificar...?" }
+9. ACCIONES PROPIAS vs RIVALES (CRÍTICO):
+   Cuando entidad_base es "acciones", SIEMPRE agregar el filtro:
+   { "campo": "es_rival", "operador": "eq", "valor": false }
+   por DEFECTO, salvo que el usuario indique lo contrario:
+   - "cuántos ataques en k2" → filtros: tipo=ataque, fase_rally=k2, es_rival=false
+   - "cuántos aces" → filtros: tipo=saque, subtipo=ace, es_rival=false
+   - "cuántas recepciones" → filtros: tipo=recepcion, es_rival=false
+
+   Excepciones (NO agregar es_rival=false):
+   - Si el usuario dice "rivales", "del rival", "contrincante", "otro equipo" → usar es_rival=true.
+   - Si dice "de los dos equipos", "todos", "ambos" → NO agregar el filtro (cuenta las dos).
+
+   Entidad "puntos": NO lleva es_rival (los puntos ya son propios o rivales según "ganador").
 
 EJEMPLOS:
 Prompt: "cuántos ataques en k2"
@@ -306,7 +290,20 @@ JSON:
   "entidad_base": "acciones",
   "filtros": [
     { "campo": "tipo", "operador": "eq", "valor": "ataque" },
-    { "campo": "fase_rally", "operador": "eq", "valor": "k2" }
+    { "campo": "fase_rally", "operador": "eq", "valor": "k2" },
+    { "campo": "es_rival", "operador": "eq", "valor": false }
+  ],
+  "metrica": { "tipo": "count" }
+}
+
+Prompt: "cuántos aces rivales"
+JSON:
+{
+  "entidad_base": "acciones",
+  "filtros": [
+    { "campo": "tipo", "operador": "eq", "valor": "saque" },
+    { "campo": "subtipo", "operador": "eq", "valor": "ace" },
+    { "campo": "es_rival", "operador": "eq", "valor": true }
   ],
   "metrica": { "tipo": "count" }
 }
@@ -328,7 +325,8 @@ JSON:
   "entidad_base": "acciones",
   "filtros": [
     { "campo": "tipo", "operador": "eq", "valor": "saque" },
-    { "campo": "subtipo", "operador": "eq", "valor": "ace" }
+    { "campo": "subtipo", "operador": "eq", "valor": "ace" },
+    { "campo": "es_rival", "operador": "eq", "valor": false }
   ],
   "metrica": { "tipo": "count" }
 }
@@ -339,7 +337,8 @@ JSON:
   "entidad_base": "acciones",
   "filtros": [
     { "campo": "tipo", "operador": "eq", "valor": "saque" },
-    { "campo": "valoracion", "operador": "eq", "valor": "pos" }
+    { "campo": "valoracion", "operador": "eq", "valor": "pos" },
+    { "campo": "es_rival", "operador": "eq", "valor": false }
   ],
   "metrica": { "tipo": "count" }
 }
@@ -349,7 +348,8 @@ JSON:
 {
   "entidad_base": "acciones",
   "filtros": [
-    { "campo": "desenlace", "operador": "eq", "valor": "error" }
+    { "campo": "desenlace", "operador": "eq", "valor": "error" },
+    { "campo": "es_rival", "operador": "eq", "valor": false }
   ],
   "agrupacion": { "campo": "rotacion_numero" },
   "metrica": { "tipo": "count" }
@@ -361,7 +361,8 @@ JSON:
   "entidad_base": "acciones",
   "filtros": [
     { "campo": "tipo", "operador": "eq", "valor": "ataque" },
-    { "campo": "rol_jugador", "operador": "eq", "valor": "P1" }
+    { "campo": "rol_jugador", "operador": "eq", "valor": "P1" },
+    { "campo": "es_rival", "operador": "eq", "valor": false }
   ],
   "metrica": {
     "tipo": "percentage",
@@ -376,7 +377,8 @@ JSON:
 {
   "entidad_base": "acciones",
   "filtros": [
-    { "campo": "desenlace", "operador": "eq", "valor": "punto" }
+    { "campo": "desenlace", "operador": "eq", "valor": "punto" },
+    { "campo": "es_rival", "operador": "eq", "valor": false }
   ],
   "agrupacion": { "campo": "jugador_id" },
   "metrica": { "tipo": "count" },
@@ -388,7 +390,8 @@ JSON:
 {
   "entidad_base": "acciones",
   "filtros": [
-    { "campo": "tipo", "operador": "eq", "valor": "recepcion" }
+    { "campo": "tipo", "operador": "eq", "valor": "recepcion" },
+    { "campo": "es_rival", "operador": "eq", "valor": false }
   ],
   "agrupacion": { "campo": "jugador_id" },
   "metrica": { "tipo": "avg", "campo": "puntaje" }
