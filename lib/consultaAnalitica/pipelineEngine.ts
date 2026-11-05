@@ -237,9 +237,32 @@ function coincideValor(campoVal: unknown, filtroVal: unknown, op: string): boole
   }
 }
 
+function normalizarValorFiltro(campo: string, valor: unknown): unknown {
+  if (typeof valor !== "string") return valor;
+  const v = valor.trim().toLowerCase();
+
+  if (campo === "resultado_set") {
+    if (v === "ganado" || v === "ganados" || v === "set_ganado") return "set_ganado";
+    if (v === "perdido" || v === "perdidos" || v === "set_perdido") return "set_perdido";
+    if (v === "sin_resultado" || v === "desconocido") return "sin_resultado";
+  }
+  if (campo === "resultado_partido") {
+    if (v === "ganado" || v === "ganados" || v === "partido_ganado") return "partido_ganado";
+    if (v === "perdido" || v === "perdidos" || v === "partido_perdido") return "partido_perdido";
+    if (v === "sin_resultado" || v === "desconocido") return "sin_resultado";
+  }
+  return valor;
+}
+
 function cumpleFiltros(fila: Record<string, unknown>, filtros?: Filtro[]): boolean {
   if (!filtros || filtros.length === 0) return true;
-  return filtros.every((f) => coincideValor(fila[f.campo], f.valor, f.operador));
+  return filtros.every((f) =>
+    coincideValor(
+      fila[f.campo],
+      normalizarValorFiltro(f.campo, f.valor),
+      f.operador
+    )
+  );
 }
 
 // ------------------------------------------------------------

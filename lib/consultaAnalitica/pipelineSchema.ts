@@ -248,6 +248,11 @@ REGLAS DE ORO:
 5. CAMPOS DISPONIBLES EN PUNTOS:
    set_numero, punto_numero, partido_id, fase, ganador ("propio" | "rival"), es_tie_break,
    resultado_set, resultado_partido, cruces, diferencia_marcador, es_primer_toque.
+   ⚠️ VALORES EXACTOS (no inventar variantes):
+   - resultado_set:     "set_ganado"     | "set_perdido"     | "sin_resultado"
+   - resultado_partido: "partido_ganado" | "partido_perdido" | "sin_resultado"
+   - fase:              "side-out" | "k2" | "k3" | "free-ball" | "otro"
+   - ganador:           "propio" | "rival"
 6. OPERADORES: "eq", "neq", "in", "nin", "gt", "gte", "lt", "lte", "between", "contains".
 7. MÉTRICAS:
    - "count": para contar filas.
