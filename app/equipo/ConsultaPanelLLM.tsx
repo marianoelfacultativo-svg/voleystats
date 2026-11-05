@@ -23,6 +23,8 @@ import { useState } from "react";
 import ConsultaResultado from "./analisisConsecuencias/ConsultaResultado";
 import type { ResultadoConsultaLLM } from "@/lib/consultaAnalitica/ejecutarConsultaLLM";
 import type { ResultadoConsultaExtendido } from "@/lib/consultaAnalitica/ejecutor";
+import { BLOQUE_TRIGGER_VACIO } from "@/lib/analisis/tipos";
+import { intencionVacia } from "@/lib/consultaAnalitica/intenciones";
 
 // ------------------------------------------------------------
 // TIPOS
@@ -72,8 +74,8 @@ function aResultadoExtendido(
     parserInfo: {
       aplicado: true,
       sugerencias: [],
-      filtro: data.debug.filtroFinal,
-      intencion: data.debug.intencionFinal,
+      filtro: data.debug.filtroFinal ?? { ...BLOQUE_TRIGGER_VACIO },
+      intencion: data.debug.intencionFinal ?? intencionVacia(),
       jugadorAmbiguo: false,
       jugadorAviso: null,
       jugadorCandidatos: [],
