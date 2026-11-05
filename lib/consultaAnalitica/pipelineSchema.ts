@@ -8,10 +8,29 @@ export type TipoMetrica = "count" | "sum" | "avg" | "percentage" | "efficiency";
 export type DesenlaceAccion = "punto" | "error" | "en_juego";
 export type ValoracionAccion = "pos" | "neu" | "neg";
 
-export interface InfoSubtipo { desenlace: DesenlaceAccion; valoracion: ValoracionAccion; puntaje: number; }
-export interface Filtro { campo: string; operador: Operador; valor: string | number | boolean | Array<string | number | boolean>; }
-export interface Metrica { tipo: TipoMetrica; campo?: string; filtros_numerador?: Filtro[]; filtros_denominador_negativo?: Filtro[]; }
-export interface Agrupacion { campo: string; }
+export interface InfoSubtipo {
+  desenlace: DesenlaceAccion;
+  valoracion: ValoracionAccion;
+  puntaje: number;
+}
+
+export interface Filtro {
+  campo: string;
+  operador: Operador;
+  valor: string | number | boolean | Array<string | number | boolean>;
+}
+
+export interface Metrica {
+  tipo: TipoMetrica;
+  campo?: string;
+  filtros_numerador?: Filtro[];
+  filtros_denominador_negativo?: Filtro[];
+}
+
+export interface Agrupacion {
+  campo: string;
+}
+
 export interface ConsultaPipeline {
   entidad_base: EntidadBase;
   filtros?: Filtro[];
@@ -47,52 +66,91 @@ export const CATALOGO_PIPELINE: Record<string, Record<string, InfoSubtipo>> = {
     positivo: { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
     neutro: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 },
     negativo: { desenlace: "error", valoracion: "neg", puntaje: 2 },
+    error_rival: { desenlace: "error", valoracion: "neg", puntaje: 0 },
   },
   recepcion: {
-    perfecta: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 }, positiva: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
-    intermedia: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 }, negativa: { desenlace: "en_juego", valoracion: "neg", puntaje: 4 },
-    doble_negativa: { desenlace: "en_juego", valoracion: "neg", puntaje: 2 }, overpass: { desenlace: "en_juego", valoracion: "neg", puntaje: 1 },
-    error_directo: { desenlace: "error", valoracion: "neg", puntaje: 0 }, ace_contra: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    perfecta: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
+    positiva: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
+    intermedia: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 },
+    negativa: { desenlace: "en_juego", valoracion: "neg", puntaje: 4 },
+    doble_negativa: { desenlace: "en_juego", valoracion: "neg", puntaje: 2 },
+    overpass: { desenlace: "en_juego", valoracion: "neg", puntaje: 1 },
+    error_directo: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    ace_contra: { desenlace: "error", valoracion: "neg", puntaje: 0 },
   },
   ataque: {
-    punto_directo_ataque: { desenlace: "punto", valoracion: "pos", puntaje: 10 }, punto_desviado_ataque: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
-    use_rival_ataque: { desenlace: "punto", valoracion: "pos", puntaje: 10 }, neutro_defensa_ataque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
-    neutro_bloqueo_cobertura_ataque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 }, neutro_desvio_bloqueo_defensa_ataque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
-    error_red_ataque: { desenlace: "error", valoracion: "neg", puntaje: 0 }, error_afuera_ataque: { desenlace: "error", valoracion: "neg", puntaje: 0 },
-    gorro_ataque: { desenlace: "error", valoracion: "neg", puntaje: 0 }, buena_rival: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
-    error_rival: { desenlace: "error", valoracion: "neg", puntaje: 0 }, simple: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
-    peligroso: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 }, toque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
-    libre: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 }, punto: { desenlace: "punto", valoracion: "pos", puntaje: 10 }, error: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    punto_directo_ataque: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
+    punto_desviado_ataque: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
+    use_rival_ataque: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
+    neutro_defensa_ataque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
+    neutro_bloqueo_cobertura_ataque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
+    neutro_desvio_bloqueo_defensa_ataque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
+    error_red_ataque: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    error_afuera_ataque: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    gorro_ataque: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    buena_rival: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
+    error_rival: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    simple: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
+    peligroso: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
+    toque: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
+    libre: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
+    punto: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
+    error: { desenlace: "error", valoracion: "neg", puntaje: 0 },
   },
   bloqueo: {
-    punto: { desenlace: "punto", valoracion: "pos", puntaje: 10 }, positivo_mas: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
-    positivo: { desenlace: "en_juego", valoracion: "pos", puntaje: 6 }, neutro: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 },
-    filtrada: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 }, use_rival: { desenlace: "en_juego", valoracion: "neg", puntaje: 3 }, red: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    punto: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
+    positivo_mas: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
+    positivo: { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
+    neutro: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 },
+    filtrada: { desenlace: "en_juego", valoracion: "neu", puntaje: 2 },
+    use_rival: { desenlace: "en_juego", valoracion: "neg", puntaje: 3 },
+    red: { desenlace: "error", valoracion: "neg", puntaje: 0 },
   },
   defensa: {
-    gran_def: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 }, toque_positiva: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
-    cobertura_positiva: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 }, neutro: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 },
-    toque_negativa: { desenlace: "en_juego", valoracion: "neg", puntaje: 0 }, cobertura_negativa: { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
-    error_def: { desenlace: "error", valoracion: "neg", puntaje: 0 }, errores_graves: { desenlace: "error", valoracion: "neg", puntaje: 0 }, mala_libre: { desenlace: "error", valoracion: "neg", puntaje: -2 },
+    gran_def: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
+    toque_positiva: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
+    cobertura_positiva: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
+    neutro: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 },
+    toque_negativa: { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
+    cobertura_negativa: { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
+    error_def: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    errores_graves: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    mala_libre: { desenlace: "error", valoracion: "neg", puntaje: -2 },
   },
   armado: {
-    genial: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 }, "6": { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
-    perfecto: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 }, "5": { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
-    correcto: { desenlace: "en_juego", valoracion: "pos", puntaje: 6 }, "4": { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
-    flojo: { desenlace: "en_juego", valoracion: "neu", puntaje: 3 }, "3": { desenlace: "en_juego", valoracion: "neu", puntaje: 3 },
-    malo: { desenlace: "en_juego", valoracion: "neg", puntaje: 1 }, "2": { desenlace: "en_juego", valoracion: "neg", puntaje: 1 },
-    horrible: { desenlace: "en_juego", valoracion: "neg", puntaje: 0 }, "1": { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
+    genial: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
+    "6": { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
+    perfecto: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
+    "5": { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
+    correcto: { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
+    "4": { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
+    flojo: { desenlace: "en_juego", valoracion: "neu", puntaje: 3 },
+    "3": { desenlace: "en_juego", valoracion: "neu", puntaje: 3 },
+    malo: { desenlace: "en_juego", valoracion: "neg", puntaje: 1 },
+    "2": { desenlace: "en_juego", valoracion: "neg", puntaje: 1 },
+    horrible: { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
+    "1": { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
+    R: { desenlace: "error", valoracion: "neg", puntaje: 0 },
   },
   armados: {
-    genial: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 }, "6": { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
-    perfecto: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 }, "5": { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
-    correcto: { desenlace: "en_juego", valoracion: "pos", puntaje: 6 }, "4": { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
-    flojo: { desenlace: "en_juego", valoracion: "neu", puntaje: 3 }, "3": { desenlace: "en_juego", valoracion: "neu", puntaje: 3 },
-    malo: { desenlace: "en_juego", valoracion: "neg", puntaje: 1 }, "2": { desenlace: "en_juego", valoracion: "neg", puntaje: 1 },
-    horrible: { desenlace: "en_juego", valoracion: "neg", puntaje: 0 }, "1": { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
+    genial: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
+    "6": { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
+    perfecto: { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
+    "5": { desenlace: "en_juego", valoracion: "pos", puntaje: 8 },
+    correcto: { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
+    "4": { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
+    flojo: { desenlace: "en_juego", valoracion: "neu", puntaje: 3 },
+    "3": { desenlace: "en_juego", valoracion: "neu", puntaje: 3 },
+    malo: { desenlace: "en_juego", valoracion: "neg", puntaje: 1 },
+    "2": { desenlace: "en_juego", valoracion: "neg", puntaje: 1 },
+    horrible: { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
+    "1": { desenlace: "en_juego", valoracion: "neg", puntaje: 0 },
+    R: { desenlace: "error", valoracion: "neg", puntaje: 0 },
   },
   toque: {
-    punto: { desenlace: "punto", valoracion: "pos", puntaje: 10 }, neutro: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 }, error: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    punto: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
+    neutro: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 },
+    error: { desenlace: "error", valoracion: "neg", puntaje: 0 },
   },
 };
 

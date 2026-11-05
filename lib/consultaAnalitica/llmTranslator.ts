@@ -6,6 +6,12 @@
 //
 // ⚠️  SERVER-SIDE ONLY. Usa `GROQ_API_KEY`. Nunca importar este
 //     archivo desde un componente "use client".
+//
+// v2.1: backoff exponencial en 429 (rate limit).
+//   + Detecta 429 y extrae "try again in Xs" del mensaje.
+//   + Espera entre reintentos.
+//   + MAX_INTENTOS = 3.
+//   + Mensaje claro al usuario si después de 3 intentos sigue rate-limited.
 // ============================================================
 
 import {
@@ -16,7 +22,9 @@ import {
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_MODEL = "openai/gpt-oss-120b";
-const MAX_INTENTOS = 2;
+const MAX_INTENTOS = 3;
+
+const RETRY_DEFAULT_MS = 3000;
 
 export interface MensajeHistorial {
   role: "user" | "assistant";
@@ -30,7 +38,12 @@ export type ResultadoTraduccion =
 async function llamarGroq(
   messages: Array<{ role: string; content: string }>,
   jsonMode: boolean
-): Promise<{ ok: boolean; content?: string; error?: string }> {
+): Promise<{
+  ok: boolean;
+  content?: string;
+  error?: string;
+  retryAfterMs?: number;
+}> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     return { ok: false, error: "Falta GROQ_API_KEY en el entorno." };
@@ -69,9 +82,20 @@ async function llamarGroq(
 
   if (!res.ok) {
     const texto = await res.text().catch(() => "");
+
+    // Detectar 429 (rate limit) y extraer "try again in Xs"
+    let retryAfterMs = RETRY_DEFAULT_MS;
+    if (res.status === 429) {
+      const m = texto.match(/try again in (\d+(?:\.\d+)?)s/);
+      if (m) {
+        retryAfterMs = Math.ceil(parseFloat(m[1]) * 1000) + 800;
+      }
+    }
+
     return {
       ok: false,
       error: `Groq respondió ${res.status}: ${texto.slice(0, 300)}`,
+      retryAfterMs: res.status === 429 ? retryAfterMs : undefined,
     };
   }
 
@@ -104,6 +128,10 @@ function parsearYValidar(
   return { ok: true, pipeline: parsed };
 }
 
+async function esperar(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export async function traducirPrompt(
   texto: string
 ): Promise<ResultadoTraduccion> {
@@ -121,6 +149,7 @@ export async function traducirPromptConHistorial(
 
   let ultimoError = "";
   let ultimoRaw: string | undefined;
+  let fueRateLimit = false;
 
   for (let intento = 1; intento <= MAX_INTENTOS; intento++) {
     const messages: Array<{ role: string; content: string }> = [
@@ -140,11 +169,23 @@ export async function traducirPromptConHistorial(
     }
 
     const llamada = await llamarGroq(messages, true);
+
+    // Si falló por 429, esperar antes del siguiente intento
+    if (!llamada.ok && llamada.retryAfterMs !== undefined) {
+      fueRateLimit = true;
+      ultimoError = llamada.error ?? "Rate limit de Groq.";
+      if (intento < MAX_INTENTOS) {
+        await esperar(llamada.retryAfterMs);
+      }
+      continue;
+    }
+
     if (!llamada.ok || !llamada.content) {
       ultimoError = llamada.error ?? "Groq devolvió vacío.";
       continue;
     }
 
+    fueRateLimit = false;
     ultimoRaw = llamada.content;
     const validado = parsearYValidar(llamada.content);
     if (validado.ok) {
@@ -157,9 +198,16 @@ export async function traducirPromptConHistorial(
     ultimoError = validado.error;
   }
 
+  const mensajeFinal = fueRateLimit
+    ? `Rate limit de Groq alcanzado (plan free: 8000 tokens/minuto). ` +
+      `Esperá 60 segundos y volvé a intentar. ` +
+      `Detalle: ${ultimoError}`
+    : `No se pudo traducir el prompt después de ${MAX_INTENTOS} intentos. ` +
+      `Último error: ${ultimoError}`;
+
   return {
     ok: false,
-    error: `No se pudo traducir el prompt después de ${MAX_INTENTOS} intentos. Último error: ${ultimoError}`,
+    error: mensajeFinal,
     intentos: MAX_INTENTOS,
     raw: ultimoRaw,
   };
