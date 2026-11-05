@@ -107,7 +107,7 @@ function esErrorDeAccion(
     return base === "error";
   }
   if (tipo === "bloqueo") {
-    return s === "red" || s === "use_rival" || s === "filtrada";
+    return s === "red" || s === "use_rival";
   }
   if (tipo === "defensa") {
     return (

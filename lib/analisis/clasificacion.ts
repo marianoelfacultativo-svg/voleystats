@@ -22,6 +22,11 @@ export function baseSubtipo(a: AccionVisual): string {
   return s.startsWith("toque:") ? s.slice(6) : s;
 }
 
+const ERROR_SOLO_SI_ULTIMA_ARMADOS = new Set<string>([
+  "malo", "horrible", "1", "2",
+]);
+const ERROR_SOLO_SI_ULTIMA_BLOQUEO = new Set<string>(["filtrada"]);
+
 export function clasificarResultado(a: AccionVisual): CategoriaResultado {
   const sub = baseSubtipo(a).toLowerCase();
   const tipo = a.tipo;
@@ -33,6 +38,24 @@ export function clasificarResultado(a: AccionVisual): CategoriaResultado {
   const fundamento = tipo === "armado" ? "armados" : tipo;
 
   const cat = clasificarSubtipo(fundamento, sub);
+  if (
+    fundamento === "armados" &&
+    cat === "error" &&
+    ERROR_SOLO_SI_ULTIMA_ARMADOS.has(sub) &&
+    !a.es_ultima_del_punto
+  ) {
+    return "neutro";
+  }
+
+  if (
+    fundamento === "bloqueo" &&
+    cat === "error" &&
+    ERROR_SOLO_SI_ULTIMA_BLOQUEO.has(sub) &&
+    !a.es_ultima_del_punto
+  ) {
+    return "neutro";
+  }
+
   if (cat !== null) return cat;
 
   // Fallback defensivo para subtipos no catalogados.

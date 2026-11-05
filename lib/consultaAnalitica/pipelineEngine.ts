@@ -53,6 +53,32 @@ export interface FilaPuntoEnriquecido {
 }
 
 // ------------------------------------------------------------
+// AJUSTE POR CONTEXTO — armados malos no-últimos
+// ------------------------------------------------------------
+// El catálogo marca `armados.horrible/malo/1/2` como desenlace
+// "error". Pero el DataEntry permite que un armado siga con un
+// ataque (no cierra el rally). En ese caso NO es error: es
+// "en_juego" con calidad negativa.
+//
+// Este helper detecta ese caso y devuelve true si el armado es
+// malo Y NO es la última acción del punto. En ese caso el motor
+// degrada el desenlace a "en_juego".
+// ------------------------------------------------------------
+
+function esArmadoMaloNoUltimo(a: AccionVisual): boolean {
+  if (a.tipo !== "armado") return false;
+  if (a.es_ultima_del_punto) return false;
+  const s = String(a.subtipo ?? "").toLowerCase();
+  return s === "malo" || s === "horrible" || s === "1" || s === "2";
+}
+
+function esBloqueoFiltradaNoUltimo(a: AccionVisual): boolean {
+  if (a.tipo !== "bloqueo") return false;
+  if (a.es_ultima_del_punto) return false;
+  return String(a.subtipo ?? "").toLowerCase() === "filtrada";
+}
+
+// ------------------------------------------------------------
 // ENRIQUECIMIENTO DE DATOS
 // ------------------------------------------------------------
 
@@ -63,9 +89,21 @@ function enriquecerAcciones(
   return acciones.map((a) => {
     const clave = `${a.partido_id}|${a.set_numero}|${a.punto_numero}`;
     const info: InfoSubtipo = infoDeSubtipoPipeline(a.tipo, a.subtipo, a.es_error);
+
+    // Ajuste por contexto: si el armado es malo pero NO es la
+    // última acción, el rally siguió → en_juego (calidad negativa
+    // pero no cierra).
+    let desenlace = info.desenlace;
+    if (desenlace === "error" && esArmadoMaloNoUltimo(a)) {
+      desenlace = "en_juego";
+    }
+    if (desenlace === "error" && esBloqueoFiltradaNoUltimo(a)) {
+      desenlace = "en_juego";
+    }
+
     return {
       ...a,
-      desenlace: info.desenlace,
+      desenlace,
       valoracion: info.valoracion,
       puntaje: info.puntaje,
       fase_rally: fasesPorPunto.get(clave) ?? "otro",
@@ -79,7 +117,14 @@ function calcularGanadorPunto(accs: AccionVisual[]): "propio" | "rival" | "desco
   const ult = vis[vis.length - 1];
   const info = infoDeSubtipoPipeline(ult.tipo, ult.subtipo, ult.es_error);
   if (info.desenlace === "punto") return ult.es_rival ? "rival" : "propio";
-  if (info.desenlace === "error" || ult.es_error) return ult.es_rival ? "propio" : "rival";
+
+  const esFiltradaNoUltima =
+    ult.tipo === "bloqueo" &&
+    String(ult.subtipo ?? "").toLowerCase() === "filtrada" &&
+    !ult.es_ultima_del_punto;
+  if (info.desenlace === "error" || (ult.es_error && !esFiltradaNoUltima)) {
+    return ult.es_rival ? "propio" : "rival";
+  }
   return "desconocido";
 }
 
