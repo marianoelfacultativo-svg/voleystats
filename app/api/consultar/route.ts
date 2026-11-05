@@ -76,11 +76,19 @@ export async function POST(req: Request) {
     const { data: partidosRaw, error: errPartidos } = partidoId
       ? await supabase
           .from("partidos")
-          .select("id, rival, fecha")
+          .select(
+            "id, rival, fecha, equipo_id, equipo_rival_id, " +
+            "set1_ganado, set2_ganado, set3_ganado, set4_ganado, set5_ganado, " +
+            "resultado_partido"
+          )
           .eq("id", partidoId)
       : await supabase
           .from("partidos")
-          .select("id, rival, fecha")
+          .select(
+            "id, rival, fecha, equipo_id, equipo_rival_id, " +
+            "set1_ganado, set2_ganado, set3_ganado, set4_ganado, set5_ganado, " +
+            "resultado_partido"
+          )
           .or(`equipo_id.eq.${equipoId},equipo_rival_id.eq.${equipoId}`)
           .order("fecha", { ascending: false });
 
@@ -94,11 +102,38 @@ export async function POST(req: Request) {
       );
     }
 
-    const partidos = (partidosRaw ?? []).map((p: any) => ({
-      id: p.id as string,
-      nombre: `vs ${p.rival ?? "?"} (${p.fecha ?? "?"})`,
-      fecha: (p.fecha as string | null) ?? undefined,
-    }));
+    const partidos = (partidosRaw ?? []).map((p: any) => {
+      const espejo = p.equipo_rival_id === equipoId;
+
+      const flipGanado = (
+        v: boolean | null | undefined
+      ): boolean | null => {
+        if (v === null || v === undefined) return null;
+        return espejo ? !v : v;
+      };
+
+      const flipResultado = (
+        v: string | null | undefined
+      ): "ganado" | "perdido" | null => {
+        if (v === "ganado") return espejo ? "perdido" : "ganado";
+        if (v === "perdido") return espejo ? "ganado" : "perdido";
+        return null;
+      };
+
+      return {
+        id: p.id as string,
+        nombre: `vs ${p.rival ?? "?"} (${p.fecha ?? "?"})`,
+        fecha: (p.fecha as string | null) ?? undefined,
+        setGanados: [
+          flipGanado(p.set1_ganado),
+          flipGanado(p.set2_ganado),
+          flipGanado(p.set3_ganado),
+          flipGanado(p.set4_ganado),
+          flipGanado(p.set5_ganado),
+        ] as (boolean | null)[],
+        resultado: flipResultado(p.resultado_partido),
+      };
+    });
 
     // 2.b) Jugadores del equipo
     const { data: jeRaw } = await supabase

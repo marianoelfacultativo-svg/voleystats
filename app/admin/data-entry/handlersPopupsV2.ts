@@ -10,6 +10,7 @@
 // v1: handlers originales.
 // ============================================================
 
+import type { Dispatch, SetStateAction } from "react";
 import type { LineaClasificada } from "@/lib/clasificacionV2";
 import type { PopupEnCola } from "./tiposV2";
 import type {
@@ -24,11 +25,11 @@ interface Params {
   contadorId: number;
   equipoId: string;
   equipoRivalId: string | null;
-  setLineas: React.Dispatch<React.SetStateAction<LineaClasificada[]>>;
-  setColaPopups: React.Dispatch<React.SetStateAction<PopupEnCola[]>>;
-  setContadorId: React.Dispatch<React.SetStateAction<number>>;
-  setDesviosPendientes: React.Dispatch<
-    React.SetStateAction<
+  setLineas: Dispatch<SetStateAction<LineaClasificada[]>>;
+  setColaPopups: Dispatch<SetStateAction<PopupEnCola[]>>;
+  setContadorId: Dispatch<SetStateAction<number>>;
+  setDesviosPendientes: Dispatch<
+    SetStateAction<
       { celda: string; mini: string; jugadorId?: string | null }[]
     >
   >;

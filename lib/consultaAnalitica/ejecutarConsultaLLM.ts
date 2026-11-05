@@ -21,13 +21,11 @@ import type {
 import type { ConsultaPipeline } from "./pipelineSchema";
 import type { JugadorParaResolver } from "./resolverJugador";
 import type { BloqueTriggerFiltro } from "../analisis/tipos";
-import { BLOQUE_TRIGGER_VACIO } from "../analisis/tipos";
-import {
-  intencionVacia,
-  type AggFn,
-  type GroupBy,
-  type IntencionQuery,
-  type TipoIntencion,
+import type {
+  AggFn,
+  GroupBy,
+  IntencionQuery,
+  TipoIntencion,
 } from "./intenciones";
 import { traducirPrompt } from "./llmTranslator";
 import { llmToPipeline } from "./llmToPipeline";
@@ -37,15 +35,21 @@ export interface ContextoEjecutorLLM {
   acciones: AccionVisual[];
   puntos?: PuntoConAcciones[];
   jugadores?: JugadorParaResolver[];
-  partidos?: { id: string; nombre: string; fecha?: string }[];
+  partidos?: Array<{
+    id: string;
+    nombre: string;
+    fecha?: string;
+    setGanados?: (boolean | null)[];
+    resultado?: "ganado" | "perdido" | null;
+  }>;
 }
 
 export interface DebugConsultaLLM {
   promptOriginal: string;
   consultaLLM: ConsultaPipeline;
   intentosTraduccion: number;
-  intencionFinal: IntencionQuery;
-  filtroFinal: BloqueTriggerFiltro;
+  intencionFinal: IntencionQuery | null;
+  filtroFinal: BloqueTriggerFiltro | null;
   jugadorResuelto: { id: string; nombre: string } | null;
   accionesFiltradas: number;
   accionesUniverso: number;
@@ -262,8 +266,8 @@ export async function ejecutarConsultaLLM(
     promptOriginal: promptLimpio,
     consultaLLM: pipeline,
     intentosTraduccion: traduccion.intentos,
-    intencionFinal: intencionVacia(),
-    filtroFinal: { ...BLOQUE_TRIGGER_VACIO },
+    intencionFinal: null,
+    filtroFinal: null,
     jugadorResuelto: null,
     accionesFiltradas: filtradas,
     accionesUniverso: total,

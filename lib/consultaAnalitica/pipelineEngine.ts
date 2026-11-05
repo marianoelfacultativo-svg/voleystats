@@ -13,11 +13,19 @@ import type {
   RespuestaPromedio, RespuestaRanking, RespuestaTabla, RespuestaVacia,
 } from "./tipos";
 
+export interface PartidoConResultado {
+  id: string;
+  nombre: string;
+  fecha?: string;
+  setGanados?: (boolean | null)[];
+  resultado?: "ganado" | "perdido" | null;
+}
+
 export interface ContextoPipeline {
   acciones: AccionVisual[];
   puntos?: PuntoConAcciones[];
   jugadores?: JugadorParaResolver[];
-  partidos?: Array<{ id: string; nombre: string; fecha?: string }>;
+  partidos?: PartidoConResultado[];
 }
 
 export interface FilaAccionEnriquecida extends AccionVisual {
@@ -79,7 +87,7 @@ function calcularCruces(accs: AccionVisual[]): number {
   const vis = accs.filter((a) => !a.oculta).sort((x, y) => x.orden - y.orden);
   let c = 0;
   for (let i = 1; i < vis.length; i++) {
-    if (vis[i].es_rival !== vis[i - 1].es_rival) c++;
+    if (vis[i].lado !== vis[i - 1].lado) c++;
   }
   return c;
 }
@@ -87,7 +95,8 @@ function calcularCruces(accs: AccionVisual[]): number {
 function construirPuntos(
   acciones: AccionVisual[],
   puntosExistentes: PuntoConAcciones[] | undefined,
-  fasesPorPunto: Map<string, string>
+  fasesPorPunto: Map<string, string>,
+  partidosConResultado: PartidoConResultado[] | undefined
 ): FilaPuntoEnriquecido[] {
   const pMap = new Map<string, AccionVisual[]>();
   for (const a of acciones) {
@@ -97,10 +106,41 @@ function construirPuntos(
     pMap.set(clave, l);
   }
 
+  const porPartido = new Map<
+    string,
+    {
+      setGanados?: (boolean | null)[];
+      resultado?: "ganado" | "perdido" | null;
+    }
+  >();
+  if (partidosConResultado) {
+    for (const p of partidosConResultado) {
+      porPartido.set(p.id, {
+        setGanados: p.setGanados,
+        resultado: p.resultado,
+      });
+    }
+  }
+
   const res: FilaPuntoEnriquecido[] = [];
   for (const [clave, accs] of pMap.entries()) {
     const [pid, sStr, pStr] = clave.split("|");
     const setNum = Number(sStr) || 1;
+
+    const infoPartido = porPartido.get(pid);
+
+    let resultadoSet = "sin_resultado";
+    const ganadoDelSet = infoPartido?.setGanados?.[setNum - 1];
+    if (ganadoDelSet === true) resultadoSet = "set_ganado";
+    else if (ganadoDelSet === false) resultadoSet = "set_perdido";
+
+    let resultadoPartido = "sin_resultado";
+    if (infoPartido?.resultado === "ganado") {
+      resultadoPartido = "partido_ganado";
+    } else if (infoPartido?.resultado === "perdido") {
+      resultadoPartido = "partido_perdido";
+    }
+
     res.push({
       set_numero: setNum,
       punto_numero: Number(pStr) || 1,
@@ -108,8 +148,8 @@ function construirPuntos(
       fase: fasesPorPunto.get(clave) ?? "otro",
       ganador: calcularGanadorPunto(accs),
       es_tie_break: setNum === 3 || setNum === 5,
-      resultado_set: "desconocido",
-      resultado_partido: "desconocido",
+      resultado_set: resultadoSet,
+      resultado_partido: resultadoPartido,
       cruces: calcularCruces(accs),
       diferencia_marcador: 0,
       es_primer_toque: accs.length <= 1,
@@ -217,7 +257,12 @@ export function ejecutarPipeline(
   const fasesPorPunto = calcularFasesPorPunto(acciones);
   const universo: Array<Record<string, unknown>> =
     consulta.entidad_base === "puntos"
-      ? construirPuntos(acciones, contexto.puntos, fasesPorPunto)
+      ? construirPuntos(
+          acciones,
+          contexto.puntos,
+          fasesPorPunto,
+          contexto.partidos
+        )
       : enriquecerAcciones(acciones, fasesPorPunto);
 
   const filtradas = universo.filter((fila) => cumpleFiltros(fila, filtrosResueltos));
@@ -253,6 +298,19 @@ export function ejecutarPipeline(
         detalle: `Promedio de ${campo}`,
       } as RespuestaPromedio;
     }
+    if (
+      consulta.metrica.tipo === "percentage" &&
+      (!consulta.metrica.filtros_numerador ||
+        consulta.metrica.filtros_numerador.length === 0)
+    ) {
+      return {
+        tipo: "vacio",
+        mensaje:
+          "La métrica 'percentage' requiere 'filtros_numerador'. " +
+          "El LLM no devolvió el filtro del numerador. Reformulá la " +
+          "consulta.",
+      } as RespuestaVacia;
+    }
     if (consulta.metrica.tipo === "percentage") {
       const num = filtradas.filter((f) => cumpleFiltros(f, consulta.metrica.filtros_numerador)).length;
       return {
@@ -277,6 +335,19 @@ export function ejecutarPipeline(
         base: total,
         detalle: `Eficiencia (${num} pts - ${denNeg} err) / ${total}`,
       } as RespuestaPorcentaje;
+    }
+    if (consulta.metrica.tipo === "sum") {
+      const campo = consulta.metrica.campo ?? "puntaje";
+      const suma = filtradas.reduce(
+        (acc, f) => acc + (Number(f[campo]) || 0),
+        0
+      );
+      return {
+        tipo: "numero",
+        valor: Number(suma.toFixed(2)),
+        unidad: campo,
+        detalle: `Suma de ${campo}`,
+      } as RespuestaNumero;
     }
     return {
       tipo: "numero",
@@ -323,6 +394,13 @@ export function ejecutarPipeline(
       ).length;
       porcentaje = count > 0 ? Number((((num - denNeg) / count) * 100).toFixed(1)) : 0;
       valor = num;
+    } else if (consulta.metrica.tipo === "sum") {
+      const campo = consulta.metrica.campo ?? "puntaje";
+      const sum = items.reduce(
+        (acc, f) => acc + (Number(f[campo]) || 0),
+        0
+      );
+      valor = Number(sum.toFixed(2));
     } else {
       porcentaje = baseTotal > 0 ? Number(((count / baseTotal) * 100).toFixed(1)) : 0;
     }
@@ -349,13 +427,66 @@ export function ejecutarPipeline(
     } as RespuestaRanking;
   }
 
+  let valorTotal: number = baseTotal;
+  let porcentajeTotal: number = baseTotal > 0 ? 100 : 0;
+
+  if (consulta.metrica.tipo === "avg") {
+    const campo = consulta.metrica.campo ?? "puntaje";
+    const sumaTotal = filtradas.reduce(
+      (acc, f) => acc + (Number(f[campo]) || 0),
+      0
+    );
+    valorTotal =
+      baseTotal > 0 ? Number((sumaTotal / baseTotal).toFixed(2)) : 0;
+  } else if (consulta.metrica.tipo === "percentage") {
+    const numTotal = filtradas.filter((f) =>
+      cumpleFiltros(f, consulta.metrica.filtros_numerador)
+    ).length;
+    valorTotal = numTotal;
+    porcentajeTotal =
+      baseTotal > 0
+        ? Number(((numTotal / baseTotal) * 100).toFixed(1))
+        : 0;
+  } else if (consulta.metrica.tipo === "efficiency") {
+    const numTotal = filtradas.filter((f) =>
+      cumpleFiltros(
+        f,
+        consulta.metrica.filtros_numerador ?? [
+          { campo: "desenlace", operador: "eq", valor: "punto" },
+        ]
+      )
+    ).length;
+    const denNegTotal = filtradas.filter((f) =>
+      cumpleFiltros(
+        f,
+        consulta.metrica.filtros_denominador_negativo ?? [
+          { campo: "desenlace", operador: "eq", valor: "error" },
+        ]
+      )
+    ).length;
+    valorTotal = numTotal - denNegTotal;
+    porcentajeTotal =
+      baseTotal > 0
+        ? Number(
+            (((numTotal - denNegTotal) / baseTotal) * 100).toFixed(1)
+          )
+        : 0;
+  } else if (consulta.metrica.tipo === "sum") {
+    const campo = consulta.metrica.campo ?? "puntaje";
+    const sumaTotal = filtradas.reduce(
+      (acc, f) => acc + (Number(f[campo]) || 0),
+      0
+    );
+    valorTotal = Number(sumaTotal.toFixed(2));
+  }
+
   const filaTotal: FilaTabla = {
     key: "total",
     label: "Total",
     count: baseTotal,
     base: baseTotal,
-    valor: baseTotal,
-    porcentaje: baseTotal > 0 ? 100 : 0,
+    valor: valorTotal,
+    porcentaje: porcentajeTotal,
     extra: null,
   };
 
