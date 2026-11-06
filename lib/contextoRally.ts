@@ -199,7 +199,7 @@ function calcularInicioPunto(lineas: AccionVisual[]): InicioPunto {
   if (valRec === "neu") {
     return "recepcion_neutra";
   }
-  if (subRec === "overpass") {
+  if (subRec.startsWith("over")) {
     return "overpass";
   }
   if (valRec === "neg") {

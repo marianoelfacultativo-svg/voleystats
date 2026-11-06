@@ -14,6 +14,7 @@ import PanelFiltros3D, {
   type Filtros3D,
 } from "./PanelFiltros3D";
 import type { ModoUnificado, Vista } from "./CanchaUnificada3D";
+import { CalendarDays } from "lucide-react";
 
 const CanchaUnificada3D = dynamic(
   () => import("./CanchaUnificada3D"),
@@ -378,15 +379,37 @@ export default function VisualizacionUnificada({
   return (
     <div className="space-y-3">
       {/* ============ SELECTOR DE PARTIDO ============ */}
-      <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-4">
-        <label className="block text-sm font-bold text-emerald-900 mb-2">
-          📅 Elegí un partido para visualizar
-          {nombreEquipo ? ` · ${nombreEquipo}` : ""}
+      <div
+        className="rounded-2xl p-4"
+        style={{
+          background: "var(--sx-surface-1)",
+          border: "1px solid var(--sx-border-bright)",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+        }}
+      >
+        <label
+          className="block text-sm font-bold mb-2 flex items-center gap-2"
+          style={{ color: "var(--sx-text-primary)" }}
+        >
+          <CalendarDays size={15} style={{ color: "var(--sx-teal)" }} />
+          <span>
+            Elegí un partido para visualizar
+            {nombreEquipo && (
+              <span
+                style={{
+                  color: "var(--sx-text-secondary)",
+                  fontWeight: 500,
+                }}
+              >
+                {" "}· {nombreEquipo}
+              </span>
+            )}
+          </span>
         </label>
         <select
           value={partidoSeleccionado}
           onChange={(e) => setPartidoSeleccionado(e.target.value)}
-          className="w-full px-3 py-2.5 text-base font-medium border-2 border-emerald-400 rounded-lg focus:outline-none focus:border-emerald-600 bg-white"
+          className="input-dark w-full text-sm"
         >
           <option value="">— Seleccioná un partido —</option>
           {partidos.map((p) => (
@@ -396,7 +419,10 @@ export default function VisualizacionUnificada({
           ))}
         </select>
         {partidos.length === 0 && (
-          <p className="text-xs text-emerald-700 mt-2">
+          <p
+            className="text-xs mt-2"
+            style={{ color: "var(--sx-text-muted)" }}
+          >
             Este equipo todavía no tiene partidos cargados.
           </p>
         )}
