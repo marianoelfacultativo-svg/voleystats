@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // MÉTRICAS DE VÓLEY — cálculos estándar
 // ============================================================
 // FASE 3 + FASE 6 del plan "Consultas Analíticas Libres".
@@ -38,6 +38,7 @@ import {
 import {
   clasificarSubtipo,
   puntajeDeSubtipo,
+  valoracionDeSubtipo,
 } from "../analisis/catalogoSubtipos";
 import { redondear } from "./agregador";
 import type { GroupBy } from "./intenciones";
@@ -131,7 +132,7 @@ function ganadorDelPunto(acciones: AccionVisual[]): "propio" | "rival" | null {
   const visibles = acciones.filter((a) => !a.oculta);
   if (visibles.length === 0) return null;
   const ultima = visibles[visibles.length - 1];
-  const cat = clasificarResultado(ultima);
+  const cat = clasificarResultado({ ...ultima, es_ultima_del_punto: true });
   if (cat === "punto") return ultima.es_rival ? "rival" : "propio";
   if (cat === "error") return ultima.es_rival ? "propio" : "rival";
   return null;
@@ -272,8 +273,7 @@ export function receptionPct(
   if (recepciones.length === 0) return vacio();
   let buenas = 0;
   for (const a of recepciones) {
-    const s = sub(a);
-    if (s === "perfecta" || s === "positiva") buenas += 1;
+    if (valoracionDeSubtipo("recepcion", sub(a)) === "pos") buenas += 1;
   }
   return pct(buenas, recepciones.length);
 }
@@ -307,7 +307,9 @@ export function receptionPerfectaPct(
 export function acePct(acciones: AccionVisual[]): MetricaResultado {
   const saques = acciones.filter(esSaque);
   if (saques.length === 0) return vacio();
-  const aces = saques.filter((a) => sub(a) === "ace").length;
+  const aces = saques.filter(
+    (a) => clasificarSubtipo("saque", sub(a)) === "punto"
+  ).length;
   return pct(aces, saques.length);
 }
 
@@ -316,7 +318,9 @@ export function serveErrorPct(
 ): MetricaResultado {
   const saques = acciones.filter(esSaque);
   if (saques.length === 0) return vacio();
-  const errores = saques.filter((a) => sub(a) === "negativo").length;
+  const errores = saques.filter(
+    (a) => clasificarSubtipo("saque", sub(a)) === "error"
+  ).length;
   return pct(errores, saques.length);
 }
 
@@ -332,10 +336,10 @@ export function blockEfficiency(
   let puntos = 0;
   let errores = 0;
   for (const a of bloqueos) {
-    const s = sub(a);
-    if (s === "punto" || s === "positivo_mas" || s === "positivo") {
+    const cat = clasificarResultado(a);
+    if (cat === "punto") {
       puntos += 1;
-    } else if (s === "red" || s === "use_rival" || s === "filtrada") {
+    } else if (cat === "error") {
       errores += 1;
     }
   }
@@ -349,12 +353,7 @@ export function digEfficiency(
   if (defensas.length === 0) return vacio();
   let buenas = 0;
   for (const a of defensas) {
-    const s = sub(a);
-    if (
-      s === "toque_positiva" ||
-      s === "gran_def" ||
-      s === "cobertura_positiva"
-    ) {
+    if (valoracionDeSubtipo("defensa", sub(a)) === "pos") {
       buenas += 1;
     }
   }

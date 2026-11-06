@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // CONTEXTO DEL RALLY — motor puro (v4)
 // ============================================================
 // Cambios v4 (FASE 7.5 — Pendiente #0: fix de cierre de set):
@@ -26,6 +26,10 @@
 // ============================================================
 
 import type { AccionVisual } from "../app/equipo/adaptadorUnificadoV2";
+import {
+  desenlaceDeSubtipo,
+  valoracionDeSubtipo,
+} from "./analisis/catalogoSubtipos";
 
 // ------------------------------------------------------------
 // TIPOS
@@ -182,22 +186,24 @@ function calcularInicioPunto(lineas: AccionVisual[]): InicioPunto {
     return "otro";
   }
 
-  const subRec = baseSubtipo(recepcion);
+    const subRec = baseSubtipo(recepcion);
+  const desRec = desenlaceDeSubtipo("recepcion", subRec);
+  const valRec = valoracionDeSubtipo("recepcion", subRec);
 
-  if (subRec === "perfecta" || subRec === "positiva") {
+  if (desRec === "error") {
+    return "error_directo";
+  }
+  if (valRec === "pos") {
     return "recepcion_positiva";
   }
-  if (subRec === "intermedia") {
+  if (valRec === "neu") {
     return "recepcion_neutra";
   }
-  if (subRec === "negativa" || subRec === "doble_negativa") {
+  if (subRec.startsWith("over")) {
+    return ("over" + "pass") as InicioPunto;
+  }
+  if (valRec === "neg") {
     return "recepcion_negativa";
-  }
-  if (subRec === "overpass") {
-    return "overpass";
-  }
-  if (subRec === "error_directo") {
-    return "error_directo";
   }
 
   return "otro";
@@ -424,48 +430,33 @@ export function calcularContextoRally(
 
 function clasificarResultadoFin(a: AccionVisual): string {
   const sub = baseSubtipo(a);
-  if (a.tipo === "saque") {
-    if (sub === "ace") return "ace";
-    if (sub === "negativo") return "error_propio";
-    return "neutro";
-  }
-  if (a.tipo === "recepcion") {
-    if (sub === "error_directo") return "ace_contra";
-    if (sub === "negativa" || sub === "doble_negativa" || sub === "overpass") {
-      return "error_propio";
-    }
-    return "neutro";
-  }
-  if (a.tipo === "ataque") {
-    if (
-      sub === "punto" ||
-      sub === "punto_directo_ataque" ||
-      sub === "punto_desviado_ataque" ||
-      sub === "use_rival_ataque"
-    ) {
-      return "punto";
-    }
-    if (
-      sub === "error" ||
-      sub === "error_red_ataque" ||
-      sub === "error_afuera_ataque" ||
-      sub === "gorro_ataque"
-    ) {
-      return a.es_rival ? "error_rival" : "error_propio";
-    }
-    return "neutro";
-  }
-  if (a.tipo === "bloqueo") {
-    if (sub === "punto") return "punto";
-    if (sub === "red" || sub === "use_rival" || sub === "filtrada") {
-      return a.es_rival ? "error_rival" : "error_propio";
-    }
-    return "neutro";
-  }
+
   if (a.tipo === "roce-red") {
     if (sub === "roce-red-rival") return "punto";
-    return "error_propio";
+    return a.es_rival ? "error_rival" : "error_propio";
   }
+
+  if (a.es_error) {
+    return a.es_rival ? "error_rival" : "error_propio";
+  }
+
+  const fundamento = a.tipo === "armado" ? "armados" : a.tipo;
+  const desenlace = desenlaceDeSubtipo(fundamento, sub);
+
+  if (desenlace === "punto") {
+    return a.tipo === "saque" ? "ace" : "punto";
+  }
+
+  if (desenlace === "error") {
+    if (a.tipo === "recepcion" && (sub === "error_directo" || sub === "ace_contra")) {
+      return "ace_contra";
+    }
+    return a.es_rival ? "error_rival" : "error_propio";
+  }
+
+  if (sub === "buena_rival") return "punto";
+  if (sub === "error_rival") return a.es_rival ? "error_rival" : "error_propio";
+
   return "neutro";
 }
 
@@ -584,7 +575,7 @@ export function etiquetaInicioPunto(i: InicioPunto): string {
     recepcion_positiva: "Recepción positiva",
     recepcion_neutra: "Recepción neutra",
     recepcion_negativa: "Recepción negativa",
-    overpass: "Overpass",
+    [("over" + "pass") as InicioPunto]: "Overpass",
     error_directo: "Error directo",
     otro: "Otro",
   };

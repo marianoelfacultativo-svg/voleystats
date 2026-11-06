@@ -1,4 +1,4 @@
-// ============================================
+﻿// ============================================
 // ACCESO A DATOS — SOLO V2
 // Correlación: cadena lineal + armado → ataque extra
 // ============================================
@@ -7,6 +7,8 @@ import { supabase } from "./supabase";
 import { cargarPuntosV2, type AccionV2Row } from "./dbV2";
 import type { RotacionPunto } from "./rotaciones";
 import { puntajeBase, ajustarPorContexto } from "./estadisticas";
+import { infoDeSubtipoPipeline } from "./consultaAnalitica/pipelineSchema";
+import { subtiposDeFundamento } from "./analisis/catalogoSubtipos";
 import { debeFlipear, prepararPuntos } from "./flipPerspectiva";
 
 // ------------------------------------------------------------
@@ -52,14 +54,7 @@ export interface BloqueoRow {
   punto_numero: number;
   posicion_x: number;
   zona: number | null;
-  valoracion:
-    | "punto"
-    | "positivo_mas"
-    | "positivo"
-    | "neutro"
-    | "use_rival"
-    | "red"
-    | "filtrada";
+  valoracion: string;
 }
 
 export interface SaqueRow {
@@ -454,7 +449,7 @@ function valoracionV2aV1(
   }
 
   if (tipo === "bloqueo") {
-    const validos = ["punto", "positivo_mas", "positivo", "neutro", "use_rival", "red", "filtrada"];
+    const validos = subtiposDeFundamento("bloqueo");
     return typeof subtipo === "string" && validos.includes(subtipo) ? subtipo : null;
   }
 
@@ -711,24 +706,22 @@ function clasificarUltimaRival(ultima: AccionV2Row): ClasificacionRival {
   const base = sub && sub.startsWith("toque:") ? sub.slice(6) : sub;
   const destino = ultima.destino_celda ?? "";
 
-  if (ultima.tipo === "saque") {
-    if (base === "negativo") return "error";
-    return null;
-  }
-
-  if (ultima.tipo === "ataque") {
-    if (base === "punto_directo_ataque" || base === "buena_rival" || base === "punto") return "buena";
-    if (base === "error_afuera_ataque" || base === "error_red_ataque" || base === "error_rival" || base === "error") return "error";
-    return null;
-  }
-
-  if (ultima.tipo === "bloqueo") return null;
-
   if (ultima.tipo === "roce-red") {
     if (base === "roce-red-rival") return "buena";
-    if (base === "ofensivo-propio" || base === "invasion-zaguero" || base === "invasion-delantero" || base === "error_rival") return "error";
+    if (
+      base === "ofensivo-propio" ||
+      base === "invasion-zaguero" ||
+      base === "invasion-delantero" ||
+      base === "error_rival"
+    ) {
+      return "error";
+    }
     return null;
   }
+
+  const info = infoDeSubtipoPipeline(ultima.tipo, base, ultima.es_error);
+  if (info.desenlace === "punto") return "buena";
+  if (info.desenlace === "error") return "error";
 
   if (destino.startsWith("FUERA-") || destino.startsWith("RED-")) return "error";
 

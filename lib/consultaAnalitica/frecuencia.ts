@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // FRECUENCIA — "cada cuántos X ocurre Y"
 // ============================================================
 // FASE 3 del plan "Consultas Analíticas Libres".
@@ -20,6 +20,10 @@
 // ============================================================
 
 import type { AccionVisual } from "../../app/equipo/adaptadorUnificadoV2";
+import {
+  clasificarSubtipo,
+  valoracionDeSubtipo,
+} from "../analisis/catalogoSubtipos";
 import { redondear } from "./agregador";
 
 // ------------------------------------------------------------
@@ -138,12 +142,7 @@ export function frecuenciaErrorEnAtaque(
         ? String(a.subtipo)
         : "";
     const base = s.startsWith("toque:") ? s.slice(6) : s;
-    return (
-      base === "error" ||
-      base === "error_afuera_ataque" ||
-      base === "error_red_ataque" ||
-      base === "gorro_ataque"
-    );
+    return clasificarSubtipo("ataque", base) === "error";
   };
   return calcularFrecuencia(
     acciones,
@@ -165,7 +164,8 @@ export function frecuenciaAceEnSaque(
       a.subtipo !== null && a.subtipo !== undefined
         ? String(a.subtipo)
         : "";
-    return s === "ace";
+    const base = s.startsWith("toque:") ? s.slice(6) : s;
+    return clasificarSubtipo("saque", base) === "punto";
   };
   return calcularFrecuencia(acciones, esAce, "saques", esSaque);
 }
@@ -182,7 +182,8 @@ export function frecuenciaErrorEnSaque(
       a.subtipo !== null && a.subtipo !== undefined
         ? String(a.subtipo)
         : "";
-    return s === "negativo";
+    const base = s.startsWith("toque:") ? s.slice(6) : s;
+    return clasificarSubtipo("saque", base) === "error";
   };
   return calcularFrecuencia(acciones, esError, "saques", esSaque);
 }
@@ -200,12 +201,8 @@ export function frecuenciaRecepcionNegativa(
       a.subtipo !== null && a.subtipo !== undefined
         ? String(a.subtipo)
         : "";
-    return (
-      s === "negativa" ||
-      s === "doble_negativa" ||
-      s === "overpass" ||
-      s === "error_directo"
-    );
+    const base = s.startsWith("toque:") ? s.slice(6) : s;
+    return valoracionDeSubtipo("recepcion", base) === "neg";
   };
   return calcularFrecuencia(
     acciones,

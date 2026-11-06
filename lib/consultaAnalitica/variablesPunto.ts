@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // VARIABLES POR PUNTO — semantic layer (capa 3)
 // ============================================================
 // Calcula, para CADA PUNTO del universo, un objeto plano con
@@ -134,64 +134,22 @@ function calcularGanador(
   const ultima = visibles[visibles.length - 1];
   const sub = String(ultima.subtipo ?? "").toLowerCase();
 
-  // Ataque
-  if (ultima.tipo === "ataque") {
-    if (
-      sub === "punto" ||
-      sub === "punto_directo_ataque" ||
-      sub === "punto_desviado_ataque" ||
-      sub === "use_rival_ataque" ||
-      sub === "buena_rival"
-    ) {
-      return ultima.es_rival ? "rival" : "propio";
-    }
-    if (
-      sub === "error" ||
-      sub === "error_red_ataque" ||
-      sub === "error_afuera_ataque" ||
-      sub === "gorro_ataque" ||
-      sub === "error_rival"
-    ) {
-      return ultima.es_rival ? "propio" : "rival";
-    }
-    return null;
-  }
-
-  // Saque
-  if (ultima.tipo === "saque") {
-    if (sub === "ace") return ultima.es_rival ? "rival" : "propio";
-    if (sub === "negativo" || sub === "error_rival")
-      return ultima.es_rival ? "propio" : "rival";
-    return null;
-  }
-
-  // Recepción
-  if (ultima.tipo === "recepcion") {
-    if (sub === "error_directo" || sub === "ace_contra")
-      return ultima.es_rival ? "propio" : "rival";
-    return null;
-  }
-
-  // Bloqueo
-  if (ultima.tipo === "bloqueo") {
-    if (sub === "punto") return ultima.es_rival ? "rival" : "propio";
-    if (sub === "red" || sub === "use_rival" || sub === "filtrada")
-      return ultima.es_rival ? "propio" : "rival";
-    return null;
-  }
-
   // Roce de red
   if (ultima.tipo === "roce-red") {
     if (sub === "roce-red-rival") return "propio";
-    if (
-      sub === "ofensivo-propio" ||
-      sub === "invasion-zaguero" ||
-      sub === "invasion-delantero" ||
-      sub === "error_rival"
-    ) {
-      return ultima.es_rival ? "propio" : "rival";
-    }
-    return null;
+    return ultima.es_rival ? "propio" : "rival";
+  }
+
+  const info = infoDeSubtipoPipeline(ultima.tipo, ultima.subtipo, ultima.es_error);
+  if (info.desenlace === "punto") return ultima.es_rival ? "rival" : "propio";
+
+  const esFiltradaNoUltima =
+    ultima.tipo === "bloqueo" &&
+    sub === "filtrada" &&
+    !ultima.es_ultima_del_punto;
+
+  if (info.desenlace === "error" || (ultima.es_error && !esFiltradaNoUltima)) {
+    return ultima.es_rival ? "propio" : "rival";
   }
 
   return null;
