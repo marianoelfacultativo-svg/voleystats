@@ -277,10 +277,10 @@ export default function ConsultaPanelLLM({
             >
               <summary className="cursor-pointer font-mono font-medium text-cyan-300 hover:text-cyan-200 select-none flex items-center justify-between">
                 <span>
-                  🔧 Debug del Pipeline ({resultado.debug.accionesFiltradas.length}/
-                  {resultado.debug.accionesUniverso.length} filas ·{" "}
-                  {resultado.debug.intentos} intento
-                  {resultado.debug.intentos !== 1 ? "s" : ""})
+                  🔧 Debug del Pipeline ({resultado.debug.accionesFiltradas}/
+                  {resultado.debug.accionesUniverso} filas ·{" "}
+                  {resultado.debug.intentosTraduccion} intento
+                  {resultado.debug.intentosTraduccion !== 1 ? "s" : ""})
                 </span>
                 <span className="text-[10px] text-slate-500 group-open:rotate-180 transition-transform">
                   ▼
@@ -291,29 +291,22 @@ export default function ConsultaPanelLLM({
                   <span>
                     Filtradas:{" "}
                     <strong className="text-white">
-                      {resultado.debug.accionesFiltradas.length}
+                      {resultado.debug.accionesFiltradas}
                     </strong>
                   </span>
                   <span>
                     Universo:{" "}
                     <strong className="text-white">
-                      {resultado.debug.accionesUniverso.length}
+                      {resultado.debug.accionesUniverso}
                     </strong>
                   </span>
                   <span>
                     Intentos:{" "}
                     <strong className="text-white">
-                      {resultado.debug.intentos}
+                      {resultado.debug.intentosTraduccion}
                     </strong>
                   </span>
-                  {resultado.debug.tiempoMs != null && (
-                    <span>
-                      Tiempo:{" "}
-                      <strong className="text-white">
-                        {resultado.debug.tiempoMs}ms
-                      </strong>
-                    </span>
-                  )}
+
                 </div>
                 {resultado.debug.consultaLLM && (
                   <pre className="p-2 rounded bg-slate-900 border border-white/5 font-mono text-[10px] text-cyan-200/90 overflow-x-auto">
