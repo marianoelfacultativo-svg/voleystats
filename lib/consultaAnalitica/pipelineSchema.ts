@@ -168,7 +168,7 @@ export function normalizarSubtipoParaPipeline(subtipo: unknown): string {
 export function infoDeSubtipoPipeline(
   tipo: string | null | undefined,
   subtipo: unknown,
-  esErrorFallback = false
+  esErrorFallback: boolean | null | undefined = false
 ): InfoSubtipo {
   const t = (tipo ?? "").toLowerCase();
   const s = normalizarSubtipoParaPipeline(subtipo);
@@ -178,15 +178,27 @@ export function infoDeSubtipoPipeline(
   return { desenlace: "en_juego", valoracion: "neu", puntaje: 5 };
 }
 
-export function desenlaceDeAccion(tipo: string | null | undefined, subtipo: unknown, esError = false): DesenlaceAccion {
+export function desenlaceDeAccion(
+  tipo: string | null | undefined,
+  subtipo: unknown,
+  esError: boolean | null | undefined = false
+): DesenlaceAccion {
   return infoDeSubtipoPipeline(tipo, subtipo, esError).desenlace;
 }
 
-export function valoracionDeAccion(tipo: string | null | undefined, subtipo: unknown, esError = false): ValoracionAccion {
+export function valoracionDeAccion(
+  tipo: string | null | undefined,
+  subtipo: unknown,
+  esError: boolean | null | undefined = false
+): ValoracionAccion {
   return infoDeSubtipoPipeline(tipo, subtipo, esError).valoracion;
 }
 
-export function puntajeDeAccionPipeline(tipo: string | null | undefined, subtipo: unknown, esError = false): number {
+export function puntajeDeAccionPipeline(
+  tipo: string | null | undefined,
+  subtipo: unknown,
+  esError: boolean | null | undefined = false
+): number {
   return infoDeSubtipoPipeline(tipo, subtipo, esError).puntaje;
 }
 
