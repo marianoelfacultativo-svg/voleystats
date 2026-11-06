@@ -30,7 +30,6 @@ import {
 } from "./adaptadorUnificadoV2";
 import TablaEstadisticasCrudas from "./TablaEstadisticasCrudas";
 import IconoVoley from "./IconoVoley";
-import ConsultaPanel from "./analisisConsecuencias/ConsultaPanel";
 import ConsultaPanelLLM from "./ConsultaPanelLLM";
 import { descargarComoPDF } from "@/lib/exportarPDF";
 
@@ -256,20 +255,6 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
     nombresJugadores[j.id] =
       j.nombre + (j.numero !== null ? ` #${j.numero}` : "");
   }
-
-  // FASE 7.4 — pasar apodo y número al ConsultaPanel viejo (no usado hoy)
-  const jugadoresParaConsulta = jugadores.map((j) => ({
-    id: j.id,
-    nombre: j.nombre + (j.numero !== null ? ` #${j.numero}` : ""),
-    apodo: j.apodo,
-    numero: j.numero,
-  }));
-
-  const partidosParaConsulta = partidos.map((p) => ({
-    id: p.id,
-    nombre: `vs ${nombreRivalDe(p)} (${p.fecha})`,
-    fecha: p.fecha,
-  }));
 
   if (partidos.length === 0) {
     return (
@@ -886,6 +871,8 @@ export default function Dashboard({ equipoId, nombreEquipo }: Props) {
               }}
             >
               <TablaEstadisticasCrudas
+                equipoId={equipoId}
+                partidoId={null}
                 acciones={acciones}
                 jugadoresIds={jugadoresDelEquipo.map((j) => j.id)}
                 nombresJugadores={nombresJugadores}

@@ -934,6 +934,8 @@ export default function JugadorPage() {
               ) : verCrudas ? (
                 <div className="card border border-white/10 rounded-xl p-3 sm:p-4">
                   <TablaEstadisticasCrudas
+                    equipoId={equipoId}
+                    partidoId={partidoActivo ?? null}
                     acciones={accionesFiltradas}
                     jugadoresIds={[jugador.id]}
                     nombresJugadores={{ [jugador.id]: jugador.nombre }}
@@ -1233,6 +1235,8 @@ export default function JugadorPage() {
                   {crudasEnPDF && (
                     <div className="mt-6 card border border-white/10 rounded-xl p-3 sm:p-4">
                       <TablaEstadisticasCrudas
+                    equipoId={equipoId}
+                    partidoId={partidoActivo ?? null}
                         acciones={accionesFiltradas}
                         jugadoresIds={[jugador.id]}
                         nombresJugadores={{ [jugador.id]: jugador.nombre }}

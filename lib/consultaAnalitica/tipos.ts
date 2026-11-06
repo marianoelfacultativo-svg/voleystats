@@ -16,7 +16,9 @@
 //     comparacion, texto, vacio).
 // ============================================================
 
-import type { AggFn, GroupBy, TipoIntencion } from "./intenciones";
+import type { AggFn, GroupBy, TipoIntencion, IntencionQuery } from "./intenciones";
+import type { BloqueTriggerFiltro } from "../analisis/tipos";
+import type { JugadorParaResolver } from "./resolverJugador";
 
 // ------------------------------------------------------------
 // RESULTADOS PARCIALES
@@ -364,4 +366,23 @@ export function respuestaComparacionBaseline(
     puntosTotales,
     detalle,
   };
+}
+
+
+// ------------------------------------------------------------
+// RESULTADO EXTENDIDO (para compat con ConsultaResultado.tsx)
+// ------------------------------------------------------------
+
+export interface ResultadoConsultaExtendido extends ResultadoConsulta {
+  parserInfo: {
+    aplicado: boolean;
+    sugerencias: string[];
+    filtro: BloqueTriggerFiltro;
+    intencion: IntencionQuery;
+    jugadorAmbiguo: boolean;
+    jugadorAviso: string | null;
+    jugadorCandidatos: JugadorParaResolver[];
+  };
+  accionesFiltradas: number;
+  accionesUniverso: number;
 }

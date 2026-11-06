@@ -22,7 +22,7 @@
 import { useState } from "react";
 import ConsultaResultado from "./analisisConsecuencias/ConsultaResultado";
 import type { ResultadoConsultaLLM } from "@/lib/consultaAnalitica/ejecutarConsultaLLM";
-import type { ResultadoConsultaExtendido } from "@/lib/consultaAnalitica/ejecutor";
+import type { ResultadoConsultaExtendido } from "@/lib/consultaAnalitica/tipos";
 import { BLOQUE_TRIGGER_VACIO } from "@/lib/analisis/tipos";
 import { intencionVacia } from "@/lib/consultaAnalitica/intenciones";
 
@@ -38,19 +38,33 @@ interface Props {
 }
 
 // ------------------------------------------------------------
-// EJEMPLOS (para chips debajo del input)
+// EJEMPLOS CONTEXTUALES (para chips debajo del input)
 // ------------------------------------------------------------
 
-const EJEMPLOS = [
-  "cómo atacan en k1, cuántos ataques positivos, negativos y neutros",
-  "qué salida es más eficaz",
-  "qué fase del juego nos da menos puntos",
-  "distribución de saques por zona destino",
-  "cómo viene la efectividad en los últimos 3 partidos",
-  "cuántos puntos hizo Joaco en el set 3",
-  "cuántos aces",
-  "cuántos errores",
-];
+function obtenerEjemplosContextuales(partidoId?: string | null): string[] {
+  if (partidoId) {
+    return [
+      "cuántos puntos ganamos en k1",
+      "kill % por jugador",
+      "distribución de ataques por zona destino",
+      "cuántos aces y saques positivos",
+      "errores de saque por set",
+      "efectividad en side-out",
+      "puntos por rotación",
+      "promedio de puntaje de recepción",
+    ];
+  }
+  return [
+    "efectividad en sets ganados vs sets perdidos",
+    "cómo atacan en k1 en general",
+    "ranking de jugadores por puntos",
+    "distribución de errores por rotación",
+    "porcentaje de recepciones perfectas por jugador",
+    "cuántos aces en total",
+    "promedio de ataques por partido",
+    "kill % del punta 1",
+  ];
+}
 
 // ------------------------------------------------------------
 // HELPERS
@@ -214,10 +228,10 @@ export default function ConsultaPanelLLM({
       {!resultado && !cargando && (
         <div>
           <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">
-            Ejemplos
+            Ejemplos {partidoId ? "del partido" : "generales"}
           </p>
           <div className="flex flex-wrap gap-1">
-            {EJEMPLOS.map((sug, i) => (
+            {obtenerEjemplosContextuales(partidoId).map((sug, i) => (
               <button
                 key={`${sug}-${i}`}
                 onClick={() => setPrompt(sug)}
@@ -254,6 +268,62 @@ export default function ConsultaPanelLLM({
               ))}
             </div>
           )}
+
+          {/* D.1 — Debug JSON colapsable */}
+          {resultado.debug && (
+            <details
+              data-pdf-ignorar
+              className="rounded-lg border border-cyan-500/20 bg-slate-950/40 p-2 text-[11px] text-slate-400 group"
+            >
+              <summary className="cursor-pointer font-mono font-medium text-cyan-300 hover:text-cyan-200 select-none flex items-center justify-between">
+                <span>
+                  🔧 Debug del Pipeline ({resultado.debug.accionesFiltradas.length}/
+                  {resultado.debug.accionesUniverso.length} filas ·{" "}
+                  {resultado.debug.intentos} intento
+                  {resultado.debug.intentos !== 1 ? "s" : ""})
+                </span>
+                <span className="text-[10px] text-slate-500 group-open:rotate-180 transition-transform">
+                  ▼
+                </span>
+              </summary>
+              <div className="mt-2 space-y-2">
+                <div className="flex flex-wrap gap-4 text-[10px] text-slate-400 font-mono">
+                  <span>
+                    Filtradas:{" "}
+                    <strong className="text-white">
+                      {resultado.debug.accionesFiltradas.length}
+                    </strong>
+                  </span>
+                  <span>
+                    Universo:{" "}
+                    <strong className="text-white">
+                      {resultado.debug.accionesUniverso.length}
+                    </strong>
+                  </span>
+                  <span>
+                    Intentos:{" "}
+                    <strong className="text-white">
+                      {resultado.debug.intentos}
+                    </strong>
+                  </span>
+                  {resultado.debug.tiempoMs != null && (
+                    <span>
+                      Tiempo:{" "}
+                      <strong className="text-white">
+                        {resultado.debug.tiempoMs}ms
+                      </strong>
+                    </span>
+                  )}
+                </div>
+                {resultado.debug.consultaLLM && (
+                  <pre className="p-2 rounded bg-slate-900 border border-white/5 font-mono text-[10px] text-cyan-200/90 overflow-x-auto">
+                    {JSON.stringify(resultado.debug.consultaLLM, null, 2)}
+                  </pre>
+                )}
+              </div>
+            </details>
+          )}
+
           <ConsultaResultado
             resultado={aResultadoExtendido(resultado)}
             nombreDeJugador={nombreDeJugador}
@@ -300,14 +370,30 @@ export default function ConsultaPanelLLM({
         </div>
       )}
 
-      {/* ============ RESULTADO: ERROR ============ */}
+      {/* ============ RESULTADO: ERROR (D.3) ============ */}
       {resultado && resultado.tipo === "error" && (
-        <div className="rounded-lg border border-rose-500/40 bg-rose-500/[0.08] p-3 space-y-1">
-          <p className="text-[11px] font-bold text-rose-200">❌ Error</p>
-          <p className="text-[12px] text-rose-100">{resultado.mensaje}</p>
+        <div className="rounded-lg border border-rose-500/40 bg-rose-500/[0.08] p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">❌</span>
+            <p className="text-[11px] font-bold text-rose-200">
+              No pude interpretar la consulta
+            </p>
+          </div>
+          <p className="text-[12px] text-rose-100 font-mono bg-rose-950/40 p-2 rounded border border-rose-500/20">
+            {resultado.mensaje}
+          </p>
+          <div className="text-[11px] text-slate-300 space-y-1">
+            <p className="font-semibold text-rose-200/90">Tips para reformular:</p>
+            <ul className="list-disc list-inside text-[10px] text-slate-400 space-y-0.5">
+              <li>Indicá la acción específica: saque, recepción, ataque, bloqueo, defensa o armado.</li>
+              <li>Aclará si buscás puntos ganados (desenlace) o calidad (positivo/negativo).</li>
+              <li>Si preguntás por un jugador, usá su nombre, apodo o número (#).</li>
+              <li>Probá con preguntas más directas como &quot;cuántos aces&quot; o &quot;kill % de Mariano&quot;.</li>
+            </ul>
+          </div>
           {resultado.promptOriginal && (
-            <p className="text-[10px] text-rose-200/70 italic">
-              Prompt: &quot;{resultado.promptOriginal}&quot;
+            <p className="text-[10px] text-slate-500 italic border-t border-white/5 pt-1.5">
+              Consulta enviada: &quot;{resultado.promptOriginal}&quot;
             </p>
           )}
         </div>

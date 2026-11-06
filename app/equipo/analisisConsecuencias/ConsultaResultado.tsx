@@ -16,7 +16,7 @@
 //   + Título "Ambigüedad en la consulta".
 // ============================================================
 
-import type { ResultadoConsultaExtendido } from "@/lib/consultaAnalitica/ejecutor";
+import type { ResultadoConsultaExtendido } from "@/lib/consultaAnalitica/tipos";
 import type {
   RespuestaConsulta,
   FilaTabla,

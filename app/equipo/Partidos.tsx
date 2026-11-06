@@ -43,9 +43,8 @@ import {
 import {
   cargarAccionesUnificadas,
   type AccionVisual,
-  type PuntoConAcciones,
 } from "./adaptadorUnificadoV2";
-import ConsultaPanel from "./analisisConsecuencias/ConsultaPanel";
+import ConsultaPanelLLM from "./ConsultaPanelLLM";
 
 import { usePartidosData } from "./partidos/usePartidosData";
 import HeaderPartido from "./partidos/HeaderPartido";
@@ -123,9 +122,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
 
   // ---------- Dataset paralelo para el análisis de consecuencias ----------
   const [accionesVisuales, setAccionesVisuales] = useState<AccionVisual[]>([]);
-  const [puntosCompletosPartido, setPuntosCompletosPartido] = useState<
-    PuntoConAcciones[]
-  >([]);
   const [cargandoVisuales, setCargandoVisuales] = useState(false);
 
   // ============ EFFECTS ============
@@ -136,7 +132,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
   useEffect(() => {
     if (!partidoSeleccionado || !equipoId) {
       setAccionesVisuales([]);
-      setPuntosCompletosPartido([]);
       return;
     }
     let cancelled = false;
@@ -145,7 +140,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
       .then((res) => {
         if (cancelled) return;
         setAccionesVisuales(res.acciones);
-        setPuntosCompletosPartido(res.puntos);
         setCargandoVisuales(false);
       })
       .catch(() => {
@@ -423,30 +417,6 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
         : [],
     [jugadorSeleccionadoJxP, partidosJxPData, idsJugadores]
   );
-
-  // ---- Jugadores y partidos para el ConsultaPanel (modo partido) ----
-  // FASE 7.4 — pasa `apodo` y `numero` para el resolver.
-  const jugadoresParaConsulta = useMemo(
-    () =>
-      jugadores.map((j) => ({
-        id: j.id,
-        nombre: j.nombre + (j.numero !== null ? ` #${j.numero}` : ""),
-        apodo: j.apodo ?? null,
-        numero: j.numero,
-      })),
-    [jugadores]
-  );
-
-  const partidosParaConsulta = useMemo(() => {
-    if (!partidoDetalle) return [];
-    return [
-      {
-        id: partidoDetalle.id,
-        nombre: `vs ${nombreRivalDe(partidoDetalle)} (${partidoDetalle.fecha})`,
-        fecha: partidoDetalle.fecha,
-      },
-    ];
-  }, [partidoDetalle, nombreRivalDe]);
 
   // ============ EARLY RETURNS (después de todos los hooks) ============
 
@@ -727,12 +697,11 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                           "0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(14,165,201,0.15)",
                       }}
                     >
-                      <ConsultaPanel
-                        acciones={accionesVisuales}
-                        puntos={puntosCompletosPartido}
-                        jugadores={jugadoresParaConsulta}
-                        partidos={partidosParaConsulta}
+                      <ConsultaPanelLLM
+                        equipoId={equipoId}
+                        partidoId={partidoDetalle?.id ?? null}
                         nombreDeJugador={nombreDe}
+                        titulo="Consultas analíticas del partido"
                       />
                     </section>
 

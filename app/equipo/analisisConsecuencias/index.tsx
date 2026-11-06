@@ -296,5 +296,5 @@ export default function AnalisisConsecuencias({
 // FASE 5: reexports de los paneles de consulta analítica
 // ------------------------------------------------------------
 
-export { default as ConsultaPanel } from "./ConsultaPanel";
+
 export { default as ConsultaResultado } from "./ConsultaResultado";

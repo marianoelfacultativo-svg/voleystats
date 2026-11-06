@@ -6,9 +6,7 @@ import {
   VALORES_POR_FUNDAMENTO,
   calcularEstadisticasEquipo,
 } from "@/lib/estadisticas";
-import { zonaCrudaDeCelda } from "@/lib/mapeoV2";
-import type { AccionVisual } from "./adaptadorUnificadoV2";
-import AnalisisConsecuencias from "./AnalisisConsecuencias";
+import ConsultaPanelLLM from "./ConsultaPanelLLM";
 
 // ============================================================
 // TIPOS DE COLUMNA / BLOQUE
@@ -29,76 +27,6 @@ interface Bloque {
   valores: Record<string, number>;
   incluye: (a: AccionDB) => boolean;
   columnaDe: (a: AccionDB) => string | null;
-}
-
-// ============================================================
-// ADAPTER: AccionDB[] → AccionVisual[]
-// (para el panel de Análisis de consecuencias)
-// ============================================================
-
-function accionesDBaVisualParaAnalisis(
-  acciones: AccionDB[]
-): AccionVisual[] {
-  const contadorPorPunto = new Map<string, number>();
-  return acciones.map((a) => {
-    const k = `${a.set_numero}-${a.punto_numero ?? 0}`;
-    const orden = (contadorPorPunto.get(k) ?? 0) + 1;
-    contadorPorPunto.set(k, orden);
-
-    const tipo = a.fundamento === "armados" ? "armado" : a.fundamento;
-
-    const zonaOrigen =
-      a.origen_celda && /^F[1-3]-/.test(a.origen_celda)
-        ? zonaCrudaDeCelda(a.origen_celda)
-        : null;
-    const zonaDestino =
-      a.destino_celda && /^F[1-3]-/.test(a.destino_celda)
-        ? zonaCrudaDeCelda(a.destino_celda)
-        : null;
-
-    return {
-      id: `${a.jugador_id}|${a.set_numero}|${a.punto_numero ?? 0}|${orden}`,
-      partido_id: a.partido_id ?? "",
-      set_numero: a.set_numero,
-      punto_numero: a.punto_numero ?? 0,
-      orden,
-      tipo,
-      subtipo: a.subtipo_original ?? a.valoracion,
-      es_rival: false,
-      jugador_id: a.jugador_id,
-      lado: "propio",
-      equipo_id: null,
-      origen_celda: a.origen_celda ?? null,
-      origen_mini: a.origen_mini ?? null,
-      destino_celda: a.destino_celda ?? null,
-      destino_mini: a.destino_mini ?? null,
-      desvios: [],
-      variante: a.variante ?? null,
-      tipo_saque: a.tipo_saque ?? null,
-      velocidad: a.velocidad ?? null,
-      x2: false,
-      oculta: false,
-      posicion_inicial_celda: a.posicion_inicial_celda ?? null,
-      posicion_inicial_mini: a.posicion_inicial_mini ?? null,
-      es_error: false,
-      zona_origen: zonaOrigen,
-      zona_destino: zonaDestino,
-      rotacion_numero: null,
-      rol_jugador: null,
-      zona_jugador: null,
-      origen_x: null,
-      origen_y: null,
-      destino_x: null,
-      destino_y: null,
-      posicion_inicial_x: null,
-      posicion_inicial_y: null,
-      zona_origen_codigo: null,
-      zona_destino_codigo: null,
-      subtipo_real: null,
-      es_ultima_del_punto: false,
-      calidad_armado_previo: null,
-    };
-  });
 }
 
 // ============================================================
@@ -492,6 +420,8 @@ function construirBloques(
 // ============================================================
 
 interface Props {
+  equipoId: string;
+  partidoId?: string | null;
   acciones: AccionDB[];
   jugadoresIds: string[];
   nombresJugadores: Record<string, string>;
@@ -505,6 +435,8 @@ interface Props {
 // ============================================================
 
 export default function TablaEstadisticasCrudas({
+  equipoId,
+  partidoId = null,
   acciones,
   jugadoresIds,
   nombresJugadores,
@@ -561,12 +493,6 @@ export default function TablaEstadisticasCrudas({
     () => construirBloques(fundamentosVisibles, ampliado),
     [fundamentosVisibles, ampliado]
   );
-
-  // Universo para el análisis: TODAS las acciones (sin filtros locales)
-  // así los comparadores prev/next ven la secuencia completa del punto.
-  const accionesParaAnalisis = verConsecuencias
-    ? accionesDBaVisualParaAnalisis(acciones)
-    : [];
 
   return (
     <div className="space-y-4">
@@ -627,12 +553,13 @@ export default function TablaEstadisticasCrudas({
         </div>
       )}
 
-      {/* ANÁLISIS DE CONSECUENCIAS */}
+      {/* CONSULTAS ANALÍTICAS (LLM) */}
       {verConsecuencias && (
-        <AnalisisConsecuencias
-          acciones={accionesParaAnalisis}
-          nombreDeJugador={(id) => (id ? nombreDe(id) : "—")}
-          titulo="Análisis de consecuencias"
+        <ConsultaPanelLLM
+          equipoId={equipoId}
+          partidoId={partidoId ?? null}
+          nombreDeJugador={(id) => nombreDe(id)}
+          titulo="Consultas analíticas"
         />
       )}
 

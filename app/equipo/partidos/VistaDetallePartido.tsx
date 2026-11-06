@@ -552,6 +552,8 @@ export default function VistaDetallePartido({
       {modoDetalle === "crudas" && (
         <div className="rounded-2xl p-3 sm:p-6" style={cardBase}>
           <TablaEstadisticasCrudas
+            equipoId={partidoDetalle.equipo_id}
+            partidoId={partidoDetalle.id}
             acciones={accionesDelPartido}
             jugadoresIds={idsJugadores}
             nombresJugadores={nombresJugadoresMap}
@@ -748,6 +750,8 @@ export default function VistaDetallePartido({
           {crudasEnPDF && (
             <div className="rounded-2xl p-3 sm:p-6" style={cardBase}>
               <TablaEstadisticasCrudas
+            equipoId={partidoDetalle.equipo_id}
+            partidoId={partidoDetalle.id}
                 acciones={accionesDelPartido}
                 jugadoresIds={idsJugadores}
                 nombresJugadores={nombresJugadoresMap}
