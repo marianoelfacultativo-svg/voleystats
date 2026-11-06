@@ -1,4 +1,4 @@
-// ============================================
+﻿// ============================================
 // MOTOR DE ESTADÍSTICAS DE VOLEYSTATS
 // Sistema de puntaje: escala -2 a 10 (neutro 5)
 // ============================================
@@ -110,7 +110,7 @@ const ACCIONES_NEGATIVAS: Record<string, string[]> = {
   saque: ["negativo"],
   recepcion: ["negativa", "doble_negativa", "overpass", "error_directo", "ace_contra"],
   ataque: ["error"],
-  bloqueo: ["use_rival", "red"],
+  bloqueo: ["use_rival", "red", "filtrada"],
   defensa: [
     "toque_negativa",
     "mala_libre",
@@ -134,7 +134,7 @@ const DISPLAY_ERRORES: Record<string, string[]> = {
   recepcion: ["ace_contra", "error_directo"],
   ataque: ["error"],
   bloqueo: ["use_rival", "red"],
-  defensa: ["error_def", "errores_graves"],
+  defensa: ["toque_negativa", "error_def", "errores_graves"],
   toque: ["error"],
 };
 

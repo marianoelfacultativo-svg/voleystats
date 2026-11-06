@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // HELPERS PUROS — Partidos
 // ============================================================
 // Funciones sin React, sin estado. Solo transformación de datos
@@ -46,12 +46,19 @@ import { puntajeDeSubtipo } from "@/lib/analisis/catalogoSubtipos";
 export function accionesDBaVisualParaTactico(
   acciones: AccionDB[]
 ): AccionVisual[] {
+  const totalPorPunto = new Map<string, number>();
+  for (const a of acciones) {
+    const k = `${a.set_numero}-${a.punto_numero ?? 0}`;
+    totalPorPunto.set(k, (totalPorPunto.get(k) ?? 0) + 1);
+  }
+
   const contadorPorPunto = new Map<string, number>();
 
   return acciones.map((a) => {
     const k = `${a.set_numero}-${a.punto_numero ?? 0}`;
     const orden = (contadorPorPunto.get(k) ?? 0) + 1;
     contadorPorPunto.set(k, orden);
+    const es_ultima_del_punto = orden === totalPorPunto.get(k);
 
     const tipo = a.fundamento === "armados" ? "armado" : a.fundamento;
 
@@ -103,7 +110,7 @@ export function accionesDBaVisualParaTactico(
       zona_origen_codigo: null,
       zona_destino_codigo: null,
       subtipo_real: null,
-      es_ultima_del_punto: false,
+      es_ultima_del_punto,
       calidad_armado_previo: null,
     };
   });
