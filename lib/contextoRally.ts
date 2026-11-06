@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // CONTEXTO DEL RALLY — motor puro (v4)
 // ============================================================
 // Cambios v4 (FASE 7.5 — Pendiente #0: fix de cierre de set):
@@ -199,8 +199,8 @@ function calcularInicioPunto(lineas: AccionVisual[]): InicioPunto {
   if (valRec === "neu") {
     return "recepcion_neutra";
   }
-  if (subRec.startsWith("over")) {
-    return ("over" + "pass") as InicioPunto;
+  if (subRec === "overpass") {
+    return "overpass";
   }
   if (valRec === "neg") {
     return "recepcion_negativa";
@@ -575,7 +575,7 @@ export function etiquetaInicioPunto(i: InicioPunto): string {
     recepcion_positiva: "Recepción positiva",
     recepcion_neutra: "Recepción neutra",
     recepcion_negativa: "Recepción negativa",
-    [("over" + "pass") as InicioPunto]: "Overpass",
+    overpass: "Overpass",
     error_directo: "Error directo",
     otro: "Otro",
   };
