@@ -48,6 +48,7 @@ import {
   puntosParaCerrarSet,
   targetDelSet,
 } from "../contextoRally";
+import { infoDeSubtipoPipeline } from "./pipelineSchema";
 
 // ------------------------------------------------------------
 // TIPO DE SALIDA
