@@ -972,7 +972,6 @@ export function calcularSubtiposDefensa(
 
   return lineas.map((l, i) => {
     if (l.tipo !== "defensa") return l;
-
     const subActualStr = String(l.subtipo ?? "");
     const yaEsFinal = [
       "gran_def",
@@ -986,6 +985,7 @@ export function calcularSubtiposDefensa(
       "mala_libre",
     ].includes(subActualStr);
     if (yaEsFinal) return l;
+
 
     const esUltima = i === ultimoVisibleIdx;
     const subActual = l.subtipo;
@@ -1053,19 +1053,6 @@ export function calcularSubtiposAtaqueRival(
     if (l.tipo !== "ataque" || !l.esRival) continue;
     if (l.subtipo === "toque") continue;
 
-    const subActualStr = String(l.subtipo ?? "");
-    const yaEsFinal = [
-      "gran_def",
-      "toque_positiva",
-      "cobertura_positiva",
-      "neutro",
-      "toque_negativa",
-      "cobertura_negativa",
-      "error_def",
-      "errores_graves",
-      "mala_libre",
-    ].includes(subActualStr);
-    if (yaEsFinal) return l;
 
     const esUltima = i === ultimoVisibleIdx;
 
