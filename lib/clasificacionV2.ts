@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // CLASIFICACIÓN V2 — motor de tipos de acción
 // ============================================================
 //
@@ -33,6 +33,7 @@ export type TipoAccion =
   | "armado"
   | "ataque"
   | "bloqueo"
+  | "bloqueo-calidad"
   | "defensa"
   | "libre"
   | "roce-red";
@@ -50,6 +51,7 @@ export type PopupRequerido =
   | "jugador"
   | "roce-red"
   | "bloqueo"
+  | "bloqueo-calidad"
   | "ataque-toque-libre"
   | "remate-segunda"
   | "armado-cruzado"            // ← NUEVO
@@ -83,6 +85,7 @@ export interface PuntoV2 {
   celda: string;
   mini: string;
   jugadorId?: string | null;
+  subtipo?: string | null;
 }
 
 export interface LineaInput {
@@ -497,7 +500,7 @@ export function clasificarLinea(
       tipo: "saque",
       esRival,
       jugadorId: esRival ? null : jugadorQueSaca(estado.rotacion),
-      popup: esRival ? null : "tipo-saque",
+      popup: esRival ? null : "saque",
       tipoSaqueFijo: esRival ? undefined : "flotado",
     };
   }
@@ -970,6 +973,20 @@ export function calcularSubtiposDefensa(
   return lineas.map((l, i) => {
     if (l.tipo !== "defensa") return l;
 
+    const subActualStr = String(l.subtipo ?? "");
+    const yaEsFinal = [
+      "gran_def",
+      "toque_positiva",
+      "cobertura_positiva",
+      "neutro",
+      "toque_negativa",
+      "cobertura_negativa",
+      "error_def",
+      "errores_graves",
+      "mala_libre",
+    ].includes(subActualStr);
+    if (yaEsFinal) return l;
+
     const esUltima = i === ultimoVisibleIdx;
     const subActual = l.subtipo;
     let nuevoSubtipo = subActual;
@@ -1035,6 +1052,20 @@ export function calcularSubtiposAtaqueRival(
     const l = resultado[i];
     if (l.tipo !== "ataque" || !l.esRival) continue;
     if (l.subtipo === "toque") continue;
+
+    const subActualStr = String(l.subtipo ?? "");
+    const yaEsFinal = [
+      "gran_def",
+      "toque_positiva",
+      "cobertura_positiva",
+      "neutro",
+      "toque_negativa",
+      "cobertura_negativa",
+      "error_def",
+      "errores_graves",
+      "mala_libre",
+    ].includes(subActualStr);
+    if (yaEsFinal) return l;
 
     const esUltima = i === ultimoVisibleIdx;
 
@@ -1215,6 +1246,7 @@ export function calcularSubtiposBloqueo(
 
   return lineas.map((l, i) => {
     if (l.tipo !== "bloqueo" || l.esRival) return l;
+    if (l.subtipo) return l;
     const base = valorarBloqueoBase(lineas, i);
     return { ...l, subtipo: base };
   });
@@ -1324,7 +1356,11 @@ export function calcularSubtiposSaque(
 
     let subtipo: string;
 
-    if (destinoSaque.startsWith("BLOQ-R-") && !tieneDesvioBloqueo) {
+    if (destinoSaque.startsWith("FUERA-") || destinoSaque.startsWith("RED-")) {
+      subtipo = "negativo";
+    } else if (saque.subtipo) {
+      subtipo = String(saque.subtipo);
+    } else if (destinoSaque.startsWith("BLOQ-R-") && !tieneDesvioBloqueo) {
       const siguiente = resultado[idxSaquePropio + 1];
       if (siguiente && siguiente.origen.celda === destinoSaque) {
         const destinoFinal = siguiente.destino.celda;

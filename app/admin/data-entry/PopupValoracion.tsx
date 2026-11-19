@@ -13,10 +13,17 @@ export type ValorSaque =
   | "ace"
   | "positivo_mas"
   | "positivo"
-  | "neutro"
-  | "negativo";
+  | "neutro";
 
 export type ValorTipoSaque = "potencia" | "flotado";
+
+export type ValorBloqueoCalidad =
+  | "punto"
+  | "positivo_mas"
+  | "positivo"
+  | "neutro"
+  | "filtrada"
+  | "red";
 
 // ============================================================
 // RECEPCIÓN — sistema nuevo de 7 valores
@@ -126,15 +133,13 @@ const COL_SAQUE: Record<ValorSaque, string> = {
   positivo_mas: "#65a30d",
   positivo: "#84cc16",
   neutro: "#94a3b8",
-  negativo: "#dc2626",
 };
 
 const ETIQ_SAQUE: Record<ValorSaque, string> = {
-  ace: "Ace",
-  positivo_mas: "Pos+",
-  positivo: "Pos",
-  neutro: "Neu",
-  negativo: "Neg",
+  ace: "Ace (S#)",
+  positivo_mas: "Pos+ (S/)",
+  positivo: "Pos (S+)",
+  neutro: "Neu (S!)",
 };
 
 const ORDEN_SAQUE: ValorSaque[] = [
@@ -142,7 +147,33 @@ const ORDEN_SAQUE: ValorSaque[] = [
   "positivo_mas",
   "positivo",
   "neutro",
-  "negativo",
+];
+
+const COL_BLOQUEO_CALIDAD: Record<ValorBloqueoCalidad, string> = {
+  punto: "#16a34a",
+  positivo_mas: "#65a30d",
+  positivo: "#84cc16",
+  neutro: "#94a3b8",
+  filtrada: "#eab308",
+  red: "#dc2626",
+};
+
+const ETIQ_BLOQUEO_CALIDAD: Record<ValorBloqueoCalidad, string> = {
+  punto: "Punto (B#)",
+  positivo_mas: "Pos+ (B/)",
+  positivo: "Pos (B+)",
+  neutro: "Neu (B!)",
+  filtrada: "Filtrada",
+  red: "Red",
+};
+
+const ORDEN_BLOQUEO_CALIDAD: ValorBloqueoCalidad[] = [
+  "punto",
+  "positivo_mas",
+  "positivo",
+  "neutro",
+  "filtrada",
+  "red",
 ];
 
 // ============================================================
@@ -480,7 +511,7 @@ interface PopupSaqueProps {
 }
 
 export function PopupSaque({ pos, onConfirmar, onCancelar }: PopupSaqueProps) {
-  const btnW = 34;
+  const btnW = 56;
   const gap = 4;
   const pad = 8;
   const ancho =
@@ -499,6 +530,62 @@ export function PopupSaque({ pos, onConfirmar, onCancelar }: PopupSaqueProps) {
             h={24}
             texto={ETIQ_SAQUE[v]}
             color={COL_SAQUE[v]}
+            fontSize={10}
+            onClick={() => onConfirmar(v)}
+          />
+        ))}
+        <BotonSvg
+          x={pad}
+          y={32}
+          w={ancho - pad * 2}
+          h={14}
+          texto="Cancelar (Esc)"
+          color="#e2e8f0"
+          colorTexto="#475569"
+          fontSize={9}
+          onClick={onCancelar}
+        />
+      </g>
+    </PopupWrapper>
+  );
+}
+
+// ============================================================
+// POPUP BLOQUEO CALIDAD
+// ============================================================
+
+export interface PopupBloqueoCalidadProps {
+  pos: PopupPos;
+  onConfirmar: (v: ValorBloqueoCalidad) => void;
+  onCancelar: () => void;
+}
+
+export function PopupBloqueoCalidad({
+  pos,
+  onConfirmar,
+  onCancelar,
+}: PopupBloqueoCalidadProps) {
+  const btnW = 52;
+  const gap = 4;
+  const pad = 8;
+  const ancho =
+    ORDEN_BLOQUEO_CALIDAD.length * btnW +
+    (ORDEN_BLOQUEO_CALIDAD.length - 1) * gap +
+    pad * 2;
+  const alto = 70;
+
+  return (
+    <PopupWrapper pos={pos} ancho={ancho} alto={alto} titulo="BLOQUEO — Calidad">
+      <g>
+        {ORDEN_BLOQUEO_CALIDAD.map((v, i) => (
+          <BotonSvg
+            key={v}
+            x={pad + i * (btnW + gap)}
+            y={0}
+            w={btnW}
+            h={24}
+            texto={ETIQ_BLOQUEO_CALIDAD[v]}
+            color={COL_BLOQUEO_CALIDAD[v]}
             fontSize={10}
             onClick={() => onConfirmar(v)}
           />
@@ -755,15 +842,37 @@ export function PopupVelocidad({
 }
 
 // ============================================================
-// POPUP DEFENSA
+// POPUP DEFENSA — Resultado y Tipo
 // ============================================================
+
+export interface OpcionDefensaItem {
+  id: string;
+  label: string;
+  color: string;
+  variante?: string;
+}
+
+const OPCIONES_DEFENSA_POS: OpcionDefensaItem[] = [
+  { id: "gran_def", label: "Gran Def", color: "#16a34a", variante: "remate" },
+  { id: "toque_positiva", label: "Toque +", color: "#65a30d", variante: "toque" },
+  { id: "cobertura_positiva", label: "Cob +", color: "#84cc16", variante: "cobertura" },
+];
+
+const OPCIONES_DEFENSA_NEU_NEG: OpcionDefensaItem[] = [
+  { id: "neutro", label: "Neu", color: "#94a3b8" },
+  { id: "error_def", label: "Error Def", color: "#dc2626", variante: "remate" },
+  { id: "toque_negativa", label: "Toque -", color: "#f97316", variante: "toque" },
+  { id: "cobertura_negativa", label: "Cob -", color: "#ea580c", variante: "cobertura" },
+  { id: "mala_libre", label: "Mala Libre", color: "#d97706", variante: "libre" },
+];
 
 interface PopupDefensaProps {
   pos: PopupPos;
   onConfirmar: (
-    subtipo: TipoDefensa | null,
+    subtipo: string | null,
     jugadorId: string | null,
-    x2: boolean
+    x2: boolean,
+    variante?: string | null
   ) => void;
   onX2Change?: (x2: boolean) => void;
   onCancelar: () => void;
@@ -776,11 +885,9 @@ export function PopupDefensa({
   onCancelar,
 }: PopupDefensaProps) {
   const [x2, setX2] = useState(false);
-  const tipos: TipoDefensa[] = ["toque", "gran-defensa", "libre"];
   const pad = 8;
-  const ancho = 260;
-  const alto = 96;
-  const btnTipoW = (ancho - pad * 2 - 4 * 2) / 3;
+  const ancho = 330;
+  const alto = 120;
 
   const toggleX2 = () => {
     const nuevo = !x2;
@@ -788,28 +895,52 @@ export function PopupDefensa({
     onX2Change?.(nuevo);
   };
 
+  const wFila1 =
+    (ancho - pad * 2 - (OPCIONES_DEFENSA_POS.length - 1) * 4) /
+    OPCIONES_DEFENSA_POS.length;
+  const wFila2 =
+    (ancho - pad * 2 - (OPCIONES_DEFENSA_NEU_NEG.length - 1) * 4) /
+    OPCIONES_DEFENSA_NEU_NEG.length;
+
   return (
     <PopupWrapper
       pos={pos}
       ancho={ancho}
       alto={alto}
-      titulo="DEFENSA — Tipo (opcional)"
+      titulo="DEFENSA — Resultado y Tipo"
     >
       <g>
-        {tipos.map((t, i) => (
+        {/* Fila 1: Positivas */}
+        {OPCIONES_DEFENSA_POS.map((op, i) => (
           <BotonSvg
-            key={t}
-            x={pad + i * (btnTipoW + 4)}
+            key={op.id}
+            x={pad + i * (wFila1 + 4)}
             y={0}
-            w={btnTipoW}
-            h={26}
-            texto={ETIQ_DEFENSA[t]}
-            color={COL_DEFENSA[t]}
+            w={wFila1}
+            h={22}
+            texto={op.label}
+            color={op.color}
             fontSize={10}
-            onClick={() => onConfirmar(t, null, x2)}
+            onClick={() => onConfirmar(op.id, null, x2, op.variante)}
           />
         ))}
 
+        {/* Fila 2: Neutro y Errores */}
+        {OPCIONES_DEFENSA_NEU_NEG.map((op, i) => (
+          <BotonSvg
+            key={op.id}
+            x={pad + i * (wFila2 + 4)}
+            y={26}
+            w={wFila2}
+            h={22}
+            texto={op.label}
+            color={op.color}
+            fontSize={9}
+            onClick={() => onConfirmar(op.id, null, x2, op.variante)}
+          />
+        ))}
+
+        {/* Fila 3: x2 */}
         <g
           style={{ cursor: "pointer", pointerEvents: "auto" }}
           onPointerDown={(e) => {
@@ -819,9 +950,9 @@ export function PopupDefensa({
         >
           <rect
             x={pad}
-            y={32}
+            y={52}
             width={ancho - pad * 2}
-            height={24}
+            height={20}
             rx={4}
             fill={x2 ? "#7c3aed" : "#f1f5f9"}
             stroke={x2 ? "#5b21b6" : "#cbd5e1"}
@@ -829,9 +960,9 @@ export function PopupDefensa({
           />
           <text
             x={ancho / 2}
-            y={32 + 16}
+            y={52 + 14}
             textAnchor="middle"
-            fontSize={11}
+            fontSize={10}
             fontWeight={800}
             fill={x2 ? "#ffffff" : "#475569"}
             pointerEvents="none"
@@ -842,16 +973,17 @@ export function PopupDefensa({
           </text>
         </g>
 
+        {/* Fila 4: Cancelar / Saltar */}
         <BotonSvg
           x={pad}
-          y={62}
+          y={76}
           w={ancho - pad * 2}
-          h={16}
+          h={14}
           texto="Saltar (Esc)"
           color="#e2e8f0"
           colorTexto="#475569"
           fontSize={9}
-          onClick={() => onConfirmar(null, null, x2)}
+          onClick={() => onConfirmar(null, null, x2, null)}
         />
       </g>
     </PopupWrapper>

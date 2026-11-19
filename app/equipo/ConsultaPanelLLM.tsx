@@ -49,6 +49,9 @@ function obtenerEjemplosContextuales(partidoId?: string | null): string[] {
       "distribución de ataques por zona destino",
       "cuántos aces y saques positivos",
       "errores de saque por set",
+      "errores de bloqueo",
+      "bloqueos neutros y positivos",
+      "defensas positivas por jugador",
       "efectividad en side-out",
       "puntos por rotación",
       "promedio de puntaje de recepción",
@@ -61,6 +64,8 @@ function obtenerEjemplosContextuales(partidoId?: string | null): string[] {
     "distribución de errores por rotación",
     "porcentaje de recepciones perfectas por jugador",
     "cuántos aces en total",
+    "errores de bloqueo por jugador",
+    "defensas de toque vs remate",
     "promedio de ataques por partido",
     "kill % del punta 1",
   ];

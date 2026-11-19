@@ -34,48 +34,47 @@ interface Bloque {
 // ============================================================
 
 const COLS_SAQUE: Columna[] = [
-  { key: "ace", label: "Ace", tipo: "pos" },
-  { key: "positivo_mas", label: "Pos+", tipo: "pos" },
-  { key: "positivo", label: "Pos", tipo: "pos" },
-  { key: "neutro", label: "Neu", tipo: "neu" },
-  { key: "negativo", label: "Neg", tipo: "neg" },
+  { key: "ace", label: "Ace (S#)", tipo: "pos", detalle: "Punto directo de saque" },
+  { key: "positivo_mas", label: "Pos+ (S/)", tipo: "pos", detalle: "Dificulta armado rival" },
+  { key: "positivo", label: "Pos (S+)", tipo: "pos", detalle: "Aleja recepción de la red" },
+  { key: "neutro", label: "Neu (S!)", tipo: "neu", detalle: "Recepción rival cómoda" },
+  { key: "negativo", label: "Error (S=)", tipo: "neg", detalle: "Saque afuera o en la red" },
 ];
 
 // Recepción — sistema nuevo de 7 valores
 const COLS_RECEPCION: Columna[] = [
-  { key: "perfecta", label: "R#", tipo: "pos", detalle: "Doble positiva / perfecta" },
-  { key: "positiva", label: "R+", tipo: "pos", detalle: "Positiva" },
-  { key: "intermedia", label: "R!", tipo: "neu", detalle: "Exclamación (anula ataque central)" },
-  { key: "negativa", label: "R-", tipo: "neg", detalle: "Negativa" },
-  { key: "doble_negativa", label: "R--", tipo: "neg", detalle: "Doble negativa (free ball)" },
-  { key: "overpass", label: "R/", tipo: "neg", detalle: "Overpass (pasa al rival)" },
-  { key: "error_directo", label: "R=", tipo: "neg", detalle: "Ace / error directo" },
+  { key: "perfecta", label: "R# (Perf)", tipo: "pos", detalle: "Recepción perfecta (todas las opciones de ataque)" },
+  { key: "positiva", label: "R+ (Pos)", tipo: "pos", detalle: "Recepción positiva (armado cómodo)" },
+  { key: "intermedia", label: "R! (Excl)", tipo: "neu", detalle: "Exclamación (anula ataque central rápido)" },
+  { key: "negativa", label: "R- (Neg)", tipo: "neg", detalle: "Recepción negativa (armado forzado)" },
+  { key: "doble_negativa", label: "R-- (Free)", tipo: "neg", detalle: "Doble negativa (pelota gratis entregada)" },
+  { key: "overpass", label: "R/ (Vendida)", tipo: "neg", detalle: "Overpass (cruza la red vendida)" },
+  { key: "error_directo", label: "R= (Error)", tipo: "neg", detalle: "Ace en contra / error directo" },
 ];
 
 const COLS_ATAQUE: Columna[] = [
-  { key: "punto", label: "Punto", tipo: "pos" },
-  { key: "neutro", label: "Neu", tipo: "neu" },
-  { key: "error", label: "Error", tipo: "neg" },
+  { key: "punto", label: "Punto (A#)", tipo: "pos", detalle: "Punto de ataque" },
+  { key: "neutro", label: "En juego (A!)", tipo: "neu", detalle: "Pelota defendida o en juego" },
+  { key: "error", label: "Error (A=)", tipo: "neg", detalle: "Ataque afuera, en la red o bloqueado" },
 ];
 
 const COLS_BLOQUEO_NORMAL: Columna[] = [
-  { key: "punto", label: "Punto", tipo: "pos" },
-  { key: "positivo_mas", label: "Pos+", tipo: "pos" },
-  { key: "positivo", label: "Pos", tipo: "pos" },
-  { key: "use_rival", label: "UseR", tipo: "neg" },
-  { key: "red", label: "Red", tipo: "neg" },
-  { key: "filtrada", label: "Filt", tipo: "neg" },
+  { key: "punto", label: "Punto (B#)", tipo: "pos", detalle: "Punto directo de bloqueo" },
+  { key: "positivo_mas", label: "Pos+ (B/)", tipo: "pos", detalle: "Amortigua y genera contraataque propio" },
+  { key: "positivo", label: "Pos (B+)", tipo: "pos", detalle: "Toque amortiguado" },
+  { key: "neutro", label: "Neu (B!)", tipo: "neu", detalle: "Toque en juego" },
+  { key: "error", label: "Error (B=)", tipo: "neg", detalle: "Error de bloqueo (red, use rival, filtrada)" },
 ];
 
 const COLS_BLOQUEO_AMPLIADO: Columna[] = [
-  { key: "punto", label: "Pto", tipo: "pos", detalle: "Cae en cancha rival, directo" },
-  { key: "pos_mas_r", label: "Pos+R", tipo: "pos", detalle: "Cae en cancha rival, con libre después" },
-  { key: "pos_r", label: "Pos R", tipo: "pos", detalle: "Cae en cancha rival, sin libre" },
-  { key: "pos_mas_p", label: "Pos+P", tipo: "pos", detalle: "Cae en cancha propia, con libre después" },
-  { key: "neu_p", label: "Neu P", tipo: "neu", detalle: "Cae en cancha propia, sin libre" },
-  { key: "use_rival", label: "UseR", tipo: "neg", detalle: "Desviada afuera" },
-  { key: "red", label: "Red", tipo: "neg", detalle: "Toca la red" },
-  { key: "filtrada", label: "Filt", tipo: "neg", detalle: "Cae en bloqueo lateral" },
+  { key: "punto", label: "Punto (B#)", tipo: "pos", detalle: "Cae en cancha rival, directo" },
+  { key: "pos_mas_r", label: "Pos+ Rival (B/)", tipo: "pos", detalle: "Cae en cancha rival, con libre después" },
+  { key: "pos_r", label: "Pos Rival (B+)", tipo: "pos", detalle: "Cae en cancha rival, sin libre" },
+  { key: "pos_mas_p", label: "Pos+ Propia (B/)", tipo: "pos", detalle: "Cae en cancha propia amortiguada, con libre" },
+  { key: "neu_p", label: "Neu Propia (B!)", tipo: "neu", detalle: "Cae en cancha propia, toque en juego" },
+  { key: "use_rival", label: "Use Rival (B=)", tipo: "neg", detalle: "Desviada afuera por el atacante" },
+  { key: "red", label: "Red (B/)", tipo: "neg", detalle: "Toca la red / invasión" },
+  { key: "filtrada", label: "Filtrada (B=)", tipo: "neg", detalle: "Filtrada entre las manos del bloqueo" },
 ];
 
 const VALORES_BLOQUEO_AMPLIADO: Record<string, number> = {
@@ -90,14 +89,15 @@ const VALORES_BLOQUEO_AMPLIADO: Record<string, number> = {
 };
 
 const COLS_DEFENSA: Columna[] = [
-  { key: "toque_positiva", label: "Toq+", tipo: "pos" },
-  { key: "gran_def", label: "GranD", tipo: "pos" },
-  { key: "cobertura_positiva", label: "Cob+", tipo: "pos" },
-  { key: "toque_negativa", label: "Toq-", tipo: "neg" },
-  { key: "cobertura_negativa", label: "Cob-", tipo: "neg" },
-  { key: "error_def", label: "ErrD", tipo: "neg" },
-  { key: "errores_graves", label: "ErrG", tipo: "neg" },
-  { key: "mala_libre", label: "MalaL", tipo: "neg" },
+  { key: "gran_def", label: "Gran Def", tipo: "pos", detalle: "Defensa limpia de remate potente" },
+  { key: "toque_positiva", label: "Toque +", tipo: "pos", detalle: "Control de toque o colocada" },
+  { key: "cobertura_positiva", label: "Cob +", tipo: "pos", detalle: "Apoyo positivo de bloqueo" },
+  { key: "neutro", label: "Neu", tipo: "neu", detalle: "Defensa neutra / continuación de rally" },
+  { key: "toque_negativa", label: "Toque -", tipo: "neg", detalle: "Toque rival no controlado" },
+  { key: "cobertura_negativa", label: "Cob -", tipo: "neg", detalle: "Apoyo fallido" },
+  { key: "error_def", label: "Error Def", tipo: "neg", detalle: "Error defensivo directo" },
+  { key: "errores_graves", label: "Error Grave", tipo: "neg", detalle: "Error defensivo grave" },
+  { key: "mala_libre", label: "Mala Libre", tipo: "neg", detalle: "Entrega forzada / regalada al rival" },
 ];
 
 const COLS_ARMADOS: Columna[] = [
@@ -115,18 +115,18 @@ const COLS_TOQUE: Columna[] = [
 ];
 
 const COLS_ATAQUE_AMPLIADO: Columna[] = [
-  { key: "punto_directo_ataque", label: "Pto dir", tipo: "pos", detalle: "Punto directo, sin toque rival" },
-  { key: "punto_desviado_ataque", label: "Pto desv", tipo: "pos", detalle: "Punto con desvío (bloqueo rival)" },
-  { key: "use_rival_ataque", label: "UseRiv", tipo: "pos", detalle: "Use rival (cae afuera)" },
-  { key: "gorro_ataque", label: "Gorro", tipo: "neg", detalle: "Gorro (bloqueo rival devuelve)" },
-  { key: "error_afuera_ataque", label: "Err af", tipo: "neg", detalle: "Error afuera" },
-  { key: "error_red_ataque", label: "Err red", tipo: "neg", detalle: "Error red" },
-  { key: "neutro_bloqueo_cobertura_ataque", label: "Neu b+c", tipo: "neu", detalle: "Neutro: bloqueo + cobertura" },
-  { key: "neutro_desvio_bloqueo_defensa_ataque", label: "Neu d+d", tipo: "neu", detalle: "Neutro: desvío + defensa" },
-  { key: "neutro_defensa_ataque", label: "Neu def", tipo: "neu", detalle: "Neutro: defensa rival" },
-  { key: "punto", label: "Punto (v)", tipo: "pos", detalle: "Punto (formato viejo)" },
-  { key: "neutro", label: "Neu (v)", tipo: "neu", detalle: "Neutro (formato viejo)" },
-  { key: "error", label: "Err (v)", tipo: "neg", detalle: "Error (formato viejo)" },
+  { key: "punto_directo_ataque", label: "Punto Dir (A#)", tipo: "pos", detalle: "Punto directo, sin toque rival" },
+  { key: "punto_desviado_ataque", label: "Punto Desv (A#)", tipo: "pos", detalle: "Punto con desvío (bloqueo rival)" },
+  { key: "use_rival_ataque", label: "Use Rival (A#)", tipo: "pos", detalle: "Use rival (cae afuera)" },
+  { key: "gorro_ataque", label: "Bloqueado (A=)", tipo: "neg", detalle: "Gorro / bloqueo rival punto" },
+  { key: "error_afuera_ataque", label: "Error Afuera (A=)", tipo: "neg", detalle: "Error de ataque afuera" },
+  { key: "error_red_ataque", label: "Error Red (A=)", tipo: "neg", detalle: "Error de ataque a la red" },
+  { key: "neutro_bloqueo_cobertura_ataque", label: "Neu Apoyo (A!)", tipo: "neu", detalle: "Neutro: bloqueo + cobertura" },
+  { key: "neutro_desvio_bloqueo_defensa_ataque", label: "Neu Desvío (A!)", tipo: "neu", detalle: "Neutro: desvío + defensa" },
+  { key: "neutro_defensa_ataque", label: "Neu Def (A!)", tipo: "neu", detalle: "Neutro: defensa rival" },
+  { key: "punto", label: "Punto (legacy)", tipo: "pos", detalle: "Punto (formato viejo)" },
+  { key: "neutro", label: "Neu (legacy)", tipo: "neu", detalle: "Neutro (formato viejo)" },
+  { key: "error", label: "Error (legacy)", tipo: "neg", detalle: "Error (formato viejo)" },
 ];
 
 // ============================================================
@@ -307,9 +307,17 @@ function construirBloques(
           id: "bloqueo",
           titulo: "Bloqueo",
           columnas: COLS_BLOQUEO_NORMAL,
-          valores: VALORES_POR_FUNDAMENTO.bloqueo ?? {},
+          valores: { ...(VALORES_POR_FUNDAMENTO.bloqueo ?? {}), error: 0 },
           incluye: (a) => a.fundamento === "bloqueo",
-          columnaDe: (a) => a.valoracion,
+          columnaDe: (a) => {
+            const v = a.valoracion;
+            if (v === "punto") return "punto";
+            if (v === "positivo_mas") return "positivo_mas";
+            if (v === "positivo") return "positivo";
+            if (v === "neutro") return "neutro";
+            if (v === "use_rival" || v === "red" || v === "filtrada" || v === "error") return "error";
+            return null;
+          },
         });
       } else {
         bloques.push({

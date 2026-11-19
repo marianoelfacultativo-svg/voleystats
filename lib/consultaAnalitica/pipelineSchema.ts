@@ -66,6 +66,7 @@ export const CATALOGO_PIPELINE: Record<string, Record<string, InfoSubtipo>> = {
     positivo: { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
     neutro: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 },
     negativo: { desenlace: "error", valoracion: "neg", puntaje: 2 },
+    error: { desenlace: "error", valoracion: "neg", puntaje: 0 },
     error_rival: { desenlace: "error", valoracion: "neg", puntaje: 0 },
   },
   recepcion: {
@@ -105,6 +106,7 @@ export const CATALOGO_PIPELINE: Record<string, Record<string, InfoSubtipo>> = {
     filtrada: { desenlace: "error", valoracion: "neu", puntaje: 2 },
     use_rival: { desenlace: "error", valoracion: "neg", puntaje: 3 },
     red: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    error: { desenlace: "error", valoracion: "neg", puntaje: 0 },
   },
   defensa: {
     gran_def: { desenlace: "en_juego", valoracion: "pos", puntaje: 10 },
@@ -115,6 +117,7 @@ export const CATALOGO_PIPELINE: Record<string, Record<string, InfoSubtipo>> = {
     cobertura_negativa: { desenlace: "error", valoracion: "neg", puntaje: 0 },
     error_def: { desenlace: "error", valoracion: "neg", puntaje: 0 },
     errores_graves: { desenlace: "error", valoracion: "neg", puntaje: 0 },
+    error: { desenlace: "error", valoracion: "neg", puntaje: 0 },
     mala_libre: { desenlace: "en_juego", valoracion: "neg", puntaje: -2 },
   },
   armado: {
@@ -322,6 +325,36 @@ Regla práctica:
 - "neutros de X" → tipo=X, valoracion=neu, es_rival=false
 - "en k1" / "en side-out" → fase_rally=side-out (acciones) o fase=side-out (puntos).
 - "en k2" → k2. "en k3" → k3. "en free ball" → free-ball.
+
+13. REGLA FUNDAMENTAL DE DESENLACE:
+Lo que determina error o punto es siempre la finalización del punto.
+Las acciones intermedias en el rally tienen desenlace "en_juego", salvo que cierren el punto directamente (desenlace "punto" a favor o "error" en contra).
+
+14. FUNDAMENTOS CLAVE Y SUBTIPOS:
+- SAQUE:
+  * subtipos: ace (S#), positivo_mas (S/), positivo (S+), neutro (S!), negativo (S=).
+  * "aces" → tipo: "saque", subtipo: "ace", es_rival: false
+  * "saques neutros" → tipo: "saque", valoracion: "neu", es_rival: false
+  * "saques positivos" → tipo: "saque", valoracion: "pos", es_rival: false
+  * "errores de saque" → tipo: "saque", desenlace: "error", es_rival: false
+- BLOQUEO:
+  * subtipos: punto (B#), positivo_mas (B/), positivo (B+), neutro (B!), filtrada, use_rival, red.
+  * ¡NO EXISTE bloqueo negativo! Es siempre punto, positivo, neutro o error.
+  * "bloqueos punto" → tipo: "bloqueo", desenlace: "punto", es_rival: false
+  * "bloqueos neutros" → tipo: "bloqueo", valoracion: "neu", es_rival: false
+  * "bloqueos positivos" → tipo: "bloqueo", valoracion: "pos", es_rival: false
+  * "errores de bloqueo" → tipo: "bloqueo", desenlace: "error", es_rival: false (agrupa filtrada cuando cuesta punto, red y use_rival)
+  * "filtradas" → tipo: "bloqueo", subtipo: "filtrada", es_rival: false
+  * "use rival en bloqueo" → tipo: "bloqueo", subtipo: "use_rival", es_rival: false
+- DEFENSA (dos capas: semántica y variante):
+  * subtipos semánticos: gran_def, toque_positiva, cobertura_positiva, neutro, toque_negativa, cobertura_negativa, error_def, mala_libre.
+  * campo "variante" (tipo físico para filtros): "toque", "remate", "cobertura".
+  * "defensas positivas" → tipo: "defensa", valoracion: "pos", es_rival: false
+  * "defensas neutras" → tipo: "defensa", valoracion: "neu", es_rival: false
+  * "errores de defensa" → tipo: "defensa", desenlace: "error", es_rival: false
+  * "defensas de toque" → tipo: "defensa", variante: "toque", es_rival: false
+  * "defensas de remate" → tipo: "defensa", variante: "remate", es_rival: false
+  * "coberturas" → tipo: "defensa", variante: "cobertura", es_rival: false
 
 EJEMPLOS:
 Prompt: "kill % del punta 1"

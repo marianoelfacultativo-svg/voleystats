@@ -20,8 +20,18 @@ import {
   type ConsultaPipeline,
 } from "./pipelineSchema";
 
-const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODEL = "openai/gpt-oss-120b";
+const GROQ_URL =
+  process.env.GROQ_URL ||
+  (process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY
+    ? "https://api.openai.com/v1/chat/completions"
+    : "https://api.groq.com/openai/v1/chat/completions");
+
+const GROQ_MODEL =
+  process.env.GROQ_MODEL ||
+  (process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY
+    ? "gpt-4o-mini"
+    : "llama-3.3-70b-versatile");
+
 const MAX_INTENTOS = 3;
 
 const RETRY_DEFAULT_MS = 3000;
@@ -44,9 +54,13 @@ async function llamarGroq(
   error?: string;
   retryAfterMs?: number;
 }> {
-  const apiKey = process.env.GROQ_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    return { ok: false, error: "Falta GROQ_API_KEY en el entorno." };
+    return {
+      ok: false,
+      error:
+        "Falta GROQ_API_KEY (o OPENAI_API_KEY) en el entorno (.env.local). Configurala para habilitar las consultas LLM.",
+    };
   }
 
   const body: Record<string, unknown> = {

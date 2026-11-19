@@ -106,8 +106,11 @@ function aSubtipoRawParaRecalculo(
   tipo: string,
   subtipo: string | number | null | undefined
 ): string | number | null {
-  if (tipo === "saque" || tipo === "ataque" || tipo === "bloqueo") {
+  if (tipo === "ataque") {
     return null;
+  }
+  if (tipo === "saque" || tipo === "bloqueo") {
+    return subtipo ?? null;
   }
   if (tipo === "defensa") {
     const s = typeof subtipo === "string" ? subtipo : null;

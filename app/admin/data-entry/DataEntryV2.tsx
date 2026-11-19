@@ -641,7 +641,7 @@ export default function DataEntryV2({
     popupSiguiente, cerrarPopup, handleSaqueConfirmar, handleTipoSaqueConfirmar,
     handleRecepcionConfirmar, handleArmadoConfirmar, handleVelocidadConfirmar,
     handleDefensaX2Change, handleDefensaConfirmar, handleLibreConfirmar,
-    handleJugadorConfirmar, handleBloqueoConfirmar, handleRoceRedConfirmar,
+    handleJugadorConfirmar, handleBloqueoCalidadConfirmar, handleBloqueoConfirmar, handleRoceRedConfirmar,
     handleAtaqueToqueLibreConfirmar, handleRemateSegundaConfirmar,
     handleArmadoCruzadoConfirmar, handleVarianteRemateSegundaConfirmar,
   } = crearHandlersPopups({
@@ -1386,6 +1386,7 @@ export default function DataEntryV2({
                     onDefensaX2Change={handleDefensaX2Change}
                     onLibreConfirmar={handleLibreConfirmar}
                     onJugadorConfirmar={handleJugadorConfirmar}
+                    onBloqueoCalidadConfirmar={handleBloqueoCalidadConfirmar}
                     onBloqueoConfirmar={handleBloqueoConfirmar}
                     onRoceRedConfirmar={handleRoceRedConfirmar}
                     onAtaqueToqueLibreConfirmar={handleAtaqueToqueLibreConfirmar}

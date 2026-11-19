@@ -316,17 +316,22 @@ export function lineasAAcciones(
               );
             }
           } else {
+            const d = desviosBLOQP[0];
             acciones.push(
               construirAccion(
                 {
                   ...l,
                   tipo: "bloqueo",
                   esRival: false,
-                  origen: desviosBLOQP[0],
+                  origen: d,
                   desvios: [],
                 },
                 orden++,
-                contexto
+                contexto,
+                {
+                  jugadorId: d.jugadorId ?? null,
+                  subtipo: (d as any).subtipo ?? l.subtipo ?? null,
+                }
               )
             );
           }
@@ -346,7 +351,7 @@ export function lineasAAcciones(
           acciones.push(
             construirAccion(l, orden++, contexto, {
               jugadorId: d.jugadorId ?? null,
-              subtipo: sub,
+              subtipo: (d as any).subtipo ?? sub,
             })
           );
         }

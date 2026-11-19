@@ -361,6 +361,12 @@ export function crearHandlersCancha(params: Params) {
         if (esPropioConPopup) {
           setColaPopups([
             {
+              tipo: "bloqueo-calidad",
+              pos: posicionPopup(punto),
+              lineaId: "",
+              indiceDesvio,
+            },
+            {
               tipo: "bloqueo",
               pos: posicionPopup(punto),
               lineaId: "",

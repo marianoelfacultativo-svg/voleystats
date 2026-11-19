@@ -11,10 +11,12 @@
 // ============================================================
 
 import type { Dispatch, SetStateAction } from "react";
-import type { LineaClasificada } from "@/lib/clasificacionV2";
+import type { LineaClasificada, PuntoV2 } from "@/lib/clasificacionV2";
 import type { PopupEnCola } from "./tiposV2";
 import type {
+  ValorSaque,
   ValorRecepcion,
+  ValorBloqueoCalidad,
   ResultadoArmadoCruzado,
   VarianteToqueRemateSegunda,
 } from "./PopupValoracion";
@@ -28,11 +30,7 @@ interface Params {
   setLineas: Dispatch<SetStateAction<LineaClasificada[]>>;
   setColaPopups: Dispatch<SetStateAction<PopupEnCola[]>>;
   setContadorId: Dispatch<SetStateAction<number>>;
-  setDesviosPendientes: Dispatch<
-    SetStateAction<
-      { celda: string; mini: string; jugadorId?: string | null }[]
-    >
-  >;
+  setDesviosPendientes: Dispatch<SetStateAction<PuntoV2[]>>;
 }
 
 export function crearHandlersPopups({
@@ -58,8 +56,20 @@ export function crearHandlersPopups({
     );
   };
 
-  const handleSaqueConfirmar = () => {
-    popupSiguiente();
+  const handleSaqueConfirmar = (v: ValorSaque) => {
+    actualizarLineaPopup({ subtipo: v });
+    if (popupActivo?.pos && popupActivo?.lineaId) {
+      setColaPopups((prev) => [
+        {
+          tipo: "tipo-saque",
+          pos: popupActivo.pos,
+          lineaId: popupActivo.lineaId,
+        },
+        ...prev.slice(1),
+      ]);
+    } else {
+      popupSiguiente();
+    }
   };
 
   const handleTipoSaqueConfirmar = (v: "potencia" | "flotado") => {
@@ -123,9 +133,10 @@ export function crearHandlersPopups({
   };
 
   const handleDefensaConfirmar = (
-    subtipo: "toque" | "gran-defensa" | "libre" | null,
+    subtipo: string | null,
     jugadorId: string | null,
-    x2: boolean
+    x2: boolean,
+    variante?: string | null
   ) => {
     if (!popupActivo?.lineaId) {
       popupSiguiente();
@@ -140,6 +151,7 @@ export function crearHandlersPopups({
       copia[idx] = {
         ...lineaActual,
         subtipo: subtipo ?? lineaActual.subtipo,
+        variante: (variante !== undefined ? variante : lineaActual.variante) as any,
         jugadorId: jugadorFinal,
         x2: x2 || undefined,
       };
@@ -155,6 +167,19 @@ export function crearHandlersPopups({
 
   const handleJugadorConfirmar = (jugadorId: string | null) => {
     actualizarLineaPopup({ jugadorId });
+    popupSiguiente();
+  };
+
+  const handleBloqueoCalidadConfirmar = (v: ValorBloqueoCalidad) => {
+    if (!popupActivo) return;
+    const idx = popupActivo.indiceDesvio;
+    if (idx !== undefined && idx >= 0) {
+      setDesviosPendientes((prev) =>
+        prev.map((d, i) => (i === idx ? { ...d, subtipo: v } : d))
+      );
+    } else if (popupActivo.lineaId) {
+      actualizarLineaPopup({ subtipo: v });
+    }
     popupSiguiente();
   };
 
@@ -384,6 +409,7 @@ export function crearHandlersPopups({
     handleDefensaConfirmar,
     handleLibreConfirmar,
     handleJugadorConfirmar,
+    handleBloqueoCalidadConfirmar,
     handleBloqueoConfirmar,
     handleRoceRedConfirmar,
     handleAtaqueToqueLibreConfirmar,

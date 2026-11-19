@@ -26,11 +26,13 @@ import {
   PopupTipoSaque,
   PopupVarianteRemateSegunda,
   PopupVelocidad,
+  PopupBloqueoCalidad,
   type ValorArmado,
   type ValorRecepcion,
   type ValorSaque,
   type ValorTipoSaque,
   type ValorVelocidad,
+  type ValorBloqueoCalidad,
   type TipoDefensa,
   type ResultadoRoceRed,
   type ResultadoArmadoCruzado,
@@ -56,13 +58,15 @@ interface Props {
   onArmadoConfirmar: (v: ValorArmado) => void;
   onVelocidadConfirmar: (v: ValorVelocidad) => void;
   onDefensaConfirmar: (
-    subtipo: TipoDefensa | null,
+    subtipo: string | null,
     jugadorId: string | null,
-    x2: boolean
+    x2: boolean,
+    variante?: string | null
   ) => void;
   onDefensaX2Change?: (x2: boolean) => void;
   onLibreConfirmar: (jugadorId: string | null) => void;
   onJugadorConfirmar: (jugadorId: string | null) => void;
+  onBloqueoCalidadConfirmar: (v: ValorBloqueoCalidad) => void;
   onBloqueoConfirmar: (jugadorId: string | null) => void;
   onRoceRedConfirmar: (
     resultado: ResultadoRoceRed,
@@ -93,6 +97,7 @@ export default function PopupsV2({
   onDefensaX2Change,
   onLibreConfirmar,
   onJugadorConfirmar,
+  onBloqueoCalidadConfirmar,
   onBloqueoConfirmar,
   onRoceRedConfirmar,
   onAtaqueToqueLibreConfirmar,
@@ -203,6 +208,15 @@ export default function PopupsV2({
       <PopupRemateSegunda
         pos={popupActivo.pos}
         onConfirmar={onRemateSegundaConfirmar}
+        onCancelar={onCerrar}
+      />
+    );
+  }
+  if (popupActivo.tipo === "bloqueo-calidad") {
+    return (
+      <PopupBloqueoCalidad
+        pos={popupActivo.pos}
+        onConfirmar={onBloqueoCalidadConfirmar}
         onCancelar={onCerrar}
       />
     );
