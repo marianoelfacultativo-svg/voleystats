@@ -1,6 +1,11 @@
 // ============================================================
 // LLM TO PIPELINE — Validación semántica y preparación del pipeline
 // ============================================================
+// v48.1 (Bloque 3a): agrega `advertencias?: string[]` al resultado ok.
+//   Si el LLM no devolvió `explain`, se emite warning NO bloqueante:
+//   la consulta sigue funcionando, pero se avisa para que la UI
+//   pueda mostrar el detalle técnico.
+// ============================================================
 
 import type { ConsultaPipeline, FiltroExpr } from "./pipelineSchema";
 import {
@@ -10,7 +15,7 @@ import {
 } from "./pipelineSchema";
 
 export type ResultadoLLMToPipeline =
-  | { tipo: "ok"; pipeline: ConsultaPipeline }
+  | { tipo: "ok"; pipeline: ConsultaPipeline; advertencias?: string[] }
   | { tipo: "clarification"; pregunta: string }
   | { tipo: "error"; mensaje: string };
 
@@ -108,8 +113,26 @@ export function llmToPipeline(consulta: ConsultaPipeline): ResultadoLLMToPipelin
     }
   }
 
-  return {
-    tipo: "ok",
-    pipeline: consulta,
-  };
+  // 4. v48.1 (Bloque 3a) — Warning NO bloqueante si falta explain.
+  //    La consulta funciona igual; solo avisamos para que la UI
+  //    pueda mostrar el detalle técnico.
+  const advertencias: string[] = [];
+  const explainValido =
+    typeof consulta.explain === "string" && consulta.explain.trim().length > 0;
+
+  if (!explainValido) {
+    advertencias.push(
+      "El LLM no devolvió 'explain'. La consulta funciona igual, pero la UI no podrá mostrar la interpretación en lenguaje natural."
+    );
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[llmToPipeline] Falta 'explain' en la consulta. El LLM no explicó cómo la interpretó.",
+      consulta
+    );
+  }
+
+  if (advertencias.length > 0) {
+    return { tipo: "ok", pipeline: consulta, advertencias };
+  }
+  return { tipo: "ok", pipeline: consulta };
 }

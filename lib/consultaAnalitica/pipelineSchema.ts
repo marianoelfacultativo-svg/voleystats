@@ -1,6 +1,9 @@
 // ============================================================
 // PIPELINE SCHEMA — Esquema semántico y operaciones analíticas
 // ============================================================
+// v48.1 (Bloque 3a): agrega `explain?: string` a ConsultaPipeline
+//   y regla 1b al SYSTEM_PROMPT pidiendo explicación en 1 frase.
+// ============================================================
 
 export type EntidadBase = "acciones" | "puntos";
 export type Operador = "eq" | "neq" | "in" | "nin" | "gt" | "gte" | "lt" | "lte" | "between" | "contains";
@@ -84,6 +87,9 @@ export interface ConsultaPipeline {
   limite?: number;
   needsClarification?: boolean;
   preguntaClarificacion?: string;
+  // v48.1 (Bloque 3a) — Explicación en 1 frase de cómo se interpretó la consulta.
+  // Opcional en el tipo (resiliencia), pero el SYSTEM_PROMPT la pide SIEMPRE.
+  explain?: string;
 }
 
 export const CAMPOS_ACCION = [
@@ -307,6 +313,9 @@ Tu tarea es traducir una pregunta en lenguaje natural a un JSON con estructura C
 
 REGLAS DE ORO:
 1. Devuelve ÚNICAMENTE un objeto JSON válido. Sin markdown, sin explicaciones, sin \`\`\`.
+1b. EXPLAIN (OBLIGATORIO): incluí SIEMPRE el campo "explain" con una frase corta EN ESPAÑOL (máximo 20 palabras) que explique cómo interpretaste la consulta. Ej: "Entendí: contar ataques del punta 1 con desenlace punto (kill %)."
+   - "explain" NO reemplaza la lógica: es un resumen legible para que el usuario vea qué entendiste.
+   - Va al final del objeto JSON, después de "metrica" (y después de "orden"/"limite" si existen).
 2. ENTIDADES:
    - "acciones": cuando se pregunta por toques/acciones individuales (ataques, saques, bloqueos, defensas, recepciones, armados, toques, errores, etc.).
    - "puntos": cuando se pregunta por rallies o puntos ganados/perdidos como unidad ("puntos ganados", "puntos en k1", "partidos", etc.).
@@ -418,7 +427,8 @@ Las acciones intermedias en el rally tienen desenlace "en_juego", salvo que cier
   * "defensas de remate" → tipo: "defensa", variante: "remate", es_rival: false
   * "coberturas" → tipo: "defensa", variante: "cobertura", es_rival: false
 
-EJEMPLOS:
+EJEMPLOS (todos incluyen "explain" obligatorio):
+
 Prompt: "kill % del punta 1"
 JSON:
 {
@@ -431,7 +441,8 @@ JSON:
   "metrica": {
     "tipo": "percentage",
     "filtros_numerador": [{ "campo": "desenlace", "operador": "eq", "valor": "punto" }]
-  }
+  },
+  "explain": "Kill % del punta 1: ataques del P1 con desenlace punto sobre el total de sus ataques."
 }
 
 Prompt: "efectividad recibiendo"
@@ -442,7 +453,8 @@ JSON:
   "metrica": {
     "tipo": "percentage",
     "filtros_numerador": [{ "campo": "ganador", "operador": "eq", "valor": "propio" }]
-  }
+  },
+  "explain": "Efectividad en recepción: puntos ganados en fase side-out (k1) sobre el total."
 }
 
 Prompt: "cuántos puntos hizo Mariano"
@@ -454,7 +466,8 @@ JSON:
     { "campo": "desenlace", "operador": "eq", "valor": "punto" },
     { "campo": "es_rival", "operador": "eq", "valor": false }
   ],
-  "metrica": { "tipo": "count" }
+  "metrica": { "tipo": "count" },
+  "explain": "Puntos de Mariano: acciones suyas con desenlace punto."
 }
 
 Prompt: "cuántos puntos ganamos en k1"
@@ -465,7 +478,8 @@ JSON:
     { "campo": "fase", "operador": "eq", "valor": "side-out" },
     { "campo": "ganador", "operador": "eq", "valor": "propio" }
   ],
-  "metrica": { "tipo": "count" }
+  "metrica": { "tipo": "count" },
+  "explain": "Puntos ganados en k1: rallies cerrados a favor en fase side-out."
 }
 
 Prompt: "cuántas recepciones perfectas"
@@ -477,7 +491,8 @@ JSON:
     { "campo": "subtipo", "operador": "eq", "valor": "perfecta" },
     { "campo": "es_rival", "operador": "eq", "valor": false }
   ],
-  "metrica": { "tipo": "count" }
+  "metrica": { "tipo": "count" },
+  "explain": "Recepciones perfectas: acciones propias de recepción con subtipo perfecta."
 }
 
 Prompt: "errores de recepción"
@@ -489,7 +504,8 @@ JSON:
     { "campo": "desenlace", "operador": "eq", "valor": "error" },
     { "campo": "es_rival", "operador": "eq", "valor": false }
   ],
-  "metrica": { "tipo": "count" }
+  "metrica": { "tipo": "count" },
+  "explain": "Errores de recepción: acciones propias de recepción con desenlace error."
 }
 
 Prompt: "promedio de puntaje de recepción por jugador"
@@ -501,7 +517,8 @@ JSON:
     { "campo": "es_rival", "operador": "eq", "valor": false }
   ],
   "agrupacion": { "campo": "jugador_id" },
-  "metrica": { "tipo": "avg", "campo": "puntaje" }
+  "metrica": { "tipo": "avg", "campo": "puntaje" },
+  "explain": "Promedio de puntaje de recepción por jugador: promedio del campo puntaje."
 }
 
 Prompt: "top 3 jugadores por puntos"
@@ -515,7 +532,8 @@ JSON:
   "agrupacion": { "campo": "jugador_id" },
   "metrica": { "tipo": "count" },
   "orden": "desc",
-  "limite": 3
+  "limite": 3,
+  "explain": "Top 3 jugadores por puntos: ranking desc por cantidad de acciones con desenlace punto."
 }
 
 Prompt: "distribución de ataques por zona destino"
@@ -527,7 +545,8 @@ JSON:
     { "campo": "es_rival", "operador": "eq", "valor": false }
   ],
   "agrupacion": { "campo": "zona_destino" },
-  "metrica": { "tipo": "count" }
+  "metrica": { "tipo": "count" },
+  "explain": "Distribución de ataques por zona destino: conteo agrupado por zona_destino."
 }
 
 Prompt: "cuántos aces rivales"
@@ -539,5 +558,6 @@ JSON:
     { "campo": "subtipo", "operador": "eq", "valor": "ace" },
     { "campo": "es_rival", "operador": "eq", "valor": true }
   ],
-  "metrica": { "tipo": "count" }
+  "metrica": { "tipo": "count" },
+  "explain": "Aces rivales: saques del rival con subtipo ace."
 }`;
