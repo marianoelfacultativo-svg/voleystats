@@ -73,7 +73,7 @@ const COLS_BLOQUEO_AMPLIADO: Columna[] = [
   { key: "pos_mas_p", label: "Pos+ Propia (B/)", tipo: "pos", detalle: "Cae en cancha propia amortiguada, con libre" },
   { key: "neu_p", label: "Neu Propia (B!)", tipo: "neu", detalle: "Cae en cancha propia, toque en juego" },
   { key: "use_rival", label: "Use Rival (B=)", tipo: "neg", detalle: "Desviada afuera por el atacante" },
-  { key: "red", label: "Red (B/)", tipo: "neg", detalle: "Toca la red / invasión" },
+  { key: "red", label: "Red (B=)", tipo: "neg", detalle: "Toca la red / invasión" },
   { key: "filtrada", label: "Filtrada (B=)", tipo: "neg", detalle: "Filtrada entre las manos del bloqueo" },
 ];
 
@@ -531,7 +531,7 @@ export default function TablaEstadisticasCrudas({
                 : "bg-white/5 text-violet-300 border-violet-500/40 hover:bg-violet-500/10"
             }`}
           >
-            {verConsecuencias ? "🔍 Cerrar consecuencias" : "🔍 Consecuencias"}
+            {verConsecuencias ? "✕ Cerrar consulta" : "🔍 Consulta detallada"}
           </button>
           <button
             onClick={() => setAmpliado((v) => !v)}
@@ -567,7 +567,7 @@ export default function TablaEstadisticasCrudas({
           equipoId={equipoId}
           partidoId={partidoId ?? null}
           nombreDeJugador={(id) => nombreDe(id)}
-          titulo="Consultas analíticas"
+          titulo="Consulta detallada"
         />
       )}
 

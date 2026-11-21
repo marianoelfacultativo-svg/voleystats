@@ -701,7 +701,7 @@ export default function Partidos({ equipoId, nombreEquipo }: Props) {
                         equipoId={equipoId}
                         partidoId={partidoDetalle?.id ?? null}
                         nombreDeJugador={nombreDe}
-                        titulo="Consultas analíticas del partido"
+                        titulo="Consulta detallada"
                       />
                     </section>
 

@@ -2,7 +2,7 @@
 // LLM TO PIPELINE — Validación semántica y preparación del pipeline
 // ============================================================
 
-import type { ConsultaPipeline } from "./pipelineSchema";
+import type { ConsultaPipeline, FiltroExpr } from "./pipelineSchema";
 import {
   CAMPOS_ACCION,
   CAMPOS_PUNTO,
@@ -13,6 +13,25 @@ export type ResultadoLLMToPipeline =
   | { tipo: "ok"; pipeline: ConsultaPipeline }
   | { tipo: "clarification"; pregunta: string }
   | { tipo: "error"; mensaje: string };
+
+function validarExpr(expr: FiltroExpr, camposValidos: readonly string[]): string | null {
+  switch (expr.kind) {
+    case "filter":
+      if (!camposValidos.includes(expr.campo)) {
+        return `El campo de filtro '${expr.campo}' no es válido para la entidad.`;
+      }
+      return null;
+    case "and":
+    case "or":
+      for (const c of expr.children) {
+        const err = validarExpr(c, camposValidos);
+        if (err) return err;
+      }
+      return null;
+    case "not":
+      return validarExpr(expr.child, camposValidos);
+  }
+}
 
 export function llmToPipeline(consulta: ConsultaPipeline): ResultadoLLMToPipeline {
   if (consulta.needsClarification) {
@@ -34,7 +53,7 @@ export function llmToPipeline(consulta: ConsultaPipeline): ResultadoLLMToPipelin
   const camposValidos: readonly string[] =
     consulta.entidad_base === "puntos" ? CAMPOS_PUNTO : CAMPOS_ACCION;
 
-  // 1. Validar campos de filtros
+  // 1. Validar filtros legacy (Filtro[])
   if (consulta.filtros && Array.isArray(consulta.filtros)) {
     for (const f of consulta.filtros) {
       if (!camposValidos.includes(f.campo)) {
@@ -43,6 +62,23 @@ export function llmToPipeline(consulta: ConsultaPipeline): ResultadoLLMToPipelin
           mensaje: `El campo de filtro '${f.campo}' no es válido para la entidad '${consulta.entidad_base}'.`,
         };
       }
+    }
+  }
+
+  // 1b. Validar filtro nuevo (AST o array)
+  if (consulta.filtro) {
+    if (Array.isArray(consulta.filtro)) {
+      for (const f of consulta.filtro) {
+        if (!camposValidos.includes(f.campo)) {
+          return {
+            tipo: "error",
+            mensaje: `El campo de filtro '${f.campo}' no es válido para la entidad '${consulta.entidad_base}'.`,
+          };
+        }
+      }
+    } else {
+      const err = validarExpr(consulta.filtro, camposValidos);
+      if (err) return { tipo: "error", mensaje: err };
     }
   }
 

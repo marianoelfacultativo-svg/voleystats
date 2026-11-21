@@ -20,11 +20,54 @@ export interface Filtro {
   valor: string | number | boolean | Array<string | number | boolean>;
 }
 
+// ------------------------------------------------------------
+// AST DE FILTROS (v48 — Fase 1)
+// ------------------------------------------------------------
+// Un filtro puede expresarse como:
+//   - Filtro[]    → legacy, se interpreta como AND de todos.
+//   - FiltroExpr  → AST con and/or/not/filter.
+// El motor SIEMPRE normaliza a FiltroExpr antes de evaluar.
+
+export type FiltroExpr =
+  | { kind: "filter"; campo: string; operador: Operador; valor: string | number | boolean | Array<string | number | boolean> }
+  | { kind: "and"; children: FiltroExpr[] }
+  | { kind: "or";  children: FiltroExpr[] }
+  | { kind: "not"; child: FiltroExpr };
+
+export type FiltroInput = Filtro[] | FiltroExpr;
+
+export function normalizarFiltros(input?: FiltroInput | null): FiltroExpr | null {
+  if (!input) return null;
+  if (Array.isArray(input)) {
+    if (input.length === 0) return null;
+    return {
+      kind: "and",
+      children: input.map(f => ({ kind: "filter", campo: f.campo, operador: f.operador, valor: f.valor })),
+    };
+  }
+  return input;
+}
+
+export function esFiltroExprValido(v: unknown): v is FiltroExpr {
+  if (!v || typeof v !== "object") return false;
+  const e = v as Record<string, unknown>;
+  if (e.kind === "filter") {
+    return typeof e.campo === "string" && typeof e.operador === "string" && e.valor !== undefined;
+  }
+  if (e.kind === "and" || e.kind === "or") {
+    return Array.isArray(e.children) && e.children.every(esFiltroExprValido);
+  }
+  if (e.kind === "not") {
+    return esFiltroExprValido(e.child);
+  }
+  return false;
+}
+
 export interface Metrica {
   tipo: TipoMetrica;
   campo?: string;
-  filtros_numerador?: Filtro[];
-  filtros_denominador_negativo?: Filtro[];
+  filtros_numerador?: FiltroInput;             // antes: Filtro[]
+  filtros_denominador_negativo?: FiltroInput;  // antes: Filtro[]
 }
 
 export interface Agrupacion {
@@ -33,7 +76,8 @@ export interface Agrupacion {
 
 export interface ConsultaPipeline {
   entidad_base: EntidadBase;
-  filtros?: Filtro[];
+  filtro?: FiltroInput;   // NUEVO — AST o array (preferido)
+  filtros?: Filtro[];     // legacy, deprecado, se normaliza a AND
   agrupacion?: Agrupacion;
   metrica: Metrica;
   orden?: "asc" | "desc";
@@ -47,6 +91,7 @@ export const CAMPOS_ACCION = [
   "rotacion_numero", "rol_jugador", "zona_origen", "zona_destino",
   "zona_jugador", "fase_rally", "tipo_saque", "variante", "velocidad",
   "es_error", "lado", "equipo_id", "partido_id", "desenlace", "valoracion", "puntaje",
+  "resultado_set", "resultado_partido", "ganador_punto", "calidad_recepcion",
 ] as const;
 
 export const CAMPOS_PUNTO = [
@@ -220,6 +265,7 @@ export function esConsultaPipelineValida(v: unknown): v is ConsultaPipeline {
   const metricasValidas: TipoMetrica[] = ["count", "sum", "avg", "percentage", "efficiency"];
   if (!metricasValidas.includes(m.tipo as TipoMetrica)) return false;
 
+  // Legacy: filtros: Filtro[]
   if (c.filtros !== undefined) {
     if (!Array.isArray(c.filtros)) return false;
     for (const f of c.filtros) {
@@ -227,6 +273,20 @@ export function esConsultaPipelineValida(v: unknown): v is ConsultaPipeline {
       if (typeof f.campo !== "string" || typeof f.operador !== "string" || f.valor === undefined) {
         return false;
       }
+    }
+  }
+
+  // Nuevo: filtro: FiltroInput (array o AST)
+  if (c.filtro !== undefined) {
+    if (Array.isArray(c.filtro)) {
+      for (const f of c.filtro) {
+        if (!f || typeof f !== "object") return false;
+        if (typeof f.campo !== "string" || typeof f.operador !== "string" || f.valor === undefined) {
+          return false;
+        }
+      }
+    } else {
+      if (!esFiltroExprValido(c.filtro)) return false;
     }
   }
 
@@ -259,7 +319,9 @@ REGLAS DE ORO:
 4. CAMPOS DISPONIBLES EN ACCIONES:
    tipo, subtipo, es_rival, jugador_id, set_numero, punto_numero, rotacion_numero, rol_jugador,
    zona_origen, zona_destino, zona_jugador, fase_rally, tipo_saque, variante, velocidad,
-   es_error, lado, desenlace, valoracion, puntaje.
+   es_error, lado, desenlace, valoracion, puntaje,
+   resultado_set ("set_ganado" | "set_perdido"), resultado_partido ("partido_ganado" | "partido_perdido"),
+   ganador_punto ("propio" | "rival"), calidad_recepcion ("perfecta" | "positiva" | "intermedia" | "negativa" | "error").
 5. CAMPOS DISPONIBLES EN PUNTOS:
    set_numero, punto_numero, partido_id, fase, ganador ("propio" | "rival"), es_tie_break,
    resultado_set, resultado_partido, cruces, diferencia_marcador, es_primer_toque.

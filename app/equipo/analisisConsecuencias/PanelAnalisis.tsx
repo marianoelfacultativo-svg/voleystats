@@ -37,7 +37,6 @@ import {
 } from "./constantes";
 import { selectCls, construirFiltros, resumenBloque } from "./helpers";
 import { bloqueVacio, type ConfiguracionPanel } from "./types";
-import PanelBusqueda from "./PanelBusqueda";
 import BloqueEditor from "./BloqueEditor";
 import ComparadoresSection from "./ComparadoresSection";
 import SeccionComportamiento from "./SeccionComportamiento";
@@ -185,14 +184,6 @@ export default function PanelAnalisis({
       </div>
 
       <div className="p-3 space-y-2">
-        <PanelBusqueda
-          acciones={acciones}
-          config={config}
-          setConfig={setConfig}
-          jugadoresParaDropdown={jugadoresParaDropdown}
-          partidosDisponibles={partidosDisponibles}
-        />
-
         <div className="space-y-1.5">
           {config.bloques.map((b, idx) => (
             <div key={b.id}>

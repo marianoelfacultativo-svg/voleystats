@@ -30,7 +30,7 @@ import MapaCalorTendencia from "./MapaCalorTendencia";
 import ImagenAmpliable from "./ImagenAmpliable";
 import GraficoBarrasFundamento from "./GraficoBarrasFundamento";
 import MapaCalorJugador from "./MapaCalorJugador";
-import AnalisisConsecuencias from "./AnalisisConsecuencias";
+import ConsultaPanelLLM from "./ConsultaPanelLLM";
 import IconoVoley from "./IconoVoley";
 import { descargarComoPDF } from "@/lib/exportarPDF";
 import { valoracionVisualDeAccion } from "@/lib/analisis/valoracionVisual";
@@ -1045,25 +1045,13 @@ export default function MiEquipo({ equipoId, nombreEquipo }: Props) {
                   </div>
                 </div>
 
-                {/* ANÁLISIS DE CONSECUENCIAS */}
-                <div
-                  className="pt-6"
-                  style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
-                  data-pdf-ignorar
-                >
-                  {cargandoVisuales ? (
-                    <p className="text-xs text-slate-500 text-center py-3">
-                      Cargando datos para el análisis...
-                    </p>
-                  ) : (
-                    <AnalisisConsecuencias
-                      acciones={accionesVisuales}
-                      jugadorId={jugadorSeleccionado ?? undefined}
-                      nombreDeJugador={nombreDeJugador}
-                      jugadoresDisponibles={jugadoresDisponibles}
-                      titulo={`Consecuencias tácticas · ${datosJugador.nombre}`}
-                    />
-                  )}
+                {/* CONSULTA DETALLADA */}
+                <div className="pt-6" data-pdf-ignorar>
+                  <ConsultaPanelLLM
+                    equipoId={equipoId}
+                    nombreDeJugador={nombreDeJugador}
+                    titulo="Consulta detallada"
+                  />
                 </div>
               </div>
             )

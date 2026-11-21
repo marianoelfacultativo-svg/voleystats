@@ -1,25 +1,15 @@
 "use client";
 
 // ============================================================
-// CONSULTA PANEL LLM — UI del flujo Groq → motor
+// CONSULTA PANEL LLM — Buscador limpio: "Consulta detallada"
 // ============================================================
-// Reemplaza al `ConsultaPanel` viejo (parser de diccionarios).
-// Llama a `/api/consultar` en el server, que:
-//   1. Carga Supabase.
-//   2. Traduce el prompt con Groq.
-//   3. Ejecuta la consulta con el motor.
-//   4. Devuelve `ResultadoConsultaLLM`.
-//
-// El render reutiliza `ConsultaResultado` (mapeando a
-// `ResultadoConsultaExtendido`), así no duplicamos UI de tablas,
-// gráficos, etc.
-//
-// `partidoId` opcional:
-//   · null/undefined → consulta sobre TODOS los partidos del equipo.
-//   · string         → consulta sobre ESE partido.
+// Interfaz unificada de consulta en lenguaje natural para VoleyStats.
+// Llama a /api/consultar (Groq -> pipelineEngine) y muestra los
+// resultados a través de ConsultaResultado (tarjetas, tablas, rankings).
 // ============================================================
 
 import { useState } from "react";
+import { Search, Sparkles, X, ArrowRight, Loader2 } from "lucide-react";
 import ConsultaResultado from "./analisisConsecuencias/ConsultaResultado";
 import type { ResultadoConsultaLLM } from "@/lib/consultaAnalitica/ejecutarConsultaLLM";
 import type { ResultadoConsultaExtendido } from "@/lib/consultaAnalitica/tipos";
@@ -38,36 +28,31 @@ interface Props {
 }
 
 // ------------------------------------------------------------
-// EJEMPLOS CONTEXTUALES (para chips debajo del input)
+// EJEMPLOS SUGERIDOS
 // ------------------------------------------------------------
 
-function obtenerEjemplosContextuales(partidoId?: string | null): string[] {
+function obtenerSugerencias(partidoId?: string | null): string[] {
   if (partidoId) {
     return [
-      "cuántos puntos ganamos en k1",
       "kill % por jugador",
-      "distribución de ataques por zona destino",
-      "cuántos aces y saques positivos",
+      "aces y saques positivos",
+      "puntos ganados en k1",
       "errores de saque por set",
       "errores de bloqueo",
-      "bloqueos neutros y positivos",
       "defensas positivas por jugador",
+      "distribución de ataques por zona",
       "efectividad en side-out",
-      "puntos por rotación",
-      "promedio de puntaje de recepción",
     ];
   }
   return [
-    "efectividad en sets ganados vs sets perdidos",
-    "cómo atacan en k1 en general",
+    "kill % por jugador",
+    "aces en total",
+    "efectividad en sets ganados vs perdidos",
+    "cómo atacan en k1",
     "ranking de jugadores por puntos",
-    "distribución de errores por rotación",
-    "porcentaje de recepciones perfectas por jugador",
-    "cuántos aces en total",
     "errores de bloqueo por jugador",
+    "porcentaje de recepciones perfectas",
     "defensas de toque vs remate",
-    "promedio de ataques por partido",
-    "kill % del punta 1",
   ];
 }
 
@@ -75,13 +60,6 @@ function obtenerEjemplosContextuales(partidoId?: string | null): string[] {
 // HELPERS
 // ------------------------------------------------------------
 
-/**
- * El motor devuelve `ResultadoConsultaLLM` (con `respuesta`, `meta`,
- * `debug`). `ConsultaResultado` espera `ResultadoConsultaExtendido`
- * (con `parserInfo`, `accionesFiltradas`, etc.).
- *
- * Los mapeamos para reutilizar toda la UI de render.
- */
 function aResultadoExtendido(
   data: Extract<ResultadoConsultaLLM, { tipo: "ok" }>
 ): ResultadoConsultaExtendido {
@@ -112,19 +90,22 @@ export default function ConsultaPanelLLM({
   equipoId,
   partidoId = null,
   nombreDeJugador,
-  titulo = "Consultas analíticas",
+  titulo = "Consulta detallada",
 }: Props) {
   const [prompt, setPrompt] = useState("");
   const [cargando, setCargando] = useState(false);
-  const [resultado, setResultado] = useState<ResultadoConsultaLLM | null>(
-    null
-  );
+  const [resultado, setResultado] = useState<ResultadoConsultaLLM | null>(null);
 
   const hayDatos = !!equipoId;
+  const sugerencias = obtenerSugerencias(partidoId);
 
-  const consultar = async () => {
-    const p = prompt.trim();
-    if (!p || cargando || !hayDatos) return;
+  const consultar = async (textoAEnviar?: string) => {
+    const texto = (textoAEnviar ?? prompt).trim();
+    if (!texto || cargando || !hayDatos) return;
+
+    if (textoAEnviar && textoAEnviar !== prompt) {
+      setPrompt(textoAEnviar);
+    }
 
     setCargando(true);
     setResultado(null);
@@ -133,25 +114,25 @@ export default function ConsultaPanelLLM({
       const res = await fetch("/api/consultar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: p, equipoId, partidoId }),
+        body: JSON.stringify({ prompt: texto, equipoId, partidoId }),
       });
       const data: ResultadoConsultaLLM = await res.json();
       setResultado(data);
     } catch (e) {
       setResultado({
         tipo: "error",
-        mensaje: `Error de red al llamar a /api/consultar: ${
+        mensaje: `Error de red al consultar: ${
           e instanceof Error ? e.message : "desconocido"
         }`,
-        promptOriginal: p,
+        promptOriginal: texto,
       });
     } finally {
       setCargando(false);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
       e.preventDefault();
       void consultar();
     }
@@ -164,181 +145,155 @@ export default function ConsultaPanelLLM({
 
   return (
     <div className="space-y-3">
-      {/* ============ HEADER ============ */}
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <div>
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            <span className="text-base">🔎</span>
-            <span>{titulo}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded border border-cyan-400/40 bg-cyan-500/10 text-cyan-200 uppercase tracking-wider">
-              LLM
-            </span>
-          </h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">
-            Escribí tu pregunta en español. Groq la traduce a JSON y el
-            motor calcula.
-          </p>
+      {/* ============ HEADER LIMPIO ============ */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+            <Search size={15} />
+          </div>
+          <div>
+            <h3 className="text-sm sm:text-base font-bold text-white tracking-tight">
+              {titulo}
+            </h3>
+            <p className="text-[11px] text-slate-400">
+              Consultá estadísticas, rendimiento o secuencias tácticas en lenguaje natural.
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* ============ INPUT ============ */}
-      <div
-        className="rounded-lg border border-white/10 bg-white/[0.02] p-2 space-y-2"
-        style={{ background: "rgba(255,255,255,0.02)" }}
-      >
-        <textarea
+      {/* ============ BUSCADOR LIMPIO ============ */}
+      <div className="relative flex items-center w-full rounded-xl bg-slate-900/90 border border-slate-700/60 hover:border-cyan-500/40 focus-within:border-cyan-400 focus-within:ring-2 focus-within:ring-cyan-500/20 transition-all shadow-inner">
+        <Search size={16} className="text-slate-400 ml-3.5 mr-2 shrink-0 pointer-events-none" />
+        <input
+          type="text"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={!hayDatos || cargando}
           placeholder={
             hayDatos
-              ? "Ej: cómo atacan en k1, cuántos ataques positivos, negativos y neutros"
-              : "Falta equipoId."
+              ? "Ej: kill % por jugador, efectividad en K1, errores de saque por set..."
+              : "Cargando datos del equipo..."
           }
-          rows={2}
-          className="w-full bg-slate-900 text-white text-[12px] rounded px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-cyan-400/60 placeholder:text-slate-600 disabled:opacity-40 resize-none"
+          className="w-full bg-transparent text-white text-xs sm:text-sm py-2.5 pr-28 outline-none placeholder:text-slate-500 disabled:opacity-50"
         />
 
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex flex-wrap gap-1 items-center">
-            {prompt && (
-              <button
-                onClick={limpiar}
-                disabled={cargando}
-                className="text-[10px] px-2 py-0.5 rounded border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 disabled:opacity-40"
-              >
-                ✕ Limpiar
-              </button>
-            )}
-            <span className="text-[10px] text-slate-500 italic">
-              Enter para consultar · Shift+Enter para nueva línea
-            </span>
-          </div>
+        <div className="absolute right-1.5 flex items-center gap-1.5">
+          {prompt && !cargando && (
+            <button
+              type="button"
+              onClick={limpiar}
+              className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition"
+              title="Limpiar"
+            >
+              <X size={14} />
+            </button>
+          )}
+
           <button
-            onClick={consultar}
+            type="button"
+            onClick={() => void consultar()}
             disabled={!hayDatos || !prompt.trim() || cargando}
-            className={`text-xs font-bold px-3 py-1 rounded transition ${
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm ${
               hayDatos && prompt.trim() && !cargando
-                ? "bg-cyan-500 hover:bg-cyan-400 text-white shadow"
-                : "bg-white/5 text-slate-500 cursor-not-allowed border border-white/10"
+                ? "bg-cyan-500 hover:bg-cyan-400 text-slate-950 active:scale-95"
+                : "bg-white/5 text-slate-500 cursor-not-allowed border border-white/5"
             }`}
           >
-            {cargando ? "Consultando..." : "Consultar"}
+            {cargando ? (
+              <>
+                <Loader2 size={13} className="animate-spin" />
+                <span className="hidden sm:inline">Buscando...</span>
+              </>
+            ) : (
+              <>
+                <span>Buscar</span>
+                <ArrowRight size={13} />
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      {/* ============ EJEMPLOS ============ */}
-      {!resultado && !cargando && (
-        <div>
-          <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">
-            Ejemplos {partidoId ? "del partido" : "generales"}
-          </p>
-          <div className="flex flex-wrap gap-1">
-            {obtenerEjemplosContextuales(partidoId).map((sug, i) => (
-              <button
-                key={`${sug}-${i}`}
-                onClick={() => setPrompt(sug)}
-                disabled={!hayDatos}
-                className="text-[10px] px-2 py-0.5 rounded border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 disabled:opacity-40"
-              >
-                {sug}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* ============ CHIPS DE SUGERENCIAS ============ */}
+      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+        <span className="text-[11px] text-slate-400 font-medium mr-1 flex items-center gap-1">
+          <Sparkles size={11} className="text-cyan-400/80" />
+          Sugerencias:
+        </span>
+        {sugerencias.slice(0, 5).map((sug, i) => (
+          <button
+            key={`${sug}-${i}`}
+            type="button"
+            onClick={() => void consultar(sug)}
+            disabled={!hayDatos || cargando}
+            className="text-[11px] px-2.5 py-0.5 rounded-full border border-slate-700/50 bg-slate-800/40 text-slate-300 hover:text-cyan-200 hover:border-cyan-500/40 hover:bg-cyan-500/10 transition-colors disabled:opacity-40"
+          >
+            {sug}
+          </button>
+        ))}
+      </div>
 
       {/* ============ LOADING ============ */}
       {cargando && (
-        <div className="flex items-center gap-2 text-[11px] text-slate-400 py-3">
-          <div className="w-3 h-3 border-2 border-cyan-500/40 border-t-cyan-400 rounded-full animate-spin" />
-          <span>El LLM está traduciendo tu pedido...</span>
+        <div className="flex items-center gap-2 text-xs text-cyan-300 py-3 px-1">
+          <Loader2 size={15} className="animate-spin text-cyan-400 shrink-0" />
+          <span>Analizando jugadas y calculando estadísticas...</span>
         </div>
       )}
 
       {/* ============ RESULTADO: OK ============ */}
       {resultado && resultado.tipo === "ok" && (
-        <div className="space-y-2">
+        <div className="space-y-3 pt-1">
           {resultado.avisos.length > 0 && (
-            <div className="rounded border border-amber-500/40 bg-amber-500/10 p-2 space-y-0.5">
-              <p className="text-[10px] font-bold text-amber-200">
-                ⚠️ Avisos del motor
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 space-y-0.5">
+              <p className="text-[11px] font-bold text-amber-200">
+                Avisos del análisis
               </p>
               {resultado.avisos.map((a, i) => (
-                <p key={i} className="text-[10px] text-amber-100">
-                  · {a}
+                <p key={i} className="text-[11px] text-amber-100">
+                  • {a}
                 </p>
               ))}
             </div>
-          )}
-
-          {/* D.1 — Debug JSON colapsable */}
-          {resultado.debug && (
-            <details
-              data-pdf-ignorar
-              className="rounded-lg border border-cyan-500/20 bg-slate-950/40 p-2 text-[11px] text-slate-400 group"
-            >
-              <summary className="cursor-pointer font-mono font-medium text-cyan-300 hover:text-cyan-200 select-none flex items-center justify-between">
-                <span>
-                  🔧 Debug del Pipeline ({resultado.debug.accionesFiltradas}/
-                  {resultado.debug.accionesUniverso} filas ·{" "}
-                  {resultado.debug.intentosTraduccion} intento
-                  {resultado.debug.intentosTraduccion !== 1 ? "s" : ""})
-                </span>
-                <span className="text-[10px] text-slate-500 group-open:rotate-180 transition-transform">
-                  ▼
-                </span>
-              </summary>
-              <div className="mt-2 space-y-2">
-                <div className="flex flex-wrap gap-4 text-[10px] text-slate-400 font-mono">
-                  <span>
-                    Filtradas:{" "}
-                    <strong className="text-white">
-                      {resultado.debug.accionesFiltradas}
-                    </strong>
-                  </span>
-                  <span>
-                    Universo:{" "}
-                    <strong className="text-white">
-                      {resultado.debug.accionesUniverso}
-                    </strong>
-                  </span>
-                  <span>
-                    Intentos:{" "}
-                    <strong className="text-white">
-                      {resultado.debug.intentosTraduccion}
-                    </strong>
-                  </span>
-
-                </div>
-                {resultado.debug.consultaLLM && (
-                  <pre className="p-2 rounded bg-slate-900 border border-white/5 font-mono text-[10px] text-cyan-200/90 overflow-x-auto">
-                    {JSON.stringify(resultado.debug.consultaLLM, null, 2)}
-                  </pre>
-                )}
-              </div>
-            </details>
           )}
 
           <ConsultaResultado
             resultado={aResultadoExtendido(resultado)}
             nombreDeJugador={nombreDeJugador}
           />
+
+          {/* Detalles técnicos discretos */}
+          {resultado.debug && (
+            <div className="flex justify-end pt-1">
+              <details
+                data-pdf-ignorar
+                className="text-[10px] text-slate-500"
+              >
+                <summary className="cursor-pointer hover:text-slate-400 select-none">
+                  Detalles técnicos ({resultado.debug.accionesFiltradas}/{resultado.debug.accionesUniverso} filas)
+                </summary>
+                <div className="mt-2 p-2 rounded-lg bg-slate-950/60 border border-white/5 space-y-1">
+                  <pre className="p-2 rounded bg-slate-900 border border-white/5 font-mono text-[9px] text-cyan-200/80 overflow-x-auto max-h-40">
+                    {JSON.stringify(resultado.debug.consultaLLM, null, 2)}
+                  </pre>
+                </div>
+              </details>
+            </div>
+          )}
         </div>
       )}
 
       {/* ============ RESULTADO: ACLARACIÓN ============ */}
       {resultado && resultado.tipo === "clarification" && (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-500/[0.08] p-3 space-y-2">
-          <p className="text-[11px] font-bold text-amber-200">
-            ❓ El LLM necesita una aclaración
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/[0.08] p-3 space-y-1.5">
+          <p className="text-xs font-bold text-amber-200">
+            Aclaración necesaria
           </p>
-          <p className="text-[12px] text-amber-100">{resultado.pregunta}</p>
-          <p className="text-[10px] text-amber-200/70 italic">
-            Reformulá tu pedido con más detalle (qué métrica, qué dimensión,
-            qué filtro).
+          <p className="text-xs text-amber-100">{resultado.pregunta}</p>
+          <p className="text-[11px] text-amber-200/70 italic">
+            Reformulá tu consulta con más detalle (ej: qué fundamento, qué set o qué jugador).
           </p>
         </div>
       )}
@@ -346,15 +301,15 @@ export default function ConsultaPanelLLM({
       {/* ============ RESULTADO: AMBIGUO ============ */}
       {resultado && resultado.tipo === "ambiguo" && (
         <div className="rounded-lg border border-rose-500/40 bg-rose-500/[0.08] p-3 space-y-2">
-          <p className="text-[11px] font-bold text-rose-200">
-            ⚠️ Ambigüedad en el jugador
+          <p className="text-xs font-bold text-rose-200">
+            Múltiples jugadores coinciden
           </p>
-          <p className="text-[12px] text-rose-100">{resultado.aviso}</p>
+          <p className="text-xs text-rose-100">{resultado.aviso}</p>
           <div className="flex flex-wrap gap-1">
             {resultado.candidatos.map((j) => (
               <span
                 key={j.id}
-                className="text-[10px] px-1.5 py-0.5 rounded border border-rose-500/40 bg-rose-500/10 text-rose-200 font-mono"
+                className="text-[10px] px-2 py-0.5 rounded border border-rose-500/40 bg-rose-500/10 text-rose-200 font-mono"
               >
                 {j.nombre}
                 {j.apodo ? ` "${j.apodo}"` : ""}
@@ -362,31 +317,28 @@ export default function ConsultaPanelLLM({
               </span>
             ))}
           </div>
-          <p className="text-[10px] text-rose-200/70 italic">
-            Probá con nombre completo, apodo o #número.
+          <p className="text-[11px] text-rose-200/70 italic">
+            Probá escribiendo el nombre completo, su apodo o #número de camiseta.
           </p>
         </div>
       )}
 
-      {/* ============ RESULTADO: ERROR (D.3) ============ */}
+      {/* ============ RESULTADO: ERROR ============ */}
       {resultado && resultado.tipo === "error" && (
-        <div className="rounded-lg border border-rose-500/40 bg-rose-500/[0.08] p-3 space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm">❌</span>
-            <p className="text-[11px] font-bold text-rose-200">
-              No pude interpretar la consulta
-            </p>
-          </div>
-          <p className="text-[12px] text-rose-100 font-mono bg-rose-950/40 p-2 rounded border border-rose-500/20">
+        <div className="rounded-lg border border-rose-500/40 bg-rose-500/[0.08] p-3.5 space-y-2">
+          <p className="text-xs font-bold text-rose-200">
+            No pude interpretar la consulta
+          </p>
+          <p className="text-xs text-rose-100 font-mono bg-rose-950/40 p-2 rounded border border-rose-500/20">
             {resultado.mensaje}
           </p>
           <div className="text-[11px] text-slate-300 space-y-1">
-            <p className="font-semibold text-rose-200/90">Tips para reformular:</p>
-            <ul className="list-disc list-inside text-[10px] text-slate-400 space-y-0.5">
-              <li>Indicá la acción específica: saque, recepción, ataque, bloqueo, defensa o armado.</li>
+            <p className="font-semibold text-rose-200/90">Sugerencias para consultar:</p>
+            <ul className="list-disc list-inside text-[11px] text-slate-400 space-y-0.5">
+              <li>Indicá la acción: saque, recepción, ataque, bloqueo, defensa o armado.</li>
               <li>Aclará si buscás puntos ganados (desenlace) o calidad (positivo/negativo).</li>
               <li>Si preguntás por un jugador, usá su nombre, apodo o número (#).</li>
-              <li>Probá con preguntas más directas como &quot;cuántos aces&quot; o &quot;kill % de Mariano&quot;.</li>
+              <li>Probá con una de las sugerencias rápidas arriba.</li>
             </ul>
           </div>
           {resultado.promptOriginal && (
