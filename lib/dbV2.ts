@@ -2,6 +2,11 @@
 // ACCESO A DATOS V2 — puntos_v2 + acciones_v2
 // Puente entre la consola V2 y Supabase
 // ============================================================
+//
+// v49.1: borrarTodosV2 ya no toca rotaciones_v2 (tabla
+// eliminada de Supabase — era huérfana, nadie la leía ni
+// escribía; solo un DELETE muerto acá).
+// ============================================================
 
 import { supabase } from "./supabase";
 
@@ -357,6 +362,9 @@ export async function borrarPuntoV2PorCoordenadas(
 // ------------------------------------------------------------
 // 5. LIMPIAR TODO EL PARTIDO
 // ------------------------------------------------------------
+// v49.1: se elimina el DELETE de rotaciones_v2. Esa tabla era
+// huérfana (nadie la leía ni escribía; solo este DELETE muerto
+// la mencionaba) y fue dropeada de Supabase.
 
 export async function borrarTodosV2(
   partidoId: string
@@ -375,14 +383,6 @@ export async function borrarTodosV2(
     .eq("partido_id", partidoId);
   if (errPuntos) {
     return { ok: false, error: `puntos_v2: ${errPuntos.message}` };
-  }
-
-  const { error: errRot } = await supabase
-    .from("rotaciones_v2")
-    .delete()
-    .eq("partido_id", partidoId);
-  if (errRot) {
-    return { ok: false, error: `rotaciones_v2: ${errRot.message}` };
   }
 
   return { ok: true };
