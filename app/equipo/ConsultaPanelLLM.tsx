@@ -124,7 +124,10 @@ export default function ConsultaPanelLLM({
         mensaje: `Error de red al consultar: ${
           e instanceof Error ? e.message : "desconocido"
         }`,
-        promptOriginal: texto,
+        errorTecnico: e instanceof Error ? e.stack ?? e.message : "desconocido",
+        promptOriginal: "",
+        intentos: 0,
+        pipelineIntentos: [],
       });
     } finally {
       setCargando(false);
