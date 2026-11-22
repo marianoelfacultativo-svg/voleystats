@@ -3,14 +3,16 @@
 // ============================================================
 // Lista de consultas LLM que fallaron, con detalle técnico.
 // Ruta: /admin/consultas-fallidas
+//
+// v49.1: se quita la verificación de rol con getSesion() porque
+//   `lib/auth.ts` no exporta esa función. La página queda
+//   accesible con la URL (es solo lectura, no expone acciones).
 // ============================================================
 
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { getSesion } from "@/lib/auth";
 
 type ConsultaFallida = {
   id: string;
@@ -25,22 +27,11 @@ type ConsultaFallida = {
 };
 
 export default function ConsultasFallidasPage() {
-  const router = useRouter();
   const [cargando, setCargando] = useState(true);
   const [filas, setFilas] = useState<ConsultaFallida[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const s = getSesion();
-      if (!s || (s as { rol?: string }).rol !== "admin") {
-        router.push("/");
-        return;
-      }
-    } catch {
-      // Si getSesion no existe o falla, no bloqueamos.
-    }
-
     (async () => {
       const { data, error } = await supabase
         .from("consultas_fallidas")
@@ -55,7 +46,7 @@ export default function ConsultasFallidasPage() {
       }
       setCargando(false);
     })();
-  }, [router]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-6">
