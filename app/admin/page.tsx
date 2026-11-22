@@ -10,6 +10,7 @@ import {
   Database,
   Terminal,
   BarChart2,
+  AlertTriangle,
   LogOut,
 } from "lucide-react";
 import { obtenerSesion, cerrarSesion, type Sesion } from "@/lib/auth";
@@ -44,6 +45,10 @@ import DatosBackup from "./DatosBackup";
 //   + La lista de partidos sigue mostrando el score y el
 //     resultado como información de solo lectura.
 //   + Se elimina el componente `SelectorSetGanado` (ya no se usa).
+//
+// v49.2:
+//   + Botón "Consultas fallidas" en el header (link a
+//     /admin/consultas-fallidas).
 // ============================================================
 
 type Seccion = "equipos" | "jugadores" | "partidos" | "codigos" | "datos";
@@ -641,6 +646,13 @@ export default function AdminPage() {
             >
               <BarChart2 size={13} className="text-slate-500" />
               <span>Estadísticas</span>
+            </button>
+            <button
+              onClick={() => router.push("/admin/consultas-fallidas")}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl shadow-sm transition"
+            >
+              <AlertTriangle size={13} className="text-slate-500" />
+              <span>Consultas fallidas</span>
             </button>
             <button
               onClick={handleCerrar}
