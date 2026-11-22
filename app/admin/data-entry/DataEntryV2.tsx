@@ -95,6 +95,9 @@ interface LocalStorageV2Data {
   liberos: Libero[];
   posicionesPunto: Record<Zona, string>;
   cambiosPendientes: CambioPendiente[];
+  // v3 (bug fix rotaciones): cambios YA aplicados al punto en edición.
+  cambiosAplicadosEnPunto: CambioPendiente[];
+  cambiosAplicadosEnPuntoRival: CambioPendiente[];
   lineas: LineaClasificada[];
   contadorId: number;
   modoEspejo: boolean;
@@ -111,6 +114,7 @@ interface LocalStorageV2Data {
  *   - Cambia la clave de "punto" a "1-punto".
  *   - Inicializa setsCerrados = {}, partidoCerrado = null,
  *     formatoPartido = "bo3".
+ *   - Inicializa cambiosAplicadosEnPunto = [] (v3).
  */
 function migrarV1aV2(raw: any): any {
   const puntosCerradosViejos: Record<number, any> = raw.puntosCerrados ?? {};
@@ -131,6 +135,8 @@ function migrarV1aV2(raw: any): any {
     setsCerrados: raw.setsCerrados ?? {},
     partidoCerrado: raw.partidoCerrado ?? null,
     formatoPartido: raw.formatoPartido ?? "bo3",
+    cambiosAplicadosEnPunto: raw.cambiosAplicadosEnPunto ?? [],
+    cambiosAplicadosEnPuntoRival: raw.cambiosAplicadosEnPuntoRival ?? [],
     version: VERSION_SCHEMA_LOCAL,
   };
 }
@@ -180,6 +186,15 @@ export default function DataEntryV2({
   const [cambiosPendientes, setCambiosPendientes] = useState<CambioPendiente[]>(
     []
   );
+  // v3 (bug fix rotaciones) — Cambios YA aplicados a la rotación en el punto
+  // en edición. Se acumulan al pulsar "Guardar cambios". A diferencia de
+  // `cambiosPendientes`, NO se borran al cerrar un punto: se vuelcan a
+  // `PuntoCerrado.cambios` y se resetean recién después del cierre.
+  const [cambiosAplicadosEnPunto, setCambiosAplicadosEnPunto] = useState<
+    CambioPendiente[]
+  >([]);
+  const [cambiosAplicadosEnPuntoRival, setCambiosAplicadosEnPuntoRival] =
+    useState<CambioPendiente[]>([]);
 
   const [posicionesFijas, setPosicionesFijas] = useState<PosicionesFijasMap>(
     {}
@@ -477,6 +492,8 @@ export default function DataEntryV2({
         liberos,
         posicionesPunto,
         cambiosPendientes,
+        cambiosAplicadosEnPunto,
+        cambiosAplicadosEnPuntoRival,
         lineas,
         contadorId,
         modoEspejo,
@@ -491,7 +508,9 @@ export default function DataEntryV2({
   }, [
     partidoId, hidratado, setActivo, puntoActual, setupCompleto, formatoPartido,
     puntosCerrados, setsCerrados, partidoCerrado, rotacion, saqueInicial,
-    liberos, posicionesPunto, cambiosPendientes, lineas, contadorId,
+    liberos, posicionesPunto, cambiosPendientes,
+    cambiosAplicadosEnPunto, cambiosAplicadosEnPuntoRival,
+    lineas, contadorId,
     modoEspejo, equipoRivalId, rotacionRival, liberosRival,
     posicionesPuntoRival, cambiosPendientesRival,
   ]);
@@ -542,6 +561,8 @@ export default function DataEntryV2({
           if (data.liberos) setLiberos(data.liberos);
           if (data.posicionesPunto) setPosicionesPunto(data.posicionesPunto);
           if (data.cambiosPendientes) setCambiosPendientes(data.cambiosPendientes);
+          if (data.cambiosAplicadosEnPunto) setCambiosAplicadosEnPunto(data.cambiosAplicadosEnPunto);
+          if (data.cambiosAplicadosEnPuntoRival) setCambiosAplicadosEnPuntoRival(data.cambiosAplicadosEnPuntoRival);
           if (data.lineas) setLineas(data.lineas);
           if (data.contadorId) setContadorId(data.contadorId);
         }
@@ -594,6 +615,10 @@ export default function DataEntryV2({
     setNum: number,
     ptoNum: number
   ) => {
+    // v3 (bug fix rotaciones): al navegar a otro punto, los cambios
+    // acumulados del punto anterior no aplican. Se resetean.
+    setCambiosAplicadosEnPunto([]);
+    setCambiosAplicadosEnPuntoRival([]);
     cargarPuntoDesdeHelper(
       puntos,
       sets,
@@ -790,6 +815,10 @@ export default function DataEntryV2({
     setEstrella(null);
     setColaPopups([]);
     setContadorId(1);
+    // v3 (bug fix rotaciones): borrar el punto implica descartar los
+    // cambios que se hubieran acumulado para ese punto.
+    setCambiosAplicadosEnPunto([]);
+    setCambiosAplicadosEnPuntoRival([]);
 
     if (puntoActualCerrado) {
       const copia = { ...puntosCerrados };
@@ -830,6 +859,8 @@ export default function DataEntryV2({
     setLiberos([]);
     setPosicionesPunto({ ...POSICIONES_VACIAS });
     setCambiosPendientes([]);
+    setCambiosAplicadosEnPunto([]);
+    setCambiosAplicadosEnPuntoRival([]);
     setPosicionesFijas({});
     setModoEspejo(false);
     setEquipoRivalId(null);
@@ -891,7 +922,10 @@ export default function DataEntryV2({
       rotacion,
       liberos,
       posicionesPunto,
-      cambios: cambiosPendientes,
+      // v3 (bug fix rotaciones): usamos los cambios ACUMULADOS durante el
+      // punto (los que el usuario guardó con "Guardar cambios"), NO los
+      // pendientes (que se borran al aplicar). Así no llega [] a Supabase.
+      cambios: cambiosAplicadosEnPunto,
       equipoId:
         saqueInicial === "propio" ? equipoId : equipoRivalId ?? undefined,
       estadoRival:
@@ -900,7 +934,7 @@ export default function DataEntryV2({
               rotacion: rotacionRival,
               liberos: liberosRival,
               posicionesPunto: posicionesPuntoRival,
-              cambios: cambiosPendientesRival,
+              cambios: cambiosAplicadosEnPuntoRival,
             }
           : undefined,
     };
@@ -911,6 +945,10 @@ export default function DataEntryV2({
       [clave]: punto,
     };
     setPuntosCerrados(nuevosCerrados);
+
+    // Resetear los cambios acumulados: ya quedaron en el punto.
+    setCambiosAplicadosEnPunto([]);
+    setCambiosAplicadosEnPuntoRival([]);
 
     let propios = 0;
     let rivales = 0;
@@ -994,7 +1032,7 @@ export default function DataEntryV2({
     if (
       !enFullscreen &&
       !confirm(
-        `¿Guardar ${lista.length} punto${lista.length !== 1 ? "s" : ""} en Supabase?\n\nTambién se actualizará el resultado del partido y los sets ganados.\n\nLos mismos puntos se borrarán de las tablas V1 (reemplazo).`
+        `¿Guardar ${lista.length} punto${lista.length !== 1 ? "s" : ""} en Supabase?\n\nTambién se actualizará el resultado del partido y los sets ganados.`
       )
     ) {
       return;
@@ -1035,6 +1073,9 @@ export default function DataEntryV2({
       }
     }
     setRotacion(nueva);
+    // v3 (bug fix rotaciones): acumular los cambios aplicados para que
+    // lleguen a PuntoCerrado.cambios en handleCerrarPunto.
+    setCambiosAplicadosEnPunto((prev) => [...prev, ...cambiosPendientes]);
     setCambiosPendientes([]);
   };
 
@@ -1047,6 +1088,7 @@ export default function DataEntryV2({
       }
     }
     setRotacionRival(nueva);
+    setCambiosAplicadosEnPuntoRival((prev) => [...prev, ...cambiosPendientesRival]);
     setCambiosPendientesRival([]);
   };
 
@@ -1161,7 +1203,7 @@ export default function DataEntryV2({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [colaPopups, lineas, rotacion, setActivo, puntoActual, circuloArmado, circuloSinArmar, desviosPendientes, puntosCerrados, setsCerrados, saqueInicial, situacion, liberos, posicionesPunto, cambiosPendientes, setCerradoActual]);
+  }, [colaPopups, lineas, rotacion, setActivo, puntoActual, circuloArmado, circuloSinArmar, desviosPendientes, puntosCerrados, setsCerrados, saqueInicial, situacion, liberos, posicionesPunto, cambiosPendientes, cambiosAplicadosEnPunto, cambiosAplicadosEnPuntoRival, setCerradoActual]);
 
   // ============================================================
   // SETUP
@@ -1173,6 +1215,48 @@ export default function DataEntryV2({
     if (!rotacion) { alert("Necesitás una rotación antes de comenzar."); return; }
     if (modoEspejo && !equipoRivalId) { alert("Elegí un equipo rival o desactivá el modo espejo."); return; }
     if (modoEspejo && !rotacionRival) { alert("Falta la rotación del equipo rival."); return; }
+
+    // v3 (bug fix rotaciones): si hay cambios pendientes que NO se aplicaron
+    // a la rotación antes de arrancar, aplicarlos ahora. Sin esto, la
+    // rotación arranca con jugador_id: null en varias zonas y
+    // rotacion_numero llega NULL a acciones_v2.
+    if (cambiosPendientes.length > 0) {
+      const nueva = { ...rotacion };
+      for (const c of cambiosPendientes) {
+        if (nueva.posiciones[c.zona]) {
+          nueva.posiciones[c.zona] = {
+            ...nueva.posiciones[c.zona],
+            jugador_id: c.jugadorEntra,
+          };
+        }
+      }
+      setRotacion(nueva);
+      setCambiosAplicadosEnPunto((prev) => [...prev, ...cambiosPendientes]);
+      setCambiosPendientes([]);
+    }
+
+    if (
+      modoEspejo &&
+      rotacionRival &&
+      cambiosPendientesRival.length > 0
+    ) {
+      const nuevaRival = { ...rotacionRival };
+      for (const c of cambiosPendientesRival) {
+        if (nuevaRival.posiciones[c.zona]) {
+          nuevaRival.posiciones[c.zona] = {
+            ...nuevaRival.posiciones[c.zona],
+            jugador_id: c.jugadorEntra,
+          };
+        }
+      }
+      setRotacionRival(nuevaRival);
+      setCambiosAplicadosEnPuntoRival((prev) => [
+        ...prev,
+        ...cambiosPendientesRival,
+      ]);
+      setCambiosPendientesRival([]);
+    }
+
     setSetupCompleto(true);
   };
 

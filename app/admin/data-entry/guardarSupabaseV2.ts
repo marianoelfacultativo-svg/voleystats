@@ -1,19 +1,14 @@
 // ============================================================
 // GUARDAR EN SUPABASE V2 — DataEntryV2
 // Lógica para guardar los puntos cerrados, calcular subtipos,
-// generar aces en contra (modo espejo) y limpiar V1.
+// generar aces en contra (modo espejo) y persistir el partido.
 // ============================================================
 //
-// v2 (FASE 7.1 — DataEntry con sets y partido):
-//   + Recibe `setsCerrados` y `partidoCerrado` además de la
-//     lista de puntos.
-//   + Al final de guardar los puntos, actualiza `partidos`:
-//       · set1_ganado … set5_ganado desde `setsCerrados`
-//         (con flip si el equipo actual es el rival del partido).
-//       · resultado_partido desde `partidoCerrado` (con flip).
-//   + La lógica de subtipos, aces contra y V1 se mantiene igual.
-//
-// v1: solo guardaba puntos_v2 + acciones_v2.
+// v2 (FASE 7.1): sets + resultado del partido.
+// v2.1 (bug fix rotaciones): se elimina la llamada a
+//   borrarPuntoV1DeTablas. Las tablas V1 (rotaciones,
+//   cambios_jugador) están abandonadas por diseño y no hay nada
+//   que borrar. Preparado para el DROP de tablas legacy.
 // ============================================================
 
 import {
@@ -27,7 +22,6 @@ import {
 } from "@/lib/clasificacionV2";
 import { supabase } from "@/lib/supabase";
 import { guardarPuntoV2, type PuntoV2Data } from "@/lib/dbV2";
-import { borrarPuntoV1DeTablas } from "@/lib/db";
 
 import { lineasAAcciones, type ContextoAnalitico } from "./helpersV2";
 import { generarRecepcionesAceContra } from "./helpersEspejoV2";
@@ -68,7 +62,7 @@ export interface ResultadoGuardado {
 }
 
 // ------------------------------------------------------------
-// GUARDADO DE PUNTOS (igual que antes)
+// GUARDADO DE PUNTOS
 // ------------------------------------------------------------
 
 export async function guardarPuntosEnSupabase({
@@ -147,21 +141,11 @@ export async function guardarPuntosEnSupabase({
       if (!primerError) primerError = res.error ?? "desconocido";
       continue;
     }
-
-    const resV1 = await borrarPuntoV1DeTablas(
-      partidoId,
-      pc.set_numero,
-      pc.numero
-    );
-    if (!resV1.ok) {
-      errores++;
-      if (!primerError)
-        primerError = `borrando V1: ${resV1.error ?? "desconocido"}`;
-    }
+    // (v2.1) Ya NO se llama a borrarPuntoV1DeTablas. Las tablas V1
+    // (rotaciones, cambios_jugador) están abandonadas por diseño.
   }
 
   // ---------- 2. Actualizar partidos (sets + resultado) ----------
-  // Si falla esta parte, se suma a los errores.
   const resPartido = await guardarSetsYPartidoEnPartidos({
     partidoId,
     equipoId,

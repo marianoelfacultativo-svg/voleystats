@@ -1,13 +1,8 @@
 // ============================================================
 // EJECUTAR CONSULTA LLM — Orquestador del nuevo Pipeline Universal
 // ============================================================
-// Orquesta el flujo de interpretación y ejecución analítica:
-//   prompt → Groq (ConsultaPipeline) → llmToPipeline
-//   → ejecutarPipeline → ResultadoConsultaLLM
-//
-// ⚠️  SERVER-SIDE ONLY. Importa `traducirPrompt` que lee
-//     `GROQ_API_KEY`. Nunca importar desde un componente
-//     "use client".
+// v2.1 (Bloque 3b): retry 1x con error específico + error estructurado
+//   (mensaje limpio para usuario + errorTecnico para admin).
 // ============================================================
 
 import type {
@@ -27,7 +22,10 @@ import type {
   IntencionQuery,
   TipoIntencion,
 } from "./intenciones";
-import { traducirPrompt } from "./llmTranslator";
+import {
+  traducirPrompt,
+  traducirPromptConCorreccion,
+} from "./llmTranslator";
 import { llmToPipeline } from "./llmToPipeline";
 import { ejecutarPipeline } from "./pipelineEngine";
 
@@ -80,8 +78,11 @@ export type ResultadoConsultaLLM =
     }
   | {
       tipo: "error";
-      mensaje: string;
+      mensaje: string;             // LO QUE VE EL USUARIO (Opción A, limpio)
+      errorTecnico: string;        // LO QUE VE EL ADMIN (detalle)
       promptOriginal: string;
+      intentos: number;
+      pipelineIntentos: ConsultaPipeline[];
       debug?: Partial<DebugConsultaLLM>;
     };
 
@@ -188,51 +189,13 @@ function calcularFiltradasYTotal(
   return { filtradas: 0, total: universoTotal };
 }
 
-export async function ejecutarConsultaLLM(
-  prompt: string,
+// Helper: pipeline YA validado → ejecutar y armar respuesta ok
+function ejecutarYArmarRespuesta(
+  pipeline: ConsultaPipeline,
+  intentosTraduccion: number,
+  promptLimpio: string,
   contexto: ContextoEjecutorLLM
-): Promise<ResultadoConsultaLLM> {
-  const promptLimpio = prompt.trim();
-  if (!promptLimpio) {
-    return {
-      tipo: "error",
-      mensaje: "La consulta está vacía.",
-      promptOriginal: prompt,
-    };
-  }
-
-  // 1. Traducir el prompt con Groq a ConsultaPipeline
-  const traduccion = await traducirPrompt(promptLimpio);
-  if (!traduccion.ok) {
-    return {
-      tipo: "error",
-      mensaje: traduccion.error,
-      promptOriginal: promptLimpio,
-    };
-  }
-
-  const pipelineRaw = traduccion.pipeline;
-
-  // 2. Validar estructura semántica del pipeline
-  const validado = llmToPipeline(pipelineRaw);
-  if (validado.tipo === "clarification") {
-    return {
-      tipo: "clarification",
-      pregunta: validado.pregunta,
-      promptOriginal: promptLimpio,
-    };
-  }
-  if (validado.tipo === "error") {
-    return {
-      tipo: "error",
-      mensaje: validado.mensaje,
-      promptOriginal: promptLimpio,
-    };
-  }
-
-  const pipeline = validado.pipeline;
-
-  // 3. Ejecutar el pipeline
+): ResultadoConsultaLLM {
   const respuesta = ejecutarPipeline(pipeline, {
     acciones: contexto.acciones,
     puntos: contexto.puntos,
@@ -240,12 +203,13 @@ export async function ejecutarConsultaLLM(
     partidos: contexto.partidos,
   });
 
-  // 4. Conteo de acciones para compatibilidad con UI
-  const totalAccionesUniverso = contexto.acciones.filter((a) => !a.oculta).length;
+  const totalAccionesUniverso = contexto.acciones.filter(
+    (a) => !a.oculta
+  ).length;
   const { filtradas, total } = calcularFiltradasYTotal(
     respuesta,
     pipeline.entidad_base === "puntos"
-      ? (contexto.puntos?.length ?? totalAccionesUniverso)
+      ? contexto.puntos?.length ?? totalAccionesUniverso
       : totalAccionesUniverso
   );
 
@@ -265,7 +229,7 @@ export async function ejecutarConsultaLLM(
   const debug: DebugConsultaLLM = {
     promptOriginal: promptLimpio,
     consultaLLM: pipeline,
-    intentosTraduccion: traduccion.intentos,
+    intentosTraduccion,
     intencionFinal: null,
     filtroFinal: null,
     jugadorResuelto: null,
@@ -283,5 +247,108 @@ export async function ejecutarConsultaLLM(
     fragmentos,
     avisos,
     debug,
+  };
+}
+
+// ------------------------------------------------------------
+// ORQUESTADOR PRINCIPAL (con retry del Bloque 3b)
+// ------------------------------------------------------------
+
+export async function ejecutarConsultaLLM(
+  prompt: string,
+  contexto: ContextoEjecutorLLM
+): Promise<ResultadoConsultaLLM> {
+  const promptLimpio = prompt.trim();
+  if (!promptLimpio) {
+    return {
+      tipo: "error",
+      mensaje: "La consulta está vacía.",
+      errorTecnico: "Prompt vacío.",
+      promptOriginal: prompt,
+      intentos: 0,
+      pipelineIntentos: [],
+    };
+  }
+
+  // ── Paso 1: traducción inicial (Groq)
+  const traduccion1 = await traducirPrompt(promptLimpio);
+  if (!traduccion1.ok) {
+    return {
+      tipo: "error",
+      mensaje:
+        "No pude interpretar tu consulta. Probá de nuevo en unos segundos.",
+      errorTecnico: `Traducción inicial falló: ${traduccion1.error}`,
+      promptOriginal: promptLimpio,
+      intentos: traduccion1.intentos,
+      pipelineIntentos: [],
+    };
+  }
+
+  const pipeline1 = traduccion1.pipeline;
+
+  // ── Paso 2: validación semántica (intento 1)
+  const validado1 = llmToPipeline(pipeline1);
+  if (validado1.tipo === "clarification") {
+    return {
+      tipo: "clarification",
+      pregunta: validado1.pregunta,
+      promptOriginal: promptLimpio,
+    };
+  }
+  if (validado1.tipo === "ok") {
+    return ejecutarYArmarRespuesta(
+      validado1.pipeline,
+      traduccion1.intentos,
+      promptLimpio,
+      contexto
+    );
+  }
+
+  // ── Paso 3: retry 1x con error específico (Bloque 3b)
+  const errorValidacion1 = validado1.mensaje;
+  const traduccion2 = await traducirPromptConCorreccion(
+    promptLimpio,
+    pipeline1,
+    errorValidacion1
+  );
+
+  if (!traduccion2.ok) {
+    return {
+      tipo: "error",
+      mensaje:
+        "No pude interpretar tu consulta. Probá reformularla o hacela más específica.",
+      errorTecnico: `Intento 1 (validación): ${errorValidacion1} | Retry (Groq): ${traduccion2.error}`,
+      promptOriginal: promptLimpio,
+      intentos: traduccion1.intentos + traduccion2.intentos,
+      pipelineIntentos: [pipeline1],
+    };
+  }
+
+  const validado2 = llmToPipeline(traduccion2.pipeline);
+  if (validado2.tipo === "clarification") {
+    return {
+      tipo: "clarification",
+      pregunta: validado2.pregunta,
+      promptOriginal: promptLimpio,
+    };
+  }
+  if (validado2.tipo === "ok") {
+    return ejecutarYArmarRespuesta(
+      validado2.pipeline,
+      traduccion1.intentos + traduccion2.intentos,
+      promptLimpio,
+      contexto
+    );
+  }
+
+  // ── Paso 4: falló también el retry → error definitivo
+  return {
+    tipo: "error",
+    mensaje:
+      "No pude interpretar tu consulta. Probá reformularla o hacela más específica.",
+    errorTecnico: `Intento 1 (validación): ${errorValidacion1} | Intento 2 (validación): ${validado2.mensaje}`,
+    promptOriginal: promptLimpio,
+    intentos: traduccion1.intentos + traduccion2.intentos,
+    pipelineIntentos: [pipeline1, traduccion2.pipeline],
   };
 }

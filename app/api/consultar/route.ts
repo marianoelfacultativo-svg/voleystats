@@ -1,14 +1,10 @@
 // ============================================================
 // API ROUTE — POST /api/consultar
 // ============================================================
-// Server-side. Carga Supabase + llama a ejecutarConsultaLLM.
-// La GROQ_API_KEY nunca sale del server.
-//
-// Body: { prompt: string, equipoId: string, partidoId?: string | null }
-//   · partidoId null/undefined → consulta sobre TODOS los partidos del equipo.
-//   · partidoId string         → consulta sobre ESE partido.
-//
-// Devuelve: ResultadoConsultaLLM (ver ejecutarConsultaLLM.ts)
+// v2.1 (Bloque 3b): cuando la consulta falla, persiste en
+//   `consultas_fallidas` para que el admin la vea.
+//   El insert es "best-effort": si falla, igual devolvemos
+//   la respuesta al usuario.
 // ============================================================
 
 import { NextResponse } from "next/server";
@@ -23,22 +19,13 @@ import { ejecutarConsultaLLM } from "@/lib/consultaAnalitica/ejecutarConsultaLLM
 
 export const runtime = "nodejs";
 
-// ------------------------------------------------------------
-// BODY
-// ------------------------------------------------------------
-
 interface Body {
   prompt?: string;
   partidoId?: string | null;
   equipoId?: string;
 }
 
-// ------------------------------------------------------------
-// HANDLER
-// ------------------------------------------------------------
-
 export async function POST(req: Request) {
-  // 1) Parsear body
   let body: Body;
   try {
     body = await req.json();
@@ -70,9 +57,8 @@ export async function POST(req: Request) {
       ? body.partidoId
       : null;
 
-  // 2) Cargar datos desde Supabase
   try {
-    // 2.a) Partidos (uno solo, o todos los del equipo)
+    // 2.a) Partidos
     const { data: partidosRaw, error: errPartidos } = partidoId
       ? await supabase
           .from("partidos")
@@ -105,9 +91,7 @@ export async function POST(req: Request) {
     const partidos = (partidosRaw ?? []).map((p: any) => {
       const espejo = p.equipo_rival_id === equipoId;
 
-      const flipGanado = (
-        v: boolean | null | undefined
-      ): boolean | null => {
+      const flipGanado = (v: boolean | null | undefined): boolean | null => {
         if (v === null || v === undefined) return null;
         return espejo ? !v : v;
       };
@@ -135,7 +119,7 @@ export async function POST(req: Request) {
       };
     });
 
-    // 2.b) Jugadores del equipo
+    // 2.b) Jugadores
     const { data: jeRaw } = await supabase
       .from("jugador_equipo")
       .select("jugador_id")
@@ -160,7 +144,7 @@ export async function POST(req: Request) {
       }));
     }
 
-    // 2.c) Acciones + puntos (del partido específico o de todos)
+    // 2.c) Acciones + puntos
     let acciones: AccionVisual[] = [];
     let puntos: PuntoConAcciones[] = [];
 
@@ -179,7 +163,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3) Ejecutar consulta LLM
+    // 3) Ejecutar consulta LLM (con retry del 3b)
     const resultado = await ejecutarConsultaLLM(prompt, {
       acciones,
       puntos,
@@ -187,7 +171,25 @@ export async function POST(req: Request) {
       partidos,
     });
 
-    // 4) Devolver
+    // 4) Si falló, guardar en Supabase (best-effort, no bloqueante)
+    if (resultado.tipo === "error") {
+      try {
+        await supabase.from("consultas_fallidas").insert({
+          equipo_id: equipoId,
+          partido_id: partidoId,
+          prompt: prompt,
+          mensaje_usuario: resultado.mensaje,
+          error_tecnico: resultado.errorTecnico,
+          intentos: resultado.intentos,
+        });
+      } catch (e) {
+        console.error(
+          "[consultar] Error persistiendo consulta fallida:",
+          e
+        );
+      }
+    }
+
     return NextResponse.json(resultado);
   } catch (e) {
     return NextResponse.json(
@@ -196,7 +198,11 @@ export async function POST(req: Request) {
         mensaje: `Error procesando la consulta: ${
           e instanceof Error ? e.message : "desconocido"
         }`,
+        errorTecnico:
+          e instanceof Error ? e.stack ?? e.message : "desconocido",
         promptOriginal: prompt,
+        intentos: 0,
+        pipelineIntentos: [],
       },
       { status: 500 }
     );

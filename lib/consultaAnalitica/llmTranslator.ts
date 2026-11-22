@@ -1,17 +1,9 @@
 // ============================================================
 // LLM TRANSLATOR — llamada a Groq + validación de ConsultaPipeline
 // ============================================================
-// Traduce el prompt del usuario a `ConsultaPipeline` (JSON tipado)
-// llamando a Groq con el `SYSTEM_PROMPT_PIPELINE` de `pipelineSchema.ts`.
-//
-// ⚠️  SERVER-SIDE ONLY. Usa `GROQ_API_KEY`. Nunca importar este
-//     archivo desde un componente "use client".
-//
 // v2.1: backoff exponencial en 429 (rate limit).
-//   + Detecta 429 y extrae "try again in Xs" del mensaje.
-//   + Espera entre reintentos.
-//   + MAX_INTENTOS = 3.
-//   + Mensaje claro al usuario si después de 3 intentos sigue rate-limited.
+// v2.2 (Bloque 3b): agrega `traducirPromptConCorreccion` — una sola
+//   llamada extra pasándole al LLM el error exacto de validación.
 // ============================================================
 
 import {
@@ -97,7 +89,6 @@ async function llamarGroq(
   if (!res.ok) {
     const texto = await res.text().catch(() => "");
 
-    // Detectar 429 (rate limit) y extraer "try again in Xs"
     let retryAfterMs = RETRY_DEFAULT_MS;
     if (res.status === 429) {
       const m = texto.match(/try again in (\d+(?:\.\d+)?)s/);
@@ -184,7 +175,6 @@ export async function traducirPromptConHistorial(
 
     const llamada = await llamarGroq(messages, true);
 
-    // Si falló por 429, esperar antes del siguiente intento
     if (!llamada.ok && llamada.retryAfterMs !== undefined) {
       fueRateLimit = true;
       ultimoError = llamada.error ?? "Rate limit de Groq.";
@@ -224,5 +214,66 @@ export async function traducirPromptConHistorial(
     error: mensajeFinal,
     intentos: MAX_INTENTOS,
     raw: ultimoRaw,
+  };
+}
+
+// ------------------------------------------------------------
+// v2.2 (Bloque 3b) — RETRY CON ERROR ESPECÍFICO
+// ------------------------------------------------------------
+// Una SOLA llamada extra a Groq. Le pasamos:
+//   - el prompt original,
+//   - el pipeline que devolvió antes (assistant),
+//   - el error exacto que dio la validación (user).
+// El LLM corrige lo necesario y devuelve el JSON de nuevo.
+//
+// NO tiene loop interno: si falla, falla. Cap duro en 1 llamada
+// extra para no gastar tokens (plan free).
+// ------------------------------------------------------------
+
+export async function traducirPromptConCorreccion(
+  textoOriginal: string,
+  pipelineAnterior: ConsultaPipeline,
+  errorValidacion: string
+): Promise<ResultadoTraduccion> {
+  const textoLimpio = textoOriginal.trim();
+  if (!textoLimpio) {
+    return { ok: false, error: "El prompt está vacío.", intentos: 0 };
+  }
+
+  const messages: Array<{ role: string; content: string }> = [
+    { role: "system", content: SYSTEM_PROMPT_PIPELINE },
+    { role: "user", content: textoLimpio },
+    { role: "assistant", content: JSON.stringify(pipelineAnterior) },
+    {
+      role: "user",
+      content:
+        `Tu respuesta anterior falló la validación con este error: "${errorValidacion}".\n` +
+        `Corregí SOLO lo necesario y devolvé únicamente el JSON ConsultaPipeline corregido. ` +
+        `Sin markdown, sin explicaciones, sin comentarios fuera del JSON.`,
+    },
+  ];
+
+  const llamada = await llamarGroq(messages, true);
+
+  if (!llamada.ok || !llamada.content) {
+    return {
+      ok: false,
+      error:
+        llamada.error ??
+        "Groq devolvió vacío en el retry de corrección.",
+      intentos: 1,
+    };
+  }
+
+  const validado = parsearYValidar(llamada.content);
+  if (validado.ok) {
+    return { ok: true, pipeline: validado.pipeline, intentos: 1 };
+  }
+
+  return {
+    ok: false,
+    error: `El retry de corrección devolvió JSON inválido: ${validado.error}`,
+    intentos: 1,
+    raw: llamada.content,
   };
 }
