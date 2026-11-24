@@ -1,10 +1,7 @@
 // ============================================================
 // LLM TO PIPELINE — Validación semántica y preparación del pipeline
 // ============================================================
-// v48.1 (Bloque 3a): agrega `advertencias?: string[]` al resultado ok.
-//   Si el LLM no devolvió `explain`, se emite warning NO bloqueante:
-//   la consulta sigue funcionando, pero se avisa para que la UI
-//   pueda mostrar el detalle técnico.
+// v49.6: propaga `opcionesClarificacion` del pipeline al resultado.
 // ============================================================
 
 import type { ConsultaPipeline, FiltroExpr } from "./pipelineSchema";
@@ -15,11 +12,18 @@ import {
 } from "./pipelineSchema";
 
 export type ResultadoLLMToPipeline =
-  | { tipo: "ok"; pipeline: ConsultaPipeline; advertencias?: string[] }
-  | { tipo: "clarification"; pregunta: string }
+  | {
+      tipo: "ok";
+      pipeline: ConsultaPipeline;
+      advertencias?: string[];
+    }
+  | { tipo: "clarification"; pregunta: string; opciones?: string[] }
   | { tipo: "error"; mensaje: string };
 
-function validarExpr(expr: FiltroExpr, camposValidos: readonly string[]): string | null {
+function validarExpr(
+  expr: FiltroExpr,
+  camposValidos: readonly string[]
+): string | null {
   switch (expr.kind) {
     case "filter":
       if (!camposValidos.includes(expr.campo)) {
@@ -38,27 +42,30 @@ function validarExpr(expr: FiltroExpr, camposValidos: readonly string[]): string
   }
 }
 
-export function llmToPipeline(consulta: ConsultaPipeline): ResultadoLLMToPipeline {
+export function llmToPipeline(
+  consulta: ConsultaPipeline
+): ResultadoLLMToPipeline {
   if (consulta.needsClarification) {
     return {
       tipo: "clarification",
       pregunta:
         consulta.preguntaClarificacion ??
         "Por favor, especificá más detalles sobre la consulta requerida.",
+      opciones: consulta.opcionesClarificacion,
     };
   }
 
   if (!esConsultaPipelineValida(consulta)) {
     return {
       tipo: "error",
-      mensaje: "El JSON generado no cumple con el esquema estructural de ConsultaPipeline.",
+      mensaje:
+        "El JSON generado no cumple con el esquema estructural de ConsultaPipeline.",
     };
   }
 
   const camposValidos: readonly string[] =
     consulta.entidad_base === "puntos" ? CAMPOS_PUNTO : CAMPOS_ACCION;
 
-  // 1. Validar filtros legacy (Filtro[])
   if (consulta.filtros && Array.isArray(consulta.filtros)) {
     for (const f of consulta.filtros) {
       if (!camposValidos.includes(f.campo)) {
@@ -70,7 +77,6 @@ export function llmToPipeline(consulta: ConsultaPipeline): ResultadoLLMToPipelin
     }
   }
 
-  // 1b. Validar filtro nuevo (AST o array)
   if (consulta.filtro) {
     if (Array.isArray(consulta.filtro)) {
       for (const f of consulta.filtro) {
@@ -87,7 +93,6 @@ export function llmToPipeline(consulta: ConsultaPipeline): ResultadoLLMToPipelin
     }
   }
 
-  // 2. Validar campo de agrupación
   if (consulta.agrupacion?.campo) {
     if (!camposValidos.includes(consulta.agrupacion.campo)) {
       return {
@@ -97,7 +102,6 @@ export function llmToPipeline(consulta: ConsultaPipeline): ResultadoLLMToPipelin
     }
   }
 
-  // 3. Validar métricas que requieren campo
   if (consulta.metrica.tipo === "sum" || consulta.metrica.tipo === "avg") {
     if (!consulta.metrica.campo) {
       return {
@@ -113,9 +117,6 @@ export function llmToPipeline(consulta: ConsultaPipeline): ResultadoLLMToPipelin
     }
   }
 
-  // 4. v48.1 (Bloque 3a) — Warning NO bloqueante si falta explain.
-  //    La consulta funciona igual; solo avisamos para que la UI
-  //    pueda mostrar el detalle técnico.
   const advertencias: string[] = [];
   const explainValido =
     typeof consulta.explain === "string" && consulta.explain.trim().length > 0;

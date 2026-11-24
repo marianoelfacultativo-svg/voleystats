@@ -1,19 +1,14 @@
 // ============================================================
 // EJECUTAR CONSULTA LLM — Orquestador del nuevo Pipeline Universal
 // ============================================================
-// v2.2 (fix explain): surfacea pipeline.explain al top-level de
-//   ResultadoConsultaLLM.ok y propaga advertencias del validador
-//   (Bloque 3a) a avisos[].
+// v2.2 (v49.6): propaga `opciones` en clarification.
 // ============================================================
 
 import type {
   AccionVisual,
   PuntoConAcciones,
 } from "../../app/equipo/adaptadorUnificadoV2";
-import type {
-  MetaConsulta,
-  RespuestaConsulta,
-} from "./tipos";
+import type { MetaConsulta, RespuestaConsulta } from "./tipos";
 import type { ConsultaPipeline } from "./pipelineSchema";
 import type { JugadorParaResolver } from "./resolverJugador";
 import type { BloqueTriggerFiltro } from "../analisis/tipos";
@@ -61,7 +56,6 @@ export type ResultadoConsultaLLM =
   | {
       tipo: "ok";
       respuesta: RespuestaConsulta;
-      explain?: string;
       meta: MetaConsulta;
       fragmentos: string[];
       avisos: string[];
@@ -70,6 +64,7 @@ export type ResultadoConsultaLLM =
   | {
       tipo: "clarification";
       pregunta: string;
+      opciones?: string[];
       promptOriginal: string;
     }
   | {
@@ -191,14 +186,11 @@ function calcularFiltradasYTotal(
   return { filtradas: 0, total: universoTotal };
 }
 
-// Helper: pipeline YA validado → ejecutar y armar respuesta ok
-// v2.2: recibe advertencias del validador (Bloque 3a) y surfacea explain.
 function ejecutarYArmarRespuesta(
   pipeline: ConsultaPipeline,
   intentosTraduccion: number,
   promptLimpio: string,
-  contexto: ContextoEjecutorLLM,
-  advertenciasValidador: string[] = []
+  contexto: ContextoEjecutorLLM
 ): ResultadoConsultaLLM {
   const respuesta = ejecutarPipeline(pipeline, {
     acciones: contexto.acciones,
@@ -218,7 +210,7 @@ function ejecutarYArmarRespuesta(
   );
 
   const fragmentos = armarFragmentos(pipeline);
-  const avisos: string[] = [...advertenciasValidador];
+  const avisos: string[] = [];
 
   const meta: MetaConsulta = {
     original: promptLimpio,
@@ -247,17 +239,12 @@ function ejecutarYArmarRespuesta(
   return {
     tipo: "ok",
     respuesta,
-    explain: pipeline.explain || undefined,
     meta,
     fragmentos,
     avisos,
     debug,
   };
 }
-
-// ------------------------------------------------------------
-// ORQUESTADOR PRINCIPAL (con retry del Bloque 3b)
-// ------------------------------------------------------------
 
 export async function ejecutarConsultaLLM(
   prompt: string,
@@ -275,7 +262,6 @@ export async function ejecutarConsultaLLM(
     };
   }
 
-  // ── Paso 1: traducción inicial (Groq)
   const traduccion1 = await traducirPrompt(promptLimpio);
   if (!traduccion1.ok) {
     return {
@@ -291,12 +277,12 @@ export async function ejecutarConsultaLLM(
 
   const pipeline1 = traduccion1.pipeline;
 
-  // ── Paso 2: validación semántica (intento 1)
   const validado1 = llmToPipeline(pipeline1);
   if (validado1.tipo === "clarification") {
     return {
       tipo: "clarification",
       pregunta: validado1.pregunta,
+      opciones: validado1.opciones,
       promptOriginal: promptLimpio,
     };
   }
@@ -305,12 +291,10 @@ export async function ejecutarConsultaLLM(
       validado1.pipeline,
       traduccion1.intentos,
       promptLimpio,
-      contexto,
-      validado1.advertencias ?? []
+      contexto
     );
   }
 
-  // ── Paso 3: retry 1x con error específico (Bloque 3b)
   const errorValidacion1 = validado1.mensaje;
   const traduccion2 = await traducirPromptConCorreccion(
     promptLimpio,
@@ -335,6 +319,7 @@ export async function ejecutarConsultaLLM(
     return {
       tipo: "clarification",
       pregunta: validado2.pregunta,
+      opciones: validado2.opciones,
       promptOriginal: promptLimpio,
     };
   }
@@ -343,12 +328,10 @@ export async function ejecutarConsultaLLM(
       validado2.pipeline,
       traduccion1.intentos + traduccion2.intentos,
       promptLimpio,
-      contexto,
-      validado2.advertencias ?? []
+      contexto
     );
   }
 
-  // ── Paso 4: falló también el retry → error definitivo
   return {
     tipo: "error",
     mensaje:

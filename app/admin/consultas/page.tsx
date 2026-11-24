@@ -379,13 +379,29 @@ export default function ConsultasAdminPage() {
                         />
                       )}
                       {resultadoAclaracion && (
-                        <div className="rounded-lg border border-amber-500/40 bg-amber-500/[0.08] p-3 space-y-1.5">
+                        <div className="rounded-lg border border-amber-500/40 bg-amber-500/[0.08] p-3 space-y-2">
                           <p className="text-xs font-bold text-amber-200">
                             Aclaración solicitada al usuario
                           </p>
                           <p className="text-xs text-amber-100">
                             {resultadoAclaracion.pregunta}
                           </p>
+                          {resultadoAclaracion.opciones &&
+                            resultadoAclaracion.opciones.length > 0 && (
+                              <div className="flex flex-wrap gap-1 pt-1">
+                                <span className="text-[10px] text-amber-200/70 mr-1">
+                                  Opciones:
+                                </span>
+                                {resultadoAclaracion.opciones.map((op, i) => (
+                                  <span
+                                    key={`${op}-${i}`}
+                                    className="text-[10px] px-1.5 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-200 font-mono"
+                                  >
+                                    {op}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                         </div>
                       )}
                       {resultadoAmbiguo && (

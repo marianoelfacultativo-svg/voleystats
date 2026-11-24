@@ -738,15 +738,40 @@ export default function ConsultaPanelLLM({
 
       {/* RESULTADO ACLARACIÓN */}
       {resultado && resultado.tipo === "clarification" && (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-500/[0.08] p-3 space-y-1.5">
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/[0.08] p-3 space-y-2">
           <p className="text-xs font-bold text-amber-200">
             Aclaración necesaria
           </p>
           <p className="text-xs text-amber-100">{resultado.pregunta}</p>
-          <p className="text-[11px] text-amber-200/70 italic">
-            Reformulá tu consulta con más detalle (ej: qué fundamento, qué set
-            o qué jugador).
-          </p>
+
+          {resultado.opciones && resultado.opciones.length > 0 ? (
+            <div className="space-y-1.5">
+              <p className="text-[11px] text-amber-200/80">
+                Elegí una opción:
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {resultado.opciones.map((op, i) => (
+                  <button
+                    key={`${op}-${i}`}
+                    type="button"
+                    onClick={() => void consultar(op)}
+                    disabled={cargando || !hayDatos}
+                    className="text-[11px] px-2.5 py-1 rounded-full border border-amber-500/50 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20 hover:border-amber-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed font-medium"
+                  >
+                    {op}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-amber-200/60 italic pt-0.5">
+                O reformulá abajo en el buscador.
+              </p>
+            </div>
+          ) : (
+            <p className="text-[11px] text-amber-200/70 italic">
+              Reformulá tu consulta con más detalle (ej: qué fundamento, qué set
+              o qué jugador).
+            </p>
+          )}
         </div>
       )}
 

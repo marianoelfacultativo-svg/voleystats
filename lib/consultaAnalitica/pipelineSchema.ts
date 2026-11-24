@@ -87,6 +87,7 @@ export interface ConsultaPipeline {
   limite?: number;
   needsClarification?: boolean;
   preguntaClarificacion?: string;
+  opcionesClarificacion?: string[];
   // v48.1 (Bloque 3a) — Explicación en 1 frase de cómo se interpretó la consulta.
   // Opcional en el tipo (resiliencia), pero el SYSTEM_PROMPT la pide SIEMPRE.
   explain?: string;
@@ -263,7 +264,14 @@ export function puntajeDeAccionPipeline(
 export function esConsultaPipelineValida(v: unknown): v is ConsultaPipeline {
   if (!v || typeof v !== "object") return false;
   const c = v as Record<string, unknown>;
-  if (c.needsClarification === true) return typeof c.preguntaClarificacion === "string";
+  if (c.needsClarification === true) {
+    if (typeof c.preguntaClarificacion !== "string") return false;
+    if (c.opcionesClarificacion !== undefined) {
+      if (!Array.isArray(c.opcionesClarificacion)) return false;
+      if (!c.opcionesClarificacion.every((o) => typeof o === "string")) return false;
+    }
+    return true;
+  }
   if (c.entidad_base !== "acciones" && c.entidad_base !== "puntos") return false;
   if (!c.metrica || typeof c.metrica !== "object") return false;
 
@@ -346,8 +354,23 @@ REGLAS DE ORO:
    - "avg": para promediar campo numérico (requiere "campo", ej. "puntaje").
    - "percentage": porcentaje de éxito. Usa "filtros_numerador" sobre el total filtrado (ej. desenlace: "punto").
    - "efficiency": eficiencia ((puntos - errores) / total * 100).
-8. SI LA PREGUNTA ES AMBIGUA O FALTA DATO CRÍTICO:
-   { "needsClarification": true, "preguntaClarificacion": "¿Podrías especificar...?" }
+8. SI LA PREGUNTA ES AMBIGUA, FALTA UN DATO CRÍTICO, O PIDE DOS COSAS A LA VEZ:
+   Devolvé:
+   {
+     "needsClarification": true,
+     "preguntaClarificacion": "¿Podrías especificar...?",
+     "opcionesClarificacion": ["opción corta 1", "opción corta 2", "opción corta 3"]
+   }
+   - SIEMPRE incluí "opcionesClarificacion" con 2 a 4 opciones concretas.
+   - Cada opción debe ser una frase corta (máximo 8 palabras) que, escrita como
+     prompt, tenga sentido por sí sola. Pensala como un atajo para el usuario.
+   - Las opciones son las RESPUESTAS posibles, NO la pregunta.
+   - NO uses "opcionesClarificacion" si no podés generar al menos 2 opciones
+     distintas y útiles. En ese caso, omití el campo (es opcional).
+   - Ejemplo:
+     Prompt: "cuántos ataques hizo Mariano y cómo fueron en %"
+     → preguntaClarificacion: "¿Querés el kill % o la distribución de resultados de Mariano?"
+     → opcionesClarificacion: ["kill % de Mariano", "distribución de resultados de Mariano"]
 9. ACCIONES PROPIAS vs RIVALES (CRÍTICO):
    Cuando entidad_base es "acciones", SIEMPRE agregar el filtro:
    { "campo": "es_rival", "operador": "eq", "valor": false }
@@ -560,4 +583,12 @@ JSON:
   ],
   "metrica": { "tipo": "count" },
   "explain": "Aces rivales: saques del rival con subtipo ace."
+}
+
+Prompt: "cuántos ataques hizo Mariano y cómo fueron en %"
+JSON:
+{
+  "needsClarification": true,
+  "preguntaClarificacion": "¿Querés el kill % o la distribución de resultados de Mariano?",
+  "opcionesClarificacion": ["kill % de Mariano", "distribución de resultados de Mariano"]
 }`;
