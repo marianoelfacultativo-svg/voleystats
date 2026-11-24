@@ -280,21 +280,18 @@ async function procesarConsultaEnBackground(
       } catch (e) {
         console.error("[consultar] Error persistiendo consulta fallida:", e);
       }
-    } else if (resultado.tipo === "clarification") {
+    } else if (
+      resultado.tipo === "clarification" ||
+      resultado.tipo === "ambiguo"
+    ) {
+      // El LLM respondió pidiendo aclaración o avisando jugador ambiguo.
+      // NO es un error: es una respuesta útil. Guardamos el objeto
+      // completo en `respuesta` para que el panel lo muestre como pregunta.
       await sb
         .from("consultas")
         .update({
-          estado: "fallida",
-          error_tecnico: `Necesita aclaración: ${resultado.pregunta}`,
-          fecha_completado: new Date().toISOString(),
-        })
-        .eq("id", consultaId);
-    } else if (resultado.tipo === "ambiguo") {
-      await sb
-        .from("consultas")
-        .update({
-          estado: "fallida",
-          error_tecnico: `Ambiguo: ${resultado.aviso}`,
+          estado: "completada",
+          respuesta: resultado,
           fecha_completado: new Date().toISOString(),
         })
         .eq("id", consultaId);

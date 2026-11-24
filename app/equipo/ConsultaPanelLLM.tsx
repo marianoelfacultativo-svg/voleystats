@@ -795,7 +795,7 @@ export default function ConsultaPanelLLM({
                 armado.
               </li>
               <li>
-                Aclar   si buscás puntos ganados (desenlace) o calidad
+                Aclará si buscás puntos ganados (desenlace) o calidad
                 (positivo/negativo).
               </li>
               <li>

@@ -281,6 +281,14 @@ export default function ConsultasAdminPage() {
                 f.respuesta && f.respuesta.tipo === "ok"
                   ? f.respuesta
                   : null;
+              const resultadoAclaracion =
+                f.respuesta && f.respuesta.tipo === "clarification"
+                  ? f.respuesta
+                  : null;
+              const resultadoAmbiguo =
+                f.respuesta && f.respuesta.tipo === "ambiguo"
+                  ? f.respuesta
+                  : null;
               const tieneFeedback = !!f.feedback_texto;
 
               return (
@@ -314,6 +322,16 @@ export default function ConsultasAdminPage() {
                         {tieneFeedback && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-fuchsia-500/15 text-fuchsia-200 border-fuchsia-500/40">
                             💬 feedback
+                          </span>
+                        )}
+                        {f.respuesta?.tipo === "clarification" && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-amber-500/15 text-amber-200 border-amber-500/40">
+                            ❓ aclaración
+                          </span>
+                        )}
+                        {f.respuesta?.tipo === "ambiguo" && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-rose-500/15 text-rose-200 border-rose-500/40">
+                            ❓ ambiguo
                           </span>
                         )}
                       </div>
@@ -360,8 +378,31 @@ export default function ConsultasAdminPage() {
                           resultado={aResultadoExtendido(resultadoOk)}
                         />
                       )}
+                      {resultadoAclaracion && (
+                        <div className="rounded-lg border border-amber-500/40 bg-amber-500/[0.08] p-3 space-y-1.5">
+                          <p className="text-xs font-bold text-amber-200">
+                            Aclaración solicitada al usuario
+                          </p>
+                          <p className="text-xs text-amber-100">
+                            {resultadoAclaracion.pregunta}
+                          </p>
+                        </div>
+                      )}
+                      {resultadoAmbiguo && (
+                        <div className="rounded-lg border border-rose-500/40 bg-rose-500/[0.08] p-3 space-y-2">
+                          <p className="text-xs font-bold text-rose-200">
+                            Jugador ambiguo
+                          </p>
+                          <p className="text-xs text-rose-100">
+                            {resultadoAmbiguo.aviso}
+                          </p>
+                        </div>
+                      )}
 
-                      {f.estado === "completada" && !resultadoOk && (
+                      {f.estado === "completada" &&
+                        !resultadoOk &&
+                        !resultadoAclaracion &&
+                        !resultadoAmbiguo && (
                         <p className="text-xs text-amber-300">
                           La fila dice &quot;completada&quot; pero no hay
                           respuesta guardada. Revisar datos.
