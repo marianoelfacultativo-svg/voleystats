@@ -1,14 +1,9 @@
 // ============================================================
-// ADMIN — CONSULTAS (historial completo)
+// ADMIN — CONSULTAS (historial completo + feedbacks)
 // ============================================================
-// v49.4 — Panel de historial de TODAS las consultas LLM
-// (completadas, fallidas, en curso), con búsqueda, filtros
-// por estado y detalle expandible.
-//
-// Complementa a /admin/consultas-fallidas (que muestra solo
-// las fallidas con más detalle técnico).
-//
-// Sin auth (coherente con consultas-fallidas, ver Q12 v49.1).
+// v49.5 — Muestra el feedback que los usuarios dejan en cada
+// consulta ("No era lo que esperaba"). Filtro "Con feedback"
+// para revisar patrones y mejorar el SYSTEM_PROMPT.
 // ============================================================
 
 "use client";
@@ -20,10 +15,6 @@ import type { ResultadoConsultaLLM } from "@/lib/consultaAnalitica/ejecutarConsu
 import type { ResultadoConsultaExtendido } from "@/lib/consultaAnalitica/tipos";
 import { BLOQUE_TRIGGER_VACIO } from "@/lib/analisis/tipos";
 import { intencionVacia } from "@/lib/consultaAnalitica/intenciones";
-
-// ------------------------------------------------------------
-// TIPOS
-// ------------------------------------------------------------
 
 type EstadoConsulta = "pendiente" | "procesando" | "completada" | "fallida";
 
@@ -39,16 +30,14 @@ type Consulta = {
   intentos: number | null;
   fecha_creacion: string;
   fecha_completado: string | null;
+  feedback_texto: string | null;
+  feedback_fecha: string | null;
 };
 
-type Filtro = "todas" | "completadas" | "fallidas" | "en_curso";
+type Filtro = "todas" | "con_feedback" | "completadas" | "fallidas" | "en_curso";
 
 const LIMITE = 200;
 const POLLING_MS = 5000;
-
-// ------------------------------------------------------------
-// HELPERS
-// ------------------------------------------------------------
 
 function aResultadoExtendido(
   data: Extract<ResultadoConsultaLLM, { tipo: "ok" }>
@@ -111,10 +100,6 @@ function badgeEstado(estado: EstadoConsulta): {
   }
 }
 
-// ------------------------------------------------------------
-// PÁGINA
-// ------------------------------------------------------------
-
 export default function ConsultasAdminPage() {
   const [cargando, setCargando] = useState(true);
   const [filas, setFilas] = useState<Consulta[]>([]);
@@ -144,7 +129,6 @@ export default function ConsultasAdminPage() {
     void cargar();
   }, [cargar]);
 
-  // Polling suave si hay consultas en curso. Auto-frena al terminar.
   const hayEnCurso = useMemo(
     () =>
       filas.some(
@@ -164,6 +148,7 @@ export default function ConsultasAdminPage() {
   const counts = useMemo(
     () => ({
       todas: filas.length,
+      con_feedback: filas.filter((f) => !!f.feedback_texto).length,
       completadas: filas.filter((f) => f.estado === "completada").length,
       fallidas: filas.filter((f) => f.estado === "fallida").length,
       en_curso: filas.filter(
@@ -176,6 +161,7 @@ export default function ConsultasAdminPage() {
   const filasFiltradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return filas.filter((f) => {
+      if (filtro === "con_feedback" && !f.feedback_texto) return false;
       if (filtro === "completadas" && f.estado !== "completada") return false;
       if (filtro === "fallidas" && f.estado !== "fallida") return false;
       if (
@@ -196,7 +182,6 @@ export default function ConsultasAdminPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-6">
       <div className="max-w-6xl mx-auto">
-        {/* HEADER */}
         <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
           <h1 className="text-2xl font-bold">Consultas LLM</h1>
           <div className="flex items-center gap-2">
@@ -232,15 +217,16 @@ export default function ConsultasAdminPage() {
           )}
         </p>
 
-        {/* FILTROS */}
         <div className="flex flex-wrap items-center gap-2 mb-3">
           {(
-            ["todas", "completadas", "fallidas", "en_curso"] as const
+            ["todas", "con_feedback", "completadas", "fallidas", "en_curso"] as const
           ).map((f) => {
             const activo = filtro === f;
             const label =
               f === "todas"
                 ? "Todas"
+                : f === "con_feedback"
+                ? "💬 Con feedback"
                 : f === "completadas"
                 ? "Completadas"
                 : f === "fallidas"
@@ -264,7 +250,6 @@ export default function ConsultasAdminPage() {
           })}
         </div>
 
-        {/* BÚSQUEDA */}
         <div className="mb-4">
           <input
             type="text"
@@ -275,7 +260,6 @@ export default function ConsultasAdminPage() {
           />
         </div>
 
-        {/* ESTADOS */}
         {cargando && filas.length === 0 && (
           <p className="text-slate-400">Cargando...</p>
         )}
@@ -284,7 +268,6 @@ export default function ConsultasAdminPage() {
           <p className="text-slate-400">No hay consultas que coincidan.</p>
         )}
 
-        {/* LISTA */}
         {filasFiltradas.length > 0 && (
           <ul className="space-y-3">
             {filasFiltradas.map((f) => {
@@ -298,6 +281,7 @@ export default function ConsultasAdminPage() {
                 f.respuesta && f.respuesta.tipo === "ok"
                   ? f.respuesta
                   : null;
+              const tieneFeedback = !!f.feedback_texto;
 
               return (
                 <li
@@ -327,6 +311,11 @@ export default function ConsultasAdminPage() {
                             {f.intentos !== 1 ? "s" : ""}
                           </span>
                         )}
+                        {tieneFeedback && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-fuchsia-500/15 text-fuchsia-200 border-fuchsia-500/40">
+                            💬 feedback
+                          </span>
+                        )}
                       </div>
                       <span className="text-[10px] text-slate-500 tabular-nums shrink-0">
                         {new Date(f.fecha_creacion).toLocaleString("es-AR")}
@@ -347,14 +336,31 @@ export default function ConsultasAdminPage() {
 
                   {expandida && (
                     <div className="border-t border-slate-700 p-4 space-y-3 bg-slate-900/40">
-                      {/* Respuesta OK renderizada */}
+                      {/* Feedback destacado primero */}
+                      {tieneFeedback && (
+                        <div className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/[0.06] p-3 space-y-1">
+                          <p className="text-[11px] font-bold text-fuchsia-200">
+                            💬 El usuario esperaba:
+                          </p>
+                          <p className="text-xs text-fuchsia-100 whitespace-pre-wrap">
+                            {f.feedback_texto}
+                          </p>
+                          {f.feedback_fecha && (
+                            <p className="text-[10px] text-fuchsia-300/60">
+                              {new Date(f.feedback_fecha).toLocaleString(
+                                "es-AR"
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
                       {resultadoOk && (
                         <ConsultaResultado
                           resultado={aResultadoExtendido(resultadoOk)}
                         />
                       )}
 
-                      {/* Fila completada sin respuesta (defensivo) */}
                       {f.estado === "completada" && !resultadoOk && (
                         <p className="text-xs text-amber-300">
                           La fila dice &quot;completada&quot; pero no hay
@@ -362,7 +368,6 @@ export default function ConsultasAdminPage() {
                         </p>
                       )}
 
-                      {/* Fallida: error técnico + link al panel especializado */}
                       {f.estado === "fallida" && (
                         <div className="space-y-2">
                           <p className="text-[11px] font-bold text-rose-200">
@@ -380,7 +385,6 @@ export default function ConsultasAdminPage() {
                         </div>
                       )}
 
-                      {/* En curso */}
                       {(f.estado === "pendiente" ||
                         f.estado === "procesando") && (
                         <p className="text-xs text-cyan-200">
@@ -390,7 +394,6 @@ export default function ConsultasAdminPage() {
                         </p>
                       )}
 
-                      {/* Pipeline interpretado (colapsable) */}
                       {Boolean(f.pipeline) && (
                         <details className="text-[10px] text-slate-500">
                           <summary className="cursor-pointer hover:text-slate-400 select-none">
