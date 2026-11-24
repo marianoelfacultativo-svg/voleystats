@@ -342,9 +342,9 @@ export default function ConsultasAdminPage() {
                     <p className="text-slate-100 text-sm break-words font-mono">
                       {f.prompt}
                     </p>
-                    {resultadoOk?.explain && (
+                    {resultadoOk?.debug?.consultaLLM?.explain && (
                       <p className="text-[11px] text-cyan-300/80 italic mt-1">
-                        → {resultadoOk.explain}
+                        → {resultadoOk.debug.consultaLLM.explain}
                       </p>
                     )}
                     <p className="text-[10px] text-slate-500 mt-2">
