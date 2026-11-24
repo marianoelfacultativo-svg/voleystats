@@ -3,12 +3,12 @@
 // ============================================================
 // CONSULTA PANEL LLM — Buscador limpio: "Consulta detallada"
 // ============================================================
-// v3.1 (v49.5) — Feedback del usuario
+// v3.2 (v50.1) — Feedback también en aclaración y ambiguo
 //
-// Además del flujo background + Realtime, ahora cada resultado
-// (OK o error) tiene un botón "¿No era lo que esperabas?" que
-// abre un textarea para que el usuario escriba qué esperaba ver.
-// Se guarda en `consultas.feedback_texto`.
+// Antes el <FeedbackForm> solo aparecía en OK y error. Ahora
+// también aparece cuando el LLM pide aclaración o detecta un
+// jugador ambiguo, para que el usuario pueda avisarle al admin
+// si la pregunta que le hicieron no era la correcta.
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -50,6 +50,8 @@ interface ConsultaFila {
   error_tecnico: string | null;
   intentos: number;
 }
+
+type FeedbackFormTipo = "ok" | "error" | "aclaracion";
 
 const TIMEOUT_MS = 5 * 60 * 1000;
 const POLLING_MS = 3000;
@@ -133,13 +135,42 @@ function claveStorage(equipoId: string, partidoId?: string | null): string {
 // FEEDBACK FORM
 // ------------------------------------------------------------
 
+function getFeedbackLabels(tipo: FeedbackFormTipo): {
+  cerrar: string;
+  titulo: string;
+  placeholder: string;
+} {
+  switch (tipo) {
+    case "ok":
+      return {
+        cerrar: "¿No era lo que esperabas?",
+        titulo: "¿Qué esperabas ver en vez de esto?",
+        placeholder: "Ej: quería el detalle por jugador, no el total.",
+      };
+    case "error":
+      return {
+        cerrar: "¿Qué querías ver en vez de esto?",
+        titulo: "¿Qué querías que apareciera?",
+        placeholder: "Ej: quería ver los errores agrupados por fundamento.",
+      };
+    case "aclaracion":
+      return {
+        cerrar: "¿No esperabas esta pregunta?",
+        titulo: "¿Cómo esperabas que interprete tu consulta?",
+        placeholder:
+          "Ej: esperaba ver los datos directo, no que me pregunte por el jugador.",
+      };
+  }
+}
+
 function FeedbackForm({
   consultaId,
   tipo,
 }: {
   consultaId: string;
-  tipo: "ok" | "error";
+  tipo: FeedbackFormTipo;
 }) {
+  const labels = getFeedbackLabels(tipo);
   const [abierto, setAbierto] = useState(false);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -162,9 +193,7 @@ function FeedbackForm({
         className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-cyan-300 underline underline-offset-2 transition-colors"
       >
         <MessageSquare size={11} />
-        {tipo === "ok"
-          ? "¿No era lo que esperabas?"
-          : "¿Qué querías ver en vez de esto?"}
+        {labels.cerrar}
       </button>
     );
   }
@@ -196,19 +225,13 @@ function FeedbackForm({
   return (
     <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/[0.04] p-3 space-y-2">
       <p className="text-[11px] font-semibold text-cyan-100">
-        {tipo === "ok"
-          ? "¿Qué esperabas ver en vez de esto?"
-          : "¿Qué querías que apareciera?"}
+        {labels.titulo}
       </p>
       <textarea
         value={texto}
         onChange={(e) => setTexto(e.target.value)}
         disabled={enviando}
-        placeholder={
-          tipo === "ok"
-            ? "Ej: quería el detalle por jugador, no el total."
-            : "Ej: quería ver los errores agrupados por fundamento."
-        }
+        placeholder={labels.placeholder}
         rows={3}
         maxLength={2000}
         className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500/50 resize-none disabled:opacity-50"
@@ -304,7 +327,7 @@ export default function ConsultaPanelLLM({
       }
 
       // Terminal: guardamos el id para que el FeedbackForm sepa
-      // a qué consulta atarse.
+      // a qué consulta atarse (aplica a OK, error, aclaración y ambiguo).
       setLastConsultaId(fila.id);
 
       if (fila.estado === "completada" && fila.respuesta) {
@@ -772,6 +795,16 @@ export default function ConsultaPanelLLM({
               o qué jugador).
             </p>
           )}
+
+          {lastConsultaId && (
+            <div className="pt-1 border-t border-amber-500/20">
+              <FeedbackForm
+                key={lastConsultaId}
+                consultaId={lastConsultaId}
+                tipo="aclaracion"
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -798,6 +831,16 @@ export default function ConsultaPanelLLM({
             Probá escribiendo el nombre completo, su apodo o #número de
             camiseta.
           </p>
+
+          {lastConsultaId && (
+            <div className="pt-1 border-t border-rose-500/20">
+              <FeedbackForm
+                key={lastConsultaId}
+                consultaId={lastConsultaId}
+                tipo="aclaracion"
+              />
+            </div>
+          )}
         </div>
       )}
 
