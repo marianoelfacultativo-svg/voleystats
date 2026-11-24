@@ -18,7 +18,8 @@
 //   · Realtime habilitado para `public.consultas`.
 // ============================================================
 
-import { NextResponse, unstable_after as after } from "next/server";
+import { NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { createClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { cargarAccionesUnificadas } from "@/app/equipo/adaptadorUnificadoV2";
@@ -103,9 +104,9 @@ export async function POST(req: Request) {
   const consultaId = creada.id as string;
 
   // 2) Procesar en background, después de enviar la respuesta.
-  after(async () => {
-    await procesarConsultaEnBackground(consultaId, prompt, equipoId, partidoId);
-  });
+  waitUntil(
+    procesarConsultaEnBackground(consultaId, prompt, equipoId, partidoId)
+  );
 
   // 3) Responder al cliente con el id para que se suscriba.
   return NextResponse.json({
