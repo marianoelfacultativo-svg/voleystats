@@ -28,9 +28,10 @@ export interface ContextoPipeline {
   partidos?: PartidoConResultado[];
 }
 
-export interface FilaAccionEnriquecida extends AccionVisual {
-  desenlace: string;
-  valoracion: string;
+export interface FilaAccionEnriquecida
+  extends Omit<AccionVisual, "desenlace" | "valoracion" | "puntaje"> {
+  desenlace: "punto" | "error" | "en_juego";
+  valoracion: "pos" | "neu" | "neg";
   puntaje: number;
   fase_rally: string;
   [key: string]: unknown;
