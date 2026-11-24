@@ -1,8 +1,12 @@
 // ============================================================
 // PIPELINE SCHEMA — Esquema semántico y operaciones analíticas
 // ============================================================
-// v48.1 (Bloque 3a): agrega `explain?: string` a ConsultaPipeline
-//   y regla 1b al SYSTEM_PROMPT pidiendo explicación en 1 frase.
+// v50.1 (Pieza 5): agrega 4 reglas al SYSTEM_PROMPT para corregir
+//   interpretaciones del LLM detectadas en el protocolo A1-A5:
+//   · Regla 15 — Comparaciones "o"/"vs"/"compará" → agrupación
+//   · Regla 16 — "Mejor"/"peor"/"ranking" → sin limite
+//   · Regla 17 — "Sets ganados" ≠ "set 1" → resultado_set
+//   · Regla 18 — Anidamiento: or dentro de and (campo `filtro` AST)
 // ============================================================
 
 export type EntidadBase = "acciones" | "puntos";
@@ -450,6 +454,55 @@ Las acciones intermedias en el rally tienen desenlace "en_juego", salvo que cier
   * "defensas de remate" → tipo: "defensa", variante: "remate", es_rival: false
   * "coberturas" → tipo: "defensa", variante: "cobertura", es_rival: false
 
+15. COMPARACIONES CON "O" / "VS" / "COMPARÁ" → AGRUPACIÓN:
+   Cuando el usuario compara dos o más valores del MISMO campo (ej: "errores de saque o recepción", "aces vs errores de saque", "compará ataque y bloqueo"), NO devuelvas un único total. Devolvé una AGRUPACIÓN por el campo comparado:
+   - Si los valores comparados caen en el MISMO campo (ej: tipo ∈ {saque, recepcion}): usar operador "in" + agrupacion por ese campo.
+     Ej: "errores de saque o recepción"
+     → filtros: [{ campo: "tipo", operador: "in", valor: ["saque", "recepcion"] }, { campo: "desenlace", operador: "eq", valor: "error" }, { campo: "es_rival", operador: "eq", valor: false }]
+     → agrupacion: { campo: "tipo" }
+     → metrica: { tipo: "count" }
+   - Si los valores comparados caen en campos DISTINTOS (ej: "errores de ataque vs errores de saque"): NO se puede con un solo "in". En ese caso, agrupá por el campo que los distingue (tipo) y filtrá los valores con "in".
+   - Si el usuario compara subtipos del mismo tipo (ej: "aces vs errores de saque"): agrupacion por "subtipo" + filtros con "in" sobre subtipo.
+   - REGLA: si el usuario usó "o", "vs", "compará", "comparación", "contra", "frente a", SIEMPRE agregá agrupacion. NUNCA devuelvas un solo número para una comparación.
+   - Excepción: si el usuario dice "en total" explícitamente ("errores de saque o recepción en total") → ahí sí suma sin agrupar.
+
+16. "MEJOR" / "PEOR" / "RANKING" → SIN LÍMITE (salvo pedido explícito):
+   Cuando el usuario pide "el mejor", "el peor", "quién tiene mejor X", "ranking de X", "top jugadores":
+   - Devolvé SIEMPRE el ranking COMPLETO (sin limite), salvo que el usuario pida un número explícito.
+   - Usá orden: "desc" para "mejor", "asc" para "peor".
+   - Usá agrupacion: { campo: "jugador_id" } (o el campo que corresponda).
+   - ❌ NUNCA pongas limite: 1 cuando dice "el mejor". Devolvé el ranking completo ordenado; el consumidor mostrará el primero.
+   - ✅ Si dice "top 3", "los 5 mejores", "solo el primero" → ahí SÍ limite: N.
+   - Ejemplo CORRECTO para "qué jugador tiene mejor kill %":
+     { "agrupacion": { "campo": "jugador_id" }, "orden": "desc", "metrica": { "tipo": "percentage", "filtros_numerador": [...] } }  ← SIN limite
+   - Ejemplo CORRECTO para "top 3 jugadores por puntos":
+     { "agrupacion": { "campo": "jugador_id" }, "orden": "desc", "limite": 3, ... }  ← CON limite (lo pidió)
+
+17. "SETS GANADOS" / "SETS PERDIDOS" ≠ "PRIMER SET" / "SET N":
+   ⚠️ NO confundir el RESULTADO del set con el ORDEN del set.
+   - "en sets ganados" / "cuando ganamos el set" / "en sets que ganamos" → filtro resultado_set = "set_ganado". NUNCA usar set_numero.
+   - "en sets perdidos" / "cuando perdimos el set" → resultado_set = "set_perdido".
+   - "en partidos ganados" → resultado_partido = "partido_ganado".
+   - "en partidos perdidos" → resultado_partido = "partido_perdido".
+   - "en el primer set" / "set 1" / "primer set" → set_numero = 1.
+   - "en el segundo set" / "set 2" → set_numero = 2.
+   - "en el quinto set" / "tie break" → set_numero = 5 (o es_tie_break = true según entidad).
+   - REGLA: "sets ganados" = el set lo GANAMOS (resultado). "Primer set" = el set número 1 (orden). Son cosas distintas.
+   - Ejemplo CORRECTO para "qué jugador tiene mejor kill % en sets ganados":
+     { "filtros": [{ "campo": "tipo", "operador": "eq", "valor": "ataque" }, { "campo": "resultado_set", "operador": "eq", "valor": "set_ganado" }, { "campo": "es_rival", "operador": "eq", "valor": false }], "agrupacion": { "campo": "jugador_id" }, "orden": "desc", "metrica": { "tipo": "percentage", "filtros_numerador": [{ "campo": "desenlace", "operador": "eq", "valor": "punto" }] } }
+     ← fijate: resultado_set="set_ganado", NO set_numero=1, SIN limite.
+
+18. ANIDAMIENTO DE FILTROS (OR DENTRO DE AND):
+   Cuando combines condiciones con OR y AND, el OR debe ir DENTRO del AND principal, NUNCA suelto en la raíz.
+   - ❌ INCORRECTO: { "filtro": { "kind": "or", "children": [ ... ] } }  ← OR en la raíz, pierde es_rival=false y demás filtros globales.
+   - ✅ CORRECTO: { "filtro": { "kind": "and", "children": [ { "kind": "filter", "campo": "es_rival", "operador": "eq", "valor": false }, { "kind": "or", "children": [ ... ] } ] } }
+   - REGLA: los filtros globales (es_rival=false, set_numero, partido_id, fase_rally) van SIEMPRE al nivel raíz del AND. El OR solo agrupa las condiciones que el usuario quiso combinar.
+   - CUÁNDO USAR "filtro" (AST) vs "filtros" (array):
+     * "filtros: [...]" (array) → solo AND simple, sin OR/NOT. Es el caso más común.
+     * "filtro: { kind: ... }" (AST) → OBLIGATORIO cuando hay OR o NOT. También válido para AND simple (es equivalente).
+   - Ejemplo CORRECTO para "puntos de ataque del punta 1 o del opuesto en k1":
+     { "filtro": { "kind": "and", "children": [ { "kind": "filter", "campo": "tipo", "operador": "eq", "valor": "ataque" }, { "kind": "filter", "campo": "desenlace", "operador": "eq", "valor": "punto" }, { "kind": "filter", "campo": "fase_rally", "operador": "eq", "valor": "side-out" }, { "kind": "filter", "campo": "es_rival", "operador": "eq", "valor": false }, { "kind": "or", "children": [ { "kind": "filter", "campo": "rol_jugador", "operador": "eq", "valor": "P1" }, { "kind": "filter", "campo": "rol_jugador", "operador": "eq", "valor": "OP" } ] } ] } }
+
 EJEMPLOS (todos incluyen "explain" obligatorio):
 
 Prompt: "kill % del punta 1"
@@ -591,4 +644,57 @@ JSON:
   "needsClarification": true,
   "preguntaClarificacion": "¿Querés el kill % o la distribución de resultados de Mariano?",
   "opcionesClarificacion": ["kill % de Mariano", "distribución de resultados de Mariano"]
+}
+
+Prompt: "errores de saque o recepción"
+JSON:
+{
+  "entidad_base": "acciones",
+  "filtros": [
+    { "campo": "tipo", "operador": "in", "valor": ["saque", "recepcion"] },
+    { "campo": "desenlace", "operador": "eq", "valor": "error" },
+    { "campo": "es_rival", "operador": "eq", "valor": false }
+  ],
+  "agrupacion": { "campo": "tipo" },
+  "metrica": { "tipo": "count" },
+  "explain": "Errores de saque o recepción: acciones propias con desenlace error, agrupadas por tipo."
+}
+
+Prompt: "qué jugador tiene mejor kill % en sets ganados"
+JSON:
+{
+  "entidad_base": "acciones",
+  "filtros": [
+    { "campo": "tipo", "operador": "eq", "valor": "ataque" },
+    { "campo": "resultado_set", "operador": "eq", "valor": "set_ganado" },
+    { "campo": "es_rival", "operador": "eq", "valor": false }
+  ],
+  "agrupacion": { "campo": "jugador_id" },
+  "orden": "desc",
+  "metrica": {
+    "tipo": "percentage",
+    "filtros_numerador": [{ "campo": "desenlace", "operador": "eq", "valor": "punto" }]
+  },
+  "explain": "Kill % por jugador en sets ganados: ataques propios con desenlace punto sobre total, en sets que ganamos, agrupado por jugador."
+}
+
+Prompt: "puntos de ataque del punta 1 o del opuesto en k1"
+JSON:
+{
+  "entidad_base": "acciones",
+  "filtro": {
+    "kind": "and",
+    "children": [
+      { "kind": "filter", "campo": "tipo", "operador": "eq", "valor": "ataque" },
+      { "kind": "filter", "campo": "desenlace", "operador": "eq", "valor": "punto" },
+      { "kind": "filter", "campo": "fase_rally", "operador": "eq", "valor": "side-out" },
+      { "kind": "filter", "campo": "es_rival", "operador": "eq", "valor": false },
+      { "kind": "or", "children": [
+        { "kind": "filter", "campo": "rol_jugador", "operador": "eq", "valor": "P1" },
+        { "kind": "filter", "campo": "rol_jugador", "operador": "eq", "valor": "OP" }
+      ] }
+    ]
+  },
+  "metrica": { "tipo": "count" },
+  "explain": "Puntos de ataque del punta 1 o del opuesto en k1: acciones propias, ataque, desenlace punto, fase side-out, con OR entre P1 y OP."
 }`;
