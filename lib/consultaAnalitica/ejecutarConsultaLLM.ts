@@ -1,8 +1,9 @@
 // ============================================================
 // EJECUTAR CONSULTA LLM — Orquestador del nuevo Pipeline Universal
 // ============================================================
-// v2.1 (Bloque 3b): retry 1x con error específico + error estructurado
-//   (mensaje limpio para usuario + errorTecnico para admin).
+// v2.2 (fix explain): surfacea pipeline.explain al top-level de
+//   ResultadoConsultaLLM.ok y propaga advertencias del validador
+//   (Bloque 3a) a avisos[].
 // ============================================================
 
 import type {
@@ -60,6 +61,7 @@ export type ResultadoConsultaLLM =
   | {
       tipo: "ok";
       respuesta: RespuestaConsulta;
+      explain?: string;
       meta: MetaConsulta;
       fragmentos: string[];
       avisos: string[];
@@ -78,8 +80,8 @@ export type ResultadoConsultaLLM =
     }
   | {
       tipo: "error";
-      mensaje: string;             // LO QUE VE EL USUARIO (Opción A, limpio)
-      errorTecnico: string;        // LO QUE VE EL ADMIN (detalle)
+      mensaje: string;
+      errorTecnico: string;
       promptOriginal: string;
       intentos: number;
       pipelineIntentos: ConsultaPipeline[];
@@ -190,11 +192,13 @@ function calcularFiltradasYTotal(
 }
 
 // Helper: pipeline YA validado → ejecutar y armar respuesta ok
+// v2.2: recibe advertencias del validador (Bloque 3a) y surfacea explain.
 function ejecutarYArmarRespuesta(
   pipeline: ConsultaPipeline,
   intentosTraduccion: number,
   promptLimpio: string,
-  contexto: ContextoEjecutorLLM
+  contexto: ContextoEjecutorLLM,
+  advertenciasValidador: string[] = []
 ): ResultadoConsultaLLM {
   const respuesta = ejecutarPipeline(pipeline, {
     acciones: contexto.acciones,
@@ -214,7 +218,7 @@ function ejecutarYArmarRespuesta(
   );
 
   const fragmentos = armarFragmentos(pipeline);
-  const avisos: string[] = [];
+  const avisos: string[] = [...advertenciasValidador];
 
   const meta: MetaConsulta = {
     original: promptLimpio,
@@ -243,6 +247,7 @@ function ejecutarYArmarRespuesta(
   return {
     tipo: "ok",
     respuesta,
+    explain: pipeline.explain || undefined,
     meta,
     fragmentos,
     avisos,
@@ -300,7 +305,8 @@ export async function ejecutarConsultaLLM(
       validado1.pipeline,
       traduccion1.intentos,
       promptLimpio,
-      contexto
+      contexto,
+      validado1.advertencias ?? []
     );
   }
 
@@ -337,7 +343,8 @@ export async function ejecutarConsultaLLM(
       validado2.pipeline,
       traduccion1.intentos + traduccion2.intentos,
       promptLimpio,
-      contexto
+      contexto,
+      validado2.advertencias ?? []
     );
   }
 
