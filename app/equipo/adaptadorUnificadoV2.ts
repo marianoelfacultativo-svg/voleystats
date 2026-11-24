@@ -96,6 +96,10 @@ export interface CargaUnificadaResult {
   puntos: PuntoConAcciones[];
 }
 
+// ------------------------------------------------------------
+// HELPERS DE ZONA CODIFICADA
+// ------------------------------------------------------------
+
 function esLadoRival(celda: string | null | undefined): boolean {
   if (!celda) return false;
   if (/^F[456]-/.test(celda)) return true;
@@ -141,6 +145,10 @@ function calidadDeArmado(
   if (!isNaN(n) && n >= 1 && n <= 6) return n;
   return null;
 }
+
+// ------------------------------------------------------------
+// CARGA
+// ------------------------------------------------------------
 
 export async function cargarAccionesUnificadas(
   partidoId: string,
@@ -290,7 +298,10 @@ export async function cargarAccionesUnificadas(
     if (a.oculta) return a;
     const k = `${a.set_numero}-${a.punto_numero}`;
     const ultima = ultimaOrdenPorPunto.get(k);
-    return { ...a, es_ultima_del_punto: ultima !== undefined && a.orden === ultima };
+    return {
+      ...a,
+      es_ultima_del_punto: ultima !== undefined && a.orden === ultima,
+    };
   });
 
   const puntosMap = new Map<string, PuntoConAcciones>();
@@ -312,6 +323,115 @@ export async function cargarAccionesUnificadas(
   return { acciones, puntos };
 }
 
-// colorPorTipo, colorPorValoracion, etiquetaAccion
-// (se mantienen exactamente igual que hoy — no los repito acá para no alargar.
-//  Solo cambia la parte de arriba del archivo)
+// ------------------------------------------------------------
+// COLORES
+// ------------------------------------------------------------
+
+export function colorPorTipo(tipo: string, esRival: boolean): string {
+  if (esRival) return "#94a3b8";
+  switch (tipo) {
+    case "saque": return "#2563eb";
+    case "recepcion": return "#16a34a";
+    case "armado": return "#8b5cf6";
+    case "ataque": return "#dc2626";
+    case "bloqueo": return "#ea580c";
+    case "defensa": return "#0891b2";
+    case "libre": return "#a16207";
+    case "roce-red": return "#0f172a";
+    default: return "#64748b";
+  }
+}
+
+export function colorPorValoracion(a: AccionVisual): string {
+  const raw =
+    a.subtipo !== null && a.subtipo !== undefined ? String(a.subtipo) : "";
+  const base = raw.startsWith("toque:") ? raw.slice(6) : raw;
+
+  if (a.tipo === "saque") {
+    switch (base) {
+      case "ace": return "#16a34a";
+      case "positivo_mas": return "#65a30d";
+      case "positivo": return "#84cc16";
+      case "neutro": return "#94a3b8";
+      case "negativo": return "#dc2626";
+    }
+  }
+
+  if (a.tipo === "recepcion") {
+    const n = parseInt(base, 10);
+    const colores: Record<number, string> = {
+      1: "#991b1b",
+      2: "#dc2626",
+      3: "#ea580c",
+      4: "#eab308",
+      5: "#84cc16",
+      6: "#16a34a",
+    };
+    if (!isNaN(n) && colores[n]) return colores[n];
+  }
+
+  if (a.tipo === "armado") {
+    if (base === "R") return "#64748b";
+    const n = parseInt(base, 10);
+    const colores: Record<number, string> = {
+      1: "#dc2626",
+      2: "#ea580c",
+      3: "#eab308",
+      4: "#84cc16",
+      5: "#16a34a",
+      6: "#059669",
+    };
+    if (!isNaN(n) && colores[n]) return colores[n];
+  }
+
+  if (a.tipo === "ataque") {
+    switch (base) {
+      case "punto": return "#16a34a";
+      case "neutro": return "#64748b";
+      case "error": return "#dc2626";
+    }
+  }
+
+  if (a.tipo === "bloqueo") {
+    switch (base) {
+      case "punto": return "#16a34a";
+      case "positivo_mas": return "#65a30d";
+      case "positivo": return "#84cc16";
+      case "use_rival": return "#eab308";
+      case "red": return "#dc2626";
+      case "filtrada": return "#ea580c";
+    }
+  }
+
+  if (a.tipo === "defensa") {
+    switch (base) {
+      case "toque_positiva":
+      case "gran_def":
+      case "cobertura_positiva": return "#16a34a";
+      case "toque_negativa":
+      case "error_def":
+      case "cobertura_negativa":
+      case "errores_graves": return "#dc2626";
+      case "mala_libre": return "#991b1b";
+      case "neutro": return "#64748b";
+    }
+  }
+
+  if (a.tipo === "libre") return "#a16207";
+
+  if (a.tipo === "roce-red") {
+    if (base === "roce-red-rival") return "#0284c7";
+    if (base === "ofensivo-propio") return "#dc2626";
+    return "#ea580c";
+  }
+
+  if (a.es_rival) return "#94a3b8";
+  return "#64748b";
+}
+
+export function etiquetaAccion(a: AccionVisual): string {
+  const st =
+    a.subtipo !== null && a.subtipo !== undefined ? String(a.subtipo) : "";
+  if (!st) return a.tipo;
+  return `${a.tipo} · ${st}`;
+}
