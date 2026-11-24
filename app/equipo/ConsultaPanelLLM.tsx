@@ -3,14 +3,22 @@
 // ============================================================
 // CONSULTA PANEL LLM — Buscador limpio: "Consulta detallada"
 // ============================================================
-// Interfaz unificada de consulta en lenguaje natural para VoleyStats.
-// Llama a /api/consultar (Groq -> pipelineEngine) y muestra los
-// resultados a través de ConsultaResultado (tarjetas, tablas, rankings).
+// v3.0 (v49.4) — Background + Realtime
+//
+// Flujo nuevo:
+//   1. POST a /api/consultar → { consultaId } al toque (<200ms).
+//   2. Suscripción a Supabase Realtime sobre `consultas`.
+//   3. Cuando la fila pasa a 'completada'/'fallida', se muestra
+//      el resultado sin recargar.
+//   4. Fallback a polling cada 3s si Realtime no llega en 8s.
+//   5. Al desmontar, se desuscribe. Al volver, recupera la
+//      última consulta en curso desde localStorage.
 // ============================================================
 
-import { useState } from "react";
-import { Search, Sparkles, X, ArrowRight, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Search, Sparkles, X, ArrowRight, Loader2, Clock } from "lucide-react";
 import ConsultaResultado from "./analisisConsecuencias/ConsultaResultado";
+import { supabase } from "@/lib/supabase";
 import type { ResultadoConsultaLLM } from "@/lib/consultaAnalitica/ejecutarConsultaLLM";
 import type { ResultadoConsultaExtendido } from "@/lib/consultaAnalitica/tipos";
 import { BLOQUE_TRIGGER_VACIO } from "@/lib/analisis/tipos";
@@ -27,8 +35,24 @@ interface Props {
   titulo?: string;
 }
 
+type RespuestaPOST =
+  | { tipo: "pendiente"; consultaId: string }
+  | { tipo: "error"; mensaje: string };
+
+interface ConsultaFila {
+  id: string;
+  estado: "pendiente" | "procesando" | "completada" | "fallida";
+  respuesta: ResultadoConsultaLLM | null;
+  error_tecnico: string | null;
+  intentos: number;
+}
+
+const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
+const POLLING_MS = 3000;
+const REALTIME_FALLBACK_MS = 8000;
+
 // ------------------------------------------------------------
-// EJEMPLOS SUGERIDOS
+// SUGERENCIAS
 // ------------------------------------------------------------
 
 function obtenerSugerencias(partidoId?: string | null): string[] {
@@ -82,6 +106,25 @@ function aResultadoExtendido(
   };
 }
 
+function filaAError(
+  fila: ConsultaFila,
+  prompt: string
+): ResultadoConsultaLLM {
+  return {
+    tipo: "error",
+    mensaje:
+      "No pude interpretar la consulta. Probá reformularla o hacela más específica.",
+    errorTecnico: fila.error_tecnico ?? "Error desconocido",
+    promptOriginal: prompt,
+    intentos: fila.intentos ?? 0,
+    pipelineIntentos: [],
+  };
+}
+
+function claveStorage(equipoId: string, partidoId?: string | null): string {
+  return `consultaEnCurso_${equipoId}${partidoId ? `_${partidoId}` : ""}`;
+}
+
 // ------------------------------------------------------------
 // COMPONENTE
 // ------------------------------------------------------------
@@ -94,11 +137,240 @@ export default function ConsultaPanelLLM({
 }: Props) {
   const [prompt, setPrompt] = useState("");
   const [cargando, setCargando] = useState(false);
+  const [estadoFila, setEstadoFila] = useState<
+    "pendiente" | "procesando" | null
+  >(null);
   const [resultado, setResultado] = useState<ResultadoConsultaLLM | null>(null);
+  const [consultaId, setConsultaId] = useState<string | null>(null);
+
+  const canalRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const realtimeFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const promptRef = useRef<string>("");
 
   const hayDatos = !!equipoId;
   const sugerencias = obtenerSugerencias(partidoId);
 
+  // ── Cleanup de recursos ────────────────────────────────────
+  const limpiarSuscripcion = useCallback(() => {
+    if (canalRef.current) {
+      supabase.removeChannel(canalRef.current);
+      canalRef.current = null;
+    }
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (realtimeFallbackRef.current) {
+      clearTimeout(realtimeFallbackRef.current);
+      realtimeFallbackRef.current = null;
+    }
+  }, []);
+
+  // ── Aplicar fila al estado ─────────────────────────────────
+  const aplicarFila = useCallback(
+    (fila: ConsultaFila, promptUsado: string) => {
+      if (fila.estado === "pendiente" || fila.estado === "procesando") {
+        setEstadoFila(fila.estado);
+        return false;
+      }
+
+      // Terminal: completada o fallida
+      if (fila.estado === "completada" && fila.respuesta) {
+        setResultado(fila.respuesta);
+      } else if (fila.estado === "fallida") {
+        setResultado(filaAError(fila, promptUsado));
+      } else {
+        // Estado inesperado, error genérico
+        setResultado({
+          tipo: "error",
+          mensaje: "La consulta terminó en un estado inesperado.",
+          errorTecnico: `Estado: ${fila.estado}`,
+          promptOriginal: promptUsado,
+          intentos: fila.intentos ?? 0,
+          pipelineIntentos: [],
+        });
+      }
+
+      setCargando(false);
+      setEstadoFila(null);
+      setConsultaId(null);
+      limpiarSuscripcion();
+      try {
+        localStorage.removeItem(claveStorage(equipoId, partidoId));
+      } catch {
+        // localStorage puede fallar en SSR o modo privado
+      }
+      return true;
+    },
+    [equipoId, partidoId, limpiarSuscripcion]
+  );
+
+  // ── Fetch de la fila actual ────────────────────────────────
+  const fetchFila = useCallback(async (id: string): Promise<ConsultaFila | null> => {
+    const { data, error } = await supabase
+      .from("consultas")
+      .select("id, estado, respuesta, error_tecnico, intentos")
+      .eq("id", id)
+      .single();
+    if (error || !data) return null;
+    return data as ConsultaFila;
+  }, []);
+
+  // ── Suscribirse a una consulta ────────────────────────────
+  const suscribirse = useCallback(
+    (id: string, promptUsado: string) => {
+      limpiarSuscripcion();
+      setConsultaId(id);
+      setCargando(true);
+      setEstadoFila("pendiente");
+      promptRef.current = promptUsado;
+
+      try {
+        localStorage.setItem(
+          claveStorage(equipoId, partidoId),
+          JSON.stringify({ id, prompt: promptUsado })
+        );
+      } catch {
+        // ignore
+      }
+
+      // 1) Realtime
+      const canal = supabase
+        .channel(`consulta-${id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "consultas",
+            filter: `id=eq.${id}`,
+          },
+          (payload) => {
+            const fila = payload.new as ConsultaFila;
+            aplicarFila(fila, promptRef.current);
+          }
+        )
+        .subscribe();
+      canalRef.current = canal;
+
+      // 2) Fallback: si en 8s no llegó nada por Realtime, empezar a poll.
+      realtimeFallbackRef.current = setTimeout(() => {
+        if (!pollingRef.current) {
+          pollingRef.current = setInterval(async () => {
+            const fila = await fetchFila(id);
+            if (!fila) return;
+            if (
+              fila.estado === "completada" ||
+              fila.estado === "fallida"
+            ) {
+              aplicarFila(fila, promptRef.current);
+            }
+          }, POLLING_MS);
+        }
+      }, REALTIME_FALLBACK_MS);
+
+      // 3) Chequeo inicial (por si ya terminó entre el POST y la suscripción)
+      void (async () => {
+        const fila = await fetchFila(id);
+        if (!fila) return;
+        if (fila.estado === "completada" || fila.estado === "fallida") {
+          aplicarFila(fila, promptRef.current);
+        }
+      })();
+
+      // 4) Timeout global
+      timeoutRef.current = setTimeout(() => {
+        if (!cargandoRef.current) return;
+        limpiarSuscripcion();
+        setCargando(false);
+        setEstadoFila(null);
+        setConsultaId(null);
+        setResultado({
+          tipo: "error",
+          mensaje:
+            "La consulta tardó demasiado y no se completó a tiempo. Probá de nuevo o reformulala. (Quedó guardada en el panel de consultas.)",
+          errorTecnico: `Timeout ${TIMEOUT_MS}ms en cliente. Consulta ${id} sigue en Supabase.`,
+          promptOriginal: promptUsado,
+          intentos: 0,
+          pipelineIntentos: [],
+        });
+      }, TIMEOUT_MS);
+    },
+    [aplicarFila, fetchFila, limpiarSuscripcion, equipoId, partidoId]
+  );
+
+  // ref para leer cargando dentro del timeout sin stale closure
+  const cargandoRef = useRef(cargando);
+  useEffect(() => {
+    cargandoRef.current = cargando;
+  }, [cargando]);
+
+  // ── Recuperar consulta en curso al montar ─────────────────
+  useEffect(() => {
+    if (!hayDatos) return;
+    let cancelado = false;
+
+    const recuperar = async () => {
+      let id: string | null = null;
+      let promptGuardado = "";
+      try {
+        const raw = localStorage.getItem(claveStorage(equipoId, partidoId));
+        if (raw) {
+          const parsed = JSON.parse(raw) as { id: string; prompt: string };
+          id = parsed.id;
+          promptGuardado = parsed.prompt ?? "";
+        }
+      } catch {
+        // ignore
+      }
+      if (!id) return;
+
+      const fila = await fetchFila(id);
+      if (cancelado || !fila) {
+        if (!fila) {
+          // fila borrada o inaccesible
+          try {
+            localStorage.removeItem(claveStorage(equipoId, partidoId));
+          } catch {
+            // ignore
+          }
+        }
+        return;
+      }
+
+      if (fila.estado === "completada" || fila.estado === "fallida") {
+        promptRef.current = promptGuardado;
+        aplicarFila(fila, promptGuardado);
+      } else {
+        // Sigue en curso: re-suscribirse
+        setPrompt(promptGuardado);
+        suscribirse(id, promptGuardado);
+      }
+    };
+    void recuperar();
+
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [equipoId, partidoId, hayDatos]);
+
+  // ── Cleanup al desmontar ─────────────────────────────────
+  useEffect(() => {
+    return () => {
+      limpiarSuscripcion();
+    };
+  }, [limpiarSuscripcion]);
+
+  // ── Consultar ─────────────────────────────────────────────
   const consultar = async (textoAEnviar?: string) => {
     const texto = (textoAEnviar ?? prompt).trim();
     if (!texto || cargando || !hayDatos) return;
@@ -107,8 +379,10 @@ export default function ConsultaPanelLLM({
       setPrompt(textoAEnviar);
     }
 
-    setCargando(true);
+    limpiarSuscripcion();
     setResultado(null);
+    setCargando(true);
+    setEstadoFila("pendiente");
 
     try {
       const res = await fetch("/api/consultar", {
@@ -116,21 +390,37 @@ export default function ConsultaPanelLLM({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: texto, equipoId, partidoId }),
       });
-      const data: ResultadoConsultaLLM = await res.json();
-      setResultado(data);
+      const data: RespuestaPOST = await res.json();
+
+      if (data.tipo === "error") {
+        setCargando(false);
+        setEstadoFila(null);
+        setResultado({
+          tipo: "error",
+          mensaje: data.mensaje,
+          errorTecnico: data.mensaje,
+          promptOriginal: texto,
+          intentos: 0,
+          pipelineIntentos: [],
+        });
+        return;
+      }
+
+      // Éxito: tenemos consultaId → suscribirse
+      suscribirse(data.consultaId, texto);
     } catch (e) {
+      setCargando(false);
+      setEstadoFila(null);
       setResultado({
         tipo: "error",
         mensaje: `Error de red al consultar: ${
           e instanceof Error ? e.message : "desconocido"
         }`,
         errorTecnico: e instanceof Error ? e.stack ?? e.message : "desconocido",
-        promptOriginal: "",
+        promptOriginal: texto,
         intentos: 0,
         pipelineIntentos: [],
       });
-    } finally {
-      setCargando(false);
     }
   };
 
@@ -142,13 +432,22 @@ export default function ConsultaPanelLLM({
   };
 
   const limpiar = () => {
+    limpiarSuscripcion();
     setPrompt("");
     setResultado(null);
+    setCargando(false);
+    setEstadoFila(null);
+    setConsultaId(null);
+    try {
+      localStorage.removeItem(claveStorage(equipoId, partidoId));
+    } catch {
+      // ignore
+    }
   };
 
   return (
     <div className="space-y-3">
-      {/* ============ HEADER LIMPIO ============ */}
+      {/* HEADER */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
@@ -165,9 +464,12 @@ export default function ConsultaPanelLLM({
         </div>
       </div>
 
-      {/* ============ BUSCADOR LIMPIO ============ */}
+      {/* INPUT */}
       <div className="relative flex items-center w-full rounded-xl bg-slate-900/90 border border-slate-700/60 hover:border-cyan-500/40 focus-within:border-cyan-400 focus-within:ring-2 focus-within:ring-cyan-500/20 transition-all shadow-inner">
-        <Search size={16} className="text-slate-400 ml-3.5 mr-2 shrink-0 pointer-events-none" />
+        <Search
+          size={16}
+          className="text-slate-400 ml-3.5 mr-2 shrink-0 pointer-events-none"
+        />
         <input
           type="text"
           value={prompt}
@@ -219,7 +521,7 @@ export default function ConsultaPanelLLM({
         </div>
       </div>
 
-      {/* ============ CHIPS DE SUGERENCIAS ============ */}
+      {/* SUGERENCIAS */}
       <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
         <span className="text-[11px] text-slate-400 font-medium mr-1 flex items-center gap-1">
           <Sparkles size={11} className="text-cyan-400/80" />
@@ -238,15 +540,32 @@ export default function ConsultaPanelLLM({
         ))}
       </div>
 
-      {/* ============ LOADING ============ */}
+      {/* LOADING */}
       {cargando && (
-        <div className="flex items-center gap-2 text-xs text-cyan-300 py-3 px-1">
-          <Loader2 size={15} className="animate-spin text-cyan-400 shrink-0" />
-          <span>Analizando jugadas y calculando estadísticas...</span>
+        <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/[0.05] p-3 flex items-center gap-3">
+          <Loader2 size={16} className="animate-spin text-cyan-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-cyan-100 font-semibold">
+              {estadoFila === "pendiente"
+                ? "Consulta en cola..."
+                : "Procesando consulta..."}
+            </p>
+            <p className="text-[11px] text-cyan-200/70 mt-0.5 flex items-center gap-1.5">
+              <Clock size={11} />
+              {estadoFila === "pendiente"
+                ? "El servidor la tomó y la está procesando."
+                : "Consultas complejas pueden tardar hasta 5 minutos. Podés navegar mientras tanto."}
+            </p>
+          </div>
+          {consultaId && (
+            <span className="text-[10px] text-cyan-300/60 font-mono shrink-0 hidden sm:inline">
+              #{consultaId.slice(0, 8)}
+            </span>
+          )}
         </div>
       )}
 
-      {/* ============ RESULTADO: OK ============ */}
+      {/* RESULTADO OK */}
       {resultado && resultado.tipo === "ok" && (
         <div className="space-y-3 pt-1">
           {resultado.avisos.length > 0 && (
@@ -267,15 +586,12 @@ export default function ConsultaPanelLLM({
             nombreDeJugador={nombreDeJugador}
           />
 
-          {/* Detalles técnicos discretos */}
           {resultado.debug && (
             <div className="flex justify-end pt-1">
-              <details
-                data-pdf-ignorar
-                className="text-[10px] text-slate-500"
-              >
+              <details data-pdf-ignorar className="text-[10px] text-slate-500">
                 <summary className="cursor-pointer hover:text-slate-400 select-none">
-                  Detalles técnicos ({resultado.debug.accionesFiltradas}/{resultado.debug.accionesUniverso} filas)
+                  Detalles técnicos ({resultado.debug.accionesFiltradas}/
+                  {resultado.debug.accionesUniverso} filas)
                 </summary>
                 <div className="mt-2 p-2 rounded-lg bg-slate-950/60 border border-white/5 space-y-1">
                   <pre className="p-2 rounded bg-slate-900 border border-white/5 font-mono text-[9px] text-cyan-200/80 overflow-x-auto max-h-40">
@@ -288,7 +604,7 @@ export default function ConsultaPanelLLM({
         </div>
       )}
 
-      {/* ============ RESULTADO: ACLARACIÓN ============ */}
+      {/* RESULTADO ACLARACIÓN */}
       {resultado && resultado.tipo === "clarification" && (
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/[0.08] p-3 space-y-1.5">
           <p className="text-xs font-bold text-amber-200">
@@ -296,12 +612,13 @@ export default function ConsultaPanelLLM({
           </p>
           <p className="text-xs text-amber-100">{resultado.pregunta}</p>
           <p className="text-[11px] text-amber-200/70 italic">
-            Reformulá tu consulta con más detalle (ej: qué fundamento, qué set o qué jugador).
+            Reformulá tu consulta con más detalle (ej: qué fundamento, qué set
+            o qué jugador).
           </p>
         </div>
       )}
 
-      {/* ============ RESULTADO: AMBIGUO ============ */}
+      {/* RESULTADO AMBIGUO */}
       {resultado && resultado.tipo === "ambiguo" && (
         <div className="rounded-lg border border-rose-500/40 bg-rose-500/[0.08] p-3 space-y-2">
           <p className="text-xs font-bold text-rose-200">
@@ -321,12 +638,13 @@ export default function ConsultaPanelLLM({
             ))}
           </div>
           <p className="text-[11px] text-rose-200/70 italic">
-            Probá escribiendo el nombre completo, su apodo o #número de camiseta.
+            Probá escribiendo el nombre completo, su apodo o #número de
+            camiseta.
           </p>
         </div>
       )}
 
-      {/* ============ RESULTADO: ERROR ============ */}
+      {/* RESULTADO ERROR */}
       {resultado && resultado.tipo === "error" && (
         <div className="rounded-lg border border-rose-500/40 bg-rose-500/[0.08] p-3.5 space-y-2">
           <p className="text-xs font-bold text-rose-200">
@@ -336,11 +654,21 @@ export default function ConsultaPanelLLM({
             {resultado.mensaje}
           </p>
           <div className="text-[11px] text-slate-300 space-y-1">
-            <p className="font-semibold text-rose-200/90">Sugerencias para consultar:</p>
+            <p className="font-semibold text-rose-200/90">
+              Sugerencias para consultar:
+            </p>
             <ul className="list-disc list-inside text-[11px] text-slate-400 space-y-0.5">
-              <li>Indicá la acción: saque, recepción, ataque, bloqueo, defensa o armado.</li>
-              <li>Aclará si buscás puntos ganados (desenlace) o calidad (positivo/negativo).</li>
-              <li>Si preguntás por un jugador, usá su nombre, apodo o número (#).</li>
+              <li>
+                Indicá la acción: saque, recepción, ataque, bloqueo, defensa o
+                armado.
+              </li>
+              <li>
+                Aclar   si buscás puntos ganados (desenlace) o calidad
+                (positivo/negativo).
+              </li>
+              <li>
+                Si preguntás por un jugador, usá su nombre, apodo o número (#).
+              </li>
               <li>Probá con una de las sugerencias rápidas arriba.</li>
             </ul>
           </div>

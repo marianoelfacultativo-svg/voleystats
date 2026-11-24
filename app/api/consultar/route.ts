@@ -1,13 +1,25 @@
 // ============================================================
 // API ROUTE — POST /api/consultar
 // ============================================================
-// v2.1 (Bloque 3b): cuando la consulta falla, persiste en
-//   `consultas_fallidas` para que el admin la vea.
-//   El insert es "best-effort": si falla, igual devolvemos
-//   la respuesta al usuario.
+// v3.0 (v49.4) — Background + persistencia
+//
+// Flujo nuevo:
+//   1. POST inserta fila en `consultas` con estado='pendiente'
+//      y devuelve { consultaId } al toque (<200ms).
+//   2. `after()` procesa en background (carga contexto,
+//      traduce, ejecuta, update a 'completada'/'fallida').
+//   3. El cliente se suscribe a Supabase Realtime para ver el
+//      cambio de estado y mostrar el resultado.
+//
+// Requiere:
+//   · Next.js 14.2+ con `unstable_after` (o Next 15 con `after`).
+//   · Vercel Fluid Compute activado para maxDuration > 60s.
+//   · Tabla `consultas` (Pieza 1, ya creada).
+//   · Realtime habilitado para `public.consultas`.
 // ============================================================
 
-import { NextResponse } from "next/server";
+import { NextResponse, unstable_after as after } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { cargarAccionesUnificadas } from "@/app/equipo/adaptadorUnificadoV2";
 import type {
@@ -18,12 +30,19 @@ import type { JugadorParaResolver } from "@/lib/consultaAnalitica/resolverJugado
 import { ejecutarConsultaLLM } from "@/lib/consultaAnalitica/ejecutarConsultaLLM";
 
 export const runtime = "nodejs";
+// Hobby: 60s sin Fluid Compute, 300s con Fluid Compute.
+// Si el deploy falla con 300, bajalo a 60.
+export const maxDuration = 300;
 
 interface Body {
   prompt?: string;
   partidoId?: string | null;
   equipoId?: string;
 }
+
+// ------------------------------------------------------------
+// POST
+// ------------------------------------------------------------
 
 export async function POST(req: Request) {
   let body: Body;
@@ -57,35 +76,90 @@ export async function POST(req: Request) {
       ? body.partidoId
       : null;
 
+  // 1) Insertar la consulta como 'pendiente' y devolver el id al toque.
+  const { data: creada, error: errInsert } = await supabase
+    .from("consultas")
+    .insert({
+      equipo_id: equipoId,
+      partido_id: partidoId,
+      prompt,
+      estado: "pendiente",
+    })
+    .select("id")
+    .single();
+
+  if (errInsert || !creada) {
+    return NextResponse.json(
+      {
+        tipo: "error",
+        mensaje: `Error al crear la consulta: ${
+          errInsert?.message ?? "desconocido"
+        }`,
+      },
+      { status: 500 }
+    );
+  }
+
+  const consultaId = creada.id as string;
+
+  // 2) Procesar en background, después de enviar la respuesta.
+  after(async () => {
+    await procesarConsultaEnBackground(consultaId, prompt, equipoId, partidoId);
+  });
+
+  // 3) Responder al cliente con el id para que se suscriba.
+  return NextResponse.json({
+    tipo: "pendiente",
+    consultaId,
+  });
+}
+
+// ------------------------------------------------------------
+// PROCESAMIENTO EN BACKGROUND
+// ------------------------------------------------------------
+
+async function procesarConsultaEnBackground(
+  consultaId: string,
+  prompt: string,
+  equipoId: string,
+  partidoId: string | null
+) {
+  // Cliente server-side fresco (el `after` corre en otro contexto
+  // que el `supabase` browser).
+  const sb = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
   try {
-    // 2.a) Partidos
+    // Marcar 'procesando'
+    await sb
+      .from("consultas")
+      .update({ estado: "procesando" })
+      .eq("id", consultaId);
+
+    // ── Cargar contexto ─────────────────────────────────────
     const { data: partidosRaw, error: errPartidos } = partidoId
-      ? await supabase
+      ? await sb
           .from("partidos")
           .select(
             "id, rival, fecha, equipo_id, equipo_rival_id, " +
-            "set1_ganado, set2_ganado, set3_ganado, set4_ganado, set5_ganado, " +
-            "resultado_partido"
+              "set1_ganado, set2_ganado, set3_ganado, set4_ganado, set5_ganado, " +
+              "resultado_partido"
           )
           .eq("id", partidoId)
-      : await supabase
+      : await sb
           .from("partidos")
           .select(
             "id, rival, fecha, equipo_id, equipo_rival_id, " +
-            "set1_ganado, set2_ganado, set3_ganado, set4_ganado, set5_ganado, " +
-            "resultado_partido"
+              "set1_ganado, set2_ganado, set3_ganado, set4_ganado, set5_ganado, " +
+              "resultado_partido"
           )
           .or(`equipo_id.eq.${equipoId},equipo_rival_id.eq.${equipoId}`)
           .order("fecha", { ascending: false });
 
     if (errPartidos) {
-      return NextResponse.json(
-        {
-          tipo: "error",
-          mensaje: `Error cargando partidos: ${errPartidos.message}`,
-        },
-        { status: 500 }
-      );
+      throw new Error(`Error cargando partidos: ${errPartidos.message}`);
     }
 
     const partidos = (partidosRaw ?? []).map((p: any) => {
@@ -119,8 +193,7 @@ export async function POST(req: Request) {
       };
     });
 
-    // 2.b) Jugadores
-    const { data: jeRaw } = await supabase
+    const { data: jeRaw } = await sb
       .from("jugador_equipo")
       .select("jugador_id")
       .eq("equipo_id", equipoId)
@@ -132,7 +205,7 @@ export async function POST(req: Request) {
 
     let jugadores: JugadorParaResolver[] = [];
     if (idsJugadores.length > 0) {
-      const { data: jugRaw } = await supabase
+      const { data: jugRaw } = await sb
         .from("jugadores")
         .select("id, nombre, apodo, numero")
         .in("id", idsJugadores);
@@ -144,7 +217,6 @@ export async function POST(req: Request) {
       }));
     }
 
-    // 2.c) Acciones + puntos
     let acciones: AccionVisual[] = [];
     let puntos: PuntoConAcciones[] = [];
 
@@ -163,7 +235,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3) Ejecutar consulta LLM (con retry del 3b)
+    // ── Ejecutar LLM ────────────────────────────────────────
     const resultado = await ejecutarConsultaLLM(prompt, {
       acciones,
       puntos,
@@ -171,40 +243,71 @@ export async function POST(req: Request) {
       partidos,
     });
 
-    // 4) Si falló, guardar en Supabase (best-effort, no bloqueante)
-    if (resultado.tipo === "error") {
+    // ── Persistir según resultado ───────────────────────────
+    if (resultado.tipo === "ok") {
+      await sb
+        .from("consultas")
+        .update({
+          estado: "completada",
+          pipeline: resultado.debug.consultaLLM,
+          respuesta: resultado, // ResultadoConsultaLLM completo
+          intentos: resultado.debug.intentosTraduccion,
+          fecha_completado: new Date().toISOString(),
+        })
+        .eq("id", consultaId);
+    } else if (resultado.tipo === "error") {
+      await sb
+        .from("consultas")
+        .update({
+          estado: "fallida",
+          error_tecnico: resultado.errorTecnico,
+          intentos: resultado.intentos,
+          fecha_completado: new Date().toISOString(),
+        })
+        .eq("id", consultaId);
+
+      // Mantener el panel de consultas-fallidas
       try {
-        await supabase.from("consultas_fallidas").insert({
+        await sb.from("consultas_fallidas").insert({
           equipo_id: equipoId,
           partido_id: partidoId,
-          prompt: prompt,
+          prompt,
           mensaje_usuario: resultado.mensaje,
           error_tecnico: resultado.errorTecnico,
           intentos: resultado.intentos,
         });
       } catch (e) {
-        console.error(
-          "[consultar] Error persistiendo consulta fallida:",
-          e
-        );
+        console.error("[consultar] Error persistiendo consulta fallida:", e);
       }
+    } else if (resultado.tipo === "clarification") {
+      await sb
+        .from("consultas")
+        .update({
+          estado: "fallida",
+          error_tecnico: `Necesita aclaración: ${resultado.pregunta}`,
+          fecha_completado: new Date().toISOString(),
+        })
+        .eq("id", consultaId);
+    } else if (resultado.tipo === "ambiguo") {
+      await sb
+        .from("consultas")
+        .update({
+          estado: "fallida",
+          error_tecnico: `Ambiguo: ${resultado.aviso}`,
+          fecha_completado: new Date().toISOString(),
+        })
+        .eq("id", consultaId);
     }
-
-    return NextResponse.json(resultado);
   } catch (e) {
-    return NextResponse.json(
-      {
-        tipo: "error",
-        mensaje: `Error procesando la consulta: ${
-          e instanceof Error ? e.message : "desconocido"
-        }`,
-        errorTecnico:
+    console.error("[consultar] Error en background:", e);
+    await sb
+      .from("consultas")
+      .update({
+        estado: "fallida",
+        error_tecnico:
           e instanceof Error ? e.stack ?? e.message : "desconocido",
-        promptOriginal: prompt,
-        intentos: 0,
-        pipelineIntentos: [],
-      },
-      { status: 500 }
-    );
+        fecha_completado: new Date().toISOString(),
+      })
+      .eq("id", consultaId);
   }
 }
