@@ -33,7 +33,7 @@ type Consulta = {
   partido_id: string | null;
   prompt: string;
   estado: EstadoConsulta;
-  pipeline: unknown | null;
+  pipeline: Record<string, unknown> | null;
   respuesta: ResultadoConsultaLLM | null;
   error_tecnico: string | null;
   intentos: number | null;
@@ -391,7 +391,7 @@ export default function ConsultasAdminPage() {
                       )}
 
                       {/* Pipeline interpretado (colapsable) */}
-                      {f.pipeline && (
+                      {Boolean(f.pipeline) && (
                         <details className="text-[10px] text-slate-500">
                           <summary className="cursor-pointer hover:text-slate-400 select-none">
                             Pipeline interpretado
