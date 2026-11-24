@@ -22,7 +22,7 @@ const GROQ_MODEL =
   process.env.GROQ_MODEL ||
   (process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY
     ? "gpt-4o-mini"
-    : "llama-3.3-70b-versatile");
+    : "openai/gpt-oss-120b");
 
 const MAX_INTENTOS = 3;
 
