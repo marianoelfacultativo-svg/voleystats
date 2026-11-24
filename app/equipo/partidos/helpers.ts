@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // HELPERS PUROS — Partidos
 // ============================================================
 // Funciones sin React, sin estado. Solo transformación de datos
@@ -112,6 +112,18 @@ export function accionesDBaVisualParaTactico(
       subtipo_real: null,
       es_ultima_del_punto,
       calidad_armado_previo: null,
+      // ── v50.2: flags no disponibles en esta ruta legacy ──
+      desenlace: null,
+      valoracion: null,
+      puntaje: null,
+      toca_bloqueo: null,
+      hubo_defensa: null,
+      hubo_cobertura: null,
+      error_tipo: null,
+      use_rival: null,
+      acciones_en_rally: null,
+      calidad_recepcion_previa: null,
+      calidad_armado_previa: null,
     };
   });
 }
