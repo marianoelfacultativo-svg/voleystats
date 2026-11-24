@@ -128,10 +128,7 @@ export default function ConsultasAdminPage() {
     setError(null);
     const { data, error } = await supabase
       .from("consultas")
-      .select(
-        "id, equipo_id, partido_id, prompt, estado, pipeline, respuesta, " +
-          "error_tecnico, intentos, fecha_creacion, fecha_completado"
-      )
+      .select("*")
       .order("fecha_creacion", { ascending: false })
       .limit(LIMITE);
 
