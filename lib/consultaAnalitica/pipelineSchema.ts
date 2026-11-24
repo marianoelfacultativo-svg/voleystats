@@ -103,6 +103,10 @@ export const CAMPOS_ACCION = [
   "zona_jugador", "fase_rally", "tipo_saque", "variante", "velocidad",
   "es_error", "lado", "equipo_id", "partido_id", "desenlace", "valoracion", "puntaje",
   "resultado_set", "resultado_partido", "ganador_punto", "calidad_recepcion",
+  // ── v50.2 ──
+  "toca_bloqueo", "hubo_defensa", "hubo_cobertura",
+  "error_tipo", "use_rival",
+  "acciones_en_rally", "calidad_recepcion_previa", "calidad_armado_previa",
 ] as const;
 
 export const CAMPOS_PUNTO = [
@@ -503,6 +507,34 @@ Las acciones intermedias en el rally tienen desenlace "en_juego", salvo que cier
    - Ejemplo CORRECTO para "puntos de ataque del punta 1 o del opuesto en k1":
      { "filtro": { "kind": "and", "children": [ { "kind": "filter", "campo": "tipo", "operador": "eq", "valor": "ataque" }, { "kind": "filter", "campo": "desenlace", "operador": "eq", "valor": "punto" }, { "kind": "filter", "campo": "fase_rally", "operador": "eq", "valor": "side-out" }, { "kind": "filter", "campo": "es_rival", "operador": "eq", "valor": false }, { "kind": "or", "children": [ { "kind": "filter", "campo": "rol_jugador", "operador": "eq", "valor": "P1" }, { "kind": "filter", "campo": "rol_jugador", "operador": "eq", "valor": "OP" } ] } ] } }
 
+19. EVENTOS FÍSICOS Y DESCOMPOSICIÓN DEL SUBTIPO:
+   Además de "subtipo" (outcome completo), tenés columnas ortogonales:
+   - "toca_bloqueo": la pelota tocó el bloqueo (desviada o no).
+   - "hubo_defensa": después de esta acción, alguien defendió (NO cobertura).
+   - "hubo_cobertura": después de esta acción, alguien cubrió.
+   - "error_tipo": "gorro" | "red" | "afuera" | "filtrada" (solo si desenlace=error).
+   - "use_rival": true si el rival tocó el bloqueo y terminó en punto nuestro.
+
+   USAR FLAGS EN VEZ DE SUBTIPO:
+   - "ataques directos" / "limpios" (sin bloqueo ni defensa) →
+     tipo=ataque AND toca_bloqueo=false AND hubo_defensa=false
+   - "gorros" → tipo=ataque AND error_tipo=gorro
+   - "ataques desviados por el bloqueo" → tipo=ataque AND toca_bloqueo=true
+   - "use rival" → tipo=ataque AND use_rival=true
+   - "ataques con cobertura" → tipo=ataque AND hubo_cobertura=true
+   - "defensas tras bloqueo" → tipo=defensa AND toca_bloqueo=true
+
+   REGLA: si el usuario menciona el EVENTO (bloqueo, defensa, cobertura, gorro,
+   desviado, use rival), usar el flag. Si menciona el RESULTADO completo, usar subtipo.
+
+20. CONTEXTO DEL RALLY Y CALIDAD PREVIA:
+   - "acciones_en_rally": número de acciones visibles hasta esta (inclusive).
+     "rallies largos" → acciones_en_rally >= 6. "rallies cortos" → <= 3.
+   - "calidad_armado_previa": 1-6, calidad del armado previo.
+     "ataques tras armado flojo" → calidad_armado_previa <= 3.
+   - "calidad_recepcion_previa": "perfecta"|"positiva"|"intermedia"|"negativa"|"error_directo".
+     "kill % tras recepción perfecta" → calidad_recepcion_previa = perfecta.
+
 EJEMPLOS (todos incluyen "explain" obligatorio):
 
 Prompt: "kill % del punta 1"
@@ -697,4 +729,32 @@ JSON:
   },
   "metrica": { "tipo": "count" },
   "explain": "Puntos de ataque del punta 1 o del opuesto en k1: acciones propias, ataque, desenlace punto, fase side-out, con OR entre P1 y OP."
+}
+
+Prompt: "ataques directos (sin bloqueo ni defensa)"
+JSON:
+{
+  "entidad_base": "acciones",
+  "filtros": [
+    { "campo": "tipo", "operador": "eq", "valor": "ataque" },
+    { "campo": "toca_bloqueo", "operador": "eq", "valor": false },
+    { "campo": "hubo_defensa", "operador": "eq", "valor": false },
+    { "campo": "es_rival", "operador": "eq", "valor": false }
+  ],
+  "metrica": { "tipo": "count" },
+  "explain": "Ataques directos: ataques propios que no tocaron bloqueo ni fueron defendidos."
+}
+
+Prompt: "defensas tras bloqueo en sets ganados"
+JSON:
+{
+  "entidad_base": "acciones",
+  "filtros": [
+    { "campo": "tipo", "operador": "eq", "valor": "defensa" },
+    { "campo": "toca_bloqueo", "operador": "eq", "valor": true },
+    { "campo": "resultado_set", "operador": "eq", "valor": "set_ganado" },
+    { "campo": "es_rival", "operador": "eq", "valor": false }
+  ],
+  "metrica": { "tipo": "count" },
+  "explain": "Defensas tras bloqueo en sets ganados: defensas propias que vienen de un bloqueo, en sets que ganamos."
 }`;

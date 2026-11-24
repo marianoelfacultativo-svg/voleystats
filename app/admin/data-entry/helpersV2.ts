@@ -1,11 +1,17 @@
 // ============================================================
 // HELPERS PUROS V2 — DataEntryV2
-// Funciones sin estado, sin React. Solo transformación de datos.
+// ============================================================
+// v50.2: flags físicos + contexto del rally persistidos
 // ============================================================
 
 import { getRectMiniLayout } from "./CanchaV2";
 import type { PuntoV2, LineaV2 } from "./LineasV2";
-import type { LineaClasificada, Situacion } from "@/lib/clasificacionV2";
+import type {
+  LineaClasificada,
+  Situacion,
+  FlagsFisicosAccion,
+} from "@/lib/clasificacionV2";
+import { flagsFisicosDeAccion } from "@/lib/clasificacionV2";
 import type { AccionV2Data } from "@/lib/dbV2";
 import {
   numeroRotacionDesdePosiciones,
@@ -59,7 +65,7 @@ export interface ContextoAnalitico {
 }
 
 // ------------------------------------------------------------
-// Helpers internos analíticos
+// Helpers internos
 // ------------------------------------------------------------
 
 function invertirFila(celda: string): string {
@@ -83,32 +89,19 @@ function zonaDeCeldaNormalizada(celda: string | null): number | null {
   return zonaCrudaDeCelda(c);
 }
 
-/**
- * Determina si una acción debe considerarse "error" del que la ejecuta.
- *
- * Recepción: error_directo es el único subtipo que cuenta como error
- * (los demás, incluyendo overpass, no). Antes se usaba parseInt(s) === 1.
- */
 function esErrorDeAccion(
   tipo: string,
   subtipo: string | number | null | undefined
 ): boolean {
   if (subtipo === null || subtipo === undefined) return false;
   const s = String(subtipo);
-
-  if (tipo === "saque") {
-    return s === "negativo";
-  }
-  if (tipo === "recepcion") {
-    return s === "error_directo";
-  }
+  if (tipo === "saque") return s === "negativo";
+  if (tipo === "recepcion") return s === "error_directo";
   if (tipo === "ataque") {
     const base = s.startsWith("toque:") ? s.slice(6) : s;
     return base === "error";
   }
-  if (tipo === "bloqueo") {
-    return s === "red" || s === "use_rival";
-  }
+  if (tipo === "bloqueo") return s === "red" || s === "use_rival";
   if (tipo === "defensa") {
     return (
       s === "error_def" ||
@@ -122,9 +115,7 @@ function esErrorDeAccion(
     const n = typeof subtipo === "number" ? subtipo : parseInt(s, 10);
     return n === 1;
   }
-  if (tipo === "roce-red") {
-    return s === "roce-red-rival";
-  }
+  if (tipo === "roce-red") return s === "roce-red-rival";
   return false;
 }
 
@@ -133,18 +124,13 @@ function infoJugadorEnRotacion(
   jugadorId: string | null
 ): { rol: string | null; zona: number | null } {
   if (!rotacion || !jugadorId) return { rol: null, zona: null };
-
   for (const asig of Object.values(rotacion.posiciones)) {
     if (asig.jugador_id === jugadorId) {
       return { rol: asig.tipo, zona: asig.zona };
     }
   }
-
-  const lib = (rotacion.liberos ?? []).find(
-    (l) => l.jugador_id === jugadorId
-  );
+  const lib = (rotacion.liberos ?? []).find((l) => l.jugador_id === jugadorId);
   if (lib) return { rol: "L", zona: null };
-
   return { rol: null, zona: null };
 }
 
@@ -166,7 +152,22 @@ function coordsDeMini(
 }
 
 // ------------------------------------------------------------
-// Construcción de AccionV2Data con campos analíticos
+// Flags por defecto (para acciones sintéticas)
+// ------------------------------------------------------------
+
+const FLAGS_DEFAULT: FlagsFisicosAccion = {
+  desenlace: "en_juego",
+  valoracion: "neu",
+  puntaje: 5,
+  toca_bloqueo: false,
+  hubo_defensa: false,
+  hubo_cobertura: false,
+  error_tipo: null,
+  use_rival: false,
+};
+
+// ------------------------------------------------------------
+// Construcción de AccionV2Data
 // ------------------------------------------------------------
 
 interface OverrideAccion {
@@ -178,6 +179,7 @@ function construirAccion(
   l: LineaClasificada,
   orden: number,
   ctx: ContextoAnalitico,
+  flags: FlagsFisicosAccion,
   override?: OverrideAccion
 ): AccionV2Data {
   let subtipoFinal: string | number | null =
@@ -240,7 +242,6 @@ function construirAccion(
     x2: l.x2 ?? false,
     oculta: l.oculta ?? false,
     equipo_id: l.equipoId ?? null,
-
     es_error: esErrorDeAccion(l.tipo, subtipoFinal),
     zona_origen,
     zona_destino,
@@ -253,8 +254,24 @@ function construirAccion(
     destino_y: cDestino?.y ?? null,
     posicion_inicial_x: cPosIni?.x ?? null,
     posicion_inicial_y: cPosIni?.y ?? null,
+    // v50.2
+    desenlace: flags.desenlace,
+    valoracion: flags.valoracion,
+    puntaje: flags.puntaje,
+    toca_bloqueo: flags.toca_bloqueo,
+    hubo_defensa: flags.hubo_defensa,
+    hubo_cobertura: flags.hubo_cobertura,
+    error_tipo: flags.error_tipo,
+    use_rival: flags.use_rival,
+    acciones_en_rally: null, // se rellena en segunda pasada
+    calidad_recepcion_previa: null,
+    calidad_armado_previa: null,
   };
 }
+
+// ------------------------------------------------------------
+// lineasAAcciones
+// ------------------------------------------------------------
 
 export function lineasAAcciones(
   lineas: LineaClasificada[],
@@ -263,7 +280,11 @@ export function lineasAAcciones(
   const acciones: AccionV2Data[] = [];
   let orden = 1;
 
-  for (const l of lineas) {
+  for (let idx = 0; idx < lineas.length; idx++) {
+    const l = lineas[idx];
+    const flagsBase = flagsFisicosDeAccion(lineas, idx);
+
+    // ── Caso especial: bloqueo propio con desvíos BLOQ-P ──
     if (l.tipo === "bloqueo" && !l.esRival) {
       const desviosBLOQP = (l.desvios ?? []).filter((d) =>
         d.celda.startsWith("BLOQ-P-")
@@ -285,38 +306,23 @@ export function lineasAAcciones(
                 subtipo: "neutro",
               },
               orden++,
-              contexto
+              contexto,
+              {
+                ...FLAGS_DEFAULT,
+                toca_bloqueo: true,
+                desenlace: "en_juego",
+                valoracion: "neu",
+                puntaje: 2,
+              }
             )
           );
 
-          if (desviosBLOQP.length > 1) {
-            const base = (l.subtipo ?? "positivo") as string;
-            const esPositiva =
-              base === "punto" ||
-              base === "positivo_mas" ||
-              base === "positivo";
-            const sub = esPositiva ? "positivo" : "neutro";
-            for (const d of desviosBLOQP) {
-              acciones.push(
-                construirAccion(
-                  {
-                    ...l,
-                    tipo: "bloqueo",
-                    esRival: false,
-                    origen: d,
-                    desvios: [],
-                  },
-                  orden++,
-                  contexto,
-                  {
-                    jugadorId: d.jugadorId ?? null,
-                    subtipo: sub,
-                  }
-                )
-              );
-            }
-          } else {
-            const d = desviosBLOQP[0];
+          const base = (l.subtipo ?? "positivo") as string;
+          const esPositiva =
+            base === "punto" || base === "positivo_mas" || base === "positivo";
+          const sub = esPositiva ? "positivo" : "neutro";
+
+          for (const d of desviosBLOQP) {
             acciones.push(
               construirAccion(
                 {
@@ -328,39 +334,85 @@ export function lineasAAcciones(
                 },
                 orden++,
                 contexto,
-                {
-                  jugadorId: d.jugadorId ?? null,
-                  subtipo: (d as any).subtipo ?? l.subtipo ?? null,
-                }
+                { ...flagsBase, toca_bloqueo: false },
+                { jugadorId: d.jugadorId ?? null, subtipo: sub }
               )
             );
           }
+          continue;
+        }
 
+        if (desviosBLOQP.length > 1) {
+          const base = (l.subtipo ?? "positivo") as string;
+          const esPositiva =
+            base === "punto" || base === "positivo_mas" || base === "positivo";
+          const sub = esPositiva ? "positivo" : "neutro";
+          for (const d of desviosBLOQP) {
+            acciones.push(
+              construirAccion(l, orden++, contexto, flagsBase, {
+                jugadorId: d.jugadorId ?? null,
+                subtipo: (d as any).subtipo ?? sub,
+              })
+            );
+          }
           continue;
         }
       }
-
-      if (desviosBLOQP.length > 1) {
-        const base = (l.subtipo ?? "positivo") as string;
-        const esPositiva =
-          base === "punto" ||
-          base === "positivo_mas" ||
-          base === "positivo";
-        const sub = esPositiva ? "positivo" : "neutro";
-        for (const d of desviosBLOQP) {
-          acciones.push(
-            construirAccion(l, orden++, contexto, {
-              jugadorId: d.jugadorId ?? null,
-              subtipo: (d as any).subtipo ?? sub,
-            })
-          );
-        }
-        continue;
-      }
     }
-    acciones.push(construirAccion(l, orden++, contexto));
+
+    acciones.push(construirAccion(l, orden++, contexto, flagsBase));
   }
-  return acciones;
+
+  // ── Segunda pasada: acciones_en_rally + calidad_*_previa ──
+  const accionesEnriquecidas = acciones.map((a, i) => {
+    let nVisibles = 0;
+    for (let k = 0; k <= i; k++) {
+      if (!acciones[k].oculta) nVisibles++;
+    }
+
+    let calidadArmado: number | null = null;
+    let calidadRecepcion: string | null = null;
+    for (let k = i - 1; k >= 0; k--) {
+      const prev = acciones[k];
+      if (prev.oculta) continue;
+      if (calidadArmado === null && prev.tipo === "armado") {
+        const n =
+          typeof prev.subtipo === "number"
+            ? prev.subtipo
+            : parseInt(String(prev.subtipo ?? ""), 10);
+        if (!isNaN(n) && n >= 1 && n <= 6) calidadArmado = n;
+      }
+      if (calidadRecepcion === null && prev.tipo === "recepcion") {
+        const s = String(prev.subtipo ?? "");
+        if (
+          s === "perfecta" ||
+          s === "positiva" ||
+          s === "intermedia" ||
+          s === "negativa" ||
+          s === "doble_negativa" ||
+          s === "error_directo" ||
+          s === "overpass" ||
+          s === "ace_contra"
+        ) {
+          calidadRecepcion = s;
+        } else if (s === "6" || s === "5") calidadRecepcion = "perfecta";
+        else if (s === "4") calidadRecepcion = "positiva";
+        else if (s === "3") calidadRecepcion = "intermedia";
+        else if (s === "2") calidadRecepcion = "negativa";
+        else if (s === "1") calidadRecepcion = "error_directo";
+      }
+      if (calidadArmado !== null && calidadRecepcion !== null) break;
+    }
+
+    return {
+      ...a,
+      acciones_en_rally: nVisibles,
+      calidad_recepcion_previa: calidadRecepcion,
+      calidad_armado_previa: calidadArmado,
+    };
+  });
+
+  return accionesEnriquecidas;
 }
 
 // ------------------------------------------------------------
@@ -376,7 +428,7 @@ export function mismaMini(a: PuntoV2, b: PuntoV2): boolean {
 }
 
 // ------------------------------------------------------------
-// Contadores / mapa de overrides
+// Contadores
 // ------------------------------------------------------------
 
 export function maxIdLineas(lineas: LineaClasificada[]): number {

@@ -22,6 +22,7 @@ import {
   type Zona,
 } from "./rotaciones";
 import { jugadorQueAtacaDesdeCelda } from "./mapeoV2";
+import { infoDeSubtipoPipeline } from "./consultaAnalitica/pipelineSchema";
 
 // ============================================================
 // TIPOS
@@ -1388,4 +1389,88 @@ export function calcularSubtiposSaque(
   }
 
   return resultado;
+}
+
+// ============================================================
+// FLAGS FÍSICOS DERIVADOS (v50.2)
+// ============================================================
+// Descompone el subtipo monolítico en dimensiones ortogonales.
+// - toca_bloqueo: la pelota tocó un bloqueo (del lado contrario).
+// - hubo_defensa: después de esta acción, alguien defendió (no cobertura).
+// - hubo_cobertura: después de esta acción, alguien cubrió.
+// hubo_defensa y hubo_cobertura son mutuamente excluyentes.
+// ============================================================
+
+export interface FlagsFisicosAccion {
+  desenlace: "punto" | "error" | "en_juego";
+  valoracion: "pos" | "neu" | "neg";
+  puntaje: number;
+  toca_bloqueo: boolean;
+  hubo_defensa: boolean;
+  hubo_cobertura: boolean;
+  error_tipo: "red" | "afuera" | "gorro" | "filtrada" | null;
+  use_rival: boolean;
+}
+
+export function flagsFisicosDeAccion(
+  lineas: LineaClasificada[],
+  idx: number
+): FlagsFisicosAccion {
+  const l = lineas[idx];
+  const sub = String(l.subtipo ?? "");
+  const info = infoDeSubtipoPipeline(l.tipo, l.subtipo);
+
+  const flags: FlagsFisicosAccion = {
+    desenlace: info.desenlace,
+    valoracion: info.valoracion,
+    puntaje: info.puntaje,
+    toca_bloqueo: false,
+    hubo_defensa: false,
+    hubo_cobertura: false,
+    error_tipo: null,
+    use_rival: false,
+  };
+
+  // ── toca_bloqueo ──
+  if (l.tipo === "ataque") {
+    // Ataque propio → busca desvío BLOQ-R (bloqueo rival).
+    // Ataque rival → busca desvío BLOQ-P (bloqueo propio).
+    const bloqueoPrefix = l.esRival ? "BLOQ-P-" : "BLOQ-R-";
+    flags.toca_bloqueo = (l.desvios ?? []).some((d) =>
+      d.celda.startsWith(bloqueoPrefix)
+    );
+  } else if (l.tipo === "defensa") {
+    flags.toca_bloqueo =
+      l.origen.celda.startsWith("BLOQ-P-") ||
+      l.origen.celda.startsWith("BLOQ-R-");
+  }
+
+  // ── hubo_defensa / hubo_cobertura (lookahead) ──
+  let nextVisible: LineaClasificada | null = null;
+  for (let j = idx + 1; j < lineas.length; j++) {
+    if (!lineas[j].oculta) {
+      nextVisible = lineas[j];
+      break;
+    }
+  }
+  if (nextVisible && nextVisible.tipo === "defensa") {
+    const subNext = String(nextVisible.subtipo ?? "");
+    if (subNext.startsWith("cobertura")) {
+      flags.hubo_cobertura = true;
+    } else {
+      flags.hubo_defensa = true;
+    }
+  }
+
+  // ── error_tipo ──
+  if (sub === "gorro_ataque") flags.error_tipo = "gorro";
+  else if (sub === "error_red_ataque") flags.error_tipo = "red";
+  else if (sub === "error_afuera_ataque") flags.error_tipo = "afuera";
+  else if (sub === "filtrada") flags.error_tipo = "filtrada";
+  else if (sub === "red" && l.tipo === "bloqueo") flags.error_tipo = "red";
+
+  // ── use_rival ──
+  flags.use_rival = sub === "use_rival_ataque" || sub === "use_rival";
+
+  return flags;
 }

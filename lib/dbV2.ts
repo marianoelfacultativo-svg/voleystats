@@ -1,18 +1,13 @@
 // ============================================================
 // ACCESO A DATOS V2 — puntos_v2 + acciones_v2
-// Puente entre la consola V2 y Supabase
 // ============================================================
-//
-// v49.1: borrarTodosV2 ya no toca rotaciones_v2 (tabla
-// eliminada de Supabase — era huérfana, nadie la leía ni
-// escribía; solo un DELETE muerto acá).
+// v50.2: AccionV2Data gana 11 campos ortogonales (desenlace,
+// valoracion, puntaje, toca_bloqueo, hubo_defensa, hubo_cobertura,
+// error_tipo, use_rival, acciones_en_rally, calidad_recepcion_previa,
+// calidad_armado_previa) y guardarPuntoV2 los persiste.
 // ============================================================
 
 import { supabase } from "./supabase";
-
-// ------------------------------------------------------------
-// TIPOS
-// ------------------------------------------------------------
 
 export type LadoV2 = "propio" | "rival";
 export type SituacionV2 = "saque" | "recepcion";
@@ -20,7 +15,6 @@ export type SituacionV2 = "saque" | "recepcion";
 export interface DesvioV2 {
   celda: string;
   mini: string | null;
-  // Jugador que hizo el desvío (bloqueador), si se conoce.
   jugador_id?: string | null;
 }
 
@@ -34,10 +28,7 @@ export interface PuntoV2Data {
   liberos: Record<string, unknown>[];
   cambios: Record<string, unknown>[];
   posiciones_punto: Record<string, string>;
-  // Equipo dueño del punto (modo espejo). null = comportamiento clásico.
   equipo_id?: string | null;
-  // Estado del equipo rival al cerrar el punto (solo modo espejo).
-  // Guarda rotación, liberos, posiciones del punto y cambios pendientes.
   estado_rival?: Record<string, unknown> | null;
 }
 
@@ -54,46 +45,41 @@ export interface AccionV2Data {
   destino_mini: string | null;
   desvios: DesvioV2[];
   zona: number | null;
-  // Posición previa del jugador (estrella). null si no hubo desplazamiento.
   posicion_inicial_celda?: string | null;
   posicion_inicial_mini?: string | null;
-  // Velocidad del armado (opcional). null si no se eligió.
   velocidad?: number | null;
-  // Tipo de saque (potencia / flotado). Solo en saques propios.
   tipo_saque?: string | null;
-  // Variante del ataque: "toque" | null (null = remate por defecto).
   variante?: string | null;
-  // Defensa doble (x2): la próxima acción del mismo lado también es defensa.
   x2?: boolean | null;
-  // Línea interna que rompe flujo (libre oculta). Para filtrar en analítica.
   oculta?: boolean | null;
-  // Equipo dueño de la acción (modo espejo). null = comportamiento clásico.
   equipo_id?: string | null;
 
-  // ----------------------------------------------------------
-  // CAMPOS ANALÍTICOS (para filtros en el panel de equipo)
-  // ----------------------------------------------------------
-  /** ¿La acción terminó en error del que la ejecutó? */
+  // Analíticos
   es_error?: boolean | null;
-  /** Zona de rotación (1-6) de donde sale la acción. */
   zona_origen?: number | null;
-  /** Zona de rotación (1-6) a donde llega la acción. */
   zona_destino?: number | null;
-  /** Número de rotación (1-6) del equipo que hizo la acción. */
   rotacion_numero?: number | null;
-  /** Rol del jugador (A / O / C1 / C2 / P1 / P2 / L). */
   rol_jugador?: string | null;
-  /** Zona de la cancha (1-6) donde estaba parado el jugador. */
   zona_jugador?: number | null;
-  /** Coordenadas exactas (float) del origen en la cancha virtual (0-13 × 0-9). */
   origen_x?: number | null;
   origen_y?: number | null;
-  /** Coordenadas exactas (float) del destino. */
   destino_x?: number | null;
   destino_y?: number | null;
-  /** Coordenadas exactas (float) de la posición inicial (estrella). */
   posicion_inicial_x?: number | null;
   posicion_inicial_y?: number | null;
+
+  // ---- v50.2: descomposición ortogonal ----
+  desenlace?: "punto" | "error" | "en_juego" | null;
+  valoracion?: "pos" | "neu" | "neg" | null;
+  puntaje?: number | null;
+  toca_bloqueo?: boolean | null;
+  hubo_defensa?: boolean | null;
+  hubo_cobertura?: boolean | null;
+  error_tipo?: "red" | "afuera" | "gorro" | "filtrada" | null;
+  use_rival?: boolean | null;
+  acciones_en_rally?: number | null;
+  calidad_recepcion_previa?: string | null;
+  calidad_armado_previa?: number | null;
 }
 
 export interface PuntoV2Row extends PuntoV2Data {
@@ -115,10 +101,6 @@ export interface PuntoV2Completo extends PuntoV2Row {
   acciones: AccionV2Row[];
 }
 
-// ------------------------------------------------------------
-// 1. GUARDAR PUNTO + ACCIONES
-// ------------------------------------------------------------
-
 export async function guardarPuntoV2(
   partidoId: string,
   punto: PuntoV2Data,
@@ -135,10 +117,7 @@ export async function guardarPuntoV2(
     .maybeSingle();
 
   if (errBuscar) {
-    return {
-      ok: false,
-      error: `buscando punto existente: ${errBuscar.message}`,
-    };
+    return { ok: false, error: `buscando punto existente: ${errBuscar.message}` };
   }
 
   if (existente?.id) {
@@ -147,21 +126,14 @@ export async function guardarPuntoV2(
       .delete()
       .eq("punto_id", existente.id);
     if (errBorrarAcc) {
-      return {
-        ok: false,
-        error: `borrando acciones viejas: ${errBorrarAcc.message}`,
-      };
+      return { ok: false, error: `borrando acciones viejas: ${errBorrarAcc.message}` };
     }
-
     const { error: errBorrarPunto } = await supabase
       .from("puntos_v2")
       .delete()
       .eq("id", existente.id);
     if (errBorrarPunto) {
-      return {
-        ok: false,
-        error: `borrando punto viejo: ${errBorrarPunto.message}`,
-      };
+      return { ok: false, error: `borrando punto viejo: ${errBorrarPunto.message}` };
     }
   }
 
@@ -187,10 +159,7 @@ export async function guardarPuntoV2(
     .single();
 
   if (errPunto || !inserted) {
-    return {
-      ok: false,
-      error: `puntos_v2: ${errPunto?.message ?? "sin id devuelto"}`,
-    };
+    return { ok: false, error: `puntos_v2: ${errPunto?.message ?? "sin id devuelto"}` };
   }
 
   const puntoId = inserted.id as string;
@@ -221,7 +190,6 @@ export async function guardarPuntoV2(
       x2: a.x2 ?? false,
       oculta: a.oculta ?? false,
       equipo_id: a.equipo_id ?? null,
-
       // Analíticos
       es_error: a.es_error ?? false,
       zona_origen: a.zona_origen ?? null,
@@ -235,12 +203,23 @@ export async function guardarPuntoV2(
       destino_y: a.destino_y ?? null,
       posicion_inicial_x: a.posicion_inicial_x ?? null,
       posicion_inicial_y: a.posicion_inicial_y ?? null,
+      // v50.2 flags
+      desenlace: a.desenlace ?? null,
+      valoracion: a.valoracion ?? null,
+      puntaje: a.puntaje ?? null,
+      toca_bloqueo: a.toca_bloqueo ?? null,
+      hubo_defensa: a.hubo_defensa ?? null,
+      hubo_cobertura: a.hubo_cobertura ?? null,
+      error_tipo: a.error_tipo ?? null,
+      use_rival: a.use_rival ?? null,
+      acciones_en_rally: a.acciones_en_rally ?? null,
+      calidad_recepcion_previa: a.calidad_recepcion_previa ?? null,
+      calidad_armado_previa: a.calidad_armado_previa ?? null,
+      // zona_caida: mismo valor que zona_destino (placeholder Fase 5.3)
+      zona_caida: a.zona_destino ?? null,
     }));
 
-    const { error: errAcc } = await supabase
-      .from("acciones_v2")
-      .insert(filasAcciones);
-
+    const { error: errAcc } = await supabase.from("acciones_v2").insert(filasAcciones);
     if (errAcc) {
       await supabase.from("puntos_v2").delete().eq("id", puntoId);
       return { ok: false, error: `acciones_v2: ${errAcc.message}` };
@@ -249,10 +228,6 @@ export async function guardarPuntoV2(
 
   return { ok: true, puntoId };
 }
-
-// ------------------------------------------------------------
-// 2. CARGAR TODOS LOS PUNTOS DEL PARTIDO
-// ------------------------------------------------------------
 
 export async function cargarPuntosV2(
   partidoId: string
@@ -266,9 +241,7 @@ export async function cargarPuntosV2(
     .order("set_numero", { ascending: true })
     .order("punto_numero", { ascending: true });
 
-  if (errPuntos) {
-    return { ok: false, error: `puntos_v2: ${errPuntos.message}` };
-  }
+  if (errPuntos) return { ok: false, error: `puntos_v2: ${errPuntos.message}` };
 
   const { data: acciones, error: errAcciones } = await supabase
     .from("acciones_v2")
@@ -276,9 +249,7 @@ export async function cargarPuntosV2(
     .eq("partido_id", partidoId)
     .order("orden", { ascending: true });
 
-  if (errAcciones) {
-    return { ok: false, error: `acciones_v2: ${errAcciones.message}` };
-  }
+  if (errAcciones) return { ok: false, error: `acciones_v2: ${errAcciones.message}` };
 
   const accionesPorPunto = new Map<string, AccionV2Row[]>();
   for (const a of (acciones ?? []) as AccionV2Row[]) {
@@ -287,43 +258,27 @@ export async function cargarPuntosV2(
     accionesPorPunto.set(a.punto_id, lista);
   }
 
-  const resultado: PuntoV2Completo[] = ((puntos ?? []) as PuntoV2Row[]).map(
-    (p) => ({
-      ...p,
-      acciones: accionesPorPunto.get(p.id) ?? [],
-    })
-  );
+  const resultado: PuntoV2Completo[] = ((puntos ?? []) as PuntoV2Row[]).map((p) => ({
+    ...p,
+    acciones: accionesPorPunto.get(p.id) ?? [],
+  }));
 
   return { ok: true, puntos: resultado };
 }
-
-// ------------------------------------------------------------
-// 3. BORRAR UN PUNTO POR ID
-// ------------------------------------------------------------
 
 export async function borrarPuntoV2(
   puntoId: string
 ): Promise<{ ok: boolean; error?: string }> {
   if (!puntoId) return { ok: false, error: "Falta puntoId" };
-
   const { error: errAcc } = await supabase
     .from("acciones_v2")
     .delete()
     .eq("punto_id", puntoId);
   if (errAcc) return { ok: false, error: `acciones_v2: ${errAcc.message}` };
-
-  const { error: errPunto } = await supabase
-    .from("puntos_v2")
-    .delete()
-    .eq("id", puntoId);
+  const { error: errPunto } = await supabase.from("puntos_v2").delete().eq("id", puntoId);
   if (errPunto) return { ok: false, error: `puntos_v2: ${errPunto.message}` };
-
   return { ok: true };
 }
-
-// ------------------------------------------------------------
-// 4. BORRAR UN PUNTO POR COORDENADAS
-// ------------------------------------------------------------
 
 export async function borrarPuntoV2PorCoordenadas(
   partidoId: string,
@@ -331,59 +286,35 @@ export async function borrarPuntoV2PorCoordenadas(
   puntoNumero: number
 ): Promise<{ ok: boolean; error?: string }> {
   if (!partidoId) return { ok: false, error: "Falta partidoId" };
-
   const { data: existentes, error: errBuscar } = await supabase
     .from("puntos_v2")
     .select("id")
     .eq("partido_id", partidoId)
     .eq("set_numero", setNumero)
     .eq("punto_numero", puntoNumero);
-
   if (errBuscar) return { ok: false, error: errBuscar.message };
-
   const ids = (existentes ?? []).map((r: { id: string }) => r.id);
   if (ids.length === 0) return { ok: true };
-
-  const { error: errAcc } = await supabase
-    .from("acciones_v2")
-    .delete()
-    .in("punto_id", ids);
+  const { error: errAcc } = await supabase.from("acciones_v2").delete().in("punto_id", ids);
   if (errAcc) return { ok: false, error: errAcc.message };
-
-  const { error: errPunto } = await supabase
-    .from("puntos_v2")
-    .delete()
-    .in("id", ids);
+  const { error: errPunto } = await supabase.from("puntos_v2").delete().in("id", ids);
   if (errPunto) return { ok: false, error: errPunto.message };
-
   return { ok: true };
 }
-
-// ------------------------------------------------------------
-// 5. LIMPIAR TODO EL PARTIDO
-// ------------------------------------------------------------
-// v49.1: se elimina el DELETE de rotaciones_v2. Esa tabla era
-// huérfana (nadie la leía ni escribía; solo este DELETE muerto
-// la mencionaba) y fue dropeada de Supabase.
 
 export async function borrarTodosV2(
   partidoId: string
 ): Promise<{ ok: boolean; error?: string }> {
   if (!partidoId) return { ok: false, error: "Falta partidoId" };
-
   const { error: errAcc } = await supabase
     .from("acciones_v2")
     .delete()
     .eq("partido_id", partidoId);
   if (errAcc) return { ok: false, error: `acciones_v2: ${errAcc.message}` };
-
   const { error: errPuntos } = await supabase
     .from("puntos_v2")
     .delete()
     .eq("partido_id", partidoId);
-  if (errPuntos) {
-    return { ok: false, error: `puntos_v2: ${errPuntos.message}` };
-  }
-
+  if (errPuntos) return { ok: false, error: `puntos_v2: ${errPuntos.message}` };
   return { ok: true };
 }
