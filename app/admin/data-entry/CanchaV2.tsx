@@ -40,7 +40,6 @@ interface Props {
   celdasResaltadas?: Set<string>;
   maxAlto?: number;
   children?: React.ReactNode;
-  // Acciones extra (para pantalla completa)
   onCerrarPunto?: () => void;
   onPuntoSiguiente?: () => void;
   onPuntoAnterior?: () => void;
@@ -51,7 +50,6 @@ interface Props {
   puedeIrAnterior?: boolean;
   puedeBorrarPunto?: boolean;
   puedeBorrarLinea?: boolean;
-  // Armado automático de círculos
   armadoAutomatico?: boolean;
   onToggleArmadoAutomatico?: () => void;
 }
@@ -303,22 +301,15 @@ function rectMini(
   };
 }
 
-/**
- * Genera un único `d` de path que traza TODAS las líneas del mini-grid
- * de un grupo de celdas. Reemplaza cientos/miles de `<rect>` por un
- * solo `<path>`, mejorando enormemente el rendimiento de rasterizado.
- */
 function generarMiniGridPath(celdas: CeldaDef[]): string {
   const cmds: string[] = [];
   for (const c of celdas) {
     const miniAncho = c.ancho / c.miniCols;
     const miniAlto = c.alto / c.miniFils;
-    // Líneas verticales (interiores)
     for (let col = 1; col < c.miniCols; col++) {
       const x = c.x + col * miniAncho;
       cmds.push(`M ${x} ${c.y} L ${x} ${c.y + c.alto}`);
     }
-    // Líneas horizontales (interiores)
     for (let fil = 1; fil < c.miniFils; fil++) {
       const y = c.y + fil * miniAlto;
       cmds.push(`M ${c.x} ${y} L ${c.x + c.ancho} ${y}`);
@@ -361,6 +352,8 @@ export function hitTestV2(
 // COMPONENTE
 // ============================================================
 
+const CLAVE_TOOLBAR_VISIBLE = "canchaV2_toolbarVisible";
+
 export default function CanchaV2({
   orientacion = "vertical",
   onMiniClick,
@@ -390,7 +383,54 @@ export default function CanchaV2({
   const [circleZoom, setCircleZoom] = useState(1);
   const [enPantallaCompleta, setEnPantallaCompleta] = useState(false);
 
+  // v51: toggle de toolbar. La preferencia persiste entre sesiones.
+  const [toolbarVisible, setToolbarVisible] = useState(true);
+  const [toolbarHidratado, setToolbarHidratado] = useState(false);
+
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(CLAVE_TOOLBAR_VISIBLE);
+      if (saved !== null) setToolbarVisible(saved === "1");
+    } catch {
+      // ignore
+    }
+    setToolbarHidratado(true);
+  }, []);
+
+  useEffect(() => {
+    if (!toolbarHidratado) return;
+    try {
+      localStorage.setItem(
+        CLAVE_TOOLBAR_VISIBLE,
+        toolbarVisible ? "1" : "0"
+      );
+    } catch {
+      // ignore
+    }
+  }, [toolbarVisible, toolbarHidratado]);
+
+  // Atajo de teclado: 'H' para alternar la visibilidad de los botones
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.key.toLowerCase() === "h" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        setToolbarVisible((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     const onFsChange = () => {
@@ -492,7 +532,6 @@ export default function CanchaV2({
       setHover((prev) => (prev === null ? prev : null));
       return;
     }
-    // Actualización condicional: solo si cambió celda o mini.
     setHover((prev) => {
       if (prev && prev.celda === celda.id && prev.mini === mini) {
         return prev;
@@ -566,11 +605,6 @@ export default function CanchaV2({
     !!onBorrarPunto ||
     !!onBorrarLinea;
 
-  // ------------------------------------------------------------
-  // Grilla memoizada: agrupamos celdas por (zona, atenuada), dibujamos
-  // fondos como rects individuales y el mini-grid como UN `<path>` por
-  // grupo. Pasamos de ~3.500 rects a ~100 elementos SVG.
-  // ------------------------------------------------------------
   const grillaMemoizada = useMemo(() => {
     const mapa = new Map<
       string,
@@ -660,143 +694,46 @@ export default function CanchaV2({
   }, [celdasAtenuadas, celdasResaltadas]);
 
   // ------------------------------------------------------------
-  // CONTENIDO DE LA TOOLBAR (reutilizado en los 2 layouts)
+  // TOOLBAR — todo lo ocultable va dentro de {toolbarVisible && (...)}.
+  // Los botones "Pantalla completa" y "Ocultar/Mostrar" SIEMPRE están
+  // visibles para que el usuario nunca quede atrapado en fullscreen.
   // ------------------------------------------------------------
   const toolbarContent = (
     <>
-      <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
-        <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
-          Ancho
-        </span>
+      {/* --- SIEMPRE VISIBLES: toggle para ocultar botones + pantalla completa --- */}
+      <div className="flex items-center gap-1.5 bg-slate-900/85 backdrop-blur-sm p-1 rounded-lg border border-slate-700/70 shadow-lg">
         <button
-          onClick={() => cambiar(setEscalaAncho, -1)}
-          disabled={escalaAncho <= ZOOM_MIN}
-          className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
-          title="Achicar ancho"
-        >
-          −
-        </button>
-        <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
-          {Math.round(escalaAncho * 100)}%
-        </span>
-        <button
-          onClick={() => cambiar(setEscalaAncho, 1)}
-          disabled={escalaAncho >= ZOOM_MAX}
-          className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
-          title="Agrandar ancho"
-        >
-          +
-        </button>
-      </div>
-
-      <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
-        <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
-          Alto
-        </span>
-        <button
-          onClick={() => cambiar(setEscalaAlto, -1)}
-          disabled={escalaAlto <= ZOOM_MIN}
-          className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
-          title="Achicar alto"
-        >
-          −
-        </button>
-        <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
-          {Math.round(escalaAlto * 100)}%
-        </span>
-        <button
-          onClick={() => cambiar(setEscalaAlto, 1)}
-          disabled={escalaAlto >= ZOOM_MAX}
-          className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
-          title="Agrandar alto"
-        >
-          +
-        </button>
-      </div>
-
-      <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
-        <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
-          Popups
-        </span>
-        <button
-          onClick={() => cambiar(setPopupZoom, -1)}
-          disabled={popupZoom <= ZOOM_MIN}
-          className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
-          title="Achicar popups"
-        >
-          −
-        </button>
-        <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
-          {Math.round(popupZoom * 100)}%
-        </span>
-        <button
-          onClick={() => cambiar(setPopupZoom, 1)}
-          disabled={popupZoom >= ZOOM_MAX}
-          className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
-          title="Agrandar popups"
-        >
-          +
-        </button>
-      </div>
-
-      <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
-        <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
-          Círculos
-        </span>
-        <button
-          onClick={() => cambiar(setCircleZoom, -1)}
-          disabled={circleZoom <= ZOOM_MIN}
-          className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
-          title="Achicar círculos"
-        >
-          −
-        </button>
-        <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
-          {Math.round(circleZoom * 100)}%
-        </span>
-        <button
-          onClick={() => cambiar(setCircleZoom, 1)}
-          disabled={circleZoom >= ZOOM_MAX}
-          className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
-          title="Agrandar círculos"
-        >
-          +
-        </button>
-      </div>
-
-      {/* Toggle de armado automático */}
-      {onToggleArmadoAutomatico && (
-        <button
-          onClick={onToggleArmadoAutomatico}
-          className={`px-2 h-7 rounded border text-[11px] font-semibold shadow transition ${
-            armadoAutomatico
-              ? "bg-orange-500 text-white border-orange-600 hover:bg-orange-600"
-              : "bg-white/95 text-slate-700 border-slate-300 hover:bg-white"
+          onClick={() => setToolbarVisible((v) => !v)}
+          className={`px-2.5 h-7 rounded text-[11px] font-semibold transition-all flex items-center gap-1.5 shadow-sm ${
+            toolbarVisible
+              ? "bg-slate-800 text-slate-200 border border-slate-600 hover:bg-slate-700 hover:text-white"
+              : "bg-amber-500 text-slate-950 border border-amber-400 hover:bg-amber-400 font-bold"
           }`}
           title={
-            armadoAutomatico
-              ? "Círculos nacen armados (naranja). Click para desactivar."
-              : "Círculos nacen sin armar (blanco). Click para activar."
+            toolbarVisible
+              ? "Ocultar botones para dejar la cancha libre (tecla H)"
+              : "Mostrar botones de ajuste y navegación (tecla H)"
           }
         >
-          {armadoAutomatico ? "🔒 Armado auto ON" : "🔓 Armado auto OFF"}
+          {toolbarVisible ? (
+            <>
+              <span className="text-xs">👁️</span>
+              <span>Ocultar botones</span>
+            </>
+          ) : (
+            <>
+              <span className="text-xs">⚙️</span>
+              <span>Mostrar botones</span>
+            </>
+          )}
         </button>
-      )}
 
-      <div className="flex items-center gap-1">
-        <button
-          onClick={reestablecer}
-          className="px-2 h-7 rounded bg-white/95 border border-slate-300 text-slate-700 text-[11px] font-semibold hover:bg-white shadow"
-          title="Restablecer ancho, alto, popups y círculos"
-        >
-          ↺ Restablecer
-        </button>
         <button
           onClick={togglePantallaCompleta}
-          className="px-2 h-7 rounded bg-white/95 border border-slate-300 text-slate-700 text-[11px] font-semibold hover:bg-white shadow"
+          className="px-2.5 h-7 rounded bg-slate-800 text-slate-200 border border-slate-600 hover:bg-slate-700 hover:text-white text-[11px] font-semibold shadow-sm transition-all flex items-center gap-1"
           title={
             enPantallaCompleta
-              ? "Salir de pantalla completa"
+              ? "Salir de pantalla completa (Esc)"
               : "Pantalla completa"
           }
         >
@@ -804,57 +741,188 @@ export default function CanchaV2({
         </button>
       </div>
 
-      {/* Acciones chicas, SOLO en pantalla completa */}
-      {enPantallaCompleta && hayAcciones && (
-        <div className="flex items-center gap-1 flex-wrap justify-end max-w-[220px]">
+      {toolbarVisible && (
+        <>
+          <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
+            <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
+              Ancho
+            </span>
+            <button
+              onClick={() => cambiar(setEscalaAncho, -1)}
+              disabled={escalaAncho <= ZOOM_MIN}
+              className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+              title="Achicar ancho"
+            >
+              −
+            </button>
+            <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
+              {Math.round(escalaAncho * 100)}%
+            </span>
+            <button
+              onClick={() => cambiar(setEscalaAncho, 1)}
+              disabled={escalaAncho >= ZOOM_MAX}
+              className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+              title="Agrandar ancho"
+            >
+              +
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
+            <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
+              Alto
+            </span>
+            <button
+              onClick={() => cambiar(setEscalaAlto, -1)}
+              disabled={escalaAlto <= ZOOM_MIN}
+              className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+              title="Achicar alto"
+            >
+              −
+            </button>
+            <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
+              {Math.round(escalaAlto * 100)}%
+            </span>
+            <button
+              onClick={() => cambiar(setEscalaAlto, 1)}
+              disabled={escalaAlto >= ZOOM_MAX}
+              className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+              title="Agrandar alto"
+            >
+              +
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
+            <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
+              Popups
+            </span>
+            <button
+              onClick={() => cambiar(setPopupZoom, -1)}
+              disabled={popupZoom <= ZOOM_MIN}
+              className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+              title="Achicar popups"
+            >
+              −
+            </button>
+            <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
+              {Math.round(popupZoom * 100)}%
+            </span>
+            <button
+              onClick={() => cambiar(setPopupZoom, 1)}
+              disabled={popupZoom >= ZOOM_MAX}
+              className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+              title="Agrandar popups"
+            >
+              +
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1 bg-white/95 border border-slate-300 rounded shadow px-1.5 py-0.5">
+            <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">
+              Círculos
+            </span>
+            <button
+              onClick={() => cambiar(setCircleZoom, -1)}
+              disabled={circleZoom <= ZOOM_MIN}
+              className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+              title="Achicar círculos"
+            >
+              −
+            </button>
+            <span className="w-10 text-center text-[11px] font-semibold text-slate-700 tabular-nums">
+              {Math.round(circleZoom * 100)}%
+            </span>
+            <button
+              onClick={() => cambiar(setCircleZoom, 1)}
+              disabled={circleZoom >= ZOOM_MAX}
+              className="w-6 h-6 rounded border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-40"
+              title="Agrandar círculos"
+            >
+              +
+            </button>
+          </div>
+
+          {onToggleArmadoAutomatico && (
+            <button
+              onClick={onToggleArmadoAutomatico}
+              className={`px-2 h-7 rounded border text-[11px] font-semibold shadow transition ${
+                armadoAutomatico
+                  ? "bg-orange-500 text-white border-orange-600 hover:bg-orange-600"
+                  : "bg-white/95 text-slate-700 border-slate-300 hover:bg-white"
+              }`}
+              title={
+                armadoAutomatico
+                  ? "Círculos nacen armados (naranja). Click para desactivar."
+                  : "Círculos nacen sin armar (blanco). Click para activar."
+              }
+            >
+              {armadoAutomatico ? "🔒 Armado auto ON" : "🔓 Armado auto OFF"}
+            </button>
+          )}
+
           <button
-            onClick={onPuntoAnterior}
-            disabled={puedeIrAnterior === false}
-            className="px-2 h-6 rounded bg-slate-600 text-white text-[10px] font-semibold hover:bg-slate-700 disabled:opacity-40 shadow"
-            title="Punto anterior"
+            onClick={reestablecer}
+            className="px-2 h-7 rounded bg-white/95 border border-slate-300 text-slate-700 text-[11px] font-semibold hover:bg-white shadow"
+            title="Restablecer ancho, alto, popups y círculos"
           >
-            ◀ Ant
+            ↺ Restablecer
           </button>
-          <button
-            onClick={onCerrarPunto}
-            disabled={puedeCerrarPunto === false}
-            className="px-2 h-6 rounded bg-emerald-500 text-white text-[10px] font-semibold hover:bg-emerald-600 disabled:opacity-40 shadow"
-            title="Cerrar punto (Enter)"
-          >
-            ✓ Cerrar
-          </button>
-          <button
-            onClick={onPuntoSiguiente}
-            disabled={puedeIrSiguiente === false}
-            className="px-2 h-6 rounded bg-slate-700 text-white text-[10px] font-semibold hover:bg-slate-800 disabled:opacity-40 shadow"
-            title="Punto siguiente"
-          >
-            ▶ Sig
-          </button>
-          <button
-            onClick={onBorrarPunto}
-            disabled={puedeBorrarPunto === false}
-            className="px-2 h-6 rounded bg-red-500 text-white text-[10px] font-semibold hover:bg-red-600 disabled:opacity-40 shadow"
-            title="Borrar punto"
-          >
-            ✕ Borrar punto
-          </button>
-          <button
-            onClick={onBorrarLinea}
-            disabled={puedeBorrarLinea === false}
-            className="px-2 h-6 rounded bg-red-300 text-red-900 text-[10px] font-semibold hover:bg-red-400 disabled:opacity-40 shadow"
-            title="Borrar última línea (D)"
-          >
-            ↩ Borrar línea
-          </button>
-        </div>
+
+          {enPantallaCompleta && hayAcciones && (
+            <div className="flex items-center gap-1 flex-wrap justify-end max-w-[220px]">
+              <button
+                onClick={onPuntoAnterior}
+                disabled={puedeIrAnterior === false}
+                className="px-2 h-6 rounded bg-slate-600 text-white text-[10px] font-semibold hover:bg-slate-700 disabled:opacity-40 shadow"
+                title="Punto anterior"
+              >
+                ◀ Ant
+              </button>
+              <button
+                onClick={onCerrarPunto}
+                disabled={puedeCerrarPunto === false}
+                className="px-2 h-6 rounded bg-emerald-500 text-white text-[10px] font-semibold hover:bg-emerald-600 disabled:opacity-40 shadow"
+                title="Cerrar punto (Enter)"
+              >
+                ✓ Cerrar
+              </button>
+              <button
+                onClick={onPuntoSiguiente}
+                disabled={puedeIrSiguiente === false}
+                className="px-2 h-6 rounded bg-slate-700 text-white text-[10px] font-semibold hover:bg-slate-800 disabled:opacity-40 shadow"
+                title="Punto siguiente"
+              >
+                ▶ Sig
+              </button>
+              <button
+                onClick={onBorrarPunto}
+                disabled={puedeBorrarPunto === false}
+                className="px-2 h-6 rounded bg-red-500 text-white text-[10px] font-semibold hover:bg-red-600 disabled:opacity-40 shadow"
+                title="Borrar punto"
+              >
+                ✕ Borrar punto
+              </button>
+              <button
+                onClick={onBorrarLinea}
+                disabled={puedeBorrarLinea === false}
+                className="px-2 h-6 rounded bg-red-300 text-red-900 text-[10px] font-semibold hover:bg-red-400 disabled:opacity-40 shadow"
+                title="Borrar última línea (D)"
+              >
+                ↩ Borrar línea
+              </button>
+            </div>
+          )}
+
+          {hayStretch && (
+            <span className="text-[9px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+              ⚠️ Estirado (ancho ≠ alto)
+            </span>
+          )}
+        </>
       )}
 
-      {hayStretch && (
-        <span className="text-[9px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
-          ⚠️ Estirado (ancho ≠ alto)
-        </span>
-      )}
+      {/* Fin toolbar */}
     </>
   );
 
@@ -873,7 +941,6 @@ export default function CanchaV2({
       }}
     >
       {enPantallaCompleta ? (
-        // Toolbar fija arriba a la derecha del fullscreen
         <div
           className="z-30 flex flex-col items-end gap-1"
           style={{
@@ -889,7 +956,6 @@ export default function CanchaV2({
           {toolbarContent}
         </div>
       ) : (
-        // Toolbar sticky dentro del contenedor
         <div
           className="sticky top-2 z-20 flex flex-col items-end gap-1 ml-auto mr-2"
           style={{ pointerEvents: "auto", alignSelf: "flex-start" }}
@@ -913,9 +979,6 @@ export default function CanchaV2({
           cursor: onMiniClick ? "crosshair" : "default",
           flexShrink: 0,
           margin: "auto",
-          // Promover a capa compuesta: el navegador rasteriza una vez y
-          // luego sólo traslada la capa al scrollear. Evita repintar
-          // miles de elementos SVG en cada frame.
           willChange: "transform",
         }}
         onPointerMove={handleMove}
