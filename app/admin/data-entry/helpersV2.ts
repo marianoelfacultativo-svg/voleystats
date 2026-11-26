@@ -321,10 +321,9 @@ export function lineasAAcciones(
             )
           );
 
-          const base = (l.subtipo ?? "positivo") as string;
-          const esPositiva =
-            base === "punto" || base === "positivo_mas" || base === "positivo";
-          const sub = esPositiva ? "positivo" : "neutro";
+          // v51.3 — usar el subtipo ya calculado por calcularSubtiposBloqueo
+          // (filtrada/red/use_rival/punto/positivo/neutro), sin simplificar.
+          const sub = String(l.subtipo ?? "positivo");
 
           for (const d of desviosBLOQP) {
             acciones.push(
@@ -347,10 +346,9 @@ export function lineasAAcciones(
         }
 
         if (desviosBLOQP.length > 1) {
-          const base = (l.subtipo ?? "positivo") as string;
-          const esPositiva =
-            base === "punto" || base === "positivo_mas" || base === "positivo";
-          const sub = esPositiva ? "positivo" : "neutro";
+          // v51.3 — mismo fix: preservar el subtipo calculado (filtrada,
+          // use_rival, red, etc.) en vez de colapsarlo a positivo/neutro.
+          const sub = String(l.subtipo ?? "positivo");
           for (const d of desviosBLOQP) {
             acciones.push(
               construirAccion(l, orden++, contexto, flagsBase, {

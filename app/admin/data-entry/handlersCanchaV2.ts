@@ -147,6 +147,11 @@ export function crearHandlersCancha(params: Params) {
     let subtipoFinal = res.subtipoFijo ?? null;
     let tipoSaqueFinal = res.tipoSaqueFijo ?? null;
     let popupFinal: PopupRequerido = res.popup;
+    // v51.3 — La calidad de saque se calcula automáticamente en
+    // calcularSubtiposSaque (según la celda destino). No mostrar el
+    // popup de calidad (ace/pos/neutro): ir directo al tipo físico
+    // (potencia/flotado).
+    if (popupFinal === "saque") popupFinal = "tipo-saque";
     let equipoAccionFinal: string | null = equipoId;
 
     if (res.tipo === "defensa" && !res.esRival) {
@@ -244,7 +249,10 @@ export function crearHandlersCancha(params: Params) {
           origen: { celda: desvioBloqueo.celda, mini: desvioBloqueo.mini },
           destino: destino,
           desvios: [],
-          subtipo: "positivo",
+          // v51.3 — subtipo null: lo calcula calcularSubtiposBloqueo
+          // al guardar (filtrada si va a RED/lateral, punto/positivo/
+          // neutro según caída, red si va a la red).
+          subtipo: null,
           equipoId: equipoId,
         };
 
@@ -334,13 +342,11 @@ export function crearHandlersCancha(params: Params) {
           { ...punto, jugadorId: null },
         ]);
         if (esPropioConPopup) {
+          // v51.3 — La calidad de bloqueo se calcula automáticamente
+          // en calcularSubtiposBloqueo (según destino: RED → filtrada,
+          // cancha propia → neutro, rival → punto/positivo/neutro, etc.).
+          // Solo preguntar quién bloqueó.
           setColaPopups([
-            {
-              tipo: "bloqueo-calidad",
-              pos: posicionPopup(punto),
-              lineaId: "",
-              indiceDesvio,
-            },
             {
               tipo: "bloqueo",
               pos: posicionPopup(punto),
