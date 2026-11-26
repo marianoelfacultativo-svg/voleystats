@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import CanchaV2, {
   type Orientacion,
 } from "./CanchaV2";
@@ -220,6 +221,27 @@ export default function DataEntryV2({
   const [guardando, setGuardando] = useState(false);
   const [setupCompleto, setSetupCompleto] = useState(false);
   const [hidratado, setHidratado] = useState(false);
+
+  // ===== v51.1 — Modo enfoque (oculta botones de acción) =====
+  const [modoEnfoque, setModoEnfoque] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return localStorage.getItem(`modoEnfoque_${partidoId}`) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        `modoEnfoque_${partidoId}`,
+        modoEnfoque ? "1" : "0"
+      );
+    } catch {
+      // ignore
+    }
+  }, [modoEnfoque, partidoId]);
 
   // ===== Banners y modales =====
   const [bannerSet, setBannerSet] = useState<SetCerrado | null>(null);
@@ -1418,12 +1440,39 @@ export default function DataEntryV2({
                     <span className="ml-1 text-amber-600">(tie-break)</span>
                   )}
                 </p>
-                <button
-                  onClick={() => setOrientacion((o) => o === "vertical" ? "horizontal" : "vertical")}
-                  className="px-2 py-0.5 text-[10px] rounded border border-slate-300 hover:bg-slate-50 text-slate-600"
-                >
-                  🔄 {orientacion === "vertical" ? "Horizontal" : "Vertical"}
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setOrientacion((o) => o === "vertical" ? "horizontal" : "vertical")}
+                    className="px-2 py-0.5 text-[10px] rounded border border-slate-300 hover:bg-slate-50 text-slate-600"
+                  >
+                    🔄 {orientacion === "vertical" ? "Horizontal" : "Vertical"}
+                  </button>
+                  <button
+                    onClick={() => setModoEnfoque((v) => !v)}
+                    className={`px-2 py-0.5 text-[10px] rounded border transition flex items-center gap-0.5 ${
+                      modoEnfoque
+                        ? "bg-cyan-500 text-white border-cyan-600 hover:bg-cyan-600"
+                        : "border-slate-300 hover:bg-slate-50 text-slate-600"
+                    }`}
+                    title={
+                      modoEnfoque
+                        ? "Mostrar botones de acción"
+                        : "Ocultar botones de acción"
+                    }
+                  >
+                    {modoEnfoque ? (
+                      <>
+                        <EyeOff className="w-3 h-3" />
+                        <span>Enfoque ON</span>
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3 h-3" />
+                        <span>Enfoque</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
               <CanchaV2
@@ -1485,20 +1534,22 @@ export default function DataEntryV2({
             </div>
           </div>
 
-          <BotonesAccionV2
-            guardando={guardando}
-            setCerrado={setCerradoActual}
-            puedeBorrarUltima={lineas.length > 0 || !!circuloArmado || !!circuloSinArmar}
-            puedeBorrarPunto={lineas.length > 0}
-            puedeGuardar={Object.keys(puntosCerrados).length > 0}
-            puedeCerrarPunto={lineas.length > 0}
-            onBorrarUltima={handleBorrarUltima}
-            onBorrarPunto={handleBorrarPunto}
-            onGuardar={handleGuardarSupabase}
-            onCerrarPunto={handleCerrarPunto}
-            onBorrarLocal={handleBorrarLocal}
-            onReabrirSet={handleSolicitarReabrir}
-          />
+          {!modoEnfoque && (
+            <BotonesAccionV2
+              guardando={guardando}
+              setCerrado={setCerradoActual}
+              puedeBorrarUltima={lineas.length > 0 || !!circuloArmado || !!circuloSinArmar}
+              puedeBorrarPunto={lineas.length > 0}
+              puedeGuardar={Object.keys(puntosCerrados).length > 0}
+              puedeCerrarPunto={lineas.length > 0}
+              onBorrarUltima={handleBorrarUltima}
+              onBorrarPunto={handleBorrarPunto}
+              onGuardar={handleGuardarSupabase}
+              onCerrarPunto={handleCerrarPunto}
+              onBorrarLocal={handleBorrarLocal}
+              onReabrirSet={handleSolicitarReabrir}
+            />
+          )}
         </>
       )}
 
