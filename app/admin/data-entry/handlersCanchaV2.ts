@@ -322,35 +322,10 @@ export function crearHandlersCancha(params: Params) {
     }
 
     if (circuloArmado) {
-      if (coords.zona === "red") {
-        const linea: LineaClasificada = {
-          id: `l-${contadorId}`,
-          tipo: "roce-red",
-          esRival: false,
-          jugadorId: null,
-          origen: circuloArmado,
-          destino: punto,
-          desvios:
-            desviosPendientes.length > 0 ? [...desviosPendientes] : undefined,
-          subtipo: null,
-          posicionInicial: estrella ? { ...estrella } : null,
-          equipoId: equipoId,
-        };
-        setLineas((prev) => [...prev, linea]);
-        setContadorId((c) => c + 1);
-        setDesviosPendientes([]);
-        ponerCirculo(punto);
-        setEstrella(null);
-        setColaPopups([
-          {
-            tipo: "roce-red",
-            pos: posicionPopup(punto),
-            lineaId: linea.id,
-          },
-        ]);
-        return;
-      }
-
+      // v51.3 — roce-red SOLO se registra con el círculo desarmado.
+      // Con círculo armado, el destino RED es una pelota que va a la
+      // red: sigue el flujo normal (ataque → error_red_ataque,
+      // saque → negativo, bloqueo → filtrada).
       if (esCeldaBloqueo(punto.celda)) {
         const esPropioConPopup = esCeldaBloqueoPropioConPopup(punto.celda);
         const indiceDesvio = desviosPendientes.length;
