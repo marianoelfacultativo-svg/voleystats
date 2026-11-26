@@ -486,7 +486,11 @@ export function clasificarLinea(
   const n = estado.lineas.length;
   const ultima = n > 0 ? estado.lineas[n - 1] : null;
 
-  if (esRed(linea.origen.celda) || esRed(linea.destino.celda)) {
+  // v51.3 — Solo roce-red cuando la pelota VIENE de la red (el jugador
+  // tocó la red y la pelota ricocheteó desde ahí). Cuando el destino es
+  // RED (pelota que va a la red), sigue el flujo normal: el motor de
+  // subtipos decide si es error (último toque) o estético (rallí sigue).
+  if (esRed(linea.origen.celda)) {
     return {
       tipo: "roce-red",
       esRival: false,
@@ -808,6 +812,11 @@ export function ganadorDelPunto(
   const ultima = lineas[lineas.length - 1];
 
   if (ultima.tipo === "roce-red") {
+    return ultima.esRival ? "propio" : "rival";
+  }
+
+  if (esRed(ultima.destino.celda)) {
+    // Pelota terminó en la red → el último que la tocó cometió falta.
     return ultima.esRival ? "propio" : "rival";
   }
 

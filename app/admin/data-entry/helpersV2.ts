@@ -99,7 +99,11 @@ function esErrorDeAccion(
   if (tipo === "recepcion") return s === "error_directo";
   if (tipo === "ataque") {
     const base = s.startsWith("toque:") ? s.slice(6) : s;
-    return base === "error";
+    return (
+      base === "error" ||
+      base === "error_red_ataque" ||
+      base === "error_afuera_ataque"
+    );
   }
   if (tipo === "bloqueo") return s === "red" || s === "use_rival";
   if (tipo === "defensa") {
