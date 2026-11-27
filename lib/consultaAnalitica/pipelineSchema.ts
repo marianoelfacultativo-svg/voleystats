@@ -523,7 +523,11 @@ Las acciones intermedias en el rally tienen desenlace "en_juego", salvo que cier
    USAR FLAGS EN VEZ DE SUBTIPO:
    - "ataques directos" / "limpios" (sin bloqueo ni defensa) →
      tipo=ataque AND toca_bloqueo=false AND hubo_defensa=false
-   - "gorros" → tipo=ataque AND error_tipo=gorro
+   - "gorros recibidos" / "nos gorrearon" / "ataques gorreados" →
+     tipo=ataque AND error_tipo=gorro
+   - "gorros hechos" / "bloqueos punto" / "kill blocks" →
+     tipo=bloqueo AND subtipo=punto
+   - "gorros" (genérico, sin perspectiva) → needsClarification (ver Regla 21)
    - "ataques desviados por el bloqueo" → tipo=ataque AND toca_bloqueo=true
    - "use rival" → tipo=ataque AND use_rival=true
    - "ataques con cobertura" → tipo=ataque AND hubo_cobertura=true
@@ -539,6 +543,34 @@ Las acciones intermedias en el rally tienen desenlace "en_juego", salvo que cier
      "ataques tras armado flojo" → calidad_armado_previa <= 3.
    - "calidad_recepcion_previa": "perfecta"|"positiva"|"intermedia"|"negativa"|"error_directo".
      "kill % tras recepción perfecta" → calidad_recepcion_previa = perfecta.
+
+21. AMBIGÜEDAD "GORRO" (dos perspectivas del mismo evento):
+   Un gorro es el mismo evento físico visto desde dos lados. Cada gorro genera
+   UNA sola fila del lado propio (son conjuntos disjuntos, NO hay doble conteo):
+   - Recibido: tipo=ataque AND error_tipo=gorro  → el atacante propio fue gorreado.
+   - Hecho:    tipo=bloqueo AND subtipo=punto     → el bloqueador propio hizo el gorro.
+   Reglas de interpretación:
+   - "gorros recibidos" / "nos gorrearon" / "ataques gorreados" →
+     filtros: tipo=ataque, error_tipo=gorro, es_rival=false. metrica count.
+   - "gorros hechos" / "bloqueos punto" / "kill blocks" / "gorros a favor" →
+     filtros: tipo=bloqueo, subtipo=punto, es_rival=false. metrica count.
+   - "todos los gorros" / "gorros del partido" / "cuántos gorros hubo" →
+     filtro AST (OR, SIN filtro es_rival global):
+     { "kind": "or", "children": [
+         { "kind": "and", "children": [
+             { "kind": "filter", "campo": "tipo", "operador": "eq", "valor": "ataque" },
+             { "kind": "filter", "campo": "error_tipo", "operador": "eq", "valor": "gorro" } ] },
+         { "kind": "and", "children": [
+             { "kind": "filter", "campo": "tipo", "operador": "eq", "valor": "bloqueo" },
+             { "kind": "filter", "campo": "subtipo", "operador": "eq", "valor": "punto" } ] }
+       ] }
+     metrica count. (Cada gorro aparece una sola vez: o como ataque recibido o como bloqueo punto.)
+   - "gorros de nuestro equipo" (hechos + recibidos, sin importar perspectiva) →
+     mismo OR de arriba pero agregando es_rival=false a CADA rama del AND.
+   - "gorros" solo, sin perspectiva → needsClarification:
+     preguntaClarificacion: "¿Querés gorros recibidos, hechos, o todos?"
+     opcionesClarificacion: ["gorros que recibimos", "gorros que hicimos", "todos los gorros"]
+   NUNCA devolver un solo número para "gorros" genérico: siempre aclarar.
 
 EJEMPLOS (todos incluyen "explain" obligatorio):
 
@@ -762,4 +794,39 @@ JSON:
   ],
   "metrica": { "tipo": "count" },
   "explain": "Defensas tras bloqueo en sets ganados: defensas propias que vienen de un bloqueo, en sets que ganamos."
-}`;
+}
+
+Prompt: "todos los gorros del partido"
+JSON:
+{
+  "entidad_base": "acciones",
+  "filtro": {
+    "kind": "or",
+    "children": [
+      { "kind": "and", "children": [
+        { "kind": "filter", "campo": "tipo", "operador": "eq", "valor": "ataque" },
+        { "kind": "filter", "campo": "error_tipo", "operador": "eq", "valor": "gorro" }
+      ] },
+      { "kind": "and", "children": [
+        { "kind": "filter", "campo": "tipo", "operador": "eq", "valor": "bloqueo" },
+        { "kind": "filter", "campo": "subtipo", "operador": "eq", "valor": "punto" }
+      ] }
+    ]
+  },
+  "metrica": { "tipo": "count" },
+  "explain": "Todos los gorros del partido: ataques gorreados + bloqueos punto, sin doble conteo (cada gorro es una u otra fila)."
+}
+
+Prompt: "gorros que hicimos"
+JSON:
+{
+  "entidad_base": "acciones",
+  "filtros": [
+    { "campo": "tipo", "operador": "eq", "valor": "bloqueo" },
+    { "campo": "subtipo", "operador": "eq", "valor": "punto" },
+    { "campo": "es_rival", "operador": "eq", "valor": false }
+  ],
+  "metrica": { "tipo": "count" },
+  "explain": "Gorros que hicimos: bloqueos propios con subtipo punto (kill blocks)."
+}
+`;
