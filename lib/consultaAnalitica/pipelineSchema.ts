@@ -164,7 +164,11 @@ export const CATALOGO_PIPELINE: Record<string, Record<string, InfoSubtipo>> = {
     positivo: { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
     neutro: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 },
     filtrada: { desenlace: "error", valoracion: "neu", puntaje: 2 },
-    use_rival: { desenlace: "error", valoracion: "neg", puntaje: 3 },
+    // v51.3 — use_rival en bloqueo propio: el bloqueo tocó la pelota y
+    // el rival no la pudo controlar (salió afuera o la dejó muerta) →
+    // PUNTO propio. Antes estaba como error/neg, inconsistente con
+    // ataque.use_rival_ataque (que sí es punto/pos).
+    use_rival: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
     red: { desenlace: "error", valoracion: "neg", puntaje: 0 },
     error: { desenlace: "error", valoracion: "neg", puntaje: 0 },
   },

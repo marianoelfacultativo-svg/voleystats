@@ -581,6 +581,24 @@ export function clasificarLinea(
   }
 
   if (ultima && pasoLaRed(ultima)) {
+    // v51.4 — Si el origen es BLOQ-P y el destino es cancha rival,
+    // fuera o red, esto es un BLOQUEO (use_rival / filtrada / punto),
+    // no una defensa. La pelota tocó el bloqueo propio y salió por
+    // el lado rival.
+    if (
+      esBloqueoPropio(linea.origen.celda) &&
+      (esCanchaRival(linea.destino.celda) ||
+        esFuera(linea.destino.celda) ||
+        esRed(linea.destino.celda))
+    ) {
+      return {
+        tipo: "bloqueo",
+        esRival: false,
+        jugadorId: null,
+        popup: "bloqueo",
+      };
+    }
+
     if (
       ultima.tipo === "ataque" &&
       !ultima.esRival &&
@@ -821,6 +839,16 @@ export function ganadorDelPunto(
   }
 
   if (esFuera(ultima.destino.celda)) {
+    // v51.4 — Bloqueo que sale afuera: gana el equipo del bloqueador
+    // si salió por el lado contrario (use_rival), pierde si salió
+    // por el lado propio (filtrada hacia adentro).
+    if (ultima.tipo === "bloqueo" && !ultima.esRival) {
+      const salioPorLadoRival =
+        /^F[456]-C[15]$/.test(ultima.destino.celda) ||
+        ultima.destino.celda.startsWith("FUERA-ARR-");
+      return salioPorLadoRival ? "propio" : "rival";
+    }
+
     if (
       ultima.tipo === "ataque" &&
       !ultima.esRival &&
@@ -1002,8 +1030,14 @@ export function calcularSubtiposDefensa(
     let nuevoSubtipo = subActual;
 
     if (esUltima) {
+      // v51.4 — Si la pelota va FUERA (de cualquier lado), es error
+      // aunque el usuario no haya abierto el popup.
+      const destinoFuera =
+        l.destino.celda.startsWith("FUERA-") ||
+        /^F[123456]-C[15]$/.test(l.destino.celda);
+
       if (!subActual || subActual === "defensa_normal") {
-        nuevoSubtipo = "neutro";
+        nuevoSubtipo = destinoFuera ? "error_def" : "neutro";
       } else if (subActual === "toque") {
         nuevoSubtipo = "toque_negativa";
       } else if (subActual === "gran-defensa") {
@@ -1200,7 +1234,14 @@ function valorarBloqueoBase(
   const l = lineas[idxBloqueo];
   const destino = l.destino.celda;
 
-  if (esFuera(destino)) return "use_rival";
+  // v51.4 — Distinguir lado de salida:
+  //   fuera por lado rival → use_rival (punto propio)
+  //   fuera por lado propio → filtrada (error propio)
+  if (esFuera(destino)) {
+    const esLadoRival =
+      /^F[456]-C[15]$/.test(destino) || destino.startsWith("FUERA-ARR-");
+    return esLadoRival ? "use_rival" : "filtrada";
+  }
   if (destino.startsWith("RED-")) return "filtrada";
   if (esCeldaBloqueoPropioLateral(destino)) return "filtrada";
 
