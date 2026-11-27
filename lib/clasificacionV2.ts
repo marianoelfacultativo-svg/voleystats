@@ -839,14 +839,12 @@ export function ganadorDelPunto(
   }
 
   if (esFuera(ultima.destino.celda)) {
-    // v51.4 — Bloqueo que sale afuera: gana el equipo del bloqueador
-    // si salió por el lado contrario (use_rival), pierde si salió
-    // por el lado propio (filtrada hacia adentro).
-    if (ultima.tipo === "bloqueo" && !ultima.esRival) {
-      const salioPorLadoRival =
-        /^F[456]-C[15]$/.test(ultima.destino.celda) ||
-        ultima.destino.celda.startsWith("FUERA-ARR-");
-      return salioPorLadoRival ? "propio" : "rival";
+    // v51.5 — Bloqueo que sale afuera: el use es error del que
+    // bloqueó, sin importar el lado de salida. Si el bloqueo es
+    // propio → error propio → gana rival. Si es rival → error
+    // rival → gana propio.
+    if (ultima.tipo === "bloqueo") {
+      return ultima.esRival ? "propio" : "rival";
     }
 
     if (
@@ -1234,13 +1232,12 @@ function valorarBloqueoBase(
   const l = lineas[idxBloqueo];
   const destino = l.destino.celda;
 
-  // v51.4 — Distinguir lado de salida:
-  //   fuera por lado rival → use_rival (punto propio)
-  //   fuera por lado propio → filtrada (error propio)
+  // v51.5 — El use en bloqueo propio es SIEMPRE error propio,
+  // sin importar de qué lado salga la pelota. Lo que importa es
+  // quién bloqueó: si el bloqueo es propio y la pelota sale afuera,
+  // el rival "usó" mi bloqueo → error de bloqueo propio.
   if (esFuera(destino)) {
-    const esLadoRival =
-      /^F[456]-C[15]$/.test(destino) || destino.startsWith("FUERA-ARR-");
-    return esLadoRival ? "use_rival" : "filtrada";
+    return "use_rival";
   }
   if (destino.startsWith("RED-")) return "filtrada";
   if (esCeldaBloqueoPropioLateral(destino)) return "filtrada";

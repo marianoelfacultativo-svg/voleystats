@@ -164,11 +164,12 @@ export const CATALOGO_PIPELINE: Record<string, Record<string, InfoSubtipo>> = {
     positivo: { desenlace: "en_juego", valoracion: "pos", puntaje: 6 },
     neutro: { desenlace: "en_juego", valoracion: "neu", puntaje: 5 },
     filtrada: { desenlace: "error", valoracion: "neu", puntaje: 2 },
-    // v51.3 — use_rival en bloqueo propio: el bloqueo tocó la pelota y
-    // el rival no la pudo controlar (salió afuera o la dejó muerta) →
-    // PUNTO propio. Antes estaba como error/neg, inconsistente con
-    // ataque.use_rival_ataque (que sí es punto/pos).
-    use_rival: { desenlace: "punto", valoracion: "pos", puntaje: 10 },
+    // v51.5 — use_rival en bloqueo propio: el ataque rival tocó mi
+    // bloqueo y la pelota salió afuera. Es ERROR de bloqueo propio
+    // (el rival "usó" mi bloqueo). No importa de qué lado salga:
+    // importa quién bloqueó. El use desde la perspectiva del atacante
+    // rival se registra en ataque.use_rival_ataque (punto/pos/10).
+    use_rival: { desenlace: "error", valoracion: "neg", puntaje: 3 },
     red: { desenlace: "error", valoracion: "neg", puntaje: 0 },
     error: { desenlace: "error", valoracion: "neg", puntaje: 0 },
   },
