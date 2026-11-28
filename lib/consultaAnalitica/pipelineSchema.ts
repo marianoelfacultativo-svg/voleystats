@@ -368,8 +368,8 @@ REGLAS
 20. GORRO (mismo evento, dos perspectivas; son conjuntos disjuntos, un OR no cuenta doble):
    - Recibido ("gorros recibidos", "nos gorrearon", "ataques gorreados"): tipo=ataque, error_tipo=gorro, es_rival=false.
    - Hecho ("gorros hechos", "gorros que hicimos", "bloqueos punto", "kill blocks"): tipo=bloqueo, subtipo=punto, es_rival=false.
-   - "todos los gorros" / "gorros del partido": OR de ambos, SIN es_rival (ver ejemplo). "gorros de nuestro equipo": el mismo OR con es_rival=false en cada rama.
-   - "gorros" solo, sin perspectiva → needsClarification con preguntaClarificacion "¿Querés gorros recibidos, hechos, o todos?" y opciones ["gorros que recibimos","gorros que hicimos","todos los gorros"]. NUNCA devuelvas un número para "gorros" genérico.
+   - "todos los gorros" / "gorros del partido" / "gorros en total": OR de ambos, SIN es_rival (ver ejemplo). Es una consulta COMPLETA: NO pidas aclaración. "gorros de nuestro equipo": el mismo OR con es_rival=false en cada rama.
+   - SOLO si el texto es "gorros" a secas (sin "todos", "recibidos", "recibimos", "hechos", "hicimos", "nos gorrearon", "del partido", "en total") → needsClarification con preguntaClarificacion "¿Querés gorros recibidos, hechos, o todos?" y opciones ["gorros que recibimos","gorros que hicimos","todos los gorros"]. Cada opción es una consulta completa: si el prompt ya es una de ellas, respondé con el pipeline, nunca con otra aclaración. NUNCA devuelvas un número para "gorros" a secas.
 
 EJEMPLOS
 Prompt: "kill % del punta 1"
@@ -393,8 +393,11 @@ Prompt: "ataques directos"
 Prompt: "use rival"
 {"entidad_base":"acciones","filtros":[{"campo":"tipo","operador":"eq","valor":"ataque"},{"campo":"use_rival","operador":"eq","valor":true},{"campo":"es_rival","operador":"eq","valor":false}],"metrica":{"tipo":"count"},"explain":"Ataques propios con use rival."}
 
-Prompt: "todos los gorros del partido"
+Prompt: "todos los gorros"
 {"entidad_base":"acciones","filtro":{"kind":"or","children":[{"kind":"and","children":[{"kind":"filter","campo":"tipo","operador":"eq","valor":"ataque"},{"kind":"filter","campo":"error_tipo","operador":"eq","valor":"gorro"}]},{"kind":"and","children":[{"kind":"filter","campo":"tipo","operador":"eq","valor":"bloqueo"},{"kind":"filter","campo":"subtipo","operador":"eq","valor":"punto"}]}]},"metrica":{"tipo":"count"},"explain":"Todos los gorros: ataques gorreados más bloqueos punto, sin doble conteo."}
+
+Prompt: "gorros que hicimos"
+{"entidad_base":"acciones","filtros":[{"campo":"tipo","operador":"eq","valor":"bloqueo"},{"campo":"subtipo","operador":"eq","valor":"punto"},{"campo":"es_rival","operador":"eq","valor":false}],"metrica":{"tipo":"count"},"explain":"Bloqueos punto propios (gorros hechos)."}
 
 Prompt: "cuántos ataques hizo Mariano y cómo fueron en %"
 {"needsClarification":true,"preguntaClarificacion":"¿Querés el kill % o la distribución de resultados de Mariano?","opcionesClarificacion":["kill % de Mariano","distribución de resultados de Mariano"]}
