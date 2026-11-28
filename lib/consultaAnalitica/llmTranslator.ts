@@ -24,7 +24,7 @@ const GROQ_MODEL =
   process.env.GROQ_MODEL ||
   (process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY
     ? "gpt-4o-mini"
-    : "llama-3.3-70b-versatile");
+    : "openai/gpt-oss-120b");
 
 const MAX_INTENTOS = 3;
 
@@ -68,8 +68,8 @@ async function llamarGroq(
 
   // reasoning_effort es específico de gpt-oss: con llama da error 400.
   if (GROQ_MODEL.includes("gpt-oss")) {
-    body.reasoning_effort = "high";
-    body.max_completion_tokens = 8192;
+    body.reasoning_effort = process.env.GROQ_REASONING_EFFORT || "medium";
+    body.max_completion_tokens = 4096;
   }
 
   if (jsonMode) {
