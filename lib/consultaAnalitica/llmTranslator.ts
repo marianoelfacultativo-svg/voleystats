@@ -4,6 +4,8 @@
 // v2.1: backoff exponencial en 429 (rate limit).
 // v2.2 (Bloque 3b): agrega `traducirPromptConCorreccion` — una sola
 //   llamada extra pasándole al LLM el error exacto de validación.
+// v2.3 (v53, Carril A): modelo llama-3.3-70b-versatile, reasoning_effort
+//   solo para gpt-oss, max_completion_tokens 1500, sin reintentos en errores fatales.
 // ============================================================
 
 import {
@@ -22,7 +24,7 @@ const GROQ_MODEL =
   process.env.GROQ_MODEL ||
   (process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY
     ? "gpt-4o-mini"
-    : "openai/gpt-oss-120b");
+    : "llama-3.3-70b-versatile");
 
 const MAX_INTENTOS = 3;
 
@@ -45,6 +47,7 @@ async function llamarGroq(
   content?: string;
   error?: string;
   retryAfterMs?: number;
+  fatal?: boolean;
 }> {
   const apiKey = process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -59,10 +62,15 @@ async function llamarGroq(
     model: GROQ_MODEL,
     messages,
     temperature: 0,
-    max_completion_tokens: 8192,
+    max_completion_tokens: 1500,
     top_p: 1,
-    reasoning_effort: "high",
   };
+
+  // reasoning_effort es específico de gpt-oss: con llama da error 400.
+  if (GROQ_MODEL.includes("gpt-oss")) {
+    body.reasoning_effort = "high";
+    body.max_completion_tokens = 8192;
+  }
 
   if (jsonMode) {
     body.response_format = { type: "json_object" };
@@ -102,6 +110,7 @@ async function llamarGroq(
       ok: false,
       error: `Groq respondió ${res.status}: ${texto.slice(0, 300)}`,
       retryAfterMs: res.status === 429 ? retryAfterMs : undefined,
+      fatal: res.status === 413 || res.status === 400 || res.status === 401,
     };
   }
 
@@ -185,6 +194,16 @@ export async function traducirPromptConHistorial(
       continue;
     }
 
+    if (!llamada.ok && llamada.fatal) {
+      return {
+        ok: false,
+        error: `Error no recuperable (no se reintenta): ${
+          llamada.error ?? "desconocido"
+        }`,
+        intentos: intento,
+      };
+    }
+
     if (!llamada.ok || !llamada.content) {
       ultimoError = llamada.error ?? "Groq devolvió vacío.";
       continue;
@@ -204,7 +223,7 @@ export async function traducirPromptConHistorial(
   }
 
   const mensajeFinal = fueRateLimit
-    ? `Rate limit de Groq alcanzado (plan free: 8000 tokens/minuto). ` +
+    ? `Rate limit de Groq alcanzado (plan free). ` +
       `Esperá 60 segundos y volvé a intentar. ` +
       `Detalle: ${ultimoError}`
     : `No se pudo traducir el prompt después de ${MAX_INTENTOS} intentos. ` +
